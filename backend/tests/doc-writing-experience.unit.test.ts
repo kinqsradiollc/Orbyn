@@ -232,192 +232,9 @@ test("both structured parents offer direct Note insertion without flattening con
     assert.match(source, /kind: "insert",\s*owner: \[\],\s*index/);
     assert.match(source, /type: "paragraph",\s*text: "",\s*id: newBlockId\(\)/);
     assert.match(source, /Add text/);
-    assert.match(source, /keepRendered=\{block\.type === "code"\}/);
+    assert.match(source, /chooseFormat/);
   }
 });
-
-for (const native of [false, true])
-  test(`${native ? "mobile" : "web"} writing wrapper keeps a visible code result through edit, source change and Done`, async () => {
-    const { JSDOM } = mobileRequire("jsdom");
-    const dom = new JSDOM('<div id="root"></div>');
-    const names = [
-      "window",
-      "document",
-      "HTMLElement",
-      "IS_REACT_ACT_ENVIRONMENT",
-    ];
-    const saved = names.map(
-      (name) =>
-        [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const,
-    );
-    for (const name of names)
-      Object.defineProperty(globalThis, name, {
-        configurable: true,
-        writable: true,
-        value: name === "IS_REACT_ACT_ENVIRONMENT" ? true : dom.window[name],
-      });
-    dom.window.HTMLElement.prototype.attachEvent = () => {};
-    dom.window.HTMLElement.prototype.detachEvent = () => {};
-    const React = require("react");
-    const root = require("react-dom/client").createRoot(
-      dom.window.document.querySelector("#root"),
-    );
-    const module = { exports: {} as any };
-    const path = native
-      ? "../../mobile/src/screens/docs/DocWritingBody.tsx"
-      : "../../desktop/src/features/docs/DocWritingBlock.tsx";
-    const mocks: Record<string, unknown> = {
-      "./DocBlockActions": { DocBlockActions: () => null },
-      "react-native": {
-        View: ({
-          children,
-          style,
-          pointerEvents,
-          accessibilityElementsHidden,
-        }: any) =>
-          React.createElement(
-            "div",
-            {
-              style: {
-                ...Object.assign({}, ...[style].flat(Infinity).filter(Boolean)),
-                pointerEvents,
-              },
-              "aria-hidden": accessibilityElementsHidden,
-            },
-            children,
-          ),
-        TextInput: ({ value, onChangeText, accessibilityLabel, style }: any) =>
-          React.createElement("textarea", {
-            value,
-            style: Object.assign({}, ...[style].flat(Infinity).filter(Boolean)),
-            onChange: (event: any) => onChangeText(event.currentTarget.value),
-            "aria-label": accessibilityLabel,
-          }),
-        StyleSheet: { create: (styles: unknown) => styles },
-      },
-      "../../theme": {
-        colors: { text: "currentColor" },
-        inputFontSize: 16,
-        themed: (make: () => unknown) => make(),
-      },
-    };
-    runInNewContext(
-      transformSync(readFileSync(new URL(path, import.meta.url), "utf8"), {
-        loader: "tsx",
-        format: "cjs",
-        jsx: "automatic",
-      }).code,
-      {
-        module,
-        exports: module.exports,
-        window: dom.window,
-        require: (name: string) =>
-          name in mocks ? mocks[name] : require(name),
-      },
-    );
-    let editing = false,
-      text = "Original TeX",
-      mounts = 0,
-      doneCalls = 0;
-    const Viewer = () => {
-      React.useEffect(() => {
-        mounts++;
-      }, []);
-      return React.createElement("iframe", { title: "Canonical code viewer" });
-    };
-    const render = () =>
-      root.render(
-        React.createElement(
-          native
-            ? module.exports.DocWritingBody
-            : module.exports.DocWritingBlock,
-          {
-            index: 0,
-            path: [0],
-            text,
-            canWrite: true,
-            editing,
-            keepRendered: true,
-            sourceOpen: false,
-            onChange: (next: string) => {
-              text = next;
-              render();
-            },
-            onEdit: () => {},
-            onDone: () => {
-              doneCalls++;
-            },
-            onComment: () => {},
-            onAssist: () => {},
-            onSourceFocus: () => {},
-            assistDisabled: true,
-          },
-          React.createElement(Viewer),
-        ),
-      );
-    try {
-      await React.act(render);
-      const document = dom.window.document;
-      const viewer = document.querySelector("iframe");
-      assert.ok(viewer);
-      editing = true;
-      await React.act(render);
-      assert.equal(document.querySelector("iframe"), viewer);
-      if (!native) {
-        await React.act(() => {
-          document.querySelector("textarea")!.dispatchEvent(
-            new dom.window.FocusEvent("focusout", {
-              bubbles: true,
-              relatedTarget: null,
-            }),
-          );
-        });
-        assert.equal(
-          doneCalls,
-          0,
-          "preview iframe focus must not finish code editing",
-        );
-      }
-      const hidden = viewer.parentElement!;
-      if (native) {
-        assert.notEqual(hidden.style.display, "none");
-        assert.equal(hidden.style.pointerEvents, "auto");
-        assert.equal(hidden.getAttribute("aria-hidden"), "false");
-      } else {
-        assert.equal(hidden.hidden, false);
-        assert.equal(hidden.hasAttribute("inert"), false);
-      }
-      const field = document.querySelector("textarea")!;
-      if (native)
-        assert.equal(
-          field.style.height,
-          "240px",
-          "paired source must expose useful editing context",
-        );
-      await React.act(() => {
-        Object.getOwnPropertyDescriptor(
-          dom.window.HTMLTextAreaElement.prototype,
-          "value",
-        )!.set!.call(field, "Changed TeX");
-        field.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
-      });
-      assert.equal(text, "Changed TeX");
-      editing = false;
-      await React.act(render);
-      assert.equal(document.querySelector("iframe"), viewer);
-      assert.equal(document.querySelector("textarea"), null);
-      assert.equal(mounts, 1, "editing must never remount the code viewer");
-      if (native) assert.equal(viewer.parentElement!.style.display, "");
-      else assert.equal(viewer.parentElement!.hidden, false);
-    } finally {
-      await React.act(() => root.unmount());
-      for (const [name, descriptor] of saved) {
-        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
-        else delete (globalThis as any)[name];
-      }
-      dom.window.close();
-    }
-  });
 
 test("narrow writing corrections retain full titles and Viewing page information", () => {
   const mobile = readFileSync(
@@ -443,28 +260,6 @@ test("narrow writing corrections retain full titles and Viewing page information
   );
 });
 
-test("source precedes the common Note in wide structured split editing", () => {
-  const css = readFileSync(
-    new URL(
-      "../../desktop/src/features/docs/structured-doc-editor.css",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-  assert.match(
-    css,
-    /data-active-pane="split"\] > \.structured-doc-source\s*\{\s*grid-column: 1;/,
-  );
-  assert.match(
-    css,
-    /data-active-pane="split"\] > \.structured-doc-preview\s*\{\s*grid-column: 2;/,
-  );
-  assert.match(
-    css,
-    /structured-doc-leaf\[data-code-editing\]\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/,
-  );
-});
-
 test("format transitions finish inline editing only after draft save guards", () => {
   for (const client of [
     "desktop/src/features/docs",
@@ -482,7 +277,7 @@ test("format transitions finish inline editing only after draft save guards", ()
     assert.match(choose, /docEditorSessionDirty\(next.session\)/);
     assert.match(
       choose,
-      /setEditing\(null\);\s*setLatexOpen\(format === "latex"\)/,
+      /setEditing\(null\);[\s\S]*setLatexOpen\(format === "latex"\)/,
     );
     assert.ok(
       choose.indexOf("docEditorSessionDirty(next.session)") <

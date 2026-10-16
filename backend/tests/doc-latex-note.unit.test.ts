@@ -5,17 +5,16 @@ import { createRequire } from "node:module";
 import { runInNewContext } from "node:vm";
 import { transformSync } from "esbuild";
 import * as core from "@orbyn/core";
-import { LatexPreviewStore } from "../../packages/api-client/src/latex-preview-store.js";
 const require = createRequire(import.meta.url);
 const mobileRequire = createRequire(
   new URL("../../mobile/package.json", import.meta.url),
 );
 for (const native of [false, true])
   for (const anchored of [false, true])
-    test(`${native ? "mobile" : "web"} ${anchored ? "anchored" : "unanchored"} provider keeps its canonical Note viewer and never gives another TeX block that PDF`, async () => {
+    test(`${native ? "mobile" : "web"} ${anchored ? "anchored" : "unanchored"} HTML workspace retains its host, distinct sources and account ownership without compiling PDF`, async () => {
       const React = require("react"),
         { JSDOM } = mobileRequire("jsdom");
-      const dom = new JSDOM('<div id="root"></div>');
+      const dom = new JSDOM('<!doctype html><div id="root"></div>');
       const names = [
         "window",
         "document",
@@ -35,199 +34,145 @@ for (const native of [false, true])
       const root = require("react-dom/client").createRoot(
         dom.window.document.querySelector("#root"),
       );
-      const created: Blob[] = [],
-        revoked: string[] = [];
-      const dependencies: any = {
-        react: React,
-        "react/jsx-runtime": require("react/jsx-runtime"),
-        "@orbyn/core": core,
-        "@orbyn/api-client": { LatexPreviewStore },
-        "../../lib/session": {
-          session: { get: () => "owner", token: "owner" },
-        },
-        "react-native": {
-          View: ({ children }: any) =>
-            React.createElement("div", null, children),
-          Text: ({ children, style, accessibilityLabel }: any) =>
-            React.createElement(
-              "span",
-              { style, "aria-label": accessibilityLabel },
-              children,
-            ),
-        },
-        "../../components/DocumentPdfPreview": {
-          DocumentPdfPreview: ({ url }: any) =>
-            React.createElement("iframe", {
-              title: "PDF host",
-              src: url ?? "blob:mobile-note",
-            }),
-        },
-        "../../components/Button": {
-          Button: ({ title, onPress }: any) =>
-            React.createElement("button", { onClick: onPress }, title),
-        },
-        "../../styles": { shared: { small: {} } },
-        "../../theme": {
-          colors: { text: "rgb(240, 240, 240)" },
-          fonts: { mono: "monospace" },
+      let account = "owner-a",
+        calls = 0,
+        docId = "note-a",
+        context: any;
+      const auth = {
+        get: () => account,
+        get token() {
+          return account;
         },
       };
       const module = { exports: {} as any };
+      const component = native
+        ? "mobile/src/screens/docs/DocLatexPreview.tsx"
+        : "desktop/src/features/docs/DocLatexPreview.tsx";
       runInNewContext(
         transformSync(
-          readFileSync(
-            new URL(
-              native
-                ? "../../mobile/src/screens/docs/DocLatexPreview.tsx"
-                : "../../desktop/src/features/docs/DocLatexPreview.tsx",
-              import.meta.url,
-            ),
-            "utf8",
-          ),
+          readFileSync(new URL(`../../${component}`, import.meta.url), "utf8"),
           { loader: "tsx", format: "cjs", jsx: "automatic" },
         ).code,
         {
           module,
           exports: module.exports,
-          require: (name: string) => {
-            assert.ok(name in dependencies, name);
-            return dependencies[name];
-          },
-          URL: {
-            createObjectURL: (blob: Blob) => {
-              created.push(blob);
-              return `blob:note-${created.length}`;
-            },
-            revokeObjectURL: (url: string) => revoked.push(url),
-          },
+          require: (name: string) =>
+            name === "@orbyn/core"
+              ? core
+              : name === "../../lib/session"
+                ? { session: auth }
+                : name === "../../components/LatexHtmlPreview"
+                  ? {
+                      LatexHtmlPreview: ({ source, fill }: any) =>
+                        React.createElement("iframe", {
+                          "data-source": source,
+                          "data-workspace": fill ? "true" : "false",
+                          title: "HTML LaTeX",
+                        }),
+                    }
+                  : require(name),
         },
       );
-      const { DocLatexPreviewProvider, DocLatexNote, useDocLatexPreview } =
-        module.exports;
-      let preview: any,
-        calls = 0;
-      const compiled: string[] = [];
-      const compile = async (source: string) => {
-        compiled.push(source);
-        calls++;
-        return new Blob(["%PDF-note"]);
-      };
-      const Probe = () => {
-        preview = useDocLatexPreview();
+      const {
+        DocLatexPreviewProvider,
+        DocLatexDocumentPreview,
+        DocLatexNote,
+        useDocLatexPreview,
+      } = module.exports;
+      const Capture = () => {
+        context = useDocLatexPreview();
         return null;
       };
-      const blocks = [
+      const blocks: core.DocBlock[] = [
         {
-          id: anchored ? "tex" : undefined,
           type: "code",
-          lang: core.DOC_LATEX_LANGUAGE,
-          text: "\\documentclass{article}\\begin{document}Hello\\end{document}",
+          lang: "latex-document",
+          text: "FIRST SOURCE",
+          ...(anchored ? { id: "first" } : {}),
         },
         {
-          id: "tex-second",
           type: "code",
-          lang: core.DOC_LATEX_LANGUAGE,
-          text: "SECOND DISTINCT TEX SOURCE",
+          lang: "latex-document",
+          text: "SECOND SOURCE",
+          id: "second",
         },
       ];
-      const show = (source: boolean) =>
-        React.createElement(
-          DocLatexPreviewProvider,
-          { blocks, docId: "note", ready: true, canCompile: true, compile },
-          React.createElement(Probe),
-          source
-            ? React.createElement("textarea", {
-                defaultValue: blocks[0].text,
-                "aria-label": "LaTeX source",
-              })
-            : null,
-          ...blocks.map((block) =>
-            React.createElement(DocLatexNote, {
-              key: block.id ?? "unanchored",
-              block,
-            }),
+      const render = () =>
+        root.render(
+          React.createElement(
+            DocLatexPreviewProvider,
+            {
+              blocks,
+              docId,
+              ready: true,
+              canCompile: true,
+              compile: async () => {
+                calls++;
+                return new Blob();
+              },
+            },
+            React.createElement(Capture),
+            React.createElement(DocLatexDocumentPreview),
+            ...blocks.map((block, index) =>
+              React.createElement(DocLatexNote, { key: index, block }),
+            ),
           ),
         );
       try {
-        await React.act(async () => root.render(show(true)));
-        await React.act(async () => {
-          preview.retry();
-          await new Promise((resolve) => setImmediate(resolve));
-        });
-        assert.equal(calls, 1);
-        assert.equal(
-          dom.window.document.querySelector("iframe")?.getAttribute("src"),
-          native ? "blob:mobile-note" : "blob:note-1",
+        await React.act(render);
+        const frame = dom.window.document.querySelector(
+          '[data-workspace="true"]',
         );
-        const frame = dom.window.document.querySelector("iframe");
-        assert.equal(dom.window.document.querySelectorAll("iframe").length, 1);
-        if (native) {
-          const fallback = dom.window.document.querySelector(
-            'span[aria-label="LaTeX source"]',
-          );
-          assert.ok(fallback);
-          assert.equal(
-            dom.window.getComputedStyle(fallback).color,
-            "rgb(240, 240, 240)",
-          );
-          assert.equal(
-            dom.window.getComputedStyle(fallback).fontFamily,
-            "monospace",
-          );
-        }
-        assert.match(
-          dom.window.document.body.textContent,
-          /SECOND DISTINCT TEX SOURCE/,
-        );
-        await React.act(async () => root.render(show(false)));
-        assert.equal(
-          dom.window.document.querySelector("iframe"),
-          frame,
-          "unchanged Note keeps the actual viewer node",
-        );
-        assert.equal(dom.window.document.querySelector("textarea"), null);
-        assert.equal(
-          dom.window.document.querySelector("iframe")?.getAttribute("src"),
-          native ? "blob:mobile-note" : "blob:note-1",
-        );
-        assert.equal(calls, 1);
-        assert.deepEqual(revoked, []);
-        blocks[0] = core.withDocLatexSource(
-          blocks,
-          blocks[0].text + " changed",
-        )[0];
-        await React.act(async () => root.render(show(false)));
-        await React.act(async () => {
-          preview.retry();
-          await new Promise((resolve) => setImmediate(resolve));
-        });
-        assert.equal(calls, 2);
-        assert.equal(
-          dom.window.document.querySelector("iframe"),
-          frame,
-          "a newly compiled PDF updates the mounted viewer without resetting its page or zoom",
-        );
-        // A different canonical block must not inherit the preceding block's PDF.
-        blocks.reverse();
-        await React.act(async () => root.render(show(false)));
-        assert.equal(dom.window.document.querySelector("iframe"), null);
-        await React.act(async () => {
-          preview.retry();
-          await new Promise((resolve) => setImmediate(resolve));
-        });
-        assert.equal(compiled.at(-1), "SECOND DISTINCT TEX SOURCE");
-        assert.equal(dom.window.document.querySelectorAll("iframe").length, 1);
-        await React.act(async () => root.unmount());
+        assert.ok(frame);
+        assert.equal(calls, 0);
+        assert.equal(dom.window.document.querySelectorAll("iframe").length, 3);
         assert.deepEqual(
-          revoked,
-          native ? [] : ["blob:note-1", "blob:note-2", "blob:note-3"],
+          [
+            ...dom.window.document.querySelectorAll('[data-workspace="false"]'),
+          ].map((node: any) => node.getAttribute("data-source")),
+          ["FIRST SOURCE", "SECOND SOURCE"],
         );
+        await React.act(() => context.setDraftSource("UNSAVED SECOND SOURCE"));
+        assert.equal(
+          dom.window.document.querySelector('[data-workspace="true"]'),
+          frame,
+        );
+        assert.equal(
+          frame.getAttribute("data-source"),
+          "UNSAVED SECOND SOURCE",
+        );
+        assert.equal(
+          dom.window.document
+            .querySelector('[data-workspace="false"]')!
+            .getAttribute("data-source"),
+          "FIRST SOURCE",
+        );
+        await React.act(render);
+        assert.equal(
+          dom.window.document.querySelector('[data-workspace="true"]'),
+          frame,
+        );
+        assert.equal(calls, 0);
+        account = "owner-b";
+        docId = "note-b";
+        blocks[0] = { ...blocks[0], text: "NEW OWNER SOURCE" };
+        await React.act(render);
+        const next = dom.window.document.querySelector(
+          '[data-workspace="true"]',
+        );
+        assert.notEqual(next, frame);
+        assert.equal(next!.getAttribute("data-source"), "NEW OWNER SOURCE");
+        assert.doesNotMatch(
+          dom.window.document.body.innerHTML,
+          /UNSAVED SECOND SOURCE/,
+        );
+        assert.equal(calls, 0);
       } finally {
-        await React.act(async () => root.unmount());
-        dom.window.close();
+        await React.act(() => root.unmount());
         for (const [name, descriptor] of saved) {
           if (descriptor) Object.defineProperty(globalThis, name, descriptor);
           else delete (globalThis as any)[name];
         }
+        dom.window.close();
       }
     });

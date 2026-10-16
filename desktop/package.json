@@ -11,8 +11,8 @@
     "preview": "vite preview --host 0.0.0.0",
     "desktop": "electron .",
     "package": "npm run build && electron-builder --publish never",
-    "predev": "node ../scripts/build-pdf-preview.mjs",
-    "prebuild": "node ../scripts/build-pdf-preview.mjs"
+    "predev": "node ../scripts/build-latex-html.mjs && node ../scripts/build-pdf-preview.mjs",
+    "prebuild": "node ../scripts/build-latex-html.mjs && node ../scripts/build-pdf-preview.mjs"
   },
   "dependencies": {
     "@orbyn/api-client": "1.0.0",

@@ -18,22 +18,23 @@ export const EMPTY_LATEX_DOCUMENT = String.raw`\documentclass{article}
 \end{document}
 `;
 
-export function docLatexBlock(blocks: readonly DocBlock[]) {
-  return blocks.find(
+export function docLatexBlock(blocks: readonly DocBlock[], sourceNumber = 0) {
+  return blocks.filter(
     (block): block is Extract<DocBlock, { type: "code" }> =>
       block.type === "code" && block.lang === DOC_LATEX_LANGUAGE,
-  );
+  )[sourceNumber];
 }
 
 export function withDocLatexSource(
   blocks: DocBlock[],
   text: string,
+  sourceNumber = 0,
 ): DocBlock[] {
   if (text.length > DOC_LATEX_SOURCE_MAX)
     throw new Error(
       "LaTeX source exceeds the 20,000-character limit. Your draft is retained.",
     );
-  const current = docLatexBlock(blocks);
+  const current = docLatexBlock(blocks, sourceNumber);
   if (current?.text === text) return blocks;
   const next = {
     type: "code" as const,
@@ -50,6 +51,7 @@ export function withDocLatexSource(
 export function docLatexOperation(
   document: VersionedDocContent,
   text: string,
+  sourceNumber = 0,
 ): DocContentOperation {
   if (text.length > DOC_LATEX_SOURCE_MAX)
     throw new Error(
@@ -60,14 +62,17 @@ export function docLatexOperation(
       ? document.nodes
       : document.blocks.map((block) => ({ kind: "block" as const, block }));
   let found: { path: number[]; block: DocBlock } | null = null;
+  let ordinal = 0;
   visitDocContainers(nodes, (node, path) => {
     if (
       !found &&
       node.kind === "block" &&
       node.block.type === "code" &&
       node.block.lang === DOC_LATEX_LANGUAGE
-    )
-      found = { path, block: node.block };
+    ) {
+      if (ordinal === sourceNumber) found = { path, block: node.block };
+      ordinal++;
+    }
   });
   // Closure assignments are not narrowed by TypeScript's control-flow analysis.
   const current = found as { path: number[]; block: DocBlock } | null;

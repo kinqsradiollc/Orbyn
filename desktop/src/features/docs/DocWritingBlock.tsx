@@ -18,7 +18,6 @@ export function DocWritingBlock({
   onComment,
   onAssist,
   assistDisabled,
-  keepRendered = false,
 }: {
   children: ReactNode;
   index: number;
@@ -35,8 +34,6 @@ export function DocWritingBlock({
   onComment: () => void;
   onAssist: () => void;
   assistDisabled: boolean;
-  /** Stateful code previews stay alive while their source is edited. */
-  keepRendered?: boolean;
 }) {
   const writable = canWrite && text !== null;
   return (
@@ -44,7 +41,6 @@ export function DocWritingBlock({
       className="structured-doc-leaf"
       role="group"
       data-editing={editing || undefined}
-      data-code-editing={(writable && editing && keepRendered) || undefined}
       data-block-id={blockId}
       data-leaf-index={index}
       data-container-path={path.join("/")}
@@ -89,10 +85,7 @@ export function DocWritingBlock({
             }
           }}
           onBlur={(event) => {
-            // PDF iframe focus can report a null relatedTarget. Code pairs stay
-            // open for preview interaction until explicit Done or Escape.
             if (
-              !keepRendered &&
               !event.currentTarget.parentElement?.contains(
                 event.relatedTarget as Node | null,
               )
@@ -101,14 +94,8 @@ export function DocWritingBlock({
           }}
         />
       )}
-      {(!writable || !editing || keepRendered) && (
-        <div
-          className="doc-writing-rendered"
-          hidden={writable && editing && !keepRendered}
-          inert={writable && editing && !keepRendered}
-        >
-          {children}
-        </div>
+      {(!writable || !editing) && (
+        <div className="doc-writing-rendered">{children}</div>
       )}
       {writable && (
         <DocBlockActions

@@ -119,5 +119,5 @@ test("mobile legacy source split measures the editor pane after surrounding navi
     /width: documentWidth, onLayout: measureDocumentPane[^;]*usePaneWidth\(\)/,
   );
   assert.match(source, /onLayout=\{measureDocumentPane\}/);
-  assert.match(source, /documentWidth \/ Math.max\(1, documentScale\) >= 900/);
+  assert.match(source, /documentWidth \/ Math.max\(1, documentScale\) >= 760/);
 });

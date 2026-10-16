@@ -1,4 +1,12 @@
-import { DocLatexPreviewProvider } from "./DocLatexPreview";
+import {
+  DocumentLibraryButton,
+  DocumentPaneSwitch,
+  useDocumentWorkspace,
+} from "./DocumentWorkspace";
+import {
+  DocLatexPreviewProvider,
+  DocLatexDocumentPreview,
+} from "./DocLatexPreview";
 import { DocEditorModes, type DocumentEditorMode } from "./DocEditorModes";
 import { ownsEditorKey } from "./editor-input";
 import { preparePaneDrafts } from "../../app/page-commands";
@@ -500,6 +508,7 @@ function LegacyDocEditor({
     };
   }, []);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
+  const [latexSourceNumber, setLatexSourceNumber] = useState(0);
   const [sourcePreviewMode, setSourcePreviewMode] = useState<
     "markdown" | "latex"
   >("markdown");
@@ -3301,6 +3310,7 @@ function LegacyDocEditor({
       });
     });
 
+  const workspace = useDocumentWorkspace(editorRoot, !!sourcePreview);
   return (
     <DocLatexPreviewProvider
       canCompile={canWrite}
@@ -3319,8 +3329,15 @@ function LegacyDocEditor({
     >
       <RecordingContext.Provider value={recordingActions}>
         <div
-          className="doc-editor"
+          className="doc-editor document-workspace"
           ref={editorRoot}
+          style={workspace.style}
+          data-source-open={!!sourcePreview || undefined}
+          data-latex-source={
+            (!!sourcePreview && sourcePreviewMode === "latex") || undefined
+          }
+          data-pane-view={workspace.view}
+          data-compact={workspace.compact || undefined}
           inert={restoringHistory || pagePending}
           aria-busy={restoringHistory || pagePending || undefined}
         >
@@ -3338,6 +3355,8 @@ function LegacyDocEditor({
           )}
           {sourcePreview === doc.id && (
             <DocSourcePreview
+              key={`${sourcePreviewMode}:${latexSourceNumber}`}
+              initialSourceNumber={latexSourceNumber}
               leaveCheck={sourceLeaveCheck}
               compileReady={
                 !dirty.current && save !== "saving" && save !== "error"
@@ -3345,7 +3364,6 @@ function LegacyDocEditor({
               inline
               sourceOnly
               showModes={false}
-              key={sourcePreviewMode}
               initialMode={sourcePreviewMode}
               beforeNavigate={async () => {
                 const account = authSession.get();
@@ -3376,8 +3394,6 @@ function LegacyDocEditor({
                 canWrite && !reading && !suggesting && !dirty.current
                   ? (block) => {
                       if (block.id && "text" in block) {
-                        setSourcePreview(null);
-                        setSourcePreview(null);
                         setSourceAsk({
                           blockId: block.id,
                           start: 0,
@@ -3423,7 +3439,18 @@ function LegacyDocEditor({
               }}
             />
           )}
+          {sourcePreview && workspace.divider}
           <div className="doc-bar">
+            <DocumentLibraryButton />
+            <span className="document-toolbar-title">
+              {title || "Untitled"}
+            </span>
+            {sourcePreview && (
+              <DocumentPaneSwitch
+                view={workspace.view}
+                onChange={workspace.setView}
+              />
+            )}
             {onBack && (
               <button
                 className="icon-button"
@@ -4067,6 +4094,13 @@ function LegacyDocEditor({
               (longPage && !historyView ? " has-outline" : "")
             }
           >
+            <div
+              className="document-latex-result"
+              hidden={!sourcePreview || sourcePreviewMode !== "latex"}
+            >
+              <div className="document-pane-title">Preview</div>
+              <DocLatexDocumentPreview />
+            </div>
             {longPage && !historyView && (
               <DocOutline
                 outline={outline}
@@ -4392,7 +4426,27 @@ function LegacyDocEditor({
                                   // the selected words away before they can be used.
                                   if (!window.getSelection()?.isCollapsed)
                                     return;
-                                  setFocused(index);
+                                  if (
+                                    block.type === "code" &&
+                                    block.lang === "latex-document"
+                                  ) {
+                                    setFocused(null);
+                                    setLatexSourceNumber(
+                                      Math.max(
+                                        0,
+                                        blocks
+                                          .slice(0, index + 1)
+                                          .filter(
+                                            (candidate) =>
+                                              candidate.type === "code" &&
+                                              candidate.lang ===
+                                                "latex-document",
+                                          ).length - 1,
+                                      ),
+                                    );
+                                    setSourcePreviewMode("latex");
+                                    setSourcePreview(doc.id);
+                                  } else setFocused(index);
                                 }}
                                 onKeyDown={(e) => {
                                   if (
@@ -4400,7 +4454,27 @@ function LegacyDocEditor({
                                     e.key === "Enter"
                                   ) {
                                     e.preventDefault();
-                                    setFocused(index);
+                                    if (
+                                      block.type === "code" &&
+                                      block.lang === "latex-document"
+                                    ) {
+                                      setFocused(null);
+                                      setLatexSourceNumber(
+                                        Math.max(
+                                          0,
+                                          blocks
+                                            .slice(0, index + 1)
+                                            .filter(
+                                              (candidate) =>
+                                                candidate.type === "code" &&
+                                                candidate.lang ===
+                                                  "latex-document",
+                                            ).length - 1,
+                                        ),
+                                      );
+                                      setSourcePreviewMode("latex");
+                                      setSourcePreview(doc.id);
+                                    } else setFocused(index);
                                   }
                                 }}
                               >

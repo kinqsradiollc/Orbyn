@@ -2,6 +2,7 @@
 
 | Decision                                                      | State                    | Purpose                         |
 | ------------------------------------------------------------- | ------------------------ | ------------------------------- |
+| [005 — Document workspace](005-document-workspace.md) | In progress | Viewport workspace and direct LaTeX preview |
 | [004 — Document writing experience](004-document-writing-experience.md) | Completed, accepted scope | Note-first document writing |
 | [003 — Product UI/UX redesign](003-product-ui-ux-redesign.md) | Completed, accepted scope | Current web and mobile design |
 | [001 — Agent platform](archive/001-devday-agent-platform.md)  | Archived, accepted scope | Previous platform delivery      |

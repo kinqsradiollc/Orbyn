@@ -1,66 +1,67 @@
-import React, {
+import {
   createContext,
+  useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useRef,
   useState,
-  useSyncExternalStore,
+  type ReactNode,
 } from "react";
-import { Text, View } from "react-native";
-import { LatexPreviewStore, type LatexPreviewState } from "@orbyn/api-client";
-import { docLatexBlock, type DocBlock } from "@orbyn/core";
+import {
+  docLatexBlock,
+  EMPTY_LATEX_DOCUMENT,
+  type DocBlock,
+} from "@orbyn/core";
+import { LatexHtmlPreview } from "../../components/LatexHtmlPreview";
 import { session } from "../../lib/session";
-import { DocumentPdfPreview } from "../../components/DocumentPdfPreview";
-import { Button } from "../../components/Button";
-import { shared } from "../../styles";
-import { colors, fonts } from "../../theme";
-type Preview = LatexPreviewState & {
-  block: DocBlock | null;
-  canCompile: boolean;
-  retry: () => void;
-};
-const Context = createContext<Preview | null>(null);
+let nextOwner = 0;
+const Context = createContext<{
+  owner: number;
+  source: string;
+  setDraftSource: (source: string | null) => void;
+} | null>(null);
 export const useDocLatexPreview = () => useContext(Context);
+/** Draft HTML belongs to this account/document; PDF compilation is explicit export. */
 export function DocLatexPreviewProvider({
   blocks,
   docId,
-  ready,
-  canCompile,
-  compile,
   children,
 }: {
   blocks: DocBlock[];
   docId: string;
+  children: ReactNode;
   ready: boolean;
   canCompile: boolean;
   compile: (source: string, signal: AbortSignal) => Promise<Blob>;
-  children: React.ReactNode;
 }) {
-  const account = session.token,
-    latest = useRef(compile);
-  latest.current = compile;
-  const canonical = docLatexBlock(blocks) ?? null;
-  const owner =
-    canonical?.id ?? (canonical ? `index:${blocks.indexOf(canonical)}` : null);
-  const store = useMemo(
-    () =>
-      new LatexPreviewStore((source, signal) => latest.current(source, signal)),
-    [docId, account, owner],
+  const account = session.token;
+  const owner = useMemo(() => ++nextOwner, [docId, account]);
+  const [draft, setDraft] = useState<{
+    docId: string;
+    account: typeof account;
+    text: string | null;
+  } | null>(null);
+  const setDraftSource = useCallback(
+    (text: string | null) => setDraft({ docId, account, text }),
+    [docId, account],
   );
-  const state = useSyncExternalStore(store.subscribe, store.getSnapshot),
-    source = docLatexBlock(blocks)?.text ?? null;
-  useEffect(() => {
-    store.start();
-    return () => store.stop();
-  }, [store]);
-  useEffect(() => store.update(source, ready), [store, source, ready]);
+  const source =
+    draft?.docId === docId && draft.account === account && draft.text !== null
+      ? draft.text
+      : (docLatexBlock(blocks)?.text ?? EMPTY_LATEX_DOCUMENT);
   return (
-    <Context.Provider
-      value={{ ...state, block: canonical, canCompile, retry: store.retry }}
-    >
+    <Context.Provider value={{ owner, source, setDraftSource }}>
       {children}
     </Context.Provider>
+  );
+}
+export function DocLatexDocumentPreview() {
+  const preview = useDocLatexPreview();
+  return (
+    <LatexHtmlPreview
+      key={preview?.owner}
+      source={preview?.source ?? EMPTY_LATEX_DOCUMENT}
+      fill
+    />
   );
 }
 export function DocLatexNote({
@@ -68,76 +69,7 @@ export function DocLatexNote({
 }: {
   block: Extract<DocBlock, { type: "code" }>;
 }) {
-  const source = block.text;
   const preview = useDocLatexPreview();
-  const [openError, setOpenError] = useState("");
-  const ownsBlock =
-    preview?.block &&
-    (block.id && preview.block.id
-      ? block.id === preview.block.id
-      : block === preview.block);
-  if (!preview || !ownsBlock)
-    return (
-      <Text
-        selectable
-        accessibilityLabel="LaTeX source"
-        style={{
-          color: colors.text,
-          fontFamily: fonts.mono,
-          fontSize: 13,
-          lineHeight: 20,
-        }}
-      >
-        {source}
-      </Text>
-    );
-  return (
-    <View
-      accessibilityLabel="Rendered LaTeX note"
-      style={{ minHeight: 320, height: 560, gap: 8 }}
-    >
-      {preview.pdf ? (
-        <DocumentPdfPreview
-          pdf={preview.pdf.blob}
-          report={(error) =>
-            setOpenError(
-              error instanceof Error
-                ? error.message
-                : "Couldn’t open the PDF. Try again.",
-            )
-          }
-        />
-      ) : (
-        !preview.error &&
-        !preview.busy && (
-          <Text accessibilityLiveRegion="polite" style={shared.small}>
-            {preview.canCompile
-              ? "Preparing preview…"
-              : "PDF preview requires editing access."}
-          </Text>
-        )
-      )}
-      {!!openError && (
-        <Text accessibilityRole="alert" style={shared.small}>
-          {openError}
-        </Text>
-      )}
-      {preview.busy && (
-        <Text accessibilityLiveRegion="polite" style={shared.small}>
-          Updating preview…
-        </Text>
-      )}
-      {preview.pdf && preview.pdf.source !== source && !preview.busy && (
-        <Text style={shared.small}>Showing the last preview.</Text>
-      )}
-      {preview.error && (
-        <>
-          <Text accessibilityRole="alert" style={shared.small}>
-            {preview.error}
-          </Text>
-          <Button title="Retry preview" secondary onPress={preview.retry} />
-        </>
-      )}
-    </View>
-  );
+  if (block.text.trim() === EMPTY_LATEX_DOCUMENT.trim()) return null;
+  return <LatexHtmlPreview key={preview?.owner} source={block.text} />;
 }

@@ -229,3 +229,13 @@ border/padding in their outer height. Use the token for per-feature minimums,
 not unconditional44px overrides. Long labels can wrap; hero/presentation controls
 may be deliberately larger. Verify density as well as color before calling an
 action group consistent.
+
+### Document workspaces
+
+Keep the document toolbar visible while source and result scroll independently.
+Collapse secondary libraries before reducing the writing area. A source/result
+split belongs to the document viewport, with a keyboard-operable divider; on a
+phone use explicit Source and Preview views. Do not embed the main editor inside
+a code block or make a full PDF page the default typing preview. Assess readable
+content, hierarchy, and space to work in the rendered product; functional controls
+and containment alone do not establish a successful design.

@@ -1,4 +1,9 @@
-import { DocLatexPreviewProvider } from "./DocLatexPreview";
+import { DocumentLibraryButton, useDocumentLibrary } from "./DocumentWorkspace";
+import { DocumentDivider } from "../../components/DocumentDivider";
+import {
+  DocLatexPreviewProvider,
+  DocLatexDocumentPreview,
+} from "./DocLatexPreview";
 import { DocEditorModes } from "./DocEditorModes";
 import { DocWritingBody } from "./DocWritingBody";
 import React, {
@@ -121,6 +126,7 @@ function StructuredDocEditorBody({
       threadNavigation.current = false;
     }
   };
+  const [latexSourceNumber, setLatexSourceNumber] = React.useState(0);
   const [latexOpen, setLatexOpen] = React.useState(false);
   const sourceLeaveCheck = React.useRef<(() => boolean) | null>(null);
   const latexOwner = React.useRef(latexOpen);
@@ -158,8 +164,13 @@ function StructuredDocEditorBody({
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const [paneWidth, setPaneWidth] = React.useState(0);
   const [splitRequested, setSplitRequested] = React.useState(false);
-  const split = splitRequested && paneWidth / Math.max(1, fontScale) >= 900;
-  const paneHeight = Math.max(180, Math.min(640, windowHeight * 0.6));
+  const [sourceFormat, setSourceFormat] = React.useState<
+    "note" | "markdown" | "latex"
+  >("note");
+  const [paneRatio, setPaneRatio] = React.useState(50);
+  useDocumentLibrary(sourceFormat !== "note");
+  const split = splitRequested && paneWidth / Math.max(1, fontScale) >= 760;
+  const paneHeight = Math.max(180, windowHeight - 200);
   const sourceSelection = React.useRef(0);
   const [sourceVisible, setSourceVisible] = React.useState(false);
   const [editing, setEditing] = React.useState<string | null>(null);
@@ -619,7 +630,10 @@ function StructuredDocEditorBody({
     keptOffline,
     save,
   ]);
-  const chooseFormat = async (format: "note" | "markdown" | "latex") => {
+  const chooseFormat = async (
+    format: "note" | "markdown" | "latex",
+    sourceNumber = 0,
+  ) => {
     if (latexOwner.current && !sourceLeaveCheck.current?.()) return;
     const current = store.state;
     if (
@@ -647,9 +661,30 @@ function StructuredDocEditorBody({
     )
       return;
     setEditing(null);
+    setSourceFormat(format);
+    setLatexSourceNumber(sourceNumber);
     setLatexOpen(format === "latex");
     setSplitRequested(format !== "note");
     setSourceVisible(format !== "note");
+  };
+
+  const openBlockEditor = (block: DocBlock, index: number, path: number[]) => {
+    if (!canWrite || sourceFormat !== "note") return;
+    if (block.type === "code") {
+      const ordinal = Math.max(
+        0,
+        leaves
+          .slice(0, index + 1)
+          .filter(
+            (candidate) =>
+              candidate.type === "code" && candidate.lang === "latex-document",
+          ).length - 1,
+      );
+      void chooseFormat(
+        block.lang === "latex-document" ? "latex" : "markdown",
+        ordinal,
+      );
+    } else setEditing(path.join("/"));
   };
 
   return (
@@ -679,7 +714,7 @@ function StructuredDocEditorBody({
     >
       <View
         ref={pageRef}
-        style={[styles.page, !sourceVisible && !split && styles.writingPage]}
+        style={[styles.page, { height: Math.max(320, windowHeight - 112) }]}
         onLayout={(event) => {
           pageOffset.current = event.nativeEvent.layout.y;
           setPaneWidth(event.nativeEvent.layout.width);
@@ -733,14 +768,9 @@ function StructuredDocEditorBody({
             }
           />
           <View style={styles.toolbar}>
+            <DocumentLibraryButton />
             <DocEditorModes
-              value={
-                latexOpen
-                  ? "latex"
-                  : sourceVisible || split
-                    ? "markdown"
-                    : "note"
-              }
+              value={sourceFormat}
               disabled={
                 !session ||
                 state.sourceInvalid ||
@@ -751,14 +781,25 @@ function StructuredDocEditorBody({
               }
               onChange={(format) => void chooseFormat(format)}
             />
-            {(sourceVisible || split) && !latexOpen && (
-              <Pressable
-                accessibilityRole="button"
-                style={styles.actionTarget}
-                onPress={() => void chooseFormat("note")}
-              >
-                <Text style={styles.action}>Hide source</Text>
-              </Pressable>
+            {sourceFormat !== "note" && !split && (
+              <View style={styles.paneSwitch}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: sourceVisible }}
+                  onPress={() => setSourceVisible(true)}
+                  style={styles.actionTarget}
+                >
+                  <Text style={styles.action}>Source</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: !sourceVisible }}
+                  onPress={() => setSourceVisible(false)}
+                  style={styles.actionTarget}
+                >
+                  <Text style={styles.action}>Preview</Text>
+                </Pressable>
+              </View>
             )}
             {canWrite && (sourceVisible || split) && (
               <Pressable
@@ -1014,44 +1055,48 @@ function StructuredDocEditorBody({
           )}
           {session && document && (
             <>
-              {canWrite ? (
-                <View style={styles.titleEditor}>
-                  <Text
-                    style={[styles.title, { opacity: 0 }]}
-                    accessible={false}
-                    accessibilityElementsHidden
-                    importantForAccessibility="no-hide-descendants"
-                  >
-                    {(session.title || "Untitled") + "\u200b"}
-                  </Text>
-                  <TextInput
-                    accessibilityLabel="Page title"
-                    style={[styles.title, StyleSheet.absoluteFill]}
-                    multiline
-                    scrollEnabled={false}
-                    textAlignVertical="top"
-                    value={session.title}
-                    onChangeText={(title) => {
-                      editGeneration.current++;
-                      offlineQueued.current = false;
-                      setKeptOffline(false);
-                      store.changeTitle(session.title, title);
-                    }}
-                    maxLength={200}
-                    placeholder="Untitled"
-                  />
-                </View>
-              ) : (
-                <Text style={styles.title}>{session.title}</Text>
-              )}
+              {sourceFormat === "note" &&
+                (canWrite ? (
+                  <View style={styles.titleEditor}>
+                    <Text
+                      style={[styles.title, { opacity: 0 }]}
+                      accessible={false}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    >
+                      {(session.title || "Untitled") + "\u200b"}
+                    </Text>
+                    <TextInput
+                      accessibilityLabel="Page title"
+                      style={[styles.title, StyleSheet.absoluteFill]}
+                      multiline
+                      scrollEnabled={false}
+                      textAlignVertical="top"
+                      value={session.title}
+                      onChangeText={(title) => {
+                        editGeneration.current++;
+                        offlineQueued.current = false;
+                        setKeptOffline(false);
+                        store.changeTitle(session.title, title);
+                      }}
+                      maxLength={200}
+                      placeholder="Untitled"
+                    />
+                  </View>
+                ) : (
+                  <Text style={styles.title}>{session.title}</Text>
+                ))}
               <View style={[styles.columns, split && styles.splitColumns]}>
                 <View
                   style={[
                     styles.sourcePane,
-                    { height: paneHeight },
+                    { flex: split ? paneRatio : 1 },
                     !sourceVisible && !split && styles.hiddenPane,
                   ]}
                 >
+                  <Text style={styles.paneTitle}>
+                    {latexOpen ? "LaTeX source" : "Markdown source"}
+                  </Text>
                   {latexOpen && document && session && (
                     <DocSourcePreview
                       leaveCheck={sourceLeaveCheck}
@@ -1069,11 +1114,14 @@ function StructuredDocEditorBody({
                       showModes={false}
                       beforeNavigate={prepareLinkedPage}
                       latexOnly
+                      key={latexSourceNumber}
+                      initialSourceNumber={latexSourceNumber}
                       blocks={leaves}
                       docId={doc.id}
                       onClose={() => {
                         latexOwner.current = false;
                         setLatexOpen(false);
+                        setSourceFormat("note");
                         setSourceVisible(false);
                         setSplitRequested(false);
                       }}
@@ -1085,7 +1133,6 @@ function StructuredDocEditorBody({
                         state.source === null &&
                         !docEditorSessionDirty(session)
                           ? (block) => {
-                              setLatexOpen(false);
                               askForBlock(block);
                             }
                           : undefined
@@ -1109,7 +1156,7 @@ function StructuredDocEditorBody({
                       }
                       onLatexChange={
                         canWrite
-                          ? (text, expected) => {
+                          ? (text, expected, sourceNumber) => {
                               const current = store.state.session;
                               if (
                                 !current ||
@@ -1125,7 +1172,7 @@ function StructuredDocEditorBody({
                                 );
                               store.changeOperation(
                                 document,
-                                docLatexOperation(document, text),
+                                docLatexOperation(document, text, sourceNumber),
                               );
                               if (store.state.error) throw store.state.error;
                               const next = store.state.session?.document;
@@ -1172,15 +1219,38 @@ function StructuredDocEditorBody({
                     )}
                   </View>
                 </View>
+                {split && (
+                  <DocumentDivider
+                    value={paneRatio}
+                    width={paneWidth}
+                    onChange={setPaneRatio}
+                  />
+                )}
                 <View
                   ref={previewAnchor}
                   style={[
                     styles.preview,
-                    { height: paneHeight },
+                    { flex: split ? 100 - paneRatio : 1 },
                     sourceVisible && !split && styles.hiddenPane,
                   ]}
                 >
-                  <ScrollView ref={previewScroll} nestedScrollEnabled>
+                  {sourceFormat !== "note" && (
+                    <Text style={styles.paneTitle}>Preview</Text>
+                  )}
+                  <View
+                    style={[
+                      { flex: 1, minHeight: 0 },
+                      !latexOpen && styles.hiddenPane,
+                    ]}
+                  >
+                    <DocLatexDocumentPreview />
+                  </View>
+                  <ScrollView
+                    ref={previewScroll}
+                    nestedScrollEnabled
+                    style={latexOpen ? styles.hiddenPane : { flex: 1 }}
+                    contentContainerStyle={styles.noteCanvas}
+                  >
                     <View ref={previewContent} style={styles.previewContent}>
                       {document.format === 2 && (
                         <DocNavigationContext.Provider
@@ -1241,10 +1311,6 @@ function StructuredDocEditorBody({
                                     editing={
                                       canWrite && editing === path.join("/")
                                     }
-                                    keepRendered={block.type === "code"}
-                                    splitEditing={
-                                      paneWidth / Math.max(1, fontScale) >= 700
-                                    }
                                     onChange={(text) => {
                                       editGeneration.current++;
                                       offlineQueued.current = false;
@@ -1261,8 +1327,15 @@ function StructuredDocEditorBody({
                                       pageContent={leaves}
                                       pageIndex={index}
                                       onEditBlock={
-                                        canWrite && "text" in block
-                                          ? () => setEditing(path.join("/"))
+                                        canWrite &&
+                                        sourceFormat === "note" &&
+                                        "text" in block
+                                          ? () =>
+                                              openBlockEditor(
+                                                block,
+                                                index,
+                                                path,
+                                              )
                                           : undefined
                                       }
                                     />
@@ -1291,7 +1364,9 @@ function StructuredDocEditorBody({
                                 <MoreMenu
                                   label={`Block ${index + 1} actions`}
                                   actions={[
-                                    ...(canWrite && "text" in block
+                                    ...(canWrite &&
+                                    sourceFormat === "note" &&
+                                    "text" in block
                                       ? [
                                           {
                                             label:
@@ -1299,11 +1374,13 @@ function StructuredDocEditorBody({
                                                 ? "Done"
                                                 : "Edit text",
                                             onPress: () =>
-                                              setEditing(
-                                                editing === path.join("/")
-                                                  ? null
-                                                  : path.join("/"),
-                                              ),
+                                              editing === path.join("/")
+                                                ? setEditing(null)
+                                                : openBlockEditor(
+                                                    block,
+                                                    index,
+                                                    path,
+                                                  ),
                                           },
                                         ]
                                       : []),
@@ -1321,7 +1398,9 @@ function StructuredDocEditorBody({
                                           },
                                         ]
                                       : []),
-                                    ...(canWrite && "text" in block
+                                    ...(canWrite &&
+                                    sourceFormat === "note" &&
+                                    "text" in block
                                       ? [
                                           {
                                             label: "Ask assistant",
@@ -1339,7 +1418,7 @@ function StructuredDocEditorBody({
                               </View>
                             )}
                           />
-                          {canWrite && !sourceVisible && !split && (
+                          {canWrite && sourceFormat === "note" && (
                             <Pressable
                               accessibilityRole="button"
                               style={styles.addText}
@@ -1395,13 +1474,41 @@ function StructuredDocEditorBody({
 
 const styles = themed(() =>
   StyleSheet.create({
-    page: { flex: 1, minWidth: 0, gap: 10 },
+    page: { flex: 1, minWidth: 0, minHeight: 0, gap: 0 },
+    toolbarTitle: {
+      width: "100%",
+      color: colors.text,
+      fontSize: 13,
+      fontFamily: fonts.medium,
+    },
+    paneSwitch: { flexDirection: "row", gap: 2 },
+    paneTitle: {
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      fontSize: 13,
+      fontFamily: fonts.medium,
+      color: colors.muted,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    noteCanvas: {
+      width: "100%",
+      maxWidth: 808,
+      alignSelf: "center",
+      paddingHorizontal: 16,
+      paddingBottom: 40,
+    },
     writingPage: { width: "100%", maxWidth: 760, alignSelf: "center" },
     toolbar: {
       flexDirection: "row",
       flexWrap: "wrap",
       alignItems: "center",
-      gap: 8,
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
     },
     menu: { gap: 4 },
     actionTarget: {
@@ -1421,7 +1528,13 @@ const styles = themed(() =>
     },
     status: { color: colors.muted, fontSize: 13, marginLeft: "auto" },
     error: { color: colors.danger, fontSize: 13 },
-    titleEditor: { minHeight: 44 },
+    titleEditor: {
+      minHeight: 44,
+      width: "100%",
+      maxWidth: 760,
+      alignSelf: "center",
+      paddingHorizontal: 16,
+    },
     title: {
       color: colors.text,
       fontSize: 24,
@@ -1431,17 +1544,20 @@ const styles = themed(() =>
     source: {
       flex: 1,
       minHeight: 0,
-      borderWidth: 1,
+      borderWidth: 0,
+      backgroundColor: colors.surfaceMuted,
+      fontFamily: fonts.mono,
+      lineHeight: 24,
       borderColor: colors.border,
       color: colors.text,
       padding: 12,
       fontSize: inputFontSize,
     },
-    columns: { minWidth: 0, gap: 16 },
-    splitColumns: { flexDirection: "row", alignItems: "flex-start" },
-    sourcePane: { flex: 1, minWidth: 0 },
+    columns: { flex: 1, minHeight: 0, minWidth: 0, gap: 0 },
+    splitColumns: { flexDirection: "row", alignItems: "stretch" },
+    sourcePane: { flex: 1, minWidth: 0, minHeight: 0 },
     hiddenPane: { display: "none" },
-    preview: { flex: 1, minWidth: 0 },
+    preview: { flex: 1, minWidth: 0, minHeight: 0 },
     previewContent: { paddingBottom: 24 },
     leaf: {
       minWidth: 0,

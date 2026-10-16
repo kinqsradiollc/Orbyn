@@ -22,6 +22,11 @@ function fixture(
   const listeners = new Map<string, (event: any) => void>();
   let focused = 0;
   const document = {
+    createElement: () => ({
+      click: () => {
+        downloads++;
+      },
+    }),
     activeElement: {
       isConnected: true,
       closest: () => null,
@@ -64,12 +69,19 @@ function fixture(
   const notes = React.createContext({});
   const navigationContext = React.createContext({});
   const opened: string[] = [];
-  let closed = 0;
+  let closed = 0,
+    downloads = 0;
   const modules: Record<string, unknown> = {
     react: hooks,
     "@orbyn/core": core,
     "../../lib/session": { session: { token: "qa", get: () => "qa" } },
-    "../../components/DocumentPdfPreview": { DocumentPdfPreview: container },
+    "../../components/LatexHtmlPreview": { LatexHtmlPreview: container },
+    "../../components/Select": { Select: container },
+    "../../lib/download": {
+      saveFile: async () => {
+        downloads++;
+      },
+    },
     "lucide-react": { X: () => null },
     "./doc-source.css": {},
     "./DocBlocks": {
@@ -86,6 +98,7 @@ function fixture(
     "react-native": {
       useWindowDimensions: () => ({ width: 390, height: 800, fontScale: 1 }),
       View: container,
+      Pressable: container,
       Text: container,
       ScrollView: container,
       TextInput: ({ value }: { value: string }) =>
@@ -115,7 +128,7 @@ function fixture(
         React.createElement("button", null, title),
     },
     "../../styles": { shared: {} },
-    "../../theme": { colors: {}, radii: {}, fonts: {} },
+    "../../theme": { colors: {}, radii: {}, fonts: {}, inputFontSize: 16 },
     "./DocBody": {
       DocBody: ({ content }: { content: core.DocBlock[] }) =>
         React.createElement("pre", null, core.serializeDoc(content)),
@@ -167,6 +180,7 @@ function fixture(
       exports,
       React,
       AbortController,
+      Error,
       Date,
       URL: { createObjectURL: () => "blob:fixture-pdf", revokeObjectURL() {} },
       setTimeout: (fn: () => void) => {
@@ -221,6 +235,7 @@ function fixture(
     edits,
     opened,
     closed: () => closed,
+    downloads: () => downloads,
   });
 }
 function find(
@@ -632,7 +647,7 @@ test("native source controls are bounded by the available sheet height", () => {
   const tree = render(blocks);
   const area = find(
     tree,
-    (props) => props.style?.padding === 16 && !!props.onLayout,
+    (props) => props.style?.padding === 0 && !!props.onLayout,
   );
   assert.ok(area);
   area.onLayout({ nativeEvent: { layout: { height: 300 } } });
@@ -811,97 +826,89 @@ for (const native of [false, true]) {
 }
 
 for (const native of [false, true]) {
-  test(`${native ? "native" : "web"} opens the requested LaTeX format inline and schedules a saved live preview`, async () => {
-    const calls: { source: string; signal: AbortSignal }[] = [];
-    const leaveCheck: { current: (() => boolean) | null } = { current: null };
+  test(`${native ? "native" : "web"} opens LaTeX inline with no automatic PDF request and explicit export`, async () => {
+    const calls: string[] = [];
     const render = fixture(native, true, {
       inline: true,
       initialMode: "latex",
       compileReady: true,
-      leaveCheck,
-      onCompileLatex: async (source: string, signal: AbortSignal) => {
-        calls.push({ source, signal });
-        return new Blob(["%PDF-fixture"]);
+      onCompileLatex: async (source: string) => {
+        calls.push(source);
+        return new Blob(["PDF"]);
       },
     });
-    const blocks = core.withDocLatexSource(
-      [],
-      "\\documentclass{article}\\begin{document}Live\\end{document}",
-    );
-    const first = render(blocks);
-    if (!native)
-      assert.ok(find(first, (p) => p.className === "doc-source-workspace"));
+    const blocks = core.withDocLatexSource([], "Saved source");
+    const tree = render(blocks);
     const field = find(
-      first,
+      tree,
       (p) =>
         p["aria-label"] === "LaTeX source" ||
         p.accessibilityLabel === "LaTeX source",
     );
-    assert.ok(field);
-    assert.equal(field.value, core.docLatexBlock(blocks)!.text);
-    const schedule = render.dialogEffects.find(
-      (e) => e.deps?.length === 7 && e.deps[0] === "latex",
+    assert.equal(field?.value, "Saved source");
+    assert.equal(calls.length, 0);
+    assert.equal(
+      render.dialogEffects.some(
+        (e) => e.deps?.length === 7 && e.deps[0] === "latex",
+      ),
+      false,
+    );
+    const action = find(tree, (p) =>
+      native ? p.title === "Export PDF" : p.children === "Export PDF",
     )!;
-    assert.ok(schedule);
-    const cleanup = schedule.run();
-    assert.equal(calls.length, 0, "typing is debounced");
-    for (const [id, run] of render.timers) {
-      render.timers.delete(id);
-      run();
-    }
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].source, field.value);
-    cleanup?.();
-    assert.equal(render.timers.size, 0);
+    assert.ok(action);
+    if (native) action.onPress();
+    else action.onClick();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls, ["Saved source"]);
+    assert.equal(render.downloads(), 1);
   });
-  test(`${native ? "native" : "web"} live preview waits for a saved source and cleanup cancels its pending request`, async () => {
-    let signal: AbortSignal | undefined;
-    let finish!: (blob: Blob) => void;
-    const compile = (source: string, requestSignal: AbortSignal) => {
+  test(`${native ? "native" : "web"} explicit export obeys readiness and cancels pending work on departure`, async () => {
+    let signal: AbortSignal | undefined, finish!: (blob: Blob) => void;
+    const compile = (_: string, requestSignal: AbortSignal) => {
       signal = requestSignal;
-      return new Promise<Blob>((resolve) => (finish = resolve));
+      return new Promise<Blob>((resolve) => {
+        finish = resolve;
+      });
     };
-    const blocks = core.withDocLatexSource([], "Draft TeX");
+    const blocks = core.withDocLatexSource([], "Draft source");
     const unsaved = fixture(native, true, {
       inline: true,
       initialMode: "latex",
       compileReady: false,
       onCompileLatex: compile,
     });
-    unsaved(blocks);
-    unsaved.dialogEffects
-      .find((e) => e.deps?.length === 7 && e.deps[0] === "latex")!
-      .run();
-    assert.equal(unsaved.timers.size, 0);
+    const locked = find(unsaved(blocks), (p) =>
+      native ? p.title === "Export PDF" : p.children === "Export PDF",
+    )!;
+    assert.equal(locked.disabled, true);
+    if (native) locked.onPress();
+    else locked.onClick();
+    assert.equal(signal, undefined);
     const saved = fixture(native, true, {
       inline: true,
       initialMode: "latex",
       compileReady: true,
       onCompileLatex: compile,
     });
-    saved(blocks);
+    const tree = saved(blocks);
     const cleanup = saved.dialogEffects
-      .find((e) => e.deps?.length === 7 && e.deps[0] === "latex")!
+      .find(
+        (e) =>
+          e.deps?.length === 0 && e.run.toString().includes("compile.current"),
+      )!
       .run();
-    for (const [id, run] of saved.timers) {
-      saved.timers.delete(id);
-      run();
-    }
-    assert.ok(signal);
-    cleanup?.();
+    const action = find(tree, (p) =>
+      native ? p.title === "Export PDF" : p.children === "Export PDF",
+    )!;
+    if (native) action.onPress();
+    else action.onClick();
+    assert.ok(signal && !signal.aborted);
+    cleanup();
     assert.equal(signal!.aborted, true);
-    finish(new Blob(["%PDF-stale"]));
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.ok(
-      !saved.states.some(
-        (value) =>
-          value &&
-          typeof value === "object" &&
-          ("blob" in value || "url" in value),
-      ),
-      "cancelled output is not adopted",
-    );
+    finish(new Blob(["stale PDF"]));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(saved.downloads(), 0);
   });
 }
 
@@ -933,7 +940,7 @@ for (const native of [false, true]) {
 }
 
 for (const native of [false, true])
-  test(`${native ? "mobile" : "web"} source-only presentation leaves Note rendering to its stable parent`, () => {
+  test(`${native ? "mobile" : "web"} source-only presentation leaves HTML rendering to its stable parent`, () => {
     const render = fixture(native, true, {
       inline: true,
       sourceOnly: true,

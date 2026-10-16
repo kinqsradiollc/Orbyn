@@ -1,81 +1,67 @@
-import { DocumentPdfPreview } from "../../components/DocumentPdfPreview";
 import {
   createContext,
+  useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { LatexPreviewStore, type LatexPreviewState } from "@orbyn/api-client";
-import { docLatexBlock, type DocBlock } from "@orbyn/core";
+import {
+  docLatexBlock,
+  EMPTY_LATEX_DOCUMENT,
+  type DocBlock,
+} from "@orbyn/core";
+import { LatexHtmlPreview } from "../../components/LatexHtmlPreview";
 import { session } from "../../lib/session";
-type Preview = LatexPreviewState & {
-  block: DocBlock | null;
-  url: string | null;
-  canCompile: boolean;
-  retry: () => void;
-};
-const Context = createContext<Preview | null>(null);
+let nextOwner = 0;
+const Context = createContext<{
+  owner: number;
+  source: string;
+  setDraftSource: (source: string | null) => void;
+} | null>(null);
 export const useDocLatexPreview = () => useContext(Context);
-/** The Note and both source presentations share one account-owned PDF. */
+/** Draft HTML belongs to this account/document; PDF compilation is explicit export. */
 export function DocLatexPreviewProvider({
   blocks,
   docId,
-  ready,
-  canCompile,
-  compile,
   children,
 }: {
   blocks: DocBlock[];
   docId: string;
+  children: ReactNode;
   ready: boolean;
   canCompile: boolean;
   compile: (source: string, signal: AbortSignal) => Promise<Blob>;
-  children: ReactNode;
 }) {
-  const account = session.get(),
-    latest = useRef(compile);
-  latest.current = compile;
-  const canonical = docLatexBlock(blocks) ?? null;
-  const owner =
-    canonical?.id ?? (canonical ? `index:${blocks.indexOf(canonical)}` : null);
-  const store = useMemo(
-    () =>
-      new LatexPreviewStore((source, signal) => latest.current(source, signal)),
-    [docId, account, owner],
+  const account = session.get();
+  const owner = useMemo(() => ++nextOwner, [docId, account]);
+  const [draft, setDraft] = useState<{
+    docId: string;
+    account: typeof account;
+    text: string | null;
+  } | null>(null);
+  const setDraftSource = useCallback(
+    (text: string | null) => setDraft({ docId, account, text }),
+    [docId, account],
   );
-  const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  const source = docLatexBlock(blocks)?.text ?? null;
-  useEffect(() => {
-    store.start();
-    return () => store.stop();
-  }, [store]);
-  useEffect(() => store.update(source, ready), [store, source, ready]);
-  const [shown, setShown] = useState<{ blob: Blob; url: string } | null>(null);
-  useEffect(() => {
-    if (!state.pdf) {
-      setShown(null);
-      return;
-    }
-    const url = URL.createObjectURL(state.pdf.blob);
-    setShown({ blob: state.pdf.blob, url });
-    return () => URL.revokeObjectURL(url);
-  }, [state.pdf]);
+  const source =
+    draft?.docId === docId && draft.account === account && draft.text !== null
+      ? draft.text
+      : (docLatexBlock(blocks)?.text ?? EMPTY_LATEX_DOCUMENT);
   return (
-    <Context.Provider
-      value={{
-        ...state,
-        block: canonical,
-        canCompile,
-        url: shown?.blob === state.pdf?.blob ? (shown?.url ?? null) : null,
-        retry: store.retry,
-      }}
-    >
+    <Context.Provider value={{ owner, source, setDraftSource }}>
       {children}
     </Context.Provider>
+  );
+}
+export function DocLatexDocumentPreview() {
+  const preview = useDocLatexPreview();
+  return (
+    <LatexHtmlPreview
+      key={preview?.owner}
+      source={preview?.source ?? EMPTY_LATEX_DOCUMENT}
+      fill
+    />
   );
 }
 export function DocLatexNote({
@@ -83,43 +69,7 @@ export function DocLatexNote({
 }: {
   block: Extract<DocBlock, { type: "code" }>;
 }) {
-  const source = block.text;
   const preview = useDocLatexPreview();
-  const ownsBlock =
-    preview?.block &&
-    (block.id && preview.block.id
-      ? block.id === preview.block.id
-      : block === preview.block);
-  if (!preview || !ownsBlock)
-    return <pre aria-label="LaTeX source">{source}</pre>;
-  return (
-    <section className="doc-latex-note" aria-label="Rendered LaTeX note">
-      {preview.pdf ? (
-        <DocumentPdfPreview pdf={preview.pdf.blob} url={preview.url} />
-      ) : (
-        !preview.error &&
-        !preview.busy && (
-          <p role="status">
-            {preview.canCompile
-              ? "Preparing preview…"
-              : "PDF preview requires editing access."}
-          </p>
-        )
-      )}
-      {preview.busy && <p role="status">Updating preview…</p>}
-      {preview.pdf && preview.pdf.source !== source && !preview.busy && (
-        <p className="muted" role="status">
-          Showing the last preview.
-        </p>
-      )}
-      {preview.error && (
-        <div role="alert">
-          <p>{preview.error}</p>
-          <button className="secondary" onClick={preview.retry}>
-            Retry preview
-          </button>
-        </div>
-      )}
-    </section>
-  );
+  if (block.text.trim() === EMPTY_LATEX_DOCUMENT.trim()) return null;
+  return <LatexHtmlPreview key={preview?.owner} source={block.text} />;
 }

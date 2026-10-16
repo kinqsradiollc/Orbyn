@@ -1,0 +1,161 @@
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from "react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import "./document-workspace.css";
+export const DocumentLibraryContext = createContext<{
+  hidden: boolean;
+  toggle: () => void;
+  hide: () => void;
+} | null>(null);
+export function DocumentLibraryButton() {
+  const library = useContext(DocumentLibraryContext);
+  if (!library) return null;
+  return (
+    <button
+      type="button"
+      className="icon-button document-library-toggle"
+      aria-label={
+        library.hidden ? "Show document library" : "Hide document library"
+      }
+      title={library.hidden ? "Show library" : "Hide library"}
+      onClick={library.toggle}
+    >
+      {library.hidden ? (
+        <PanelLeftOpen size={16} />
+      ) : (
+        <PanelLeftClose size={16} />
+      )}
+    </button>
+  );
+}
+export function useDocumentWorkspace(
+  root: RefObject<HTMLElement | null>,
+  open: boolean,
+) {
+  const library = useContext(DocumentLibraryContext);
+  const controls = useRef(library);
+  controls.current = library;
+  const [compact, setCompact] = useState(false);
+  const [view, setView] = useState<"source" | "preview">("source");
+  const [ratio, setRatio] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem("orbyn-document-split"));
+      return n >= 30 && n <= 70 ? n : 50;
+    } catch {
+      return 50;
+    }
+  });
+  useLayoutEffect(() => {
+    if (open) {
+      controls.current?.hide();
+      setView("source");
+    }
+  }, [open]);
+  useLayoutEffect(() => {
+    const node = root.current;
+    if (!node) return;
+    const measure = () => {
+      setCompact(node.getBoundingClientRect().width < 760);
+      node.style.setProperty(
+        "--document-height",
+        `${Math.max(240, window.innerHeight - Math.max(0, node.getBoundingClientRect().top) - 8)}px`,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node.parentElement ?? node);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [root, open]);
+  const changeRatio = (n: number) => {
+    const value = Math.max(30, Math.min(70, Math.round(n)));
+    setRatio(value);
+    try {
+      localStorage.setItem("orbyn-document-split", String(value));
+    } catch {}
+  };
+  const divider = open ? (
+    <div
+      className="document-divider"
+      role="separator"
+      tabIndex={0}
+      aria-label="Resize source and preview"
+      aria-orientation="vertical"
+      aria-valuemin={30}
+      aria-valuemax={70}
+      aria-valuenow={ratio}
+      onKeyDown={(event) => {
+        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+          event.preventDefault();
+          changeRatio(
+            event.key === "Home"
+              ? 30
+              : event.key === "End"
+                ? 70
+                : ratio + (event.key === "ArrowRight" ? 5 : -5),
+          );
+        }
+      }}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        const parent =
+          event.currentTarget.parentElement!.getBoundingClientRect();
+        changeRatio(((event.clientX - parent.left) / parent.width) * 100);
+      }}
+      onPointerUp={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId))
+          event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+    />
+  ) : null;
+  return {
+    compact,
+    view,
+    setView,
+    divider,
+    style: {
+      "--document-source-size": `${ratio}fr`,
+      "--document-preview-size": `${100 - ratio}fr`,
+    } as CSSProperties,
+  };
+}
+export function DocumentPaneSwitch({
+  view,
+  onChange,
+}: {
+  view: "source" | "preview";
+  onChange: (view: "source" | "preview") => void;
+}) {
+  return (
+    <div
+      className="document-pane-switch"
+      role="group"
+      aria-label="Document pane"
+    >
+      {(["source", "preview"] as const).map((pane) => (
+        <button
+          key={pane}
+          className="text-button"
+          aria-pressed={view === pane}
+          onClick={() => onChange(pane)}
+        >
+          {pane === "source" ? "Source" : "Preview"}
+        </button>
+      ))}
+    </div>
+  );
+}

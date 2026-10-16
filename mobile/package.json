@@ -9,7 +9,7 @@
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit",
     "export": "expo export --platform ios --platform android",
-    "build:diagrams": "node scripts/build-mermaid.mjs && node ../scripts/build-pdf-preview.mjs",
+    "build:diagrams": "node scripts/build-mermaid.mjs && node ../scripts/build-latex-html.mjs && node ../scripts/build-pdf-preview.mjs",
     "check:diagrams": "node scripts/check-mermaid.mjs",
     "prestart": "npm run build:diagrams",
     "preandroid": "npm run build:diagrams",

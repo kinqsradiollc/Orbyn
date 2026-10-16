@@ -1,4 +1,12 @@
-import { DocLatexPreviewProvider } from "./DocLatexPreview";
+import {
+  DocumentLibraryButton,
+  DocumentPaneSwitch,
+  useDocumentWorkspace,
+} from "./DocumentWorkspace";
+import {
+  DocLatexPreviewProvider,
+  DocLatexDocumentPreview,
+} from "./DocLatexPreview";
 import { DocEditorModes } from "./DocEditorModes";
 import { DocWritingBlock } from "./DocWritingBlock";
 import { ArrowLeft, MoreHorizontal, Plus } from "lucide-react";
@@ -87,7 +95,16 @@ function StructuredDocEditorBody({
   userId?: string;
   report: (error: unknown) => void;
 }) {
+  const [latexSourceNumber, setLatexSourceNumber] = useState(0);
   const [latexOpen, setLatexOpen] = useState(false);
+  const workspaceRoot = useRef<HTMLDivElement>(null);
+  const [sourceFormat, setSourceFormat] = useState<
+    "note" | "markdown" | "latex"
+  >("note");
+  const workspace = useDocumentWorkspace(
+    workspaceRoot,
+    sourceFormat !== "note",
+  );
   const sourceLeaveCheck = useRef<(() => boolean) | null>(null);
   const latexOwner = useRef(latexOpen);
   latexOwner.current = latexOpen;
@@ -409,7 +426,7 @@ function StructuredDocEditorBody({
       (entry) => entry.path.join("/") === path.join("/"),
     );
     if (!range || !sourceRef.current) return;
-    setActivePane("source");
+    workspace.setView("source");
     window.requestAnimationFrame(() => {
       const input = sourceRef.current;
       if (!input) return;
@@ -860,7 +877,10 @@ function StructuredDocEditorBody({
       return ready;
     },
   });
-  const chooseFormat = async (format: "note" | "markdown" | "latex") => {
+  const chooseFormat = async (
+    format: "note" | "markdown" | "latex",
+    sourceNumber = 0,
+  ) => {
     if (latexOwner.current && !sourceLeaveCheck.current?.()) return;
     const current = store.state;
     if (
@@ -888,8 +908,29 @@ function StructuredDocEditorBody({
     )
       return;
     setEditing(null);
+    setSourceFormat(format);
+    setLatexSourceNumber(sourceNumber);
     setLatexOpen(format === "latex");
     setActivePane(format === "note" ? "preview" : "split");
+  };
+
+  const openBlockEditor = (block: DocBlock, index: number, path: number[]) => {
+    if (!canWrite || sourceFormat !== "note") return;
+    if (block.type === "code") {
+      const ordinal = Math.max(
+        0,
+        leaves
+          .slice(0, index + 1)
+          .filter(
+            (candidate) =>
+              candidate.type === "code" && candidate.lang === "latex-document",
+          ).length - 1,
+      );
+      void chooseFormat(
+        block.lang === "latex-document" ? "latex" : "markdown",
+        ordinal,
+      );
+    } else setEditing(path.join("/"));
   };
 
   return (
@@ -918,7 +959,12 @@ function StructuredDocEditorBody({
       }
     >
       <div
-        className="structured-doc-editor"
+        className="structured-doc-editor document-workspace"
+        ref={workspaceRoot}
+        style={workspace.style}
+        data-pane-view={workspace.view}
+        data-compact={workspace.compact || undefined}
+        data-latex-source={latexOpen || undefined}
         data-source-open={activePane !== "preview" || undefined}
         inert={historyBusy}
         aria-busy={historyBusy || undefined}
@@ -965,14 +1011,12 @@ function StructuredDocEditorBody({
           }
         />
         <header className="structured-doc-toolbar">
+          <span className="document-toolbar-title">
+            {session?.title || "Untitled"}
+          </span>
+          <DocumentLibraryButton />
           <DocEditorModes
-            value={
-              latexOpen
-                ? "latex"
-                : activePane === "preview"
-                  ? "note"
-                  : "markdown"
-            }
+            value={sourceFormat}
             disabled={
               !session ||
               state.sourceInvalid ||
@@ -1044,6 +1088,12 @@ function StructuredDocEditorBody({
                 ? "Retry save"
                 : "Save"}
             </button>
+          )}
+          {sourceFormat !== "note" && (
+            <DocumentPaneSwitch
+              view={workspace.view}
+              onChange={workspace.setView}
+            />
           )}
           <div className="structured-doc-menu" ref={menuRef}>
             <button
@@ -1235,6 +1285,8 @@ function StructuredDocEditorBody({
             <div
               className="structured-doc-columns"
               data-active-pane={activePane}
+              data-pane-view={workspace.view}
+              style={workspace.style}
             >
               <section
                 ref={previewRef}
@@ -1245,111 +1297,127 @@ function StructuredDocEditorBody({
                     syncSourceFromPreview();
                 }}
               >
-                {document.format === 2 && (
-                  <DocNavigationContext.Provider
-                    value={{
-                      docId: doc.id,
-                      onFragment: goToFragment,
-                      onAppLink: (url) => {
-                        const link = parseAppLink(url);
-                        if (
-                          link?.kind === "doc" &&
-                          link.id === doc.id &&
-                          link.block
-                        )
-                          goToFragment(link.block);
-                        else void openLinkedPage(url);
-                      },
-                    }}
-                  >
-                    <DocContainerView
-                      nodes={document.nodes}
-                      onOperation={
-                        canWrite
-                          ? (operation, expectedNodes) =>
-                              change(operation, {
-                                format: 2,
-                                nodes: [...expectedNodes],
-                              })
-                          : undefined
-                      }
-                      renderLeaf={(block, index, path) => (
-                        <DocWritingBlock
-                          index={index}
-                          path={path}
-                          blockId={block.id}
-                          text={"text" in block ? block.text : null}
-                          canWrite={canWrite}
-                          keepRendered={block.type === "code"}
-                          editing={editing === path.join("/")}
-                          sourceOpen={activePane !== "preview"}
-                          onSourceFocus={() => sourceAtBlock(path)}
-                          onEdit={() => setEditing(path.join("/"))}
-                          onDone={() => setEditing(null)}
-                          onChange={(text) =>
+                <div
+                  className="document-pane-title"
+                  hidden={sourceFormat === "note"}
+                >
+                  Preview
+                </div>
+                <div className="document-latex-result" hidden={!latexOpen}>
+                  <DocLatexDocumentPreview />
+                </div>
+                <div className="document-note-content" hidden={latexOpen}>
+                  {document.format === 2 && (
+                    <DocNavigationContext.Provider
+                      value={{
+                        docId: doc.id,
+                        onFragment: goToFragment,
+                        onAppLink: (url) => {
+                          const link = parseAppLink(url);
+                          if (
+                            link?.kind === "doc" &&
+                            link.id === doc.id &&
+                            link.block
+                          )
+                            goToFragment(link.block);
+                          else void openLinkedPage(url);
+                        },
+                      }}
+                    >
+                      <DocContainerView
+                        nodes={document.nodes}
+                        onOperation={
+                          canWrite
+                            ? (operation, expectedNodes) =>
+                                change(operation, {
+                                  format: 2,
+                                  nodes: [...expectedNodes],
+                                })
+                            : undefined
+                        }
+                        renderLeaf={(block, index, path) => (
+                          <DocWritingBlock
+                            index={index}
+                            path={path}
+                            blockId={block.id}
+                            text={"text" in block ? block.text : null}
+                            canWrite={canWrite && sourceFormat === "note"}
+                            editing={editing === path.join("/")}
+                            sourceOpen={activePane !== "preview"}
+                            onSourceFocus={() => sourceAtBlock(path)}
+                            onEdit={() => openBlockEditor(block, index, path)}
+                            onDone={() => setEditing(null)}
+                            onChange={(text) =>
+                              change(
+                                {
+                                  kind: "replace-leaf",
+                                  path,
+                                  block: { ...block, text } as DocBlock,
+                                },
+                                document,
+                              )
+                            }
+                            onComment={() => void commentOn(block, index)}
+                            onAssist={() => askForBlock(block)}
+                            assistDisabled={
+                              sourcePending ||
+                              state.busy ||
+                              docEditorSessionDirty(session) ||
+                              state.source !== null
+                            }
+                          >
+                            <BlockView block={block} pageBlocks={leaves} />
+                          </DocWritingBlock>
+                        )}
+                      />
+                      {canWrite && activePane === "preview" && (
+                        <button
+                          type="button"
+                          className="text-button doc-add-text"
+                          disabled={
+                            state.sourceInvalid ||
+                            !!state.conflict ||
+                            sourcePending ||
+                            !!sourceAsk
+                          }
+                          onClick={() => {
+                            const index = document.nodes.length;
                             change(
                               {
-                                kind: "replace-leaf",
-                                path,
-                                block: { ...block, text } as DocBlock,
-                              },
-                              document,
-                            )
-                          }
-                          onComment={() => void commentOn(block, index)}
-                          onAssist={() => askForBlock(block)}
-                          assistDisabled={
-                            sourcePending ||
-                            state.busy ||
-                            docEditorSessionDirty(session) ||
-                            state.source !== null
-                          }
-                        >
-                          <BlockView block={block} pageBlocks={leaves} />
-                        </DocWritingBlock>
-                      )}
-                    />
-                    {canWrite && activePane === "preview" && (
-                      <button
-                        type="button"
-                        className="text-button doc-add-text"
-                        disabled={
-                          state.sourceInvalid ||
-                          !!state.conflict ||
-                          sourcePending ||
-                          !!sourceAsk
-                        }
-                        onClick={() => {
-                          const index = document.nodes.length;
-                          change(
-                            {
-                              kind: "insert",
-                              owner: [],
-                              index,
-                              node: {
-                                kind: "block",
-                                block: {
-                                  type: "paragraph",
-                                  text: "",
-                                  id: newBlockId(),
+                                kind: "insert",
+                                owner: [],
+                                index,
+                                node: {
+                                  kind: "block",
+                                  block: {
+                                    type: "paragraph",
+                                    text: "",
+                                    id: newBlockId(),
+                                  },
                                 },
                               },
-                            },
-                            document,
-                          );
-                          if (!store.state.error) setEditing(String(index));
-                        }}
-                      >
-                        <Plus size={15} /> Add text
-                      </button>
-                    )}
-                  </DocNavigationContext.Provider>
-                )}
+                              document,
+                            );
+                            if (!store.state.error) setEditing(String(index));
+                          }}
+                        >
+                          <Plus size={15} /> Add text
+                        </button>
+                      )}
+                    </DocNavigationContext.Provider>
+                  )}
+                </div>
               </section>
+              {workspace.divider}
               <section
-                aria-label="Markdown source"
+                aria-label={
+                  latexOpen ? "LaTeX source pane" : "Markdown source pane"
+                }
                 className="structured-doc-source"
               >
+                <div className="document-pane-title">
+                  {latexOpen ? "LaTeX source" : "Markdown source"}
+                </div>
                 {latexOpen && document && session && (
                   <DocSourcePreview
                     leaveCheck={sourceLeaveCheck}
@@ -1366,11 +1434,14 @@ function StructuredDocEditorBody({
                     showModes={false}
                     beforeNavigate={prepareLinkedPage}
                     latexOnly
+                    key={latexSourceNumber}
+                    initialSourceNumber={latexSourceNumber}
                     blocks={leaves}
                     docId={doc.id}
                     onClose={() => {
                       latexOwner.current = false;
                       setLatexOpen(false);
+                      setSourceFormat("note");
                       setActivePane("preview");
                     }}
                     onAssist={
@@ -1381,7 +1452,6 @@ function StructuredDocEditorBody({
                       state.source === null &&
                       !docEditorSessionDirty(session)
                         ? (block) => {
-                            setLatexOpen(false);
                             askForBlock(block);
                           }
                         : undefined
@@ -1402,7 +1472,7 @@ function StructuredDocEditorBody({
                     }
                     onLatexChange={
                       canWrite
-                        ? (text, expected) => {
+                        ? (text, expected, sourceNumber) => {
                             const current = store.state.session;
                             if (
                               !current ||
@@ -1418,7 +1488,7 @@ function StructuredDocEditorBody({
                               );
                             store.changeOperation(
                               document,
-                              docLatexOperation(document, text),
+                              docLatexOperation(document, text, sourceNumber),
                             );
                             if (store.state.error) throw store.state.error;
                             const next = store.state.session?.document;

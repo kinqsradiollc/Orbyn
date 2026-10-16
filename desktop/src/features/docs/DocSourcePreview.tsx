@@ -1,3 +1,5 @@
+import { Select } from "../../components/Select";
+import { LatexHtmlPreview } from "../../components/LatexHtmlPreview";
 import { useDocLatexPreview } from "./DocLatexPreview";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
@@ -43,7 +45,9 @@ export function DocSourcePreview({
   showModes = true,
   compileReady = true,
   leaveCheck,
+  initialSourceNumber = 0,
 }: {
+  initialSourceNumber?: number;
   blocks: DocBlock[];
   docId: string;
   onAppLink: (url: string) => void;
@@ -53,7 +57,11 @@ export function DocSourcePreview({
   saveStatus?: string;
   onCompileLatex: (source: string, signal: AbortSignal) => Promise<Blob>;
   onAssist?: (block: DocBlock) => void;
-  onLatexChange?: (text: string, expected: DocBlock[]) => DocBlock[];
+  onLatexChange?: (
+    text: string,
+    expected: DocBlock[],
+    sourceNumber?: number,
+  ) => DocBlock[];
   latexOnly?: boolean;
   initialMode?: "markdown" | "latex";
   inline?: boolean;
@@ -76,23 +84,17 @@ export function DocSourcePreview({
   const [mode, setMode] = useState<"markdown" | "latex">(
     latexOnly ? "latex" : initialMode,
   );
-  const latex = docLatexBlock(blocks);
+  const [sourceNumber, setSourceNumber] = useState(initialSourceNumber);
+  const sources = blocks.filter(
+    (block) => block.type === "code" && block.lang === "latex-document",
+  );
+  const latex = docLatexBlock(blocks, sourceNumber);
   const [latexText, setLatexText] = useState(
     latex?.text ?? EMPTY_LATEX_DOCUMENT,
   );
   const sharedPreview = useDocLatexPreview();
-  const [localPdf, setPdf] = useState<{ url: string; source: string } | null>(
-    null,
-  );
-  const pdf = sharedPreview
-    ? sharedPreview.pdf && sharedPreview.url
-      ? { url: sharedPreview.url, source: sharedPreview.pdf.source }
-      : null
-    : localPdf;
-  const [localCompiling, setCompiling] = useState(false);
-  const compiling = sharedPreview?.busy ?? localCompiling;
-  const [localCompileError, setCompileError] = useState("");
-  const compileError = sharedPreview?.error ?? localCompileError;
+  const [compiling, setCompiling] = useState(false);
+  const [compileError, setCompileError] = useState("");
   const compile = useRef<AbortController | null>(null);
   useEffect(() => {
     if (latex) setLatexText(latex.text);
@@ -103,17 +105,7 @@ export function DocSourcePreview({
     },
     [],
   );
-  useEffect(
-    () => () => {
-      if (localPdf) URL.revokeObjectURL(localPdf.url);
-    },
-    [localPdf],
-  );
-  const compilePdf = async () => {
-    if (sharedPreview) {
-      sharedPreview.retry();
-      return;
-    }
+  const exportPdf = async () => {
     if (
       compile.current ||
       !compileReady ||
@@ -129,12 +121,20 @@ export function DocSourcePreview({
     const account = session.get();
     try {
       const blob = await onCompileLatex(snapshot, controller.signal);
-      if (!controller.signal.aborted && account === session.get())
-        setPdf({ url: URL.createObjectURL(blob), source: snapshot });
+      if (!controller.signal.aborted && account === session.get()) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "document.pdf";
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
     } catch (error) {
       if (!controller.signal.aborted && account === session.get())
         setCompileError(
-          error instanceof Error ? error.message : "Couldn’t compile LaTeX.",
+          error instanceof Error
+            ? error.message
+            : "Couldn’t export this PDF. Check the source and try again.",
         );
     } finally {
       if (compile.current === controller) {
@@ -253,7 +253,9 @@ export function DocSourcePreview({
     if (!onLatexChange) {
       try {
         changeSource(
-          docSourceMap(withDocLatexSource(ownerBlocks.current, text)).source,
+          docSourceMap(
+            withDocLatexSource(ownerBlocks.current, text, sourceNumber),
+          ).source,
         );
       } catch (error) {
         setSourceError(
@@ -270,7 +272,7 @@ export function DocSourcePreview({
         throw new Error(
           "The document changed. Restore the current document before editing.",
         );
-      const next = onLatexChange(text, ownerBlocks.current);
+      const next = onLatexChange(text, ownerBlocks.current, sourceNumber);
       ownerBlocks.current = next;
       acceptedBlocks.current.add(next);
       acceptedSource.current = docSourceMap(next).source;
@@ -282,42 +284,10 @@ export function DocSourcePreview({
       );
     }
   };
-  const compileLatest = useRef(compilePdf);
-  compileLatest.current = compilePdf;
-  const lastCompile = useRef(0);
   useEffect(() => {
-    const previous = compile.current;
-    previous?.abort();
-    if (compile.current === previous) compile.current = null;
-    setCompiling(false);
-    if (
-      sharedPreview ||
-      mode !== "latex" ||
-      !compileReady ||
-      sourceError ||
-      !(onSourceChange || onLatexChange)
-    )
-      return;
-    const timer = setTimeout(
-      () => {
-        lastCompile.current = Date.now();
-        void compileLatest.current();
-      },
-      Math.max(1200, 4000 - (Date.now() - lastCompile.current)),
-    );
-    return () => {
-      clearTimeout(timer);
-      compile.current?.abort();
-    };
-  }, [
-    mode,
-    latexText,
-    compileReady,
-    sourceError,
-    docId,
-    !!onSourceChange,
-    !!onLatexChange,
-  ]);
+    if (mode === "latex") sharedPreview?.setDraftSource(latexText);
+    return () => sharedPreview?.setDraftSource(null);
+  }, [mode, latexText, sharedPreview?.setDraftSource]);
   useEffect(() => {
     if (!leaveCheck) return;
     const ready = () =>
@@ -351,7 +321,11 @@ export function DocSourcePreview({
     ownerBlocks.current = blocks;
     acceptedBlocks.current.add(blocks);
     setSourceText(canonical.source);
-    setLatexText(docLatexBlock(blocks)?.text ?? EMPTY_LATEX_DOCUMENT);
+    const restored = docLatexBlock(blocks, sourceNumber);
+    if (!restored && sourceNumber > 0) setSourceNumber(0);
+    setLatexText(
+      (restored ?? docLatexBlock(blocks))?.text ?? EMPTY_LATEX_DOCUMENT,
+    );
     setSourceError("");
   };
   const layout = useMemo(() => listLayout(blocks), [blocks]);
@@ -609,12 +583,12 @@ export function DocSourcePreview({
           <div className="doc-source-view">
             <span className="muted" role="status">
               {compileError
-                ? "Preview unavailable"
+                ? "PDF export failed"
                 : compiling
-                  ? "Updating preview…"
-                  : "Live preview"}
+                  ? "Exporting PDF…"
+                  : "Web preview"}
             </span>
-            {!sourceOnly && compileError && (
+            {(onSourceChange || onLatexChange) && (
               <button
                 type="button"
                 className="secondary"
@@ -625,9 +599,9 @@ export function DocSourcePreview({
                   !!sourceError ||
                   !(onSourceChange || onLatexChange)
                 }
-                onClick={() => void compilePdf()}
+                onClick={() => void exportPdf()}
               >
-                Retry preview
+                Export PDF
               </button>
             )}
             {onAssist && latex?.id && (
@@ -640,13 +614,40 @@ export function DocSourcePreview({
                 Ask assistant
               </button>
             )}
-            {!sourceOnly && compileError && <p role="alert">{compileError}</p>}
-            {!sourceOnly && pdf && pdf.source !== latexText && (
-              <p role="status">Preview is updating.</p>
-            )}
+            {compileError && <p role="alert">{compileError}</p>}
           </div>
         )}
       </div>
+      {mode === "latex" && (
+        <details className="document-preview-help">
+          <summary>About web preview</summary>
+          <p>
+            Web preview supports common LaTeX text and maths. Export PDF for
+            package-dependent layout and pagination.
+          </p>
+        </details>
+      )}
+      {mode === "latex" && sources.length > 1 && (
+        <Select
+          aria-label="LaTeX document source"
+          value={String(sourceNumber)}
+          disabled={!!sourceError || navigating}
+          onChange={(event) => {
+            const next = Number(event.target.value);
+            setSourceNumber(next);
+            setLatexText(
+              docLatexBlock(ownerBlocks.current, next)?.text ??
+                EMPTY_LATEX_DOCUMENT,
+            );
+          }}
+        >
+          {sources.map((block, index) => (
+            <option key={block.id ?? index} value={String(index)}>
+              {index === 0 ? "Main document" : `Document ${index + 1}`}
+            </option>
+          ))}
+        </Select>
+      )}
       <div
         className="doc-source-columns"
         data-view={shownView}
@@ -666,24 +667,7 @@ export function DocSourcePreview({
             className="doc-source-rendered"
             hidden={sourceOnly || shownView === "source"}
           >
-            {pdf ? (
-              <iframe
-                className="doc-source-pdf"
-                title="Compiled LaTeX PDF"
-                src={pdf.url}
-              />
-            ) : (
-              <p className="muted">
-                {onSourceChange || onLatexChange
-                  ? "Preparing PDF preview…"
-                  : "Editing access is needed to compile."}
-              </p>
-            )}
-            {pdf && (
-              <a href={pdf.url} download="document.pdf">
-                Download PDF
-              </a>
-            )}
+            <LatexHtmlPreview source={latexText} fill />
           </div>
         )}
       </div>

@@ -1,3 +1,4 @@
+import { DocumentLibraryContext } from "./DocumentWorkspace";
 import { useElementWidth } from "../../hooks/useElementWidth";
 import {
   useCallback,
@@ -290,7 +291,9 @@ function DocsBody({
       return false;
     }
   });
+  const compactLibrary = paneWidth > 0 && paneWidth < 900;
   const showLibrary = (show: boolean) => {
+    setNavigationOpen(show);
     setLibraryHidden(!show);
     try {
       localStorage.setItem("orbyn-docs-library", show ? "shown" : "hidden");
@@ -1078,7 +1081,8 @@ function DocsBody({
         "docs-workspace" +
         (paneWidth > 0 && paneWidth < 900 ? " is-compact" : "") +
         (libraryHidden ? " is-library-hidden" : "") +
-        (dropping ? " is-dropping" : "")
+        (dropping ? " is-dropping" : "") +
+        (editor ? " is-document-open" : "")
       }
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;
@@ -1105,6 +1109,7 @@ function DocsBody({
       )}
       <button
         className="text-button docs-nav-toggle"
+        hidden={!!editor}
         aria-expanded={navigationOpen}
         aria-controls={`${libraryId}-navigation`}
         onClick={() => setNavigationOpen(!navigationOpen)}
@@ -1118,6 +1123,16 @@ function DocsBody({
         id={`${libraryId}-navigation`}
         aria-label="Document library"
         className={"docs-navigation" + (navigationOpen ? " is-open" : "")}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && navigationOpen) {
+            event.stopPropagation();
+            showLibrary(false);
+            event.currentTarget
+              .closest(".docs-workspace")
+              ?.querySelector<HTMLButtonElement>(".document-library-toggle")
+              ?.focus();
+          }
+        }}
       >
         <div className="docs-nav-title">
           <h2>
@@ -1400,7 +1415,7 @@ function DocsBody({
         )}
       </nav>
       <section className="docs-workspace-content" aria-label="Documents">
-        {libraryHidden && (
+        {libraryHidden && !editor && (
           <button
             className="text-button docs-library-show"
             onClick={() => showLibrary(true)}
@@ -1423,7 +1438,18 @@ function DocsBody({
             </button>
           </div>
         )}
-        {editor ?? (
+        {editor ? (
+          <DocumentLibraryContext.Provider
+            value={{
+              hidden: compactLibrary ? !navigationOpen : libraryHidden,
+              toggle: () =>
+                showLibrary(compactLibrary ? !navigationOpen : libraryHidden),
+              hide: () => showLibrary(false),
+            }}
+          >
+            {editor}
+          </DocumentLibraryContext.Provider>
+        ) : (
           <div className="docs-view">
             <div className="docs-head">
               <h1 className="docs-count docs-library-title">{location}</h1>

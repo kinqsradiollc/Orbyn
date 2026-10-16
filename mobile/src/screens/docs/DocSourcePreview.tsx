@@ -1,8 +1,11 @@
+import { saveFile } from "../../lib/download";
+import { LatexHtmlPreview } from "../../components/LatexHtmlPreview";
 import { DocEditorModes } from "./DocEditorModes";
 import { useDocLatexPreview } from "./DocLatexPreview";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ScrollView,
+  Pressable,
   Text,
   TextInput,
   View,
@@ -21,12 +24,11 @@ import {
   footnoteTexts,
   type DocBlock,
 } from "@orbyn/core";
-import { DocumentPdfPreview } from "../../components/DocumentPdfPreview";
 import { session } from "../../lib/session";
 import { Sheet } from "../../components/Sheet";
 import { Button } from "../../components/Button";
 import { shared } from "../../styles";
-import { colors, fonts, radii } from "../../theme";
+import { colors, fonts, radii, inputFontSize } from "../../theme";
 import { DocBody } from "./DocBody";
 import { FootnoteContext } from "./footnotes";
 import { DocNavigationContext } from "./doc-navigation";
@@ -53,7 +55,9 @@ export function DocSourcePreview({
   onModeChange,
   compileReady = true,
   leaveCheck,
+  initialSourceNumber = 0,
 }: {
+  initialSourceNumber?: number;
   blocks: DocBlock[];
   docId: string;
   onAppLink: (url: string) => void;
@@ -64,7 +68,11 @@ export function DocSourcePreview({
   saveStatus?: string;
   onCompileLatex: (source: string, signal: AbortSignal) => Promise<Blob>;
   onAssist?: (block: DocBlock) => void;
-  onLatexChange?: (text: string, expected: DocBlock[]) => DocBlock[];
+  onLatexChange?: (
+    text: string,
+    expected: DocBlock[],
+    sourceNumber?: number,
+  ) => DocBlock[];
   latexOnly?: boolean;
   initialMode?: "markdown" | "latex";
   inline?: boolean;
@@ -89,19 +97,17 @@ export function DocSourcePreview({
   const [mode, setMode] = useState<"markdown" | "latex">(
     latexOnly ? "latex" : initialMode,
   );
-  const latex = docLatexBlock(blocks);
+  const [sourceNumber, setSourceNumber] = useState(initialSourceNumber);
+  const sources = blocks.filter(
+    (block) => block.type === "code" && block.lang === "latex-document",
+  );
+  const latex = docLatexBlock(blocks, sourceNumber);
   const [latexText, setLatexText] = useState(
     latex?.text ?? EMPTY_LATEX_DOCUMENT,
   );
   const sharedPreview = useDocLatexPreview();
-  const [localPdf, setPdf] = useState<{ blob: Blob; source: string } | null>(
-    null,
-  );
-  const pdf = sharedPreview?.pdf ?? localPdf;
-  const [localCompiling, setCompiling] = useState(false);
-  const compiling = sharedPreview?.busy ?? localCompiling;
-  const [localCompileError, setCompileError] = useState("");
-  const compileError = sharedPreview?.error ?? localCompileError;
+  const [compiling, setCompiling] = useState(false);
+  const [compileError, setCompileError] = useState("");
   const compile = useRef<AbortController | null>(null);
   useEffect(() => {
     if (latex) setLatexText(latex.text);
@@ -112,11 +118,7 @@ export function DocSourcePreview({
     },
     [],
   );
-  const compilePdf = async () => {
-    if (sharedPreview) {
-      sharedPreview.retry();
-      return;
-    }
+  const exportPdf = async () => {
     if (
       compile.current ||
       !compileReady ||
@@ -133,11 +135,13 @@ export function DocSourcePreview({
     try {
       const blob = await onCompileLatex(snapshot, controller.signal);
       if (!controller.signal.aborted && account === session.token)
-        setPdf({ blob, source: snapshot });
+        await saveFile("document.pdf", blob, "application/pdf");
     } catch (error) {
       if (!controller.signal.aborted && account === session.token)
         setCompileError(
-          error instanceof Error ? error.message : "Couldn’t compile LaTeX.",
+          error instanceof Error
+            ? error.message
+            : "Couldn’t export this PDF. Check the source and try again.",
         );
     } finally {
       if (compile.current === controller) {
@@ -235,7 +239,9 @@ export function DocSourcePreview({
     if (!onLatexChange) {
       try {
         changeSource(
-          docSourceMap(withDocLatexSource(ownerBlocks.current, text)).source,
+          docSourceMap(
+            withDocLatexSource(ownerBlocks.current, text, sourceNumber),
+          ).source,
         );
       } catch (error) {
         setSourceError(
@@ -252,7 +258,7 @@ export function DocSourcePreview({
         throw new Error(
           "The document changed. Restore the current document before editing.",
         );
-      const next = onLatexChange(text, ownerBlocks.current);
+      const next = onLatexChange(text, ownerBlocks.current, sourceNumber);
       ownerBlocks.current = next;
       acceptedBlocks.current.add(next);
       acceptedSource.current = docSourceMap(next).source;
@@ -264,42 +270,10 @@ export function DocSourcePreview({
       );
     }
   };
-  const compileLatest = useRef(compilePdf);
-  compileLatest.current = compilePdf;
-  const lastCompile = useRef(0);
   useEffect(() => {
-    const previous = compile.current;
-    previous?.abort();
-    if (compile.current === previous) compile.current = null;
-    setCompiling(false);
-    if (
-      sharedPreview ||
-      mode !== "latex" ||
-      !compileReady ||
-      sourceError ||
-      !(onSourceChange || onLatexChange)
-    )
-      return;
-    const timer = setTimeout(
-      () => {
-        lastCompile.current = Date.now();
-        void compileLatest.current();
-      },
-      Math.max(1200, 4000 - (Date.now() - lastCompile.current)),
-    );
-    return () => {
-      clearTimeout(timer);
-      compile.current?.abort();
-    };
-  }, [
-    mode,
-    latexText,
-    compileReady,
-    sourceError,
-    docId,
-    !!onSourceChange,
-    !!onLatexChange,
-  ]);
+    if (mode === "latex") sharedPreview?.setDraftSource(latexText);
+    return () => sharedPreview?.setDraftSource(null);
+  }, [mode, latexText, sharedPreview?.setDraftSource]);
   useEffect(() => {
     if (!leaveCheck) return;
     const ready = () =>
@@ -330,7 +304,11 @@ export function DocSourcePreview({
     ownerBlocks.current = blocks;
     acceptedBlocks.current.add(blocks);
     setSourceText(canonical.source);
-    setLatexText(docLatexBlock(blocks)?.text ?? EMPTY_LATEX_DOCUMENT);
+    const restored = docLatexBlock(blocks, sourceNumber);
+    if (!restored && sourceNumber > 0) setSourceNumber(0);
+    setLatexText(
+      (restored ?? docLatexBlock(blocks))?.text ?? EMPTY_LATEX_DOCUMENT,
+    );
     setSourceError("");
   };
   const notes = useMemo(
@@ -396,7 +374,7 @@ export function DocSourcePreview({
   };
   const content = (
     <View
-      style={{ flex: 1, minHeight: 0, padding: 16, gap: 12 }}
+      style={{ flex: 1, minHeight: 0, padding: 0, gap: 0 }}
       onLayout={(event) => {
         setPaneWidth(event.nativeEvent.layout.width);
         setControlsHeight(
@@ -406,7 +384,14 @@ export function DocSourcePreview({
     >
       <ScrollView
         style={{ flexGrow: 0, flexShrink: 1, maxHeight: controlsHeight }}
-        contentContainerStyle={{ gap: 12 }}
+        contentContainerStyle={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 6,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+        }}
         keyboardShouldPersistTaps="handled"
       >
         {!!navigationError && (
@@ -422,6 +407,7 @@ export function DocSourcePreview({
         {!!sourceError && (
           <View style={{ gap: 8 }}>
             <Button
+              style={{ marginBottom: 0 }}
               title="Restore current document"
               disabled={navigating}
               secondary
@@ -457,13 +443,14 @@ export function DocSourcePreview({
                 : "Source is read-only."}
           </Text>
         )}
-        {saveStatus && (
+        {saveStatus && !inline && (
           <Text accessibilityLiveRegion="polite" style={shared.small}>
             {saveStatus}
           </Text>
         )}
         {mode === "markdown" && onAssist && blocks[selected]?.id && (
           <Button
+            style={{ marginBottom: 0 }}
             title="Ask assistant"
             secondary
             disabled={navigating || !!sourceError}
@@ -471,6 +458,7 @@ export function DocSourcePreview({
           />
         )}
         <Button
+          style={{ marginBottom: 0 }}
           title={
             sourceOnly
               ? "Hide source"
@@ -495,19 +483,56 @@ export function DocSourcePreview({
           }}
         />
       </ScrollView>
+      {mode === "latex" && sources.length > 1 && (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+          {sources.map((block, index) => (
+            <Pressable
+              key={block.id ?? index}
+              accessibilityRole="button"
+              accessibilityLabel={
+                index === 0
+                  ? "Main LaTeX document"
+                  : `LaTeX document ${index + 1}`
+              }
+              accessibilityState={{ selected: sourceNumber === index }}
+              disabled={!!sourceError || navigating}
+              onPress={() => {
+                setSourceNumber(index);
+                setLatexText(
+                  docLatexBlock(ownerBlocks.current, index)?.text ??
+                    EMPTY_LATEX_DOCUMENT,
+                );
+              }}
+              style={{
+                minHeight: 44,
+                paddingHorizontal: 12,
+                justifyContent: "center",
+                backgroundColor:
+                  sourceNumber === index ? colors.surfaceMuted : undefined,
+                borderRadius: radii.input,
+              }}
+            >
+              <Text style={shared.small}>
+                {index === 0 ? "Main document" : `Document ${index + 1}`}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
       {mode === "latex" && (
         <>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             <Text accessibilityLiveRegion="polite" style={shared.small}>
               {compileError
-                ? "Preview unavailable"
+                ? "PDF export failed"
                 : compiling
-                  ? "Updating preview…"
-                  : "Live preview"}
+                  ? "Exporting PDF…"
+                  : "Web preview"}
             </Text>
-            {!sourceOnly && compileError && (
+            {(onSourceChange || onLatexChange) && (
               <Button
-                title="Retry preview"
+                style={{ marginBottom: 0 }}
+                title="Export PDF"
                 secondary
                 disabled={
                   navigating ||
@@ -516,11 +541,12 @@ export function DocSourcePreview({
                   !!sourceError ||
                   !(onSourceChange || onLatexChange)
                 }
-                onPress={() => void compilePdf()}
+                onPress={() => void exportPdf()}
               />
             )}
             {onAssist && latex?.id && (
               <Button
+                style={{ marginBottom: 0 }}
                 title="Ask assistant"
                 secondary
                 disabled={navigating || !!sourceError || !latex.text.trim()}
@@ -528,14 +554,9 @@ export function DocSourcePreview({
               />
             )}
           </View>
-          {!sourceOnly && !!compileError && (
+          {!!compileError && (
             <Text accessibilityRole="alert" style={shared.small}>
               {compileError}
-            </Text>
-          )}
-          {!sourceOnly && pdf && pdf.source !== latexText && (
-            <Text accessibilityLiveRegion="polite" style={shared.small}>
-              Preview is updating.
             </Text>
           )}
           <View
@@ -561,7 +582,18 @@ export function DocSourcePreview({
                 value={latexText}
                 style={[
                   shared.input,
-                  { flex: 1, minHeight: 120, textAlignVertical: "top" },
+                  {
+                    flex: 1,
+                    minHeight: 0,
+                    textAlignVertical: "top",
+                    fontFamily: fonts.mono,
+                    fontSize: inputFontSize,
+                    lineHeight: 24,
+                    padding: 16,
+                    borderWidth: 0,
+                    borderRadius: 0,
+                    backgroundColor: colors.surfaceMuted,
+                  },
                 ]}
                 onChangeText={changeLatex}
               />
@@ -574,15 +606,7 @@ export function DocSourcePreview({
                   !sourceOnly && (split || !sourceVisible) ? "flex" : "none",
               }}
             >
-              {!sourceOnly && pdf ? (
-                <DocumentPdfPreview pdf={pdf.blob} report={report} />
-              ) : (
-                <Text style={shared.small}>
-                  {onSourceChange || onLatexChange
-                    ? "Preparing PDF preview…"
-                    : "Editing access is needed to compile."}
-                </Text>
-              )}
+              <LatexHtmlPreview source={latexText} fill />
             </View>
           </View>
         </>
@@ -632,13 +656,14 @@ export function DocSourcePreview({
                 flex: 1,
                 textAlignVertical: "top",
                 fontFamily: fonts.mono,
-                fontSize: 13,
-                lineHeight: 20,
-                padding: 12,
+                fontSize: inputFontSize,
+                lineHeight: 24,
+                padding: 16,
                 color: colors.text,
                 borderColor: colors.border,
-                borderWidth: 1,
-                borderRadius: radii.input,
+                borderWidth: 0,
+                borderRadius: 0,
+                backgroundColor: colors.surfaceMuted,
               }}
               onSelectionChange={(event) => {
                 setSourceSelection(undefined);
@@ -695,7 +720,9 @@ export function DocSourcePreview({
     <View
       style={{
         flex: sourceOnly ? 1 : undefined,
-        height: editorHeight ?? Math.max(400, windowHeight - 180),
+        height: sourceOnly
+          ? undefined
+          : (editorHeight ?? Math.max(400, windowHeight - 180)),
         minHeight: 0,
       }}
     >

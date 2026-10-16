@@ -485,12 +485,24 @@ Do not confuse the separate website identity trial with hosted plan permission.
 
 ## Private standalone LaTeX
 
-Document writers use the visible LaTeX source choice inside Docs. Saved source
-updates its Note preview automatically; hide the source or select Note to keep
-the rendered document visible. The preview API permits 20 requests/minute and
-automatic requests are debounced with four seconds between starts. No extra
-client configuration is needed beyond the private compiler settings below.
+Document writers choose Note, Markdown or LaTeX in the persistent Docs toolbar.
+LaTeX preview renders locally as HTML; typing does not require a compiler or make
+preview API requests. Use Source/Preview on phones and the resizable split on wide
+screens. Incomplete source preserves the last rendered output and the full draft.
+Web preview supports common text/maths; native TeX packages and exact pagination
+remain compiler features.
 
+`npm run build:latex-html` builds the matching web/mobile runtime from pinned
+LaTeX.js, local styles/fonts and the lockfile. `npm run check:latex-html` checks
+artifact provenance and parity. Desktop predev/prebuild and mobile's diagram build
+run this automatically. No CDN, new client environment variable or new service is
+needed. The actual renderer is qualified by `latex-html-runtime.unit.test.ts`;
+iframe lifetime and explicit-export guards have separate mounted tests.
+
+PDF export is an explicit action. The existing compiler API limit remains20
+requests/minute; there is no automatic request loop. Configure the private compiler
+below only for export, not for HTML preview. Export errors leave the workspace and
+draft visible.
 
 Compose supplies `DOC_LATEX_URL=http://latex:8000` to the API and starts the
 private `latex` service. Set the existing independent `DOC_PDF_KEY` (32 or more
@@ -510,11 +522,10 @@ and the Kubernetes service/profile configuration before enabling that target.
 The deploy script rolls the private compiler before the API. Qualification of
 PDF generation is separate from visible embedded-PDF rendering in the clients.
 
-The clients render compiled pages with the bundled PDF.js canvas viewer, including
-page navigation, zoom and an optional page-text disclosure. It runs in an isolated
-local iframe (Expo web/shared web) or WebView (native implementation, not native
-acceptance). It fetches no CDN, fonts or other document resources. No additional
-environment variable or public compiler route is needed.
+PDF attachments/imports still use the bundled PDF.js viewer with page navigation,
+zoom, accessible page text and download. LaTeX editing uses the separate HTML
+runtime above. Neither renderer needs a browser PDF plugin or public compiler
+route.
 
 `npm run build:pdf-preview` regenerates the matching client assets from the pinned
 PDF.js dependency, runtime and lockfile. Desktop predev/prebuild and mobile's

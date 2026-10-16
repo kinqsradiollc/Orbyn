@@ -44,17 +44,28 @@ route to the focused pane. Hidden controllers retain work but yield global keys.
 Dialog and text-input ownership take precedence over retained editor selection.
 Expo uses its existing navigation and focused sheets rather than desktop panes.
 
-Documents offer normal note editing, Markdown/equation source beside the rendered
-note, and standalone TeX beside PDF. Source visibility is a presentation preference.
-A named LaTeX block preserves exact source without replacing other note blocks.
-Note is the common rendered output, including the compiled LaTeX PDF. The clients use a bundled PDF.js canvas viewer rather than a browser PDF plugin. Its isolated local runtime has no network access, preserves page/zoom across source visibility and PDF updates, and offers page text and download. Generated web/mobile assets share the same runtime and pinned dependency. Inline
-Markdown/LaTeX source can be hidden independently. One account/document/canonical-block preview
-store survives source/Note changes, debounces saved revisions and discards aborted
-or stale results. Source adapters sit beside the same mounted Note renderer;
-additional standalone blocks retain source instead of showing another block’s PDF. Errors retain the last valid PDF and expose Retry.
-Assistant changes remain proposals requiring a decision. Compilation authorizes
-the writer and document revision before and after work, so a stale or newly
-inaccessible result is discarded.
+Documents use a viewport-owned workspace with a persistent toolbar and compact,
+collapsible library. Note is a readable writing canvas. Markdown and LaTeX open
+one source editor beside an independently scrolling result; the divider is
+resizable. Narrow clients switch Source/Preview without changing document mode.
+A named LaTeX block preserves exact source without replacing ordinary note text;
+additional sources are selected explicitly and keep their IDs/nested ownership.
+
+LaTeX web preview is generated directly as HTML using bundled LaTeX.js and local
+math fonts. The same isolated runtime is used by web, Expo web and native WebView.
+Drafts are messaged to a stable host, never interpolated into its HTML or loaded
+through a CDN. Completed renders replace content atomically; incomplete source
+keeps the last successful render and local diagnostics. A new account/document
+owns a fresh host. Scripts, navigation and external document resources have no
+host authority. This supports common text/maths, not TeX pagination or arbitrary
+native packages; unsupported features are disclosed and exact source is retained.
+
+PDF is an explicit export through the existing authorized compiler. No typing
+or preview-mode transition starts compilation. Export captures source/revision,
+retains cancellation/account/document checks, and leaves the HTML workspace in
+place on success or failure. PDF.js remains for PDF attachments/imports; it is not
+the LaTeX editing preview. Assistant changes remain proposals requiring a decision.
+See [ADR 005](adr/005-document-workspace.md) for acceptance and boundaries.
 
 The private `pdf` (`services/pdf.ts`) and `latex` (`services/latex.ts`) services
 receive signed snapshots rather than database/provider credentials. TeX runs in
