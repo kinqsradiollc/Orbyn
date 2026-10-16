@@ -89,3 +89,13 @@ workspace-layout, editor-input-ownership and visual-corrections tests, recorded 
 development evidence, not final rendered acceptance. Earlier DocsSheet fixture
 failure was updated to assert the actual flex/min-height editor ownership now
 that DocsSheet is part of this correction scope. Final integrated freeze pending.
+
+## Right workspace panel addition
+
+Owner's 15:58 request adds a resizable, responsive right panel with independent
+tabs; Notifications moves there and existing object peeks share its shell.
+Candidate `6e67e82b` is a historical checkpoint, not the final combined freeze.
+Builder ownership: layout research owns App routing, embedded SidePeek and dock
+state; responsive followthrough owns the reusable WorkspaceDock shell and its
+styles/tests. Root owns integration ledger and fixture reconciliation. Same
+ADR006 round1/3; no Visual run until complete code and builds are ready.

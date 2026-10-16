@@ -95,3 +95,22 @@ state, with hover/focus labels and remembered explicit resizing. A versioned
 width preference avoids retaining the previous expanded default. The mobile
 drawer remains labelled. Library remains a continuous full-height surface with
 subtle selected rows and one visibility control.
+
+### Owner refinement — tabbed right workspace panel
+
+Notifications opens beside the current page in the right workspace panel,
+including the bell, navigation entry and command paths. Opening the panel does
+not replace the main document/chat or create a main navigation tab. Existing
+notification actions retain their explicit destinations and permission guards.
+
+The panel supports multiple independently closable tabs, selected-tab keyboard
+navigation and resizing. Existing read-only document/task/project peeks share
+this panel instead of competing overlays. Tabs retain mounted content while
+inactive; private panel state clears on session changes. Desktop uses a
+complementary pane, narrow layouts use a focus-contained overlay with Escape
+and focus restoration. It reuses Orbyn content and controls; no arbitrary
+browser/terminal capability is implied by the Codex reference.
+
+This addition reopens the product freeze after `6e67e82b`. Receipts for that
+checkpoint remain valid only for that exact candidate; final Visual Check waits
+for the combined implementation and preview-affecting builds.
