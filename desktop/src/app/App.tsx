@@ -514,6 +514,7 @@ export function App() {
       <WorkspaceDock
         key={planner.token ?? "signed-out"}
         open={dockState.open}
+        minMainWidth={paired ? 1280 : 480}
         activeId={dockState.activeId}
         tabs={dockState.tabs.map((tab) => ({
           id: tab.id,

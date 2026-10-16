@@ -168,6 +168,7 @@ test("actual restored notification place forwards without clearing document/chat
 });
 test("App integration source contract: single primary portal, retained workspace, no secondary heading strip", () => {
   assert.equal((source.match(/<WorkspaceDock\b/g) || []).length, 1);
+  assert.match(source, /minMainWidth=\{paired \? 1280 : 480\}/);
   assert.match(
     source,
     /!secondary\s*&&\s*notificationsHost\s*&&\s*createPortal/,
