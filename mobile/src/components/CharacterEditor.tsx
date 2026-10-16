@@ -17,10 +17,9 @@ import {
   type CharacterState,
 } from "@orbyn/core";
 import { usePaneWidth } from "../hooks/usePaneWidth";
-import { Segmented } from "./Segmented";
+import { ChoicePicker } from "./ChoicePicker";
 import { Character } from "./Character";
 import { Button } from "./Button";
-import { Field } from "./Field";
 import { Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
@@ -39,18 +38,18 @@ export function CharacterEditor({
 }) {
   const pane = usePaneWidth();
   const { fontScale } = useWindowDimensions();
-  const stacked = pane.width < 480 * Math.max(1, fontScale);
+  const stacked = pane.width < 280 * Math.max(1, fontScale);
   const [greeting, setGreeting] = useState(0);
   const [state, setState] = useState<CharacterState>("ready");
   const [section, setSection] = useState<string>("shape");
-  const current = CHARACTER_SECTIONS.find((item) => item.id === section)!;
+  const current = CHARACTER_SECTIONS.find((item) => item.id === section);
   return (
     <View style={s.editor} onLayout={pane.onLayout}>
       <View style={[s.preview, stacked && s.stacked]}>
         <Character
           appearance={value}
           state={state}
-          size={128}
+          size={144}
           greeting={greeting}
           name={name || "Orbyn"}
           preview
@@ -69,38 +68,77 @@ export function CharacterEditor({
           />
         </View>
       </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator
-        contentContainerStyle={s.presets}
-        accessibilityLabel="Character presets"
-      >
-        {CHARACTER_PRESETS.map((preset) => (
-          <Pressable
-            key={preset.name}
-            accessibilityRole="button"
-            accessibilityLabel={`Use ${preset.name} preset`}
-            accessibilityState={{ disabled }}
+      <ChoicePicker
+        label="Customize"
+        value={section}
+        onChange={setSection}
+        options={[
+          { value: "presets", label: "Looks" },
+          ...CHARACTER_SECTIONS.map((item) => ({
+            value: item.id,
+            label: item.label,
+          })),
+        ]}
+      />
+      {section === "presets" && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator
+          contentContainerStyle={s.presets}
+          accessibilityLabel="Character presets"
+        >
+          {CHARACTER_PRESETS.map((preset) => (
+            <Pressable
+              key={preset.name}
+              accessibilityRole="button"
+              accessibilityLabel={`Use ${preset.name} preset`}
+              accessibilityState={{ disabled }}
+              disabled={disabled}
+              onPress={() =>
+                onChange({
+                  ...preset.appearance,
+                  presence: value.presence,
+                  movement: value.movement,
+                })
+              }
+              style={[s.preset, disabled && { opacity: 0.5 }]}
+            >
+              <Character
+                appearance={{ ...preset.appearance, presence: "static" }}
+                name={preset.name}
+                size={56}
+                preview
+              />
+              <Text style={s.presetName}>{preset.name}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+      <View style={s.fields}>
+        {current?.fields.map(({ key, label, options }) => (
+          <ChoicePicker
+            key={key}
+            label={label}
+            options={options.map((option) => ({
+              value: option,
+              label: CHARACTER_LABELS[option],
+            }))}
+            value={value[key]}
             disabled={disabled}
-            onPress={() =>
-              onChange({
-                ...preset.appearance,
-                presence: value.presence,
-                movement: value.movement,
-              })
-            }
-            style={[s.preset, disabled && { opacity: 0.5 }]}
-          >
-            <Character
-              appearance={{ ...preset.appearance, presence: "static" }}
-              name={preset.name}
-              size={56}
-              preview
-            />
-            <Text style={s.presetName}>{preset.name}</Text>
-          </Pressable>
+            onChange={(next) => onChange({ ...value, [key]: next })}
+          />
         ))}
-      </ScrollView>
+        {section === "motion" && (
+          <ChoicePicker
+            label="Preview expression"
+            options={Object.entries(CHARACTER_STATE_LABELS).map(
+              ([key, label]) => ({ value: key as CharacterState, label }),
+            )}
+            value={state}
+            onChange={setState}
+          />
+        )}
+      </View>
       <View style={s.actions}>
         <Button
           title="Surprise me"
@@ -123,58 +161,28 @@ export function CharacterEditor({
           style={s.action}
         />
       </View>
-      <Segmented
-        options={CHARACTER_SECTIONS.map((item) => item.id)}
-        value={section}
-        onChange={setSection}
-        labels={Object.fromEntries(
-          CHARACTER_SECTIONS.map((item) => [item.id, item.label]),
-        )}
-        accessibilityLabel="Customization category"
-      />
-      {current.fields.map(({ key, label, options }) => (
-        <Field key={key} label={label}>
-          <Segmented
-            options={options as readonly string[]}
-            labels={CHARACTER_LABELS}
-            value={value[key]}
-            disabled={disabled}
-            wrap
-            accessibilityLabel={label}
-            onChange={(next) => onChange({ ...value, [key]: next })}
-          />
-        </Field>
-      ))}
-      {section === "motion" && (
-        <Field label="Preview expression">
-          <Segmented
-            options={Object.keys(CHARACTER_STATE_LABELS) as CharacterState[]}
-            value={state}
-            onChange={setState}
-            wrap
-            labels={CHARACTER_STATE_LABELS}
-            accessibilityLabel="Preview expression"
-          />
-        </Field>
-      )}
     </View>
   );
 }
 const s = themed(() =>
   StyleSheet.create({
-    editor: { gap: 12, marginVertical: 12 },
+    editor: { gap: 12, marginVertical: 12, minWidth: 0 },
+    fields: { gap: 8 },
     preview: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      paddingVertical: 8,
+      gap: 16,
+      padding: 16,
+      borderRadius: radii.card,
+      backgroundColor: colors.surfaceMuted,
     },
-    stacked: { flexDirection: "column", alignItems: "stretch" },
-    caption: { flex: 1, minWidth: 0, gap: 4 },
+    stacked: { flexDirection: "column", alignItems: "center" },
+    caption: { flexShrink: 1, minWidth: 0, gap: 8 },
     name: { fontFamily: fonts.semibold, fontSize: 18, color: colors.text },
     presets: { gap: 8, paddingVertical: 4 },
     preset: {
-      width: 100,
+      width: 104,
+      minHeight: 100,
       alignItems: "center",
       gap: 4,
       padding: 8,
@@ -190,6 +198,6 @@ const s = themed(() =>
       color: colors.text,
     },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    action: { marginBottom: 0 },
+    action: { marginBottom: 0, flexShrink: 1 },
   }),
 );
