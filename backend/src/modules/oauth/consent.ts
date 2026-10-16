@@ -190,6 +190,8 @@ export async function checkRequest(
     },
     requested_access: accessFromScopes(req.scopes.join(" ")),
     requested_bookings: req.scopes.includes("orbyn:bookings"),
+    requested_offline_access: req.scopes.includes("offline_access"),
+    access_token_lifetime_seconds: env.OAUTH_ACCESS_TTL,
     account: null,
   };
   if (!who) return check;

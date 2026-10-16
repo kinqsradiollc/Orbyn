@@ -797,6 +797,10 @@ export type OAuthCheck = {
   /** What the app asked for, as an access level. */
   requested_access: AgentAccess;
   requested_bookings: boolean;
+  /** Whether the app requested renewable access; absent on older servers. */
+  requested_offline_access?: boolean;
+  /** Configured access-token lifetime, before any earlier consent expiry. */
+  access_token_lifetime_seconds?: number;
   /** Null when not signed in: the page asks you to sign in first. */
   account: {
     name: string;

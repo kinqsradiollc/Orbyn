@@ -499,6 +499,8 @@ test("full sign-in with PKCE: check, consent, code with state and iss, tokens, M
   assert.equal(out.json().client.verified, true);
   assert.equal(out.json().client.redirect_host, "agent.example.com");
   assert.equal(out.json().account, null);
+  assert.equal(out.json().requested_offline_access, true);
+  assert.equal(out.json().access_token_lifetime_seconds, env.OAUTH_ACCESS_TTL);
   assert.deepEqual(out.json().resource, {
     kind: "mcp",
     url: env.MCP_PUBLIC_URL,
@@ -754,6 +756,13 @@ test("refresh tokens rotate; reusing a spent one revokes the family and pauses t
 
 test("access expiry keeps OAuth restorable while refresh credentials survive", async () => {
   const who = await h.register("oauth-restorable-expiry");
+  const renewable = await check(request().req, who.token);
+  assert.equal(renewable.statusCode, 200, renewable.body);
+  assert.equal(renewable.json().requested_offline_access, true);
+  assert.equal(
+    renewable.json().access_token_lifetime_seconds,
+    env.OAUTH_ACCESS_TTL,
+  );
   const tokens = await connect(who, { access: "read" });
   await pool.query(
     "UPDATE agent_tokens SET expires_at=now()-interval '1 minute' WHERE grant_id=$1 AND kind='access'",
@@ -849,7 +858,27 @@ test("a recently consumed refresh token cannot recover successor credentials", a
 
 test("code exchange without offline consent never issues a refresh token", async () => {
   const who = await h.register("oauth-online-only");
-  const c = await connect(who, { access: "read" }, { scope: "orbyn:read" });
+  // Follow the literal resource challenge without opting into offline access.
+  const challenge = await h.post({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/list",
+  });
+  const scope = String(challenge.headers["www-authenticate"]).match(
+    /(?:^|, )scope="([^"]+)"/,
+  )?.[1];
+  assert.equal(scope, "orbyn:read");
+  const online = request({ scope });
+  for (const session of [undefined, who.token]) {
+    const inspected = await check(online.req, session);
+    assert.equal(inspected.statusCode, 200, inspected.body);
+    assert.equal(inspected.json().requested_offline_access, false);
+    assert.equal(
+      inspected.json().access_token_lifetime_seconds,
+      env.OAUTH_ACCESS_TTL,
+    );
+  }
+  const c = await connect(who, { access: "read" }, { scope });
   assert.equal(c.refresh_token, undefined);
   assert.equal(
     (
@@ -861,6 +890,20 @@ test("code exchange without offline consent never issues a refresh token", async
     0,
   );
   assert.equal((await h.legacy(c.access_token, "ping")).status, 200);
+  await pool.query(
+    "UPDATE agent_tokens SET expires_at=now()-interval '1 minute' WHERE grant_id=$1 AND kind='access'",
+    [c.grant],
+  );
+  assert.equal((await h.legacy(c.access_token, "ping")).status, 401);
+  const own = (await h.call(who.token, "GET", "/me/agents"))
+    .json()
+    .grants.find((grant: { id: string }) => grant.id === c.grant);
+  assert.equal(own.reconnect_required, true);
+  assert.equal(
+    (await h.call(who.token, "POST", `/me/agents/${c.grant}/restore`))
+      .statusCode,
+    409,
+  );
 });
 test("new consent invalidates old access and refresh credentials", async () => {
   const who = await h.register("oauth-consent-generation");
