@@ -424,6 +424,9 @@ export function App() {
                   planner={planner}
                   onOpenNotifications={() => openDock()}
                   onOpenDockObject={openDock}
+                  navigationAvailableWidth={
+                    mainLayout.width || window.innerWidth
+                  }
                   onDockNavigate={() => {
                     focusPane("main");
                     actDock({ type: "hide", account: planner.token ?? null });
@@ -486,6 +489,9 @@ export function App() {
                     planner={planner}
                     onOpenNotifications={() => openDock()}
                     onOpenDockObject={openDock}
+                    navigationAvailableWidth={
+                      mainLayout.width || window.innerWidth
+                    }
                     onDockNavigate={() => {
                       focusPane("main");
                       actDock({ type: "hide", account: planner.token ?? null });
@@ -576,6 +582,7 @@ function WorkspaceController({
   onOpenNotifications,
   onOpenDockObject,
   onDockNavigate,
+  navigationAvailableWidth,
   notificationsHost = null,
   initialPlace,
   ownsEvents,
@@ -590,6 +597,7 @@ function WorkspaceController({
   onOpenNotifications: () => void;
   onOpenDockObject: (target: ObjectRef) => void;
   onDockNavigate: () => void;
+  navigationAvailableWidth: number;
   notificationsHost?: HTMLElement | null;
   registerChrome: (scope: string, owner: ChromeOwner) => () => void;
   reportChromeLocation: (scope: string, location: ChromeLocation) => void;
@@ -905,7 +913,7 @@ function WorkspaceController({
   const workspacePane = useElementWidth();
   const { width: fittedSidebarWidth, railed } = sidebarLayout(
     sidebarWidth,
-    workspacePane.width || window.innerWidth,
+    navigationAvailableWidth,
   );
   const narrowNavigation = useMediaQuery("(max-width: 800px)");
   const openNavigation = () => {
@@ -2752,8 +2760,8 @@ function WorkspaceController({
     <Sidebar
       open={!!sharedChromeHost || mobileNav}
       width={fittedSidebarWidth}
-      onResize={sharedChromeHost ? undefined : setSidebarWidth}
-      railed={sharedChromeHost ? false : railed}
+      onResize={narrowNavigation ? undefined : setSidebarWidth}
+      railed={narrowNavigation ? false : railed}
       view={chromeLocation?.view ?? view}
       user={user}
       hasUnread={notices.some((n) => !n.read)}
@@ -2784,9 +2792,7 @@ function WorkspaceController({
       view={chromeLocation?.view ?? view}
       agentName={assistant.agentName}
       navigationOpen={mobileNav}
-      onToggleMenu={() => {
-        setMobileNav(!mobileNav);
-      }}
+      onToggleMenu={openNavigation}
       onOpenNotifications={() =>
         chrome({ kind: "navigate", view: "Notifications" })
       }
@@ -2815,6 +2821,9 @@ function WorkspaceController({
           {!secondary && sharedChromeHost && (
             <SharedNarrowChrome
               host={sharedChromeHost}
+              phone={narrowNavigation}
+              railed={railed}
+              navigationWidth={fittedSidebarWidth}
               header={header}
               navigation={sidebar}
               open={mobileNav}

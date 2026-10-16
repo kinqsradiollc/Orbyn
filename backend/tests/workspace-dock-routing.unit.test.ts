@@ -218,3 +218,31 @@ test("actual old history and reopened notification tabs forward before main depa
     assert.equal(await fn({ type }), false);
   assert.equal(opened, 3);
 });
+test("shared split navigation preserves preferred rail and uses a drawer only at the phone viewport", async () => {
+  const { sidebarLayout } =
+    await import("../../desktop/src/components/SidebarResizer");
+  for (const available of [1440, 1280, 1100, 900]) {
+    const layout = sidebarLayout(72, available);
+    assert.equal(layout.width, 72);
+    assert.equal(layout.railed, true);
+  }
+  assert.match(
+    source,
+    /sidebarLayout\(\s*sidebarWidth,\s*navigationAvailableWidth/,
+  );
+  assert.match(source, /railed=\{narrowNavigation \? false : railed\}/);
+  assert.doesNotMatch(source, /railed=\{sharedChromeHost \? false/);
+  assert.match(source, /phone=\{narrowNavigation\}/);
+  assert.match(source, /useMediaQuery\("\(max-width: 800px\)"\)/);
+  const shared = readFileSync(
+    new URL(
+      "../../desktop/src/components/SharedNarrowChrome.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(shared, /!phone && navigation/);
+  assert.match(shared, /phone && \(\s*<dialog/);
+  assert.match(shared, /!phone && railed \? " is-railed"/);
+  assert.match(shared, /--workspace-sidebar-width/);
+});

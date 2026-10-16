@@ -596,3 +596,10 @@
   min-height: 44px;
   border: 0;
 }
+
+@container workspace-main (max-width: 1279px) {
+  .workspace-duo.has-shared-chrome {
+    padding-left: var(--shared-navigation-width, 0px);
+    box-sizing: border-box;
+  }
+}
