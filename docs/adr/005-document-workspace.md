@@ -1,6 +1,6 @@
 # ADR 005 — Document workspace and direct LaTeX preview
 
-Status: implementation in progress. Owner direction: 16 October 2026.
+Status: accepted scoped implementation, Reviewer round 1/3. Owner direction: 16 October 2026.
 Supersedes ADR 004's document presentation and automatic PDF preview.
 
 ## Why this is a separate delivery unit
@@ -45,3 +45,18 @@ execution and production deployment are separate from browser acceptance.
 
 Current scope, exact commits, failures and delivery:
 [workspace delivery record](../reviews/document-workspace-redesign.md).
+
+## Accepted implementation
+
+Product `4ff3bb6b`, accepted by Reviewer receipt `dc66131a` in round1/3.
+Tester `12a8bb0c` qualifies97/97 affected tests, both client types, package and
+production builds, runtime provenance/parity and exact local Docker target.
+Visual receipts `9dc8853b`, `4806f7bc`, `d3841f54` close all retained workspace
+findings on actual web and Expo. The owner-provided PDF was independently parsed
+and rendered correctly; browser download-event capture is not claimed.
+
+[Delivery ledger](../reviews/document-workspace-redesign.md) records remote/main
+state separately from acceptance. The accepted limits include native apps/font
+scaling, actual browser text/reflow zoom/200%, external-provider execution and
+simultaneous two-app-pane behavior. The supported125% magnification observation
+is not a text reflow or native accessibility qualification.

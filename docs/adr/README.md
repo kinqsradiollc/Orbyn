@@ -1,12 +1,20 @@
 # Architecture decisions
 
-| Decision                                                      | State                    | Purpose                         |
-| ------------------------------------------------------------- | ------------------------ | ------------------------------- |
-| [005 — Document workspace](005-document-workspace.md) | In progress | Viewport workspace and direct LaTeX preview |
-| [004 — Document writing experience](004-document-writing-experience.md) | Completed, accepted scope | Note-first document writing |
-| [003 — Product UI/UX redesign](003-product-ui-ux-redesign.md) | Completed, accepted scope | Current web and mobile design |
-| [001 — Agent platform](archive/001-devday-agent-platform.md)  | Archived, accepted scope | Previous platform delivery      |
-| [002 — Unified MCP](archive/002-unified-mcp-integration.md)   | Archived, accepted scope | Canonical MCP and previews      |
+## Current direction
 
-Current implementation and qualification: [redesign delivery](../reviews/ui-ux-redesign.md).
-Archives preserve decisions, evidence and accepted limitations. An archive is not a claim that deferred checks passed.
+| Decision                                                      | State                 | Purpose                                                            |
+| ------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------ |
+| [005 — Document workspace](005-document-workspace.md)         | Accepted, round 1/3   | Viewport writing workspace and direct LaTeX preview                |
+| [003 — Product UI/UX redesign](003-product-ui-ux-redesign.md) | Accepted shared scope | Web and mobile design outside the superseded document presentation |
+
+## History
+
+| Decision                                                                        | State                    | Purpose                                                    |
+| ------------------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------- |
+| [004 — Document writing experience](archive/004-document-writing-experience.md) | Superseded by 005        | Historical document qualification and two-round acceptance |
+| [002 — Unified MCP](archive/002-unified-mcp-integration.md)                     | Archived, accepted scope | Canonical MCP and previews                                 |
+| [001 — Agent platform](archive/001-devday-agent-platform.md)                    | Archived, accepted scope | Previous platform delivery                                 |
+
+Qualification and delivery: [document workspace](../reviews/document-workspace-redesign.md),
+[shared UI redesign](../reviews/ui-ux-redesign.md), [current tracker](../reviews/adr-current-state.md).
+Archives preserve decisions, evidence and accepted limitations. Archival does not turn deferred checks into passes.

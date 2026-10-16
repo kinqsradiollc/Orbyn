@@ -1,5 +1,7 @@
 # ADR 004 — Document writing experience
 
+Archived historical decision. Its presentation is superseded by [ADR 005](../005-document-workspace.md); the recorded acceptance and two-round history below remain unchanged.
+
 Status: accepted, agreed web and Expo web scope. Accepted 16 October 2026.
 Owner direction: 15 October 2026.
 
@@ -47,7 +49,7 @@ context actions, comments and optional source/Note/PDF transitions. Exercise sav
 recovery and permission state through affected tests; no unrelated screen sweep,
 native build or external provider calls. Review the writing experience itself,
 not only box dimensions. Delivery state belongs in the
-[document redesign record](../reviews/document-writing-redesign.md).
+[document redesign record](../../reviews/document-writing-redesign.md).
 
 ## Acceptance
 
@@ -73,7 +75,6 @@ use their existing one-pane format navigation. Normal prose still edits in place
 Do not remove authored PDF content merely because its page is mostly empty.
 The diagnosed synthetic PDF contains only a short sentence; it was rendering,
 not blank due to a compilation or loading failure.
-
 
 Refinement accepted product: `94a56717`, final Visual report `0faad20f`.
 Source remains visible through PDF interaction, and format transitions release

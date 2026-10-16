@@ -1,6 +1,6 @@
 # Document writing redesign
 
-Decision: [ADR 004](../adr/004-document-writing-experience.md).
+Decision: [ADR 004](../adr/archive/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
 Phase: round2 refinement accepted and delivered to main. Review counter: 2/3.

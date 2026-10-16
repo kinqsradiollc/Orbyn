@@ -1,6 +1,6 @@
 # Document writing redesign — Tester report
 
-Decision: [ADR 004](../adr/004-document-writing-experience.md). This is a
+Decision: [ADR 004](../adr/archive/004-document-writing-experience.md). This is a
 separate follow-up to ADR 003; prior button-size results and ADR 003 acceptance
 are historical and do not qualify this writing redesign.
 

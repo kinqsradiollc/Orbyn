@@ -2,26 +2,26 @@
 
 Decision: [ADR 005](../adr/005-document-workspace.md).
 Baseline: `9d604df6`. Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Branch: `codex/docs-writing-redesign`. Phase: frozen for qualification. Review counter: 1/3.
+Branch: `codex/docs-writing-redesign`. Phase: accepted; main delivery pending. Review counter: 1/3.
 Goal: complete viewport-owned Note/Markdown/LaTeX workspace and direct HTML preview,
 with actual design acceptance on web and Expo after all code is complete.
 
 ## Required scope and completion evidence
 
-| Requirement                                       | Evidence needed                                                   | Current disposition |
-| ------------------------------------------------- | ----------------------------------------------------------------- | ------------------- |
-| Persistent toolbar and readable Note              | Actual writing/scroll and design review                           | In progress         |
-| Dedicated source-left/result-right workspace      | Actual complete-document mode, no nested duplicate editors        | In progress         |
-| Resizable independently scrolling panes           | Pointer + keyboard resize and real long content                   | In progress         |
-| Collapsible compact library and useful viewport   | Wide, split app pane and narrow task-space review                 | In progress         |
-| Phone Source/Preview navigation                   | Expo actual transition/draft preservation                         | In progress         |
-| Direct HTML LaTeX preview                         | Full starter, headings/prose/math/lists and continuous typing     | In progress         |
-| Stable last-success rendering                     | Incomplete/unsupported source, repair, same host, no PDF flashing | In progress         |
-| Explicit PDF export                               | Revision/access fences; failure leaves editor and preview intact  | In progress         |
-| Storage, comments, assistant and source ownership | Affected formal tests and UI entry/recovery                       | In progress         |
-| Formal Test → Review                              | Exact frozen candidate and bounded counter                        | Pending             |
-| Visual actual design assessment web + Expo        | Whole completed code before requested design batch                | Pending             |
-| Main delivery                                     | Accepted source, verified remote ref                              | Pending             |
+| Requirement                                       | Evidence needed                                                   | Current disposition      |
+| ------------------------------------------------- | ----------------------------------------------------------------- | ------------------------ |
+| Persistent toolbar and readable Note              | Actual writing/scroll and design review                           | Verified scoped evidence |
+| Dedicated source-left/result-right workspace      | Actual complete-document mode, no nested duplicate editors        | Verified scoped evidence |
+| Resizable independently scrolling panes           | Pointer + keyboard resize and real long content                   | Verified scoped evidence |
+| Collapsible compact library and useful viewport   | Wide and measured narrow workspace; simultaneous duo excluded     | Verified scoped evidence |
+| Phone Source/Preview navigation                   | Expo actual transition/draft preservation                         | Verified scoped evidence |
+| Direct HTML LaTeX preview                         | Full starter, headings/prose/math/lists and continuous typing     | Verified scoped evidence |
+| Stable last-success rendering                     | Incomplete/unsupported source, repair, same host, no PDF flashing | Verified scoped evidence |
+| Explicit PDF export                               | Revision/access fences; failure leaves editor and preview intact  | Verified scoped evidence |
+| Storage, comments, assistant and source ownership | Affected formal tests and UI entry/recovery                       | Verified scoped evidence |
+| Formal Test → Review                              | Exact frozen candidate and bounded counter                        | Qualified                |
+| Visual actual design assessment web + Expo        | Whole completed code before requested design batch                | Qualified                |
+| Main delivery                                     | Accepted source, verified remote ref                              | Pending remote push      |
 
 ## Initial evidence and architecture
 
@@ -130,3 +130,41 @@ final-batch harness assertions initially lacked document.body/anchor.remove or
 expected immediate URL revocation; browser stubs/timer assertions were corrected
 without weakening source/authority checks. Formal exact-candidate qualification
 and targeted actual Visual closure remain pending. Review counter remains1/3.
+
+## Owner-provided PDF artifact
+
+The owner supplied `/Users/anhdang/Downloads/document (1).pdf` during final
+qualification. Root inspected it read-only with pypdf and rendered both pages
+with Poppler90dpi. It is a valid15,037-byte two-page A4 PDF, SHA256
+`be66302946bc7f002468c896acbc695ed4c035702b1c5d7bb8a74da601d15109`.
+Page1 contains “A clearer preview.” and number1; page2 contains “Second page
+retained.” and number2. The page break, numbering and text render correctly.
+Whitespace reflects the intentionally short test source, not missing rendering.
+This is an owner-supplied actual-download artifact; it is not an automated
+browser download event or proof of the final feedback UI by itself.
+Original file was unchanged. Render inspections are under
+`/private/tmp/orbyn-adr005-pdf-review/tmp/pdfs/`.
+
+## Final acceptance
+
+Product `4ff3bb6b780e5ca8df2dee7f0f30095d6df9c6a2` is approved in Reviewer
+round1/3 by `dc66131a`; all W1–W3 and W-V1–W-V8 are closed. Formal Tester
+`12a8bb0c` passes97/97, both client types, packages, runtime asset/parity checks,
+host production build and exact Docker image `orbyn-adr005-web:4ff3bb6b`
+(linux/arm64). Visual `9dc8853b` plus `4806f7bc` and `d3841f54` retain
+actual design, interaction, failure/repair and fixture-cleanup receipts.
+
+Limits are explicit: no native-device or native font-scaling proof, live assistant
+execution/generated approval, actual Chrome text/reflow zoom/200%, simultaneous
+two-app-pane browser behavior or production deployment. Supported125% page
+magnification is separately labelled. Native Chrome exposed personal windows
+instead of the owned QA window; no personal window setting was changed.
+Automated download-event capture timed out; the owner supplied the real correctly
+rendered PDF. No required concrete finding remains open for the agreed scope.
+
+Source and runtime configuration need no new env variables, service or migration.
+Existing compiler is retained solely for explicit PDF export. Preview servers
+remain on5174/8083 with guarded local API8008. ADR004 is archived with its
+historical acceptance/counter intact;005 is the current document decision.
+Delivery/push verification follows this scoped acceptance; deployment remains
+owner-controlled. Unrelated C6 report edits are preserved.
