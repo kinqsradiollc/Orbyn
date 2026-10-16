@@ -2,7 +2,7 @@
 
 Decision: [ADR 005](../adr/005-document-workspace.md).
 Baseline: `9d604df6`. Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Branch: `codex/docs-writing-redesign`. Phase: accepted; main delivery pending. Review counter: 1/3.
+Branch: `codex/docs-writing-redesign`. Phase: accepted and delivered to main. Review counter: 1/3.
 Goal: complete viewport-owned Note/Markdown/LaTeX workspace and direct HTML preview,
 with actual design acceptance on web and Expo after all code is complete.
 
@@ -21,7 +21,7 @@ with actual design acceptance on web and Expo after all code is complete.
 | Storage, comments, assistant and source ownership | Affected formal tests and UI entry/recovery                       | Verified scoped evidence |
 | Formal Test → Review                              | Exact frozen candidate and bounded counter                        | Qualified                |
 | Visual actual design assessment web + Expo        | Whole completed code before requested design batch                | Qualified                |
-| Main delivery                                     | Accepted source, verified remote ref                              | Pending remote push      |
+| Main delivery                                     | Accepted source, verified remote ref                              | Verified remote main     |
 
 ## Initial evidence and architecture
 
@@ -168,3 +168,13 @@ remain on5174/8083 with guarded local API8008. ADR004 is archived with its
 historical acceptance/counter intact;005 is the current document decision.
 Delivery/push verification follows this scoped acceptance; deployment remains
 owner-controlled. Unrelated C6 report edits are preserved.
+
+## Main delivery receipt
+
+Accepted lineage fast-forward pushed from `9d604df6` to
+`799859de5e55746713019dec72fcd784a3c8e268` on `origin/main`.
+`git ls-remote origin refs/heads/main` returned that exact commit after push.
+Product remains the qualified `4ff3bb6b`; later commits are reports and decision
+cleanup. Closing tracker/ledger documentation follows this delivery receipt.
+No production deploy was performed. Running web5174/Expo8083 remain available
+from the accepted checkout. User-supplied PDF was read-only and unchanged.
