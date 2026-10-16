@@ -15,30 +15,30 @@ main. Its deployment and listed follow-ups remain user-owned, deferred or
 unverified, not passes. See [final reconciliation](final-integration-2026-10-12.md).
 
 **ADR 003 remains technically accepted and delivered to main** at runtime
-`e2813634`; remote advanced from `c7b3bdb7` to `6a8cb5ca`. Its recorded scope,
-evidence and exclusions are preserved below. The owner rejected the document
-editing experience and opened a focused full document-writing redesign under
-ADR 004; this supersedes only the document presentation, not ADR 003's other
-accepted work.
+`e2813634`; remote advanced from `c7b3bdb7` to `6a8cb5ca`. **ADR 004 was accepted
+in Reviewer round 2/3 and delivered to main** at `6a46624e`; its source, evidence
+and nonblocking “Keep editing” follow-up remain in the historical records. The
+owner's new ADR 005 document-workspace direction supersedes the rejected ADR 004
+presentation/auto-PDF approach while preserving ADR 002–004 history, including
+the archived [ADR 004](../adr/archive/004-document-writing-experience.md).
 
-**ADR 004 is accepted in Reviewer round 2/3 and delivered to `main`.** Final
-product is `94a56717`; Visual report `0faad20f` closes DW-V5 PDF blur, DW-V6
-duplicate editor and DW-V7 source height. The accepted layout keeps source left
-and Note right, retains visible code/PDF while editing, supports mobile source
-scroll at 240px and stacked panes at 320px, and verifies actual PDF controls and
-saved page-2 zoom. Tester `8f2d1bb1` passed **7/7** plus mobile types on the final
-product; preceding exact-source qualification `41fb7890` passed **57/57** plus
-both client types. Desktop build `6673f912` is historical evidence, not a build
-of the final product. Read-only Reviewer granted final acceptance in round 2/3.
-Accepted lineage was fast-forward pushed from `1b19373b` to remote
-`6a46624ebe71a22d8e6863ae4ed01fcb05833cb3` (`6a46624e`); the remote ref was
-verified. The writing-first Note redesign preserves earlier ADR 003 acceptance
-outside document presentation. The nonblocking “Keep editing” comment remains
-documented as a follow-up. Native applications and external provider/host
-behavior remain outside scope; production deployment is user-owned and is not
-claimed. See [ADR 004](../adr/004-document-writing-experience.md),
-[document-writing redesign record](document-writing-redesign.md),
-[Tester report](document-writing-tester.md), and [visual report](document-writing-visual.md).
+**ADR 005 is accepted in Reviewer round 1/3 and delivered to `main`.** Product
+freeze is `4ff3bb6b` in `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`, branch
+`codex/docs-writing-redesign`. Tester `12a8bb0c` passed **97/97** plus exact
+types, assets, build and Docker qualification. Visual reports `9dc8853b`,
+`4806f7bc` and `d3841f54` close W1–W3 and W-V1–W8; the owner-supplied PDF parsed
+and rendered correctly. Read-only Reviewer `dc66131a` granted final acceptance.
+Root's archive/acceptance commit
+`799859de5e55746713019dec72fcd784a3c8e268` was fast-forward pushed from
+`9d604df6` to `origin/main`, and the remote ref was verified. The final report
+preserves the text-reflow, native, provider and Duo evidence limits; CDP
+magnification does not establish reflow or native behavior. Production is not
+deployed and remains user-owned. See [ADR 005](../adr/005-document-workspace.md),
+[document-workspace redesign record](document-workspace-redesign.md),
+[Tester report](document-workspace-tester.md), [Reviewer report](document-workspace-review.md),
+and [Visual report](document-workspace-visual.md). Preserve all earlier failure
+receipts and scope boundaries; acceptance does not extend to native apps,
+external provider/Duo behavior or production deployment.
 
 ## Previous delivery — historical checkpoint entries
 
