@@ -30,6 +30,7 @@ runInNewContext(
               React.createElement("div", null, children),
           }
         : {
+            Bot: icon,
             CalendarCog: icon,
             Plug: icon,
             ShieldCheck: icon,
@@ -43,20 +44,26 @@ test("settings categories render named buttons and only the active category is c
   for (const selected of [
     "account",
     "planning",
+    "assistants",
     "tags",
     "connections",
     "privacy",
   ]) {
     const html = renderToStaticMarkup(
-      exports.SettingsNavigation({ selected, onSelect() {} }),
+      exports.SettingsNavigation({
+        selected,
+        onSelect() {},
+        contentId: "fixture-content",
+        labelId: "fixture-category",
+      }),
     );
     assert.match(html, /aria-label="Settings categories"/);
     assert.equal((html.match(/aria-current="page"/g) ?? []).length, 1);
-    assert.match(html, new RegExp(`id="settings-category-${selected}"`));
-    assert.equal((html.match(/type="button"/g) ?? []).length, 5);
+    assert.match(html, /id="fixture-category"/);
+    assert.equal((html.match(/type="button"/g) ?? []).length, 6);
     assert.equal(
-      (html.match(/aria-controls="settings-content"/g) ?? []).length,
-      5,
+      (html.match(/aria-controls="fixture-content"/g) ?? []).length,
+      6,
     );
   }
 });
@@ -72,6 +79,7 @@ test("each category action selects its own destination without changing settings
   assert.deepEqual(selected, [
     "account",
     "planning",
+    "assistants",
     "tags",
     "connections",
     "privacy",
@@ -93,8 +101,8 @@ test("settings search still selects the tab and opens the matching section", () 
   assert.match(navigation, /selected=\{tab\}/);
   assert.match(navigation, /onSelect=\{\(next\) =>/);
   assert.match(navigation, /if \(settingsExitAllowed\(\)\) setTab\(next\)/);
-  assert.match(view, /id="settings-content"/);
-  assert.match(view, /aria-labelledby=\{"settings-category-" \+ tab\}/);
+  assert.match(view, /id=\{contentId\}/);
+  assert.match(view, /aria-labelledby=\{categoryId\}/);
 });
 
 test("settings workspace constrains content and uses one compact picker on phone screens", () => {
@@ -124,6 +132,8 @@ test("settings workspace constrains content and uses one compact picker on phone
 test("compact settings picker shares the guarded category action and rejects unknown destinations", () => {
   const chosen: string[] = [];
   const tree = exports.SettingsNavigation({
+    contentId: "fixture-content",
+    labelId: "fixture-category",
     selected: "connections",
     onSelect: (id: string) => chosen.push(id),
   });
@@ -133,6 +143,7 @@ test("compact settings picker shares the guarded category action and rejects unk
   for (const id of [
     "account",
     "planning",
+    "assistants",
     "tags",
     "connections",
     "privacy",
@@ -143,16 +154,14 @@ test("compact settings picker shares the guarded category action and rejects unk
   assert.deepEqual(chosen, [
     "account",
     "planning",
+    "assistants",
     "tags",
     "connections",
     "privacy",
   ]);
   const html = renderToStaticMarkup(tree);
-  assert.equal(
-    (html.match(/id="settings-category-connections"/g) ?? []).length,
-    1,
-  );
-  assert.match(html, /id="settings-category-connections">Connections/);
+  assert.equal((html.match(/id="fixture-category"/g) ?? []).length, 1);
+  assert.match(html, /id="fixture-category">Connections/);
 });
 
 function settingsFixture() {
@@ -162,6 +171,8 @@ function settingsFixture() {
   const section = ({ children }: { children: React.ReactNode }) =>
     React.createElement("div", null, children);
   const hooks = {
+    useId: () => "settings-fixture",
+    useRef: (current: unknown) => ({ current }),
     useEffect() {},
     useState(initial: unknown) {
       const index = cursor++;
@@ -201,7 +212,12 @@ function settingsFixture() {
           return {
             SettingsFocus: { Provider: section },
             SettingsSection: section,
+            SettingsWorkspace: section,
+            SettingsDetailProvider: section,
+            SettingsOverview: section,
           };
+        if (name === "./SettingsModal")
+          return { settingsExitAllowed: () => true };
         if (name === "../../lib/theme")
           return { useTheme: () => ["system", () => {}] };
         if (name === "../docs/reading")
@@ -245,7 +261,8 @@ test("real settings view category navigation changes content and its accessible 
   nav.props.onSelect("privacy");
   tree = fixture.render();
   const html = renderToStaticMarkup(tree);
-  assert.match(html, /aria-labelledby="settings-category-privacy"/);
+  assert.match(html, /aria-labelledby="settings-fixture-category"/);
+  assert.match(html, /id="settings-fixture-category">Privacy/);
   assert.match(html, /PrivacySettings/);
   assert.doesNotMatch(html, /Your account/);
 });
@@ -265,12 +282,13 @@ test("real settings search result chooses its destination and clears the query",
   tree = fixture.render();
   const found = fixture
     .elements(tree)
-    .find((node) => node.props.id === "settings-found")!;
+    .find((node) => node.props.id === "settings-fixture-found")!;
   const first = fixture.elements(found).find((node) => node.type === "button")!;
   first.props.onClick();
   tree = fixture.render();
   const html = renderToStaticMarkup(tree);
-  assert.match(html, /aria-labelledby="settings-category-account"/);
+  assert.match(html, /aria-labelledby="settings-fixture-category"/);
+  assert.match(html, /id="settings-fixture-category">Account/);
   assert.match(html, /ChatgptConnections/);
-  assert.doesNotMatch(html, /id="settings-found"/);
+  assert.doesNotMatch(html, /id="settings-fixture-found"/);
 });

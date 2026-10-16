@@ -36,7 +36,37 @@ test("web connection help is optional and keeps the developer route available", 
 });
 
 function mobileHelp(open: boolean) {
-  // ConnectedAgentsCard stores connectionHelpOpen in its ninth useState slot.
+  // Locate the hook by its binding so adding unrelated state cannot change this fixture.
+  const source = read("mobile/src/screens/ConnectedAgents.tsx");
+  const ast = ts.createSourceFile(
+    "ConnectedAgents.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const owner = ast.statements.find(
+    (node) =>
+      ts.isFunctionDeclaration(node) &&
+      node.name?.text === "ConnectedAgentsCard",
+  )!;
+  let helpSlot = -1;
+  let hookCount = 0;
+  const visitHook = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer) &&
+      node.initializer.expression.getText(ast) === "useState"
+    ) {
+      if (node.name.getText(ast).includes("connectionHelpOpen"))
+        helpSlot = hookCount;
+      hookCount++;
+    }
+    ts.forEachChild(node, visitHook);
+  };
+  visitHook(owner);
+  assert.ok(helpSlot >= 0);
   let index = 0;
   let next: boolean | undefined;
   const exports: any = {};
@@ -45,9 +75,9 @@ function mobileHelp(open: boolean) {
     useState(initial: any) {
       const slot = index++;
       return [
-        slot === 8 ? open : initial,
+        slot === helpSlot ? open : initial,
         (value: boolean) => {
-          if (slot === 8) next = value;
+          if (slot === helpSlot) next = value;
         },
       ];
     },
@@ -69,7 +99,6 @@ function mobileHelp(open: boolean) {
       get: (_target, name) => (name === "animateLayout" ? () => {} : component),
     },
   );
-  const source = read("mobile/src/screens/ConnectedAgents.tsx");
   runInNewContext(
     ts.transpileModule(source, {
       compilerOptions: {

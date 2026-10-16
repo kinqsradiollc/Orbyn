@@ -120,7 +120,8 @@ test("settings groups mount lazily, retain drafts while folded, and cannot hide 
     await React.act(async () => root.render(render(true)));
     assert.equal(button().disabled, true);
     await React.act(async () => button().click());
-    assert.equal(button().getAttribute("aria-expanded"), "true");
+    assert.equal(button().textContent, "Back");
+    assert.equal(input.closest('[aria-hidden="true"]'), null);
     await React.act(async () => root.render(render()));
     await React.act(async () => button().click());
     assert.equal(input.closest('[aria-hidden="true"]') !== null, true);
@@ -159,7 +160,7 @@ test("Connections groups every service and compiler deployments reap sandbox chi
   for (const title of [
     "Overnight schedule",
     "Reminders",
-    "Agent identity",
+    "Background & overnight",
     "Agent context",
     "Instructions",
   ])

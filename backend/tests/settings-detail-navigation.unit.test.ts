@@ -68,6 +68,7 @@ async function fixture(platform: "desktop" | "mobile") {
           onClick: props.onPress,
           disabled: props.disabled,
           "data-accessibility-hidden": props.accessibilityElementsHidden,
+          "aria-label": props.accessibilityLabel,
         },
         props.children,
       );
@@ -139,8 +140,10 @@ async function fixture(platform: "desktop" | "mobile") {
   const click = async (label: string) => {
     const button = Array.from(
       dom.window.document.querySelectorAll("button"),
-    ).find((node: any) => node.textContent.trim() === label) as
-      HTMLButtonElement | undefined;
+    ).find(
+      (node: any) =>
+        (node.getAttribute("aria-label") ?? node.textContent.trim()) === label,
+    ) as HTMLButtonElement | undefined;
     assert.ok(button, `Missing ${platform} button: ${label}`);
     await act(async () => button.click());
   };
@@ -209,7 +212,7 @@ for (const platform of ["desktop", "mobile"] as const) {
         f.dom.window.document.querySelectorAll("button"),
       ).find((node: any) => node.textContent === "Beta") as HTMLElement;
       assert.equal(f.isHidden(betaRow), true);
-      await f.click(platform === "desktop" ? "Back" : "Back · Alpha");
+      await f.click(platform === "desktop" ? "Back" : "Back from Alpha");
       assert.equal(f.isHidden(input), true);
       if (platform === "desktop")
         assert.equal(
@@ -262,14 +265,14 @@ for (const platform of ["desktop", "mobile"] as const) {
         "[data-nested]",
       ) as HTMLElement;
       assert.equal(f.isHidden(input), false);
-      await f.click(platform === "desktop" ? "Back" : "Back · Outer");
+      await f.click(platform === "desktop" ? "Back" : "Back from Outer");
       await f.render(tree(1, core.sectionKey("Nested")));
       assert.equal(
         f.isHidden(input),
         false,
         "nested search must reveal parent too",
       );
-      await f.click(platform === "desktop" ? "Back" : "Back · Outer");
+      await f.click(platform === "desktop" ? "Back" : "Back from Outer");
       await f.render(tree(2, core.sectionKey("Nested")));
       assert.equal(
         f.isHidden(input),
