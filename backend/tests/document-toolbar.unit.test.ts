@@ -148,3 +148,28 @@ test("app navigation adapts to width and exposes only the narrow-screen menu", (
   assert.match(header, /className="icon-button mobile-menu"/);
   assert.match(header, /aria-expanded=\{navigationOpen\}/);
 });
+
+test("Library return and page selection honor editor departure guards", async () => {
+  const source = parse("desktop/src/features/docs/DocsView.tsx");
+  for (const name of ["select", "openPage"]) {
+    const declaration = find(source, (node) => ts.isVariableDeclaration(node) && node.name.getText(source) === name) as ts.VariableDeclaration;
+    const code = ts.transpileModule(`globalThis.invoke = ${declaration.initializer!.getText(source)};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+    for (const allow of [false, true]) {
+      const changed: string[] = [];
+      let pending: Promise<void> = Promise.resolve();
+      const scope: any = {
+        navigation: { current: 0 }, commandScope: "test-pane", currentOwner: () => true,
+        preparePageLeave: async (value: string) => { assert.equal(value, "test-pane"); return allow; },
+        action: { run: (callback: () => Promise<void>) => { pending = callback(); return pending; } },
+        busy: false, fixedKind: undefined, client: { getDocForEditor: async () => ({ id: "one" }) },
+        Set,
+      };
+      for (const setter of declaration.getText(source).match(/\bset[A-Z]\w+/g) ?? [])
+        scope[setter] = () => changed.push(setter);
+      runInNewContext(code, scope);
+      scope.invoke(name === "select" ? null : "one");
+      await pending;
+      assert.equal(changed.includes("setOpen"), allow, `${name} must preserve draft when departure is refused`);
+    }
+  }
+});

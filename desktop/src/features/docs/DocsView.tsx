@@ -1,8 +1,10 @@
+import { PageCommandScope, preparePageLeave } from "../../app/page-commands";
 import "./document-workspace.css";
 import { DocumentLibraryContext } from "./DocumentWorkspace";
 import { useElementWidth } from "../../hooks/useElementWidth";
 import {
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useId,
@@ -125,6 +127,7 @@ function DocsBody({
   incomingFiles,
   fixedKind,
 }: DocsViewProps) {
+  const commandScope = useContext(PageCommandScope);
   const { ref: paneRef, width: paneWidth } = useElementWidth();
   const libraryId = useId();
   const paneElement = useRef<HTMLDivElement | null>(null);
@@ -800,27 +803,41 @@ function DocsBody({
     trashed = false,
     archived = false,
   ) => {
-    navigation.current++;
-    setTrashOnly(trashed);
-    if (trashed) void loadTrash();
-    setArchivedOnly(archived);
-    if (archived) void loadArchived();
-    setPicked(new Set());
-    setUploadsOnly(uploads);
-    setFolderFilter(folder);
-    setKindFilter(fixedKind ?? kind);
-    setAgendaMonth(month);
-    setFavoritesOnly(favorites);
-    setFadingOnly(false);
-    setQuery("");
-    setTagFilter("");
-    setOpen(null);
-    setNavigationOpen(false);
+    const destination = ++navigation.current;
+    void action.run(async () => {
+      if (
+        !(await preparePageLeave(commandScope)) ||
+        !currentOwner() ||
+        destination !== navigation.current
+      )
+        return;
+      setTrashOnly(trashed);
+      if (trashed) void loadTrash();
+      setArchivedOnly(archived);
+      if (archived) void loadArchived();
+      setPicked(new Set());
+      setUploadsOnly(uploads);
+      setFolderFilter(folder);
+      setKindFilter(fixedKind ?? kind);
+      setAgendaMonth(month);
+      setFavoritesOnly(favorites);
+      setFadingOnly(false);
+      setQuery("");
+      setTagFilter("");
+      setOpen(null);
+      setNavigationOpen(false);
+    });
   };
   const openPage = (id: string) => {
     if (busy) return;
     const destination = ++navigation.current;
     void action.run(async () => {
+      if (
+        !(await preparePageLeave(commandScope)) ||
+        !currentOwner() ||
+        destination !== navigation.current
+      )
+        return;
       const doc = await client.getDocForEditor(id);
       if (!currentOwner() || destination !== navigation.current) return;
       setOpen(doc);
@@ -1122,9 +1139,7 @@ function DocsBody({
             showLibrary(false);
             event.currentTarget
               .closest(".docs-workspace")
-              ?.querySelector<HTMLButtonElement>(
-                '.docs-nav-toggle',
-              )
+              ?.querySelector<HTMLButtonElement>(".docs-nav-toggle")
               ?.focus();
           }
         }}
