@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { EMPTY_LATEX_DOCUMENT, docWholeLatex } from "@orbyn/core";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -189,5 +190,42 @@ test("a fresh source owner cannot inherit another document's last-good output", 
   } finally {
     first.dom.window.close();
     second.dom.window.close();
+  }
+});
+
+test("exact empty starter and historical null starter render without failure", async () => {
+  const { dom, update } = mount();
+  try {
+    for (const source of [
+      EMPTY_LATEX_DOCUMENT,
+      EMPTY_LATEX_DOCUMENT.replace(
+        "\\begin{document}",
+        "\\begin{document}\n\\null",
+      ),
+    ]) {
+      await update(source);
+      assert.doesNotMatch(
+        dom.window.document.querySelector("#status")!.textContent!,
+        /Couldn.t|paused/,
+      );
+      assert.equal(
+        dom.window.document.querySelector("main")!.textContent!.trim(),
+        "",
+      );
+    }
+    await update(
+      docWholeLatex([
+        { type: "heading", level: 1, text: "Plan" },
+        { type: "paragraph", text: "Current note" },
+        { type: "math", text: "x^2" },
+      ]),
+    );
+    assert.match(
+      dom.window.document.querySelector("main")!.textContent!,
+      /Current note/,
+    );
+    assert.ok(dom.window.document.querySelector(".katex"));
+  } finally {
+    dom.window.close();
   }
 });

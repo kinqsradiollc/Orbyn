@@ -130,6 +130,8 @@ import {
   serializeDoc,
   setTodoSource,
   editDocSource,
+  editDocWholeLatex,
+  withDocLatexSource,
   ticksTakenFrom,
   type Doc,
   type DocBlock,
@@ -508,7 +510,7 @@ function LegacyDocEditor({
     };
   }, []);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
-  const [latexSourceNumber, setLatexSourceNumber] = useState(0);
+  const [latexSourceNumber, setLatexSourceNumber] = useState(-1);
   const [sourcePreviewMode, setSourcePreviewMode] = useState<
     "markdown" | "latex"
   >("markdown");
@@ -3334,7 +3336,10 @@ function LegacyDocEditor({
           style={workspace.style}
           data-source-open={!!sourcePreview || undefined}
           data-latex-source={
-            (!!sourcePreview && sourcePreviewMode === "latex") || undefined
+            (!!sourcePreview &&
+              sourcePreviewMode === "latex" &&
+              latexSourceNumber >= 0) ||
+            undefined
           }
           data-pane-view={workspace.view}
           data-compact={workspace.compact || undefined}
@@ -3401,6 +3406,32 @@ function LegacyDocEditor({
                           quote: block.text,
                         });
                       }
+                    }
+                  : undefined
+              }
+              onLatexChange={
+                canWrite && !reading && !suggesting
+                  ? (text, expected, sourceNumber = -1) => {
+                      if (
+                        live.current.blocks !== expected &&
+                        JSON.stringify(live.current.blocks) !==
+                          JSON.stringify(expected)
+                      )
+                        throw new Error(
+                          "The document changed. Restore the current document before editing.",
+                        );
+                      const next =
+                        sourceNumber < 0
+                          ? editDocWholeLatex(live.current.blocks, text)
+                          : withDocLatexSource(
+                              live.current.blocks,
+                              text,
+                              sourceNumber,
+                            );
+                      if (next !== live.current.blocks) {
+                        update(next);
+                      }
+                      return next;
                     }
                   : undefined
               }
@@ -3493,6 +3524,7 @@ function LegacyDocEditor({
                   setDownloadMenu(false);
                   setFocused(null);
                   if (canWrite && mode === "read") changeMode("edit");
+                  setLatexSourceNumber(-1);
                   setSourcePreviewMode(format);
                   setSourcePreview(doc.id);
                 }}
@@ -4096,7 +4128,11 @@ function LegacyDocEditor({
           >
             <div
               className="document-latex-result"
-              hidden={!sourcePreview || sourcePreviewMode !== "latex"}
+              hidden={
+                !sourcePreview ||
+                sourcePreviewMode !== "latex" ||
+                latexSourceNumber < 0
+              }
             >
               <div className="document-pane-title">Preview</div>
               <DocLatexDocumentPreview />

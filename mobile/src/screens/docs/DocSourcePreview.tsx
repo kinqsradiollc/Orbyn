@@ -13,6 +13,8 @@ import {
 } from "react-native";
 import {
   docLatexBlock,
+  docWholeLatex,
+  docWholeLatexCanExport,
   withDocLatexSource,
   EMPTY_LATEX_DOCUMENT,
   docFragmentIndex,
@@ -55,9 +57,11 @@ export function DocSourcePreview({
   onModeChange,
   compileReady = true,
   leaveCheck,
-  initialSourceNumber = 0,
+  initialSourceNumber = -1,
+  wholeDocumentExportable = true,
 }: {
   initialSourceNumber?: number;
+  wholeDocumentExportable?: boolean;
   blocks: DocBlock[];
   docId: string;
   onAppLink: (url: string) => void;
@@ -102,8 +106,15 @@ export function DocSourcePreview({
     (block) => block.type === "code" && block.lang === "latex-document",
   );
   const latex = docLatexBlock(blocks, sourceNumber);
+  const pdfSupported =
+    sourceNumber >= 0 ||
+    (wholeDocumentExportable && docWholeLatexCanExport(blocks));
+  const wholeLatexTooLong =
+    sourceNumber < 0 && docWholeLatex(blocks).length > 20_000;
   const [latexText, setLatexText] = useState(
-    latex?.text ?? EMPTY_LATEX_DOCUMENT,
+    sourceNumber < 0
+      ? docWholeLatex(blocks)
+      : (latex?.text ?? EMPTY_LATEX_DOCUMENT),
   );
   const sharedPreview = useDocLatexPreview();
   const [compiling, setCompiling] = useState(false);
@@ -119,7 +130,8 @@ export function DocSourcePreview({
   }, [latexText, sourceNumber]);
   const compile = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (latex) setLatexText(latex.text);
+    if (sourceNumber >= 0 && latex && !liveSourceError.current)
+      setLatexText(latex.text);
   }, [latex?.text]);
   useEffect(
     () => () => {
@@ -131,6 +143,7 @@ export function DocSourcePreview({
     if (
       compile.current ||
       !compileReady ||
+      !pdfSupported ||
       sourceError ||
       !(onSourceChange || onLatexChange)
     )
@@ -210,6 +223,7 @@ export function DocSourcePreview({
     ownerBlocks.current = blocks;
     acceptedBlocks.current.add(blocks);
     setSourceText(canonical.source);
+    if (sourceNumber < 0) setLatexText(docWholeLatex(blocks));
     setSourceError("");
   }, [blocks, canonical.source]);
   const map = useMemo(
@@ -220,6 +234,7 @@ export function DocSourcePreview({
     [blocks, canonical, sourceText, sourceError, onSourceChange],
   );
   const changeSource = (text: string) => {
+    if (!navigationAlive.current || session.token !== navigationOwner) return;
     if (!onSourceChange || mustRestore.current || navigationPending.current)
       return;
     setSourceSelection(undefined);
@@ -235,6 +250,7 @@ export function DocSourcePreview({
       ownerBlocks.current = next;
       acceptedBlocks.current.add(next);
       acceptedSource.current = docSourceMap(next).source;
+      if (sourceNumber < 0) setLatexText(docWholeLatex(next));
       setSourceError("");
     } catch (error) {
       setSourceError(
@@ -245,10 +261,21 @@ export function DocSourcePreview({
     }
   };
   const changeLatex = (text: string) => {
-    if (navigationPending.current) return;
+    if (
+      navigationPending.current ||
+      !navigationAlive.current ||
+      session.token !== navigationOwner
+    )
+      return;
     compile.current?.abort();
     setLatexText(text);
     if (!onLatexChange) {
+      if (sourceNumber < 0) {
+        setSourceError(
+          "This editor cannot apply whole-document LaTeX changes. Your draft is retained; restore the document to continue in Note or Markdown.",
+        );
+        return;
+      }
       try {
         changeSource(
           docSourceMap(
@@ -298,16 +325,6 @@ export function DocSourcePreview({
       if (leaveCheck.current === ready) leaveCheck.current = null;
     };
   }, [leaveCheck]);
-  useEffect(() => {
-    if (
-      sharedPreview &&
-      mode === "latex" &&
-      !docLatexBlock(ownerBlocks.current) &&
-      (onSourceChange || onLatexChange) &&
-      !sourceError
-    )
-      changeLatex(latexText);
-  }, [mode, !!latex, !!sharedPreview]);
   const closeSource = () => {
     if (!sourceError && !navigationPending.current) onClose();
   };
@@ -320,7 +337,9 @@ export function DocSourcePreview({
     const restored = docLatexBlock(blocks, sourceNumber);
     if (!restored && sourceNumber > 0) setSourceNumber(0);
     setLatexText(
-      (restored ?? docLatexBlock(blocks))?.text ?? EMPTY_LATEX_DOCUMENT,
+      sourceNumber < 0
+        ? docWholeLatex(blocks)
+        : ((restored ?? docLatexBlock(blocks))?.text ?? EMPTY_LATEX_DOCUMENT),
     );
     setSourceError("");
   };
@@ -511,7 +530,16 @@ export function DocSourcePreview({
           />
         )}
       </ScrollView>
-      {mode === "latex" && sources.length > 1 && (
+      {mode === "latex" && sourceNumber < 0 && (
+        <Text style={shared.small}>
+          Edit existing text and equations. Keep block markers; use Note or
+          Markdown for structure and rich text.
+          {wholeLatexTooLong
+            ? " This source exceeds the 20,000-character editing limit; continue in Note or Markdown."
+            : !pdfSupported && " Export this document from Note."}
+        </Text>
+      )}
+      {mode === "latex" && sourceNumber >= 0 && sources.length > 0 && (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
           {sources.map((block, index) => (
             <Pressable
@@ -519,8 +547,8 @@ export function DocSourcePreview({
               accessibilityRole="button"
               accessibilityLabel={
                 index === 0
-                  ? "Main LaTeX document"
-                  : `LaTeX document ${index + 1}`
+                  ? "Embedded LaTeX document 1"
+                  : `Embedded LaTeX document ${index + 1}`
               }
               accessibilityState={{ selected: sourceNumber === index }}
               disabled={!!sourceError || navigating}
@@ -541,7 +569,9 @@ export function DocSourcePreview({
               }}
             >
               <Text style={shared.small}>
-                {index === 0 ? "Main document" : `Document ${index + 1}`}
+                {index === 0
+                  ? "Embedded document 1"
+                  : `Embedded document ${index + 1}`}
               </Text>
             </Pressable>
           ))}
@@ -576,6 +606,7 @@ export function DocSourcePreview({
                 disabled={
                   navigating ||
                   !compileReady ||
+                  !pdfSupported ||
                   compiling ||
                   !!sourceError ||
                   !(onSourceChange || onLatexChange)

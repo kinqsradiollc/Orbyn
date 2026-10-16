@@ -102,6 +102,8 @@ import {
   serializeBlock,
   setTodoSource,
   editDocSource,
+  editDocWholeLatex,
+  withDocLatexSource,
   ticksTakenFrom,
   proposeEdit,
   mentionMarkdown,
@@ -349,7 +351,7 @@ function LegacyDocEditor({
     words: string;
   } | null>(null);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
-  const [latexSourceNumber, setLatexSourceNumber] = useState(0);
+  const [latexSourceNumber, setLatexSourceNumber] = useState(-1);
   const [sourcePaneVisible, setSourcePaneVisible] = useState(true);
   const [paneRatio, setPaneRatio] = useState(50);
   useDocumentLibrary(!!sourcePreview);
@@ -3219,6 +3221,7 @@ function LegacyDocEditor({
                   setFocused(null);
                   if (canWrite && mode === "read") chooseMode("edit");
                   setSourcePaneVisible(true);
+                  setLatexSourceNumber(-1);
                   setSourcePreviewMode(format);
                   setSourcePreview(doc.id);
                 }}
@@ -3348,6 +3351,35 @@ function LegacyDocEditor({
                           }
                         : undefined
                     }
+                    onLatexChange={
+                      canWrite && !reading && !suggesting
+                        ? (text, expected, sourceNumber = -1) => {
+                            if (!currentPage())
+                              throw new Error("The account or page changed.");
+                            if (
+                              live.current.blocks !== expected &&
+                              JSON.stringify(live.current.blocks) !==
+                                JSON.stringify(expected)
+                            )
+                              throw new Error(
+                                "The document changed. Restore the current document before editing.",
+                              );
+                            const next =
+                              sourceNumber < 0
+                                ? editDocWholeLatex(live.current.blocks, text)
+                                : withDocLatexSource(
+                                    live.current.blocks,
+                                    text,
+                                    sourceNumber,
+                                  );
+                            if (next !== live.current.blocks) {
+                              remember("type");
+                              update(next);
+                            }
+                            return next;
+                          }
+                        : undefined
+                    }
                     onSourceChange={
                       canWrite && !reading && !suggesting
                         ? (text, expected) => {
@@ -3390,19 +3422,21 @@ function LegacyDocEditor({
                 onChange={setPaneRatio}
               />
             )}
-            {sourcePreview && sourcePreviewMode === "latex" && (
-              <View
-                style={{
-                  flex: sourceBesideNote ? 100 - paneRatio : 1,
-                  minWidth: 0,
-                  minHeight: 0,
-                  display:
-                    !sourceBesideNote && sourcePaneVisible ? "none" : "flex",
-                }}
-              >
-                <DocLatexDocumentPreview />
-              </View>
-            )}
+            {sourcePreview &&
+              sourcePreviewMode === "latex" &&
+              latexSourceNumber >= 0 && (
+                <View
+                  style={{
+                    flex: sourceBesideNote ? 100 - paneRatio : 1,
+                    minWidth: 0,
+                    minHeight: 0,
+                    display:
+                      !sourceBesideNote && sourcePaneVisible ? "none" : "flex",
+                  }}
+                >
+                  <DocLatexDocumentPreview />
+                </View>
+              )}
             <ScrollView
               ref={noteScroll}
               style={{
@@ -3411,7 +3445,7 @@ function LegacyDocEditor({
                 minHeight: 0,
                 display:
                   sourcePreview &&
-                  (sourcePreviewMode === "latex" ||
+                  ((sourcePreviewMode === "latex" && latexSourceNumber >= 0) ||
                     (!sourceBesideNote && sourcePaneVisible))
                     ? "none"
                     : "flex",

@@ -25,6 +25,7 @@ import {
   docContainerBlocks,
   newBlockId,
   docLatexOperation,
+  docWholeLatexOperation,
   docFragmentIndex,
   docEditorSessionDirty,
   parseAppLink,
@@ -879,7 +880,7 @@ function StructuredDocEditorBody({
   });
   const chooseFormat = async (
     format: "note" | "markdown" | "latex",
-    sourceNumber = 0,
+    sourceNumber = -1,
   ) => {
     if (latexOwner.current && !sourceLeaveCheck.current?.()) return;
     const current = store.state;
@@ -1294,10 +1295,16 @@ function StructuredDocEditorBody({
                 >
                   Preview
                 </div>
-                <div className="document-latex-result" hidden={!latexOpen}>
+                <div
+                  className="document-latex-result"
+                  hidden={!latexOpen || latexSourceNumber < 0}
+                >
                   <DocLatexDocumentPreview />
                 </div>
-                <div className="document-note-content" hidden={latexOpen}>
+                <div
+                  className="document-note-content"
+                  hidden={latexOpen && latexSourceNumber >= 0}
+                >
                   {document.format === 2 && (
                     <DocNavigationContext.Provider
                       value={{
@@ -1411,6 +1418,7 @@ function StructuredDocEditorBody({
                 </div>
                 {latexOpen && document && session && (
                   <DocSourcePreview
+                    wholeDocumentExportable={document.format !== 2}
                     leaveCheck={sourceLeaveCheck}
                     compileReady={
                       !state.busy &&
@@ -1479,7 +1487,13 @@ function StructuredDocEditorBody({
                               );
                             store.changeOperation(
                               document,
-                              docLatexOperation(document, text, sourceNumber),
+                              sourceNumber === undefined || sourceNumber < 0
+                                ? docWholeLatexOperation(document, text)
+                                : docLatexOperation(
+                                    document,
+                                    text,
+                                    sourceNumber,
+                                  ),
                             );
                             if (store.state.error) throw store.state.error;
                             const next = store.state.session?.document;

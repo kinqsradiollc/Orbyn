@@ -274,7 +274,13 @@ for (const native of [false, true]) {
     assert.match(renderToStaticMarkup(tree), /Unsaved words/);
     assert.deepEqual(blocks, before);
     assert.doesNotMatch(
-      renderToStaticMarkup(render(core.parseDoc("Different page"))),
+      renderToStaticMarkup(
+        (() => {
+          const next = core.parseDoc("Different page");
+          render(next);
+          return render(next);
+        })(),
+      ),
       /Unsaved words/,
     );
   });
@@ -828,11 +834,12 @@ for (const native of [false, true]) {
 }
 
 for (const native of [false, true]) {
-  test(`${native ? "native" : "web"} opens LaTeX inline with no automatic PDF request and explicit export`, async () => {
+  test(`${native ? "native" : "web"} opens embedded LaTeX inline with no automatic PDF request and explicit export`, async () => {
     const calls: string[] = [];
     const render = fixture(native, true, {
       inline: true,
       initialMode: "latex",
+      initialSourceNumber: 0,
       compileReady: true,
       onCompileLatex: async (source: string) => {
         calls.push(source);
@@ -879,6 +886,7 @@ for (const native of [false, true]) {
       initialMode: "latex",
       compileReady: false,
       onCompileLatex: compile,
+      initialSourceNumber: 0,
     });
     const locked = find(unsaved(blocks), (p) =>
       native ? p.title === "Export PDF" : p.children === "Export PDF",
@@ -892,6 +900,7 @@ for (const native of [false, true]) {
       initialMode: "latex",
       compileReady: true,
       onCompileLatex: compile,
+      initialSourceNumber: 0,
     });
     const tree = saved(blocks);
     const cleanup = saved.dialogEffects
@@ -975,4 +984,107 @@ for (const native of [false, true])
       find(markdown, (p) => p["aria-label"] === "Rendered preview"),
       undefined,
     );
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} whole-document source accepts owner edits, retains invalid draft and reconciles external changes`, () => {
+    let blocks: core.DocBlock[] = [
+      { type: "heading", text: "Plan", level: 1, id: "heading" },
+      { type: "paragraph", text: "Before", id: "line" },
+      {
+        type: "code",
+        lang: "latex-document",
+        text: "Embedded",
+        id: "embedded",
+      },
+    ];
+    const leaveCheck: { current: (() => boolean) | null } = { current: null };
+    const render = fixture(native, true, {
+      inline: true,
+      sourceOnly: true,
+      initialMode: "latex",
+      leaveCheck,
+      onLatexChange: (
+        text: string,
+        expected: core.DocBlock[],
+        ordinal: number,
+      ) => {
+        assert.equal(ordinal, -1);
+        assert.deepEqual(expected, blocks);
+        blocks = core.editDocWholeLatex(blocks, text);
+        return blocks;
+      },
+    });
+    const field = (tree: React.ReactNode) =>
+      find(
+        tree,
+        (p) =>
+          p["aria-label"] === "LaTeX source" ||
+          p.accessibilityLabel === "LaTeX source",
+      )!;
+    const input = (tree: React.ReactNode, value: string) => {
+      const p = field(tree);
+      if (native) p.onChangeText(value);
+      else p.onChange({ currentTarget: { value } });
+    };
+    let tree = render(blocks);
+    assert.equal(field(tree).value, core.docWholeLatex(blocks));
+    assert.match(field(tree).value, /Before/);
+    assert.notEqual(field(tree).value, "Embedded");
+    render.dialogEffects.find((e) => e.deps?.[0] === leaveCheck)!.run();
+    input(tree, field(tree).value.replace("Before", "After"));
+    tree = render(blocks);
+    assert.equal(blocks[1].text, "After");
+    assert.equal(blocks.length, 3);
+    assert.equal(blocks[2].text, "Embedded");
+    assert.equal(leaveCheck.current?.(), true);
+    const invalid = field(tree).value.replace(
+      "After",
+      String.raw`\unknown{Draft}`,
+    );
+    input(tree, invalid);
+    tree = render(blocks);
+    assert.equal(field(tree).value, invalid);
+    assert.equal(blocks[1].text, "After");
+    assert.equal(leaveCheck.current?.(), false);
+    blocks = blocks.map((b) =>
+      b.id === "line" ? { ...b, text: "Remote" } : b,
+    );
+    render(blocks);
+    tree = render(blocks);
+    assert.equal(field(tree).value, invalid);
+    assert.match(renderToStaticMarkup(tree), /Restore the current document/);
+    input(tree, invalid.replace(String.raw`\unknown{Draft}`, "Repaired"));
+    assert.equal(blocks[1].text, "Remote");
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} refuses incomplete whole-document PDF export without a provider call`, () => {
+    let calls = 0;
+    for (const [blocks, wholeDocumentExportable] of [
+      [[{ type: "paragraph", text: "**Rich**", id: "rich" }], true],
+      [[{ type: "paragraph", text: "Nested text", id: "nested" }], false],
+    ] as [core.DocBlock[], boolean][]) {
+      const render = fixture(native, true, {
+        inline: true,
+        initialMode: "latex",
+        wholeDocumentExportable,
+        onCompileLatex: () => {
+          calls++;
+          return Promise.resolve(new Blob());
+        },
+      });
+      const tree = render(blocks);
+      const action = find(tree, (p) =>
+        native ? p.title === "Export PDF" : p.children === "Export PDF",
+      )!;
+      assert.equal(action.disabled, true);
+      if (native) action.onPress();
+      else action.onClick();
+      assert.equal(calls, 0);
+      assert.match(
+        renderToStaticMarkup(tree),
+        /Export this document from Note/,
+      );
+    }
   });

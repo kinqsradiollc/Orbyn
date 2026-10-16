@@ -115,7 +115,10 @@ function receive(event) {
         )
           warnings.push(message);
       };
-      const generator = parse(request.source, {
+      // Compatibility for the previously supplied empty starter. Preserve exact
+      // source for editing/export; LaTeX.js has no \null primitive.
+      const previewSource = request.source.replace(/^\\null[ \t]*$/gm, "");
+      const generator = parse(previewSource, {
         generator: new HtmlGenerator({ hyphenate: false }),
       });
       const blocked = { count: 0 };

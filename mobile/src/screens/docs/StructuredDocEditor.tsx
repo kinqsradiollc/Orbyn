@@ -24,6 +24,7 @@ import {
   docContainerBlocks,
   newBlockId,
   docLatexOperation,
+  docWholeLatexOperation,
   docFragmentIndex,
   docEditorSessionDirty,
   isOfflineError,
@@ -634,7 +635,7 @@ function StructuredDocEditorBody({
   ]);
   const chooseFormat = async (
     format: "note" | "markdown" | "latex",
-    sourceNumber = 0,
+    sourceNumber = -1,
   ) => {
     if (latexOwner.current && !sourceLeaveCheck.current?.()) return;
     const current = store.state;
@@ -1111,6 +1112,7 @@ function StructuredDocEditorBody({
                   </Text>
                   {latexOpen && document && session && (
                     <DocSourcePreview
+                      wholeDocumentExportable={document.format !== 2}
                       leaveCheck={sourceLeaveCheck}
                       compileReady={
                         !state.busy &&
@@ -1184,7 +1186,13 @@ function StructuredDocEditorBody({
                                 );
                               store.changeOperation(
                                 document,
-                                docLatexOperation(document, text, sourceNumber),
+                                sourceNumber === undefined || sourceNumber < 0
+                                  ? docWholeLatexOperation(document, text)
+                                  : docLatexOperation(
+                                      document,
+                                      text,
+                                      sourceNumber,
+                                    ),
                               );
                               if (store.state.error) throw store.state.error;
                               const next = store.state.session?.document;
@@ -1252,7 +1260,8 @@ function StructuredDocEditorBody({
                   <View
                     style={[
                       { flex: 1, minHeight: 0 },
-                      !latexOpen && styles.hiddenPane,
+                      (!latexOpen || latexSourceNumber < 0) &&
+                        styles.hiddenPane,
                     ]}
                   >
                     <DocLatexDocumentPreview />
@@ -1260,7 +1269,11 @@ function StructuredDocEditorBody({
                   <ScrollView
                     ref={previewScroll}
                     nestedScrollEnabled
-                    style={latexOpen ? styles.hiddenPane : { flex: 1 }}
+                    style={
+                      latexOpen && latexSourceNumber >= 0
+                        ? styles.hiddenPane
+                        : { flex: 1 }
+                    }
                     contentContainerStyle={styles.noteCanvas}
                   >
                     <View ref={previewContent} style={styles.previewContent}>
