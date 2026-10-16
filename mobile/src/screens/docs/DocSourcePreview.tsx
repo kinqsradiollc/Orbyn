@@ -108,6 +108,15 @@ export function DocSourcePreview({
   const sharedPreview = useDocLatexPreview();
   const [compiling, setCompiling] = useState(false);
   const [compileError, setCompileError] = useState("");
+  const [pdf, setPdf] = useState<{
+    blob: Blob;
+    source: string;
+    sourceNumber: number;
+    account: typeof session.token;
+  } | null>(null);
+  useEffect(() => {
+    setPdf(null);
+  }, [latexText, sourceNumber]);
   const compile = useRef<AbortController | null>(null);
   useEffect(() => {
     if (latex) setLatexText(latex.text);
@@ -130,12 +139,15 @@ export function DocSourcePreview({
     compile.current = controller;
     setCompiling(true);
     setCompileError("");
+    setPdf(null);
     const snapshot = latexText;
     const account = session.token;
     try {
       const blob = await onCompileLatex(snapshot, controller.signal);
-      if (!controller.signal.aborted && account === session.token)
+      if (!controller.signal.aborted && account === session.token) {
+        setPdf({ blob, source: snapshot, sourceNumber, account });
         await saveFile("document.pdf", blob, "application/pdf");
+      }
     } catch (error) {
       if (!controller.signal.aborted && account === session.token)
         setCompileError(
@@ -581,6 +593,44 @@ export function DocSourcePreview({
               />
             )}
           </View>
+          {pdf &&
+            pdf.source === latexText &&
+            pdf.sourceNumber === sourceNumber &&
+            pdf.account === session.token && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  paddingHorizontal: 12,
+                }}
+              >
+                <Text accessibilityLiveRegion="polite" style={shared.small}>
+                  PDF ready
+                </Text>
+                <Button
+                  title="Save PDF"
+                  secondary
+                  style={{ marginBottom: 0 }}
+                  onPress={() => {
+                    if (pdf.account !== session.token) return;
+                    void saveFile(
+                      "document.pdf",
+                      pdf.blob,
+                      "application/pdf",
+                    ).catch((error) => {
+                      if (pdf.account !== session.token) return;
+                      setCompileError(
+                        error instanceof Error
+                          ? error.message
+                          : "Couldn’t save this PDF. Try again.",
+                      );
+                    });
+                  }}
+                />
+              </View>
+            )}
           {!!compileError && (
             <Text accessibilityRole="alert" style={shared.small}>
               {compileError}

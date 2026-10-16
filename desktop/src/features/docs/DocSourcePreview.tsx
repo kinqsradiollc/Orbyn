@@ -95,6 +95,21 @@ export function DocSourcePreview({
   const sharedPreview = useDocLatexPreview();
   const [compiling, setCompiling] = useState(false);
   const [compileError, setCompileError] = useState("");
+  const [pdf, setPdf] = useState<{
+    url: string;
+    source: string;
+    sourceNumber: number;
+    account: ReturnType<typeof session.get>;
+  } | null>(null);
+  useEffect(() => {
+    setPdf(null);
+  }, [latexText, sourceNumber]);
+  useEffect(
+    () => () => {
+      if (pdf) URL.revokeObjectURL(pdf.url);
+    },
+    [pdf],
+  );
   const compile = useRef<AbortController | null>(null);
   useEffect(() => {
     if (latex) setLatexText(latex.text);
@@ -117,6 +132,7 @@ export function DocSourcePreview({
     compile.current = controller;
     setCompiling(true);
     setCompileError("");
+    setPdf(null);
     const snapshot = latexText;
     const account = session.get();
     try {
@@ -126,8 +142,13 @@ export function DocSourcePreview({
         const link = document.createElement("a");
         link.href = url;
         link.download = "document.pdf";
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setPdf({ url, source: snapshot, sourceNumber, account });
+        document.body.appendChild(link);
+        try {
+          link.click();
+        } finally {
+          link.remove();
+        }
       }
     } catch (error) {
       if (!controller.signal.aborted && account === session.get())
@@ -505,6 +526,28 @@ export function DocSourcePreview({
         </button>
       </div>
       <div className="doc-source-tools">
+        {mode === "latex" && sources.length > 1 && (
+          <Select
+            aria-label="LaTeX document source"
+            value={String(sourceNumber)}
+            disabled={!!sourceError || navigating}
+            onChange={(event) => {
+              const next = Number(event.target.value);
+              setSourceNumber(next);
+              setLatexText(
+                docLatexBlock(ownerBlocks.current, next)?.text ??
+                  EMPTY_LATEX_DOCUMENT,
+              );
+            }}
+          >
+            {sources.map((block, index) => (
+              <option key={block.id ?? index} value={String(index)}>
+                {index === 0 ? "Main document" : `Document ${index + 1}`}
+              </option>
+            ))}
+          </Select>
+        )}
+
         {navigationError && <p role="alert">{navigationError}</p>}
         {navigating && (
           <p className="muted small" role="status">
@@ -619,40 +662,34 @@ export function DocSourcePreview({
                 Ask assistant
               </button>
             )}
+            {pdf &&
+              pdf.source === latexText &&
+              pdf.sourceNumber === sourceNumber &&
+              pdf.account === session.get() && (
+                <span className="doc-pdf-ready">
+                  <span role="status">PDF ready</span>{" "}
+                  <a
+                    className="text-button"
+                    href={pdf.url}
+                    download="document.pdf"
+                  >
+                    Download PDF
+                  </a>
+                </span>
+              )}
             {compileError && <p role="alert">{compileError}</p>}
           </div>
         )}
+        {mode === "latex" && (
+          <details className="document-preview-help">
+            <summary>About web preview</summary>
+            <p>
+              Web preview supports common LaTeX text and maths. Export PDF for
+              package-dependent layout and pagination.
+            </p>
+          </details>
+        )}
       </div>
-      {mode === "latex" && (
-        <details className="document-preview-help">
-          <summary>About web preview</summary>
-          <p>
-            Web preview supports common LaTeX text and maths. Export PDF for
-            package-dependent layout and pagination.
-          </p>
-        </details>
-      )}
-      {mode === "latex" && sources.length > 1 && (
-        <Select
-          aria-label="LaTeX document source"
-          value={String(sourceNumber)}
-          disabled={!!sourceError || navigating}
-          onChange={(event) => {
-            const next = Number(event.target.value);
-            setSourceNumber(next);
-            setLatexText(
-              docLatexBlock(ownerBlocks.current, next)?.text ??
-                EMPTY_LATEX_DOCUMENT,
-            );
-          }}
-        >
-          {sources.map((block, index) => (
-            <option key={block.id ?? index} value={String(index)}>
-              {index === 0 ? "Main document" : `Document ${index + 1}`}
-            </option>
-          ))}
-        </Select>
-      )}
       <div
         className="doc-source-columns"
         data-view={shownView}

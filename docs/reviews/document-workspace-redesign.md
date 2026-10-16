@@ -104,3 +104,29 @@ Review counter1/3, changes required. Builder corrected the combined batch:
 Phase: corrected candidate preparation; next owners Tester then Reviewer closure
 and Visual targeted actual-design completion on the full corrected workspace.
 Unperformed cases in the initial Visual report remain required, not passed.
+
+## Remaining interaction corrections in round 1
+
+Visual corrected-candidate receipt `36eb6e16` closes original visibility/Note/
+mobile-space defects and verifies readable actual rendering, last-good repair,
+source identity, independent scrolling, narrow Expo and contextual comments/history.
+It retains four actual findings: W-V3 footer adds49px outer scrolling, W-V6 pointer
+drag does not move divider, W-V7 export result is silent, W-V8 Library Close
+exits Docs while Back returns to the document. The final correction batch:
+
+- Hides the authenticated page footer only while a document workspace is open.
+- Tracks divider movement on window with cleanup on up/cancel/blur/unmount and
+  temporarily disables owned iframe pointer events; keeps keyboard resize. Mounted
+  web/Expo regressions force capture failure and verify drag + restoration.
+- Shows a source/account-scoped PDF-ready result with a retained download/save
+  action. Appends the automatic download anchor and cleans it up; mobile web
+  delays URL revocation so the browser can consume it. No claim of disk save.
+- Makes Library Close follow the same local return path as Back.
+- Consolidates desktop source selection/actions/help into a bounded wrapping row;
+  removes the redundant source caption on phone-only Source view.
+
+Development97/97 affected tests passed; desktop/mobile types passed. Earlier
+final-batch harness assertions initially lacked document.body/anchor.remove or
+expected immediate URL revocation; browser stubs/timer assertions were corrected
+without weakening source/authority checks. Formal exact-candidate qualification
+and targeted actual Visual closure remain pending. Review counter remains1/3.

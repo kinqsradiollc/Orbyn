@@ -1384,7 +1384,9 @@ function DocsBody({
         }
         guardedClose
         closeDisabled={busy || navigating}
-        onClose={() => leavePage(onClose)}
+        onClose={() =>
+          navigationOpen ? setNavigationOpen(false) : leavePage(onClose)
+        }
         // A page's header is Back, its title, Info and ⋯: with no list
         // behind it, Back closes.
         onBack={

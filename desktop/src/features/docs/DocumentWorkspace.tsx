@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -40,6 +41,8 @@ export function useDocumentWorkspace(
   open: boolean,
 ) {
   const library = useContext(DocumentLibraryContext);
+  const endResize = useRef<(() => void) | null>(null);
+  useEffect(() => () => endResize.current?.(), []);
   const controls = useRef(library);
   controls.current = library;
   const [compact, setCompact] = useState(false);
@@ -108,17 +111,44 @@ export function useDocumentWorkspace(
       }}
       onPointerDown={(event) => {
         event.preventDefault();
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }}
-      onPointerMove={(event) => {
-        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-        const parent =
-          event.currentTarget.parentElement!.getBoundingClientRect();
-        changeRatio(((event.clientX - parent.left) / parent.width) * 100);
-      }}
-      onPointerUp={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId))
-          event.currentTarget.releasePointerCapture(event.pointerId);
+        endResize.current?.();
+        const divider = event.currentTarget;
+        const box = divider.parentElement!.getBoundingClientRect();
+        const pointerId = event.pointerId;
+        const node = root.current;
+        node?.setAttribute("data-resizing", "");
+        const frames = [...(node?.querySelectorAll("iframe") ?? [])];
+        const styles = frames.map((frame) => frame.style.pointerEvents);
+        frames.forEach((frame) => {
+          frame.style.pointerEvents = "none";
+        });
+        const move = (next: PointerEvent) => {
+          if (next.pointerId === pointerId)
+            changeRatio(
+              ((next.clientX - box.left) / Math.max(1, box.width)) * 100,
+            );
+        };
+        const stop = () => {
+          window.removeEventListener("pointermove", move, true);
+          window.removeEventListener("pointerup", stop, true);
+          window.removeEventListener("pointercancel", stop, true);
+          window.removeEventListener("blur", stop);
+          frames.forEach((frame, index) => {
+            frame.style.pointerEvents = styles[index];
+          });
+          node?.removeAttribute("data-resizing");
+          endResize.current = null;
+        };
+        endResize.current = stop;
+        window.addEventListener("pointermove", move, true);
+        window.addEventListener("pointerup", stop, true);
+        window.addEventListener("pointercancel", stop, true);
+        window.addEventListener("blur", stop);
+        try {
+          divider.setPointerCapture(pointerId);
+        } catch {
+          /* Window listeners retain the drag when capture is unavailable. */
+        }
       }}
     />
   ) : null;

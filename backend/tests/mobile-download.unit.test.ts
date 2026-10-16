@@ -53,6 +53,7 @@ function mount(
   const links: { href: string; download: string }[] = [];
   const revoked: string[] = [];
   const urls: Blob[] = [];
+  const timers: (() => void)[] = [];
   const File = class {
     uri: string;
     entry: (typeof files)[number];
@@ -73,12 +74,15 @@ function mount(
     exports,
     Blob,
     Uint8Array,
+    setTimeout: (callback: () => void) => timers.push(callback),
     document: {
+      body: { appendChild() {} },
       createElement(kind: string) {
         assert.equal(kind, "a");
         const a = {
           href: "",
           download: "",
+          remove() {},
           click() {
             if (options.clickError) throw options.clickError;
             links.push({ href: a.href, download: a.download });
@@ -141,7 +145,19 @@ function mount(
       throw new Error(`Unexpected module ${id}`);
     },
   });
-  return { api: exports, requests, files, shared, texts, links, revoked, urls };
+  return {
+    api: exports,
+    requests,
+    files,
+    shared,
+    texts,
+    links,
+    revoked,
+    urls,
+    flushTimers: () => {
+      for (const callback of timers.splice(0)) callback();
+    },
+  };
 }
 
 for (const platform of ["web", "ios", "android"]) {
@@ -157,6 +173,7 @@ for (const platform of ["web", "ios", "android"]) {
       [...EXPORT_FORMATS],
     );
     assert.ok(f.requests.every((r) => r.id === "page-id"));
+    f.flushTimers();
     for (const [i, format] of EXPORT_FORMATS.entries()) {
       assert.equal(
         f.api.downloadLabel(format),
@@ -237,6 +254,7 @@ test("web download failures revoke the allocated blob URL", async () => {
     f.api.downloadDoc("page-id", "html"),
     (actual) => actual === error,
   );
+  f.flushTimers();
   assert.deepEqual(f.revoked, ["blob:export"]);
 });
 
@@ -267,4 +285,13 @@ test("native string exports keep the text-share fallback when file sharing is un
   await f.api.saveFile("Page.md", "# A page", "text/markdown");
   assert.equal(f.texts[0].message, "# A page");
   assert.equal(f.texts[0].title, "Page.md");
+});
+
+test("web download keeps its blob URL alive until the browser can consume the click", async () => {
+  const f = mount("web");
+  await f.api.saveFile("document.pdf", new Blob(["pdf"]), "application/pdf");
+  assert.equal(f.links.length, 1);
+  assert.deepEqual(f.revoked, []);
+  f.flushTimers();
+  assert.deepEqual(f.revoked, ["blob:export"]);
 });

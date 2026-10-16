@@ -22,13 +22,15 @@ export async function saveFile(
     const blob =
       typeof data === "string" ? new Blob([data], { type: mimeType }) : data;
     const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
     try {
-      const a = document.createElement("a");
       a.href = url;
       a.download = name;
+      document.body.appendChild(a);
       a.click();
     } finally {
-      URL.revokeObjectURL(url);
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
     return;
   }

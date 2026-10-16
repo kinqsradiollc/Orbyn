@@ -22,7 +22,9 @@ function fixture(
   const listeners = new Map<string, (event: any) => void>();
   let focused = 0;
   const document = {
+    body: { appendChild() {} },
     createElement: () => ({
+      remove() {},
       click: () => {
         downloads++;
       },

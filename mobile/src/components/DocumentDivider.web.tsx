@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { colors } from "../theme";
 export type DocumentDividerProps = {
   value: number;
@@ -9,6 +10,8 @@ export function DocumentDivider({
   width,
   onChange,
 }: DocumentDividerProps) {
+  const endResize = useRef<(() => void) | null>(null);
+  useEffect(() => () => endResize.current?.(), []);
   const change = (n: number) =>
     onChange(Math.max(30, Math.min(70, Math.round(n))));
   return (
@@ -42,18 +45,43 @@ export function DocumentDivider({
       }}
       onPointerDown={(event) => {
         event.preventDefault();
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }}
-      onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-          const box =
-            event.currentTarget.parentElement!.getBoundingClientRect();
-          change(((event.clientX - box.left) / Math.max(1, width)) * 100);
+        endResize.current?.();
+        const divider = event.currentTarget;
+        const parent = divider.parentElement!;
+        const box = parent.getBoundingClientRect();
+        const pointerId = event.pointerId;
+        const frames = [...parent.querySelectorAll("iframe")];
+        const styles = frames.map((frame) => frame.style.pointerEvents);
+        frames.forEach((frame) => {
+          frame.style.pointerEvents = "none";
+        });
+        const move = (next: PointerEvent) => {
+          if (next.pointerId === pointerId)
+            change(
+              ((next.clientX - box.left) / Math.max(1, box.width || width)) *
+                100,
+            );
+        };
+        const stop = () => {
+          window.removeEventListener("pointermove", move, true);
+          window.removeEventListener("pointerup", stop, true);
+          window.removeEventListener("pointercancel", stop, true);
+          window.removeEventListener("blur", stop);
+          frames.forEach((frame, index) => {
+            frame.style.pointerEvents = styles[index];
+          });
+          endResize.current = null;
+        };
+        endResize.current = stop;
+        window.addEventListener("pointermove", move, true);
+        window.addEventListener("pointerup", stop, true);
+        window.addEventListener("pointercancel", stop, true);
+        window.addEventListener("blur", stop);
+        try {
+          divider.setPointerCapture(pointerId);
+        } catch {
+          /* Window listeners retain the drag when capture is unavailable. */
         }
-      }}
-      onPointerUp={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId))
-          event.currentTarget.releasePointerCapture(event.pointerId);
       }}
     />
   );

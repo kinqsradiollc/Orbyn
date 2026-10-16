@@ -1104,7 +1104,9 @@ function StructuredDocEditorBody({
                     !sourceVisible && !split && styles.hiddenPane,
                   ]}
                 >
-                  <Text style={styles.paneTitle}>
+                  <Text
+                    style={[styles.paneTitle, !split && { display: "none" }]}
+                  >
                     {latexOpen ? "LaTeX source" : "Markdown source"}
                   </Text>
                   {latexOpen && document && session && (

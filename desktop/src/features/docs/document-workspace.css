@@ -456,3 +456,21 @@
   border-top: 1px solid var(--color-divider);
   border-radius: 0;
 }
+
+.app.workspace .content:has(.docs-workspace.is-document-open) > footer {
+  display: none;
+}
+.document-workspace[data-resizing] {
+  cursor: col-resize;
+  user-select: none;
+}
+.document-workspace .doc-source-tools > .select {
+  flex: 0 1 170px;
+  min-width: 120px;
+}
+.document-workspace .doc-source-tools > .document-preview-help {
+  padding: 0;
+}
+.document-workspace .doc-source-tools > .document-preview-help[open] {
+  flex-basis: 100%;
+}

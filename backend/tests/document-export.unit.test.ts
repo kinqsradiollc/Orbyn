@@ -167,6 +167,11 @@ test("actual source editor exports only on request and preserves source/HTML on 
       await new Promise((resolve) => setImmediate(resolve));
     });
     assert.equal(downloads, 1);
+    assert.match(dom.window.document.body.textContent!, /PDF ready/);
+    const retry = dom.window.document.querySelector(
+      'a[download="document.pdf"]',
+    );
+    assert.equal(retry?.getAttribute("href"), "blob:export");
     assert.equal(dom.window.document.querySelector("iframe"), frame);
     assert.equal(input.value, source);
     await React.act(() => exportButton()!.click());
