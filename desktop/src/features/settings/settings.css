@@ -1146,9 +1146,9 @@
 
 /* Focused Settings editors stay independent of the Settings scroll pane. */
 dialog.settings-editor {
-  width: min(460px, calc(100vw - 16px));
-  max-width: calc(100vw - 16px);
-  max-height: calc(100dvh - 16px);
+  width: min(var(--settings-editor-width, 560px), calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
   padding: 0;
   margin: auto;
 }

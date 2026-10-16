@@ -6,6 +6,16 @@ Branch: `codex/docs-writing-redesign`. Phase: accepted and delivered to main. Re
 Goal: complete viewport-owned Note/Markdown/LaTeX workspace and direct HTML preview,
 with actual design acceptance on web and Expo after all code is complete.
 
+## Subsequent correction boundary — 16 October 2026
+
+The owner demonstrated that the LaTeX format picker opened an independent source
+block rather than the existing note. ADR005's presentation acceptance did not
+qualify whole-document synchronization, and its completion wording omitted that
+contract. [ADR006](../adr/006-document-consistency-and-settings.md) now owns the
+correction, default-starter regression, Settings and connector recovery batch.
+Preserve the earlier receipts as scoped history; do not reuse them as proof for
+these new behaviors.
+
 ## Required scope and completion evidence
 
 | Requirement                                       | Evidence needed                                                   | Current disposition      |

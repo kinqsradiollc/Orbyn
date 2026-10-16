@@ -1,7 +1,8 @@
+import { AgentWarmStart } from "./AgentContext";
 import { ChatgptConnections } from "./ChatgptConnections";
 import { AssistantRulesSettings } from "./AssistantRulesSettings";
 import { AssistantBudgetSettings } from "./AssistantBudgetSettings";
-import { SettingsFocus, SettingsSection } from "./SettingsSection";
+import { SettingsWorkspace, SettingsSection } from "./SettingsSection";
 import { useEffect, useId, useRef, useState } from "react";
 import { settingsExitAllowed } from "./SettingsModal";
 import {
@@ -118,7 +119,7 @@ export function SettingsView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSetting?.seq]);
   return (
-    <SettingsFocus.Provider value={focus}>
+    <SettingsWorkspace focus={focus} resetKey={tab}>
       <div className="settings-workspace">
         <aside className="settings-sidebar">
           <div className="settings-search" role="search">
@@ -312,6 +313,7 @@ export function SettingsView({
           )}
           {tab === "assistants" && (
             <>
+              <AgentWarmStart report={report} />
               <AssistantBudgetSettings userId={user?.id ?? ""} />
               <AssistantRulesSettings userId={user?.id ?? ""} teams={teams} />
             </>
@@ -337,6 +339,6 @@ export function SettingsView({
           )}
         </section>
       </div>
-    </SettingsFocus.Provider>
+    </SettingsWorkspace>
   );
 }

@@ -27,7 +27,7 @@ export function ActivityDialog({ onClose }: { onClose: () => void }) {
     };
   }, [period, retry]);
   return (
-    <SettingsEditor title="Activity" onClose={onClose}>
+    <SettingsEditor wide title="Activity" onClose={onClose}>
       <div
         className="activity-period segmented"
         role="group"

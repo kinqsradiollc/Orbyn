@@ -1,0 +1,44 @@
+/* Standalone editors load their own sizing; opening Settings first is unnecessary. */
+dialog.settings-editor {
+  width: min(var(--settings-editor-width, 560px), calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+dialog.settings-editor::backdrop {
+  background: var(--color-backdrop);
+}
+.settings-editor > .section-heading {
+  padding: 16px;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.settings-editor .section-heading h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.settings-editor-body {
+  min-width: 0;
+  padding: 16px;
+}
+.settings-section[hidden],
+.settings-section-body[hidden] {
+  display: none !important;
+}
+.settings-detail-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-block: 8px 16px;
+}
+.settings-detail-head h2 {
+  margin: 0;
+  font-size: 18px;
+}

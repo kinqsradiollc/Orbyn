@@ -57,7 +57,6 @@ import { Popover } from "../../components/Popover";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsEditor } from "./SettingsEditor";
 import { AgentRules, InboxEdit } from "./AgentInbox";
-import { AgentWarmStart } from "./AgentContext";
 import "./agents.css";
 
 type Props = {
@@ -409,6 +408,9 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [activityId, setActivityId] = useState<string | null>(null);
   const [connectionQuery, setConnectionQuery] = useState("");
+  const [connectionGroup, setConnectionGroup] = useState<"external" | "orbyn">(
+    "external",
+  );
   const [connectionPage, setConnectionPage] = useState(0);
   const connectionList = useRef<HTMLUListElement>(null);
   const [overviewFailed, setOverviewFailed] = useState(false);
@@ -696,7 +698,11 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
 
   const openConnect = () => setConnecting(true);
 
-  const grants = overview?.grants ?? [];
+  const grants = (overview?.grants ?? []).filter((grant) =>
+    connectionGroup === "orbyn"
+      ? grant.kind === "assistant"
+      : grant.kind !== "assistant",
+  );
   const listLocked =
     action.pending || !!editing || !!trusting || !!hearing || !!activityId;
   const query = connectionQuery.trim().toLocaleLowerCase();
@@ -755,6 +761,24 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
         </a>
       </details>
 
+      <div className="button-row start" aria-label="Connection category">
+        {(["external", "orbyn"] as const).map((group) => (
+          <button
+            key={group}
+            type="button"
+            className="secondary"
+            aria-pressed={connectionGroup === group}
+            disabled={listLocked}
+            onClick={() => {
+              setConnectionGroup(group);
+              setConnectionPage(0);
+              setConnectionQuery("");
+            }}
+          >
+            {group === "external" ? "Connected apps" : "Orbyn assistant"}
+          </button>
+        ))}
+      </div>
       {!!grants.length && (
         <label className="agents-search">
           <span>Find a connection</span>
@@ -872,7 +896,13 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                         : "Not used yet"}
                     </span>
                   </div>
-                  {g.suspended_at && (
+                  {g.reconnect_required && (
+                    <p className="muted agents-paused" role="status">
+                      Sign in to Orbyn again from {g.client_name || g.name} to
+                      reconnect.
+                    </p>
+                  )}
+                  {g.suspended_at && !g.reconnect_required && (
                     <p className="muted agents-paused">
                       Paused on{" "}
                       {new Date(g.suspended_at).toLocaleDateString([], {
@@ -962,7 +992,7 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                               Tools
                             </button>
                           )}
-                          {g.suspended_at && (
+                          {g.suspended_at && !g.reconnect_required && (
                             <button
                               role="menuitem"
                               type="button"
@@ -1254,7 +1284,6 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
           </p>
         )}
       <OutcomeNote outcome={action.outcome} />
-      <AgentWarmStart report={report} />
       {grants.length > 0 && <AgentRules report={report} />}
 
       {connecting && (
