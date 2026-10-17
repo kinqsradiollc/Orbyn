@@ -535,3 +535,12 @@ changing the runtime, generator or dependency lock. Viewer input is bounded to
 36 million base64 characters, page dimensions to 8192 CSS pixels, and backing
 canvas allocation to 12 million pixels. Unsupported external PDF resources remain
 unavailable; the original PDF can still be downloaded.
+
+## Admin Publishing
+
+Company updates, image editing, public changelog snapshots and approved LinkedIn
+company Page posts live in **Admin → Publishing** on web. See
+[setup, provider approval and recovery](admin-publishing.md). The five optional
+`LINKEDIN_*` settings in `.env.example` are server-only. Blank credentials leave
+drafting available and disable connecting. Delivery requires the notifier and
+migration `268_admin_publishing.sql`; deploying does not publish a post.

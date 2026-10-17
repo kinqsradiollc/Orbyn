@@ -1,9 +1,10 @@
 import { useElementWidth } from "../../hooks/useElementWidth";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Select } from "../../components/Select";
 import "./admin-workspace.css";
 import {
   ArrowLeft,
+  Send,
   Bot,
   BellRing,
   CircleDashed,
@@ -35,6 +36,7 @@ import { TeamDetail, type TeamActions } from "../teams/TeamDetail";
 import { AdminUsers } from "./AdminUsers";
 import { AdminAudit } from "./AdminAudit";
 import { AdminAi } from "./AdminAi";
+import { AdminPublishing } from "./AdminPublishing";
 import { AdminSystem } from "./AdminSystem";
 import { AdminDatabase } from "./AdminDatabase";
 import { AdminStorage } from "./AdminStorage";
@@ -57,6 +59,7 @@ type Tab =
   | "Storage"
   | "AI"
   | "Agents"
+  | "Publishing"
   | "System";
 
 const TABS: { label: Tab; icon: LucideIcon }[] = [
@@ -70,6 +73,7 @@ const TABS: { label: Tab; icon: LucideIcon }[] = [
   { label: "Storage", icon: HardDrive },
   { label: "AI", icon: Sparkles },
   { label: "Agents", icon: Bot },
+  { label: "Publishing", icon: Send },
   { label: "System", icon: ServerCog },
 ];
 
@@ -109,6 +113,13 @@ function AdminWorkspace({
 }: TeamActions & { onMaintenanceChange?: (m: Maintenance) => void }) {
   const { ref: pageRef, width: pageWidth } = useElementWidth();
   const { ref: contentRef, width: contentWidth } = useElementWidth();
+  const publishingLeave = useRef<(() => Promise<boolean>) | null>(null);
+  async function chooseTab(next: Tab) {
+    if (publishingLeave.current && !(await publishingLeave.current())) return;
+    setTab(next);
+    setTeamId(null);
+    setUserId(null);
+  }
   const [tab, setTab] = useState<Tab>("Overview");
   const [teamId, setTeamId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -130,7 +141,8 @@ function AdminWorkspace({
       (t.label !== "Database" || canManageSystem) &&
       (t.label !== "Storage" || canManageSystem) &&
       (t.label !== "Agents" || canManageSystem) &&
-      (t.label !== "System" || canManageSystem),
+      (t.label !== "System" || canManageSystem) &&
+      (t.label !== "Publishing" || canManageSystem),
   );
 
   const activeTab = tabs.some((entry) => entry.label === tab)
@@ -153,6 +165,7 @@ function AdminWorkspace({
               "Requests",
               "Database",
               "Storage",
+              "Publishing",
               "System",
             ],
           },
@@ -170,9 +183,7 @@ function AdminWorkspace({
                   aria-current={activeTab === label ? "page" : undefined}
                   className={activeTab === label ? "active" : ""}
                   onClick={() => {
-                    setTab(label);
-                    setTeamId(null);
-                    setUserId(null);
+                    void chooseTab(label);
                   }}
                 >
                   <Icon size={16} aria-hidden="true" />
@@ -201,9 +212,7 @@ function AdminWorkspace({
                 (entry) => entry.label === event.target.value,
               );
               if (chosen) {
-                setTab(chosen.label);
-                setTeamId(null);
-                setUserId(null);
+                void chooseTab(chosen.label);
               }
             }}
           >
@@ -275,6 +284,9 @@ function AdminWorkspace({
         {activeTab === "AI" && canManageAi && <AdminAi {...props} />}
         {activeTab === "Agents" && canManageSystem && (
           <AdminAgents report={props.report} />
+        )}
+        {activeTab === "Publishing" && canManageSystem && (
+          <AdminPublishing report={props.report} leaveGuard={publishingLeave} />
         )}
         {activeTab === "System" && canManageSystem && (
           <AdminSystem

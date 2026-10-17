@@ -36,6 +36,8 @@ export type ChangelogRelease = Omit<ReleaseNotes, "sections"> & {
   new: string[];
   better: string[];
   fixed: string[];
+  image?: string | null;
+  alt_text?: string;
 };
 
 /** Turns a release file's notes into a release, empty headings as []. */

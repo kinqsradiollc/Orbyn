@@ -958,6 +958,74 @@ export class OrbynClient {
   }
 
   // ---- health ----
+  publishingList() {
+    return this.request<import("@orbyn/core").PublishingListEntry[]>(
+      "/admin/publishing",
+    );
+  }
+  publishingGet(id: string) {
+    return this.request<import("@orbyn/core").PublishingDraft>(
+      `/admin/publishing/${id}`,
+    );
+  }
+  publishingCreate() {
+    return this.request<import("@orbyn/core").PublishingDraft>(
+      "/admin/publishing",
+      { method: "POST" },
+    );
+  }
+  publishingSave(
+    id: string,
+    version: number,
+    content: import("@orbyn/core").PublishingContent,
+  ) {
+    return this.request<import("@orbyn/core").PublishingDraft>(
+      `/admin/publishing/${id}`,
+      { method: "PUT", body: { version, content } },
+    );
+  }
+  publishingAction(
+    id: string,
+    version: number,
+    action: "publish" | "cancel" | "release" | "unrelease" | "delete" | "reset",
+    at?: string,
+  ) {
+    return this.request<import("@orbyn/core").PublishingDraft | null>(
+      `/admin/publishing/${id}/${at ? "schedule" : action}`,
+      { method: "POST", body: { version, ...(at ? { at } : {}) } },
+    );
+  }
+  publishingSuggest(
+    content: import("@orbyn/core").PublishingContent,
+    instruction: string,
+  ) {
+    return this.request<{ text: string }>("/admin/publishing/suggest", {
+      method: "POST",
+      body: { content, instruction },
+    });
+  }
+  publishingConnection() {
+    return this.request<import("@orbyn/core").PublishingConnection>(
+      "/admin/publishing/linkedin",
+    );
+  }
+  publishingConnect() {
+    return this.request<{ url: string }>("/admin/publishing/linkedin/connect", {
+      method: "POST",
+    });
+  }
+  publishingDisconnect() {
+    return this.request<void>("/admin/publishing/linkedin", {
+      method: "DELETE",
+    });
+  }
+  publishedUpdates() {
+    return this.request<import("@orbyn/core").PublishedUpdate[]>(
+      "/changelog/updates",
+      { anonymous: true },
+    );
+  }
+
   health() {
     return this.request<{ status: string }>("/health", { anonymous: true });
   }

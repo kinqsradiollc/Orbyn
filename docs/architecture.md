@@ -884,3 +884,14 @@ provider calls. Existing `/plugin` recipient, discovery, refresh and worker jobs
 coexist. Exact OAuth audiences are enforced on every boundary; owner provider
 permission remains separate from tool access/UI opt-in. This is local candidate
 implementation pending qualification and deployment, not current production proof.
+
+### Admin Publishing
+
+`modules/publishing` owns editorial drafts, explicit public changelog snapshots,
+browser-bound LinkedIn OAuth and company Page delivery. Core defines the
+versioned contract; api-client exposes admin/public transports. The responsive
+admin workspace edits text and raster images locally. Public changelog and
+What's new merge published snapshots with bundled history. The notifier uses
+an independent publishing task and a PostgreSQL transaction advisory lock;
+claims commit before provider requests, and ambiguous sends are never retried.
+See [authority, state transitions and deployment](admin-publishing.md).

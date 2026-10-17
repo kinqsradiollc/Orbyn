@@ -243,9 +243,10 @@ spec:
         - protocol: TCP
           port: 8080
 ---
-# 10. Outbound internet for the two services that need it.
+# 10. Outbound internet for provider calls and approved publishing.
+#     api:      LinkedIn OAuth/Page checks and admin AI drafting.
 #     ai:       AI providers configured by admins, over HTTPS.
-#     notifier: Expo push (https://exp.host) and the SMTP relay.
+#     notifier: Expo push, LinkedIn company posts and the SMTP relay.
 #     Plain NetworkPolicy cannot filter by hostname. To pin these to specific
 #     domains, use an egress gateway or FQDN policies (Cilium, Calico Enterprise).
 #     If an admin sets up a provider on another port (a self-hosted model on
@@ -259,7 +260,7 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/component
         operator: In
-        values: [ai, assistant-background, assistant-overnight]
+        values: [api, ai, assistant-background, assistant-overnight]
   policyTypes: [Egress]
   egress:
     - to:
@@ -286,7 +287,7 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
       ports:
         - protocol: TCP
-          port: 443 # Expo push
+          port: 443 # Expo push and approved company Page publishing
         - protocol: TCP
           port: 587 # SMTP submission (STARTTLS)
         - protocol: TCP

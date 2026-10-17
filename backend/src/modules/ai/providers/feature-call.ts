@@ -25,6 +25,7 @@ const featureSource = z.discriminatedUnion("kind", [
 ]);
 export type FeatureSource = z.output<typeof featureSource>;
 const featureKind = z.enum([
+  "publishing_draft",
   "doc_assist",
   "doc_ask",
   "study_cards",
@@ -105,7 +106,12 @@ export async function completeFeature(
     .map((source) => ({ ...source, id: source.id.toLowerCase() }));
   if (
     !sources.length &&
-    !["project_draft", "capture_summary", "capture_deadlines"].includes(kind)
+    ![
+      "publishing_draft",
+      "project_draft",
+      "capture_summary",
+      "capture_deadlines",
+    ].includes(kind)
   )
     fail(400, "Choose a bounded set of source pages.");
   if (

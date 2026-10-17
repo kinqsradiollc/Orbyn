@@ -16,6 +16,10 @@ export function serializeFileRequest(request: {
       .replace(
         /^(\/(?:api\/)?agent-channels\/(?:slack|teams)\/(?:callback|interactions|events|activities)\/?)(?:\?.*)?$/i,
         "$1",
+      )
+      .replace(
+        /^(\/(?:api\/)?admin\/publishing\/linkedin\/callback\/?)(?:\?.*)?$/i,
+        "$1",
       ),
     version: typeof version === "string" ? version : undefined,
     host: request.host,

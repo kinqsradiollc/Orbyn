@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   CHANGELOG,
+  mergePublishedUpdates,
   CHANGELOG_HEADINGS,
   CHANGELOG_SECTIONS,
   latestRelease,
@@ -9,6 +10,7 @@ import {
   type ChangelogRelease,
   type ChangelogSection,
 } from "@orbyn/core";
+import { client } from "../lib/api";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
@@ -64,6 +66,7 @@ export function WhatsNewSheet({
   onClose: () => void;
   onDismiss?: () => void;
 }) {
+  const [releases, setReleases] = useState(CHANGELOG);
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<string[]>(freshIds);
   // Each time the sheet opens, start from what is new since last time.
@@ -71,21 +74,35 @@ export function WhatsNewSheet({
     if (!visible) return;
     setFilter("all");
     setOpen(freshIds());
+    let active = true;
+    void client
+      .publishedUpdates()
+      .then((updates) => {
+        if (active) {
+          const all = mergePublishedUpdates(updates, CHANGELOG);
+          setReleases(all);
+          setOpen(all.slice(0, 1).map((r) => r.id));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, [visible]);
 
   const choose = (next: Filter) => {
     setFilter(next);
     setOpen(
       next === "all"
-        ? CHANGELOG.slice(0, 1).map((r) => r.id)
-        : CHANGELOG.filter((r) => r[next].length).map((r) => r.id),
+        ? releases.slice(0, 1).map((r) => r.id)
+        : releases.filter((r) => r[next].length).map((r) => r.id),
     );
   };
   const toggle = (id: string) =>
     setOpen((ids) =>
       ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id],
     );
-  const shown = CHANGELOG.filter((r) => shownSections(r, filter).length);
+  const shown = releases.filter((r) => shownSections(r, filter).length);
 
   return (
     <Sheet
@@ -133,6 +150,7 @@ function Release({
   onToggle: () => void;
 }) {
   const sections = shownSections(r, filter);
+  const [imageRatio, setImageRatio] = useState(1200 / 630);
   return (
     <View style={s.release}>
       <Pressable
@@ -166,6 +184,22 @@ function Release({
       </View>
       {open && (
         <View style={s.body}>
+          {r.image && (
+            <Image
+              source={{ uri: r.image }}
+              accessibilityLabel={r.alt_text ?? ""}
+              resizeMode="contain"
+              style={{
+                width: "100%",
+                aspectRatio: imageRatio,
+                borderRadius: radii.card,
+              }}
+              onLoad={(event) => {
+                const { width, height } = event.nativeEvent.source;
+                if (width && height) setImageRatio(width / height);
+              }}
+            />
+          )}
           {!!r.highlight && filter === "all" && (
             <View style={s.highlight}>
               <Icon name="sparkles" size={16} color={colors.accent} />

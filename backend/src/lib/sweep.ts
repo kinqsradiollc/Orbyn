@@ -35,6 +35,15 @@ const olderThan = (column: string) =>
 
 export const SWEEP_RULES: SweepRule[] = [
   {
+    key: "publishing_oauth",
+    label: "LinkedIn sign-in attempts",
+    detail: "Expired single-use publishing sign-in states.",
+    table: "publishing_oauth",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "agent_channel_teams_oauth_pending",
     label: "Teams account review attempts",
     detail:

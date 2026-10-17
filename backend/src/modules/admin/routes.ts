@@ -19,6 +19,7 @@ import { adminDatabaseRoutes } from "./database.js";
 import { adminInsightRoutes } from "./insights.js";
 import { adminUserPowerRoutes } from "./users.js";
 import { adminSweepRoutes } from "./sweep.js";
+import { publishingRoutes } from "../publishing/routes.js";
 import { adminStorageRoutes } from "./storage.js";
 import {
   LAST_ADMIN,
@@ -53,6 +54,7 @@ export async function adminRoutes(app: FastifyInstance) {
   await adminUserPowerRoutes(app);
   await adminSweepRoutes(app);
   await adminStorageRoutes(app);
+  await publishingRoutes(app);
   app.get("/admin/overview", async (r): Promise<AdminOverview> => {
     await authorize(r, "admin:access");
     return (

@@ -77,6 +77,18 @@ spec:
             - configMapRef:
                 name: orbyn-config
           env:
+            - name: LINKEDIN_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: LINKEDIN_CLIENT_ID
+                  optional: true
+            - name: LINKEDIN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: LINKEDIN_CLIENT_SECRET
+                  optional: true
             - name: DATABASE_LISTEN_URL
               valueFrom:
                 secretKeyRef:

@@ -93,6 +93,15 @@ const schema = z.object({
   /** Slack agent-channel installation is disabled until the app and HTTPS callback are configured. */
   SLACK_CLIENT_ID: z.string().default(""),
   SLACK_CLIENT_SECRET: z.string().default(""),
+  /** Admin publishing to the single Orbyn company Page. Requires LinkedIn product approval. */
+  LINKEDIN_CLIENT_ID: z.string().default(""),
+  LINKEDIN_CLIENT_SECRET: z.string().default(""),
+  LINKEDIN_ORGANIZATION_ID: z.string().regex(/^\d*$/).default(""),
+  LINKEDIN_REDIRECT_URI: z.string().default(""),
+  LINKEDIN_API_VERSION: z
+    .string()
+    .regex(/^\d{6}$/)
+    .default("202606"),
   SLACK_APP_ID: z.string().default(""),
   SLACK_SIGNING_SECRET: z.string().default(""),
   SLACK_REDIRECT_URI: z.string().default(""),
