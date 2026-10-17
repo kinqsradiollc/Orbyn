@@ -12,9 +12,16 @@ Older setups that use the web app's `/api/mcp` reach the same server.
 
 ## Connection recovery
 
-Hosts should request `offline_access` when long-lived access is needed, refresh
-once at a time, and store the returned replacement refresh token before making
-another refresh. Refresh tokens rotate; reusing a consumed token revokes its
+The Orbyn consent page offers **Stay connected**, selected by default and
+explicitly approved when the person allows the connection. This grants rotating
+refresh tokens even when the host omitted `offline_access`; turning it off gives
+short-lived access only. Older consent clients that omit `stay_connected` retain
+the host-requested behavior. Resource permissions and connection expiry are
+unchanged. No refresh token is manufactured for an existing access-only sign-in:
+affected connections need one new consent after this change is deployed.
+
+Hosts should refresh once at a time and store the returned replacement refresh
+token before making another refresh. Refresh tokens rotate; reusing a consumed token revokes its
 family and pauses the connection. A concurrent refresh or lost response can
 therefore require sign-in again. This protection remains enabled.
 

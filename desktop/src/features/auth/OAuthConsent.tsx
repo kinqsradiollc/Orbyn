@@ -284,10 +284,16 @@ export function OAuthConsentPage({
 }
 
 /** A short-lived authorization is a decision-relevant exception, not routine help. */
-function ConnectionLifetime({ check }: { check: OAuthCheck }) {
+function ConnectionLifetime({
+  check,
+  renewable,
+}: {
+  check: OAuthCheck;
+  renewable?: boolean;
+}) {
   const seconds = check.access_token_lifetime_seconds;
   if (
-    check.requested_offline_access !== false ||
+    (renewable ?? check.requested_offline_access) !== false ||
     typeof seconds !== "number" ||
     !Number.isFinite(seconds) ||
     seconds <= 0
@@ -315,6 +321,9 @@ function Consent({
   onReauthed: (until: string) => void;
 }) {
   const existing = account.existing;
+  const [stayConnected, setStayConnected] = useState(
+    check.can_stay_connected === true,
+  );
   // What the app asked for (read when it named no scope), never more: a
   // wider choice is the person's to make.
   const [access, setAccess] = useState<AgentAccess>(
@@ -396,6 +405,7 @@ function Consent({
       }
       const { redirect_to } = await client.oauthAllow({
         request,
+        ...(check.can_stay_connected ? { stay_connected: stayConnected } : {}),
         access,
         personal,
         team_ids: teamIds,
@@ -467,7 +477,10 @@ function Consent({
         </p>
       )}
 
-      <ConnectionLifetime check={check} />
+      <ConnectionLifetime
+        check={check}
+        renewable={check.can_stay_connected ? stayConnected : undefined}
+      />
 
       <fieldset className="oauth-group" disabled={busy}>
         <legend>What it may do</legend>
@@ -622,6 +635,22 @@ function Consent({
             <small>{AGENT_HIDE_OUTSIDE_TEXT}</small>
           </span>
         </label>
+        {check.can_stay_connected && (
+          <label className="oauth-check">
+            <input
+              type="checkbox"
+              checked={stayConnected}
+              onChange={(event) => setStayConnected(event.target.checked)}
+            />
+            <span>
+              Stay connected
+              <small>
+                Allow automatic renewal. Disconnect this app at any time in
+                Settings.
+              </small>
+            </span>
+          </label>
+        )}
         <div
           className="oauth-days"
           role="radiogroup"

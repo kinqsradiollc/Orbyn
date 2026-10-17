@@ -133,3 +133,19 @@ its adjacent section menu. No additional qualification is claimed for this last
 CSS change. Prior checkpoint receipts and failures remain historical evidence;
 the unfinished final rendered pass is waived, not passed. Production deployment
 and the intermittent MCP incident are not established by the merge.
+
+### 18 October follow-up — explicit renewable consent and mobile landing
+
+The consent page now offers Stay connected. The user's explicit choice controls
+refresh issuance independently of the host's optional offline_access request;
+absence of this new field preserves older consent-client behavior. The UI
+capability flag hides the choice against older servers. Opting out remains
+access-only. This supersedes the earlier host-request-only decision without
+changing data scopes, grant deadlines, inactivity/family expiry or replay and
+revocation rules. Existing access-only host credentials need one new consent;
+current live reachability does not prove which renewal path caused a past prompt.
+
+The public mobile landing page uses neutral supporting text and wrapping header,
+actions and preview metadata. Rendered verification and test/review role runs
+remain waived under the owner's delivery preference; package/type results are
+recorded separately. No environment variables or migrations change.

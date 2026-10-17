@@ -173,7 +173,7 @@
   font-size: 15px;
   line-height: 1.9;
   max-width: 395px;
-  color: var(--color-accentText);
+  color: var(--color-textSoft);
 }
 .home-hero-actions {
   display: flex;
@@ -192,7 +192,7 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  color: var(--color-accentText);
+  color: var(--color-textSoft);
   margin-top: 26px;
 }
 .home-platforms span {
@@ -261,7 +261,7 @@
   justify-content: space-between;
   align-items: center;
   font-size: 11px;
-  color: var(--color-accentText);
+  color: var(--color-textSoft);
 }
 .home-preview-top > span {
   display: flex;
@@ -271,7 +271,7 @@
 .home-preview-top > small {
   font-size: 11px;
   letter-spacing: 1.2px;
-  color: var(--color-accentText);
+  color: var(--color-textSoft);
 }
 .home-preview-title {
   font-size: 18px;
@@ -286,7 +286,7 @@
   gap: 7px;
   align-items: center;
   font-size: 11px;
-  color: var(--color-accentText);
+  color: var(--color-textSoft);
   margin-bottom: 5px;
 }
 .home-preview-date > span {
@@ -325,14 +325,14 @@
 .home-preview-item small {
   display: block;
   font-size: 11px;
-  color: var(--color-accentText);
+  color: var(--color-textSoft);
   margin-top: 6px;
 }
 .home-preview-bottom {
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: var(--color-accentText);
+  color: var(--color-textSoft);
   padding-top: 19px;
 }
 .home-floating-ai {
@@ -1548,7 +1548,9 @@ html.js .home .reveal {
     padding-block: 36px;
   }
   .home-nav-actions {
-    margin-left: 0;
+    margin-left: auto;
+    min-width: 0;
+    justify-content: flex-end;
     gap: 8px;
   }
   .home-hero {
@@ -1567,5 +1569,59 @@ html.js .home .reveal {
   }
   .home-device-chips span {
     flex-wrap: wrap;
+  }
+}
+
+/* The public page must reflow rather than hide overflow on phone browsers. */
+@media (max-width: 650px) {
+  .home-nav .brand {
+    flex: none;
+  }
+  .home-nav .primary {
+    max-width: 100%;
+    white-space: normal;
+  }
+  .home-kicker {
+    flex-wrap: wrap;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+  }
+  .home-kicker > span {
+    flex: none;
+  }
+  .home-hero-actions {
+    align-items: flex-start;
+    gap: 16px 20px;
+  }
+  .home-hero-actions > a {
+    min-height: 44px;
+  }
+  .home-platforms {
+    display: grid;
+    grid-template-columns: 16px 16px minmax(0, 1fr);
+    align-items: start;
+  }
+  .home-platforms span {
+    margin-left: 0;
+    line-height: 1.6;
+  }
+  .home-preview-top {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+  .home-preview-date {
+    flex-wrap: wrap;
+  }
+  .home-preview-bottom {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+}
+@media (max-width: 374px) {
+  .home-nav .brand {
+    font-size: 22px;
+  }
+  .home-hero h1 {
+    font-size: 2rem;
   }
 }
