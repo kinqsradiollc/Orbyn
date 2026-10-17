@@ -799,6 +799,8 @@ export type OAuthCheck = {
   requested_bookings: boolean;
   /** Whether the app requested renewable access; absent on older servers. */
   requested_offline_access?: boolean;
+  /** Consent page can explicitly grant automatic token renewal. */
+  can_stay_connected?: boolean;
   /** Configured access-token lifetime, before any earlier consent expiry. */
   access_token_lifetime_seconds?: number;
   /** Null when not signed in: the page asks you to sign in first. */
@@ -820,6 +822,8 @@ export type OAuthCheck = {
 export const oauthConsentInput = z
   .object({
     request: oauthRequest,
+    /** Omitted by older clients: retain the host-requested renewal behavior. */
+    stay_connected: z.boolean().optional(),
     access: z.enum(AGENT_ACCESS),
     /** How much it does alone when it may change things (full power). */
     trust: z.enum(AGENT_TRUST).default("full"),

@@ -191,6 +191,7 @@ export async function checkRequest(
     requested_access: accessFromScopes(req.scopes.join(" ")),
     requested_bookings: req.scopes.includes("orbyn:bookings"),
     requested_offline_access: req.scopes.includes("offline_access"),
+    can_stay_connected: true,
     access_token_lifetime_seconds: env.OAUTH_ACCESS_TTL,
     account: null,
   };
@@ -272,7 +273,7 @@ export async function allowRequest(
   const scope = grantedScopes(
     d.access,
     d.bookings,
-    req.scopes.includes("offline_access"),
+    d.stay_connected ?? req.scopes.includes("offline_access"),
   );
   // Full power unless the person chose less; suggesting stays suggesting.
   const trust = d.access === "suggest" ? "suggest" : d.trust;
