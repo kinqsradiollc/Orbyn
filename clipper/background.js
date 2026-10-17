@@ -1,3 +1,5 @@
+import { brandAccent } from "./brand.js";
+
 // The Clipper's service worker: the right-click menu, the keyboard command,
 // and bringing highlights back on pages you return to (only if you allowed
 // it in the options).
@@ -38,7 +40,7 @@ chrome.runtime.onInstalled.addListener(() => {
     title: "Clip this page to Orbyn…",
     contexts: ["page", "selection"],
   });
-  chrome.action.setBadgeBackgroundColor({ color: "#376c51" });
+  chrome.action.setBadgeBackgroundColor({ color: brandAccent });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {

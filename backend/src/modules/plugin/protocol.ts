@@ -1,3 +1,4 @@
+import { connectorBranding } from "../mcp-server/branding.js";
 import {
   Server,
   createMcpHandler,
@@ -36,7 +37,12 @@ type PluginProtocolCall = {
 export function buildPluginProtocol(call: PluginProtocolCall) {
   const names = call.tools.map((tool) => tool.name);
   const server = new Server(
-    { name: "orbyn-plugin", title: "Orbyn", version: env.APP_VERSION },
+    {
+      name: "orbyn-plugin",
+      title: "Orbyn",
+      version: env.APP_VERSION,
+      ...connectorBranding,
+    },
     {
       capabilities: {
         tools: { listChanged: false },

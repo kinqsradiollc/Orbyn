@@ -1,3 +1,4 @@
+import { connectorBranding } from "./branding.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { AGENT_INBOX_URI } from "@orbyn/core";
 import { env } from "../../config/env.js";
@@ -588,6 +589,7 @@ export async function openListen(
                   name: "orbyn",
                   title: "Orbyn",
                   version: env.APP_VERSION,
+                  ...connectorBranding,
                 },
               },
             },

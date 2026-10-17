@@ -64,7 +64,13 @@ export function AuthShell({
       <main className="auth-form">
         <div className="auth-card">
           <div className="brand">
-            <Orbit /> orbyn<span>•</span>
+            <Orbit />{" "}
+            <span className="brand-name">
+              orbyn
+              <span className="brand-dot" aria-hidden="true">
+                •
+              </span>
+            </span>
           </div>
           {children}
         </div>

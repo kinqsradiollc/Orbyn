@@ -49,8 +49,18 @@ export function setPageMeta({ title, description, index }: PageMeta) {
   property("og:title").content = title;
   property("og:description").content = description;
   property("og:url").content = url;
-  property("og:image").content = `${location.origin}/og-image.png`;
+  const shareImage = new URL("/og-image.png", location.origin);
+  // Keep the asset revision from the shipped HTML when adapting to self-hosted origins.
+  try {
+    shareImage.search = new URL(
+      property("og:image").content,
+      location.origin,
+    ).search;
+  } catch {
+    /* The default image remains usable when a tag was absent. */
+  }
+  property("og:image").content = shareImage.href;
   named("twitter:title").content = title;
   named("twitter:description").content = description;
-  named("twitter:image").content = `${location.origin}/og-image.png`;
+  named("twitter:image").content = shareImage.href;
 }

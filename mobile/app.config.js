@@ -8,6 +8,8 @@
 // matching /.well-known/ files (see backend/src/modules/app-links). The host
 // is EXPO_PUBLIC_WEB_URL's, or orbyn.dev.
 
+const { light: brandPalette } = require("../assets/brand/palette.json");
+
 const DEFAULT_WEB_URL = "https://orbyn.dev";
 
 /** The web app's host name, or null when it isn't a public https address. */
@@ -31,7 +33,7 @@ function webHost() {
  *   Android widget and Quick Settings tile (mobile/modules/orbyn-capture);
  * - the microphone, for recording into a page (expo-audio);
  * - the app icon in light, dark and tinted (iOS 18) and as an adaptive and
- *   themed icon on Android, all in the palette's own green (DSN-06).
+ *   themed icon on Android, all in the current shared blue palette.
  *
  * A plugin already listed in app.json isn't listed twice.
  */
@@ -53,6 +55,10 @@ function withNative(config) {
     ...config,
     plugins,
     icon: config.icon ?? "./assets/icons/icon-light.png",
+    web: {
+      ...config.web,
+      favicon: config.web?.favicon ?? "./assets/icons/favicon.png",
+    },
     ios: {
       ...ios,
       icon: ios.icon ?? {
@@ -70,7 +76,7 @@ function withNative(config) {
       adaptiveIcon: android.adaptiveIcon ?? {
         foregroundImage: "./assets/icons/adaptive-foreground.png",
         monochromeImage: "./assets/icons/adaptive-monochrome.png",
-        backgroundColor: "#376c51",
+        backgroundColor: brandPalette.accent,
       },
     },
   };

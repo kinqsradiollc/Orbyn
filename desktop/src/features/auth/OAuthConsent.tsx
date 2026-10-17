@@ -99,7 +99,13 @@ function Shell({ children }: { children: ReactNode }) {
       <main className="auth-form">
         <div className="oauth-card">
           <div className="brand">
-            <Orbit /> orbyn<span>•</span>
+            <Orbit />{" "}
+            <span className="brand-name">
+              orbyn
+              <span className="brand-dot" aria-hidden="true">
+                •
+              </span>
+            </span>
           </div>
           {children}
         </div>

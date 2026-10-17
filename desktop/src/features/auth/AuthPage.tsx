@@ -74,7 +74,13 @@ export function AuthPage({
       )}
       <div className="auth-story">
         <div className="brand">
-          <Orbit /> orbyn<span>•</span>
+          <Orbit />{" "}
+          <span className="brand-name">
+            orbyn
+            <span className="brand-dot" aria-hidden="true">
+              •
+            </span>
+          </span>
         </div>
         <div>
           <h1>Make room for your work.</h1>

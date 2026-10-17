@@ -226,7 +226,8 @@ small {
   height: 31px;
   width: 31px;
   stroke-width: 1.6;
-  color: var(--green);
+  color: var(--color-accent);
+  flex: none;
 }
 .brand-name > span {
   font-size: 36px;
@@ -4062,4 +4063,15 @@ footer {
 }
 .team-member-search input {
   width: 100%;
+}
+
+/* The word and its dot share one text baseline on landing, auth and workspace. */
+.brand .brand-name {
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.brand .brand-dot {
+  font-size: inherit;
+  color: var(--color-dot);
+  margin-left: 4px;
 }
