@@ -163,3 +163,5 @@ export * from "./doc-latex.js";
 export * from "./doc-tex.js";
 
 export * from "./doc-selection.js";
+
+export * from "./publishing.js";

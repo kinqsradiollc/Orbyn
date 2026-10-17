@@ -295,3 +295,11 @@ dialog.whats-new {
 dialog.whats-new::backdrop {
   background: var(--color-backdrop);
 }
+
+.release-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+}

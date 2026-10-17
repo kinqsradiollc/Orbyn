@@ -2,10 +2,12 @@ import { useEffect, useState, type MouseEvent } from "react";
 import { ArrowUpRight, Orbit } from "lucide-react";
 import {
   CHANGELOG,
+  mergePublishedUpdates,
   CHANGELOG_HEADINGS,
   CHANGELOG_SECTIONS,
   releaseDate,
 } from "@orbyn/core";
+import { client } from "../../lib/api";
 import { Select } from "../../components/Select";
 import {
   Releases,
@@ -28,9 +30,9 @@ const filterLabel = (f: SectionFilter) =>
   f === "all" ? "Everything" : CHANGELOG_HEADINGS[f];
 
 /** The release a /changelog#release-<id> link points at, if any. */
-const linkedRelease = () => {
+const linkedRelease = (releases = CHANGELOG) => {
   const hash = typeof location === "undefined" ? "" : location.hash.slice(1);
-  return CHANGELOG.find((r) => releaseAnchor(r.id) === hash)?.id ?? null;
+  return releases.find((r) => releaseAnchor(r.id) === hash)?.id ?? null;
 };
 
 /** Brings a release's card into view and puts focus on its toggle. */
@@ -52,6 +54,26 @@ const reveal = (id: string) =>
  * apps' "What's new" sheet reads the same list.
  */
 export function ChangelogPage({ signedIn, onNavigate, onHome }: Props) {
+  const [releases, setReleases] = useState(CHANGELOG);
+  useEffect(() => {
+    let active = true;
+    void client
+      .publishedUpdates()
+      .then((updates) => {
+        if (active) {
+          const all = mergePublishedUpdates(updates, CHANGELOG);
+          setReleases(all);
+          setOpen([
+            all.find((r) => releaseAnchor(r.id) === location.hash.slice(1))
+              ?.id ?? all[0].id,
+          ]);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
   const [filter, setFilter] = useState<SectionFilter>("all");
   const [open, setOpen] = useState<string[]>(() => {
     const linked = linkedRelease();
@@ -59,9 +81,9 @@ export function ChangelogPage({ signedIn, onNavigate, onHome }: Props) {
   });
 
   useEffect(() => {
-    const linked = linkedRelease();
+    const linked = linkedRelease(releases);
     if (linked) reveal(linked);
-  }, []);
+  }, [releases]);
 
   const go = (path: string) => (e: MouseEvent) => {
     e.preventDefault();
@@ -73,7 +95,7 @@ export function ChangelogPage({ signedIn, onNavigate, onHome }: Props) {
     else onNavigate(signedIn ? "/app" : "/login");
   };
 
-  const shown = CHANGELOG.filter((r) => releaseMatches(r, filter));
+  const shown = releases.filter((r) => releaseMatches(r, filter));
   const allOpen = shown.every((r) => open.includes(r.id));
   const toggle = (id: string) =>
     setOpen((ids) =>
@@ -84,8 +106,8 @@ export function ChangelogPage({ signedIn, onNavigate, onHome }: Props) {
     // One heading across releases reads best with every release open.
     setOpen(
       next === "all"
-        ? CHANGELOG.slice(0, 1).map((r) => r.id)
-        : CHANGELOG.filter((r) => releaseMatches(r, next)).map((r) => r.id),
+        ? releases.slice(0, 1).map((r) => r.id)
+        : releases.filter((r) => releaseMatches(r, next)).map((r) => r.id),
     );
   };
   const jump = (id: string) => {
@@ -101,7 +123,9 @@ export function ChangelogPage({ signedIn, onNavigate, onHome }: Props) {
       <header className="status-nav">
         <a href="/" className="brand" aria-label="Orbyn home" onClick={goHome}>
           <Orbit />
-          orbyn<span>•</span>
+          <span className="brand-name">
+            orbyn<span className="brand-dot">•</span>
+          </span>
         </a>
         {signedIn ? (
           <a href="/app" className="primary" onClick={go("/app")}>
@@ -136,7 +160,7 @@ export function ChangelogPage({ signedIn, onNavigate, onHome }: Props) {
                 onChange={(e) => jump(e.target.value)}
               >
                 <option value="">Jump to a release…</option>
-                {CHANGELOG.map((r) => (
+                {releases.map((r) => (
                   <option key={r.id} value={r.id}>
                     {`${releaseDate(r)}: ${r.title}`}
                   </option>

@@ -107,6 +107,14 @@ export function Releases({
               ))}
             </ul>
             <div id={body} className="release-body" hidden={!isOpen}>
+              {r.image && (
+                <img
+                  className="release-image"
+                  src={r.image}
+                  alt={r.alt_text ?? ""}
+                  loading="lazy"
+                />
+              )}
               {r.highlight && filter === "all" && (
                 <p className="release-highlight">
                   <Sparkles size={16} aria-hidden="true" />

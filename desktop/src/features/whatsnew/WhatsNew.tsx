@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useModalFocus } from "../../hooks/useModalFocus";
 import { ArrowUpRight, X } from "lucide-react";
-import { latestRelease, releasesSince } from "@orbyn/core";
+import {
+  CHANGELOG,
+  mergePublishedUpdates,
+  latestRelease,
+  releasesSince,
+} from "@orbyn/core";
+import { client } from "../../lib/api";
 import { Releases } from "./Releases";
 import "./whatsnew.css";
 
@@ -39,7 +45,19 @@ export function WhatsNew({
   onOpenChangelog: () => void;
 }) {
   const focus = useModalFocus(onClose);
-  const [releases] = useState(() => releasesSince(seenRelease()));
+  const [releases, setReleases] = useState(() => releasesSince(seenRelease()));
+  useEffect(() => {
+    let active = true;
+    void client
+      .publishedUpdates()
+      .then((updates) => {
+        if (active) setReleases(mergePublishedUpdates(updates, CHANGELOG));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
   useEffect(() => {
     markReleaseSeen();
     const dialog = focus.ref.current as HTMLDialogElement | null;
@@ -71,7 +89,7 @@ export function WhatsNew({
         </button>
       </div>
       <div className="whats-new-body">
-        <Releases releases={releases} headingLevel={3} />
+        <Releases key={releases[0]?.id} releases={releases} headingLevel={3} />
       </div>
       <div className="whats-new-foot">
         <button className="text-button" onClick={onOpenChangelog}>

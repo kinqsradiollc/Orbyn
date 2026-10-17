@@ -12,6 +12,10 @@ metadata:
     app.kubernetes.io/name: orbyn
 data:
   PORT: "8000"
+  # Admin Publishing: the single Orbyn company Page; blank disables connecting.
+  LINKEDIN_ORGANIZATION_ID: ""
+  LINKEDIN_REDIRECT_URI: ""
+  LINKEDIN_API_VERSION: "202606"
   DOC_LATEX_URL: "http://latex:8000"
   DOC_PDF_URL: "http://pdf:8000"
   # Services sit behind the ingress controller (and, for /api, the web nginx),

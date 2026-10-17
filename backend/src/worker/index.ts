@@ -1,3 +1,4 @@
+import { deliverPublishingOne } from "../modules/publishing/service.js";
 import { consumeTeamsQuestionReplyOne } from "../modules/agent-channels/teams-question-receipts.js";
 import {
   configuredTeams,
@@ -137,6 +138,7 @@ export async function runWorker() {
   let lastNightShift = -Infinity;
   let lastReminderNudges = -Infinity;
   let lastClock = -Infinity;
+  let publishingTask: Promise<unknown> | null = null;
   while (!stopping) {
     let backlog = false;
     try {
@@ -279,6 +281,15 @@ export async function runWorker() {
         lastSchedule = tick();
       }
       // Each lane delivers reminders and webhooks until both queues are empty.
+      publishingTask ??= deliverPublishingOne()
+        .catch(() =>
+          console.error(
+            "Publishing delivery could not complete; durable state retained.",
+          ),
+        )
+        .finally(() => {
+          publishingTask = null;
+        });
       const lanes = await Promise.all(
         Array.from(
           { length: (await settings()).notifier_concurrency },
@@ -346,6 +357,7 @@ export async function runWorker() {
   }
   // A chat sweep still in flight is abandoned: its claims expire and the
   // next run takes those chats again.
+  await publishingTask;
   await closeDatabase();
   closeEmail();
 }
