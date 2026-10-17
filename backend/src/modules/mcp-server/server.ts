@@ -1,3 +1,4 @@
+import { connectorBranding } from "./branding.js";
 import { ZodError } from "zod";
 import { PluginCallError } from "../plugin/dispatch.js";
 import { pluginRead, pluginWrite } from "../plugin/execute.js";
@@ -359,7 +360,7 @@ export function buildServer(call: CallContext): Server {
       name: "orbyn",
       title: "Orbyn",
       version: env.APP_VERSION,
-      websiteUrl: env.APP_URL,
+      ...connectorBranding,
     },
     {
       capabilities: {

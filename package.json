@@ -23,7 +23,8 @@
     "build:pdf-renderer": "node scripts/build-mermaid.mjs",
     "build:pdf-preview": "node scripts/build-pdf-preview.mjs",
     "build:latex-html": "node scripts/build-latex-html.mjs",
-    "check:latex-html": "node scripts/check-latex-html.mjs"
+    "check:latex-html": "node scripts/check-latex-html.mjs",
+    "generate:brand": "node scripts/generate-brand-assets.mjs"
   },
   "overrides": {
     "xcode": {
@@ -31,7 +32,9 @@
     }
   },
   "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
     "esbuild": "^0.28.2",
+    "fontkit": "2.0.4",
     "latex.js": "0.12.6",
     "mermaid": "^11.17.2",
     "pdfjs-dist": "6.4.299",

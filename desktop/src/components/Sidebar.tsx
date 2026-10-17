@@ -134,7 +134,10 @@ export function Sidebar({
         <div className="brand" aria-label="orbyn">
           <Orbit />
           <span className="brand-name">
-            orbyn<span>•</span>
+            orbyn
+            <span className="brand-dot" aria-hidden="true">
+              •
+            </span>
           </span>
         </div>
       </div>

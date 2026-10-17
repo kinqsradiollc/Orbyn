@@ -1,25 +1,17 @@
 # Orbyn LinkedIn assets
 
-Upload these PNGs to the Orbyn **company Page**:
+Current company Page exports use the shared blue identity:
 
 | File | Size | Use |
 | --- | --- | --- |
-| `orbyn-linkedin-profile.png` | 400 × 400 | Company logo / profile picture |
-| `orbyn-linkedin-cover.png` | 1512 × 256 | Recommended light cover |
-| `orbyn-linkedin-cover-green.png` | 1512 × 256 | Alternative forest-green cover |
+| `orbyn-linkedin-profile.png` | 400×400 | Company profile icon |
+| `orbyn-linkedin-cover.png` | 1512×256 | Light cover |
+| `orbyn-linkedin-cover-blue.png` | 1512×256 | Blue cover |
 
-Dimensions follow [LinkedIn's current company Page image specifications](https://www.linkedin.com/help/lms/answer/a570368), checked on 3 October 2026. Each upload is below the 3 MB limit. These are company Page assets; personal profile covers use a different format. LinkedIn may crop covers across screens; the logo and wordmark are positioned toward the center with generous edge space. Check the upload preview on desktop and mobile.
+SVG lettering is outlined. Regenerate with `npm run generate:brand` from the
+repository root; the old `generate.py` entry point delegates to that generator.
+See [brand sources and outputs](../brand/README.md). Legacy green variants are
+archived under `assets/brand/archive/`; they are not regenerated or published.
 
-The profile picture reuses the existing orbit mark from `mobile/assets/icons/icon-light.svg`, with an opaque forest-green background for light/dark layouts and square/circular crops. Covers use the existing palette from `packages/core/src/presentation.ts` and bundled DM Sans. The layout uses only the existing mark, wordmark and website address on a flat background.
-
-SVG originals are resolution-independent. Lettering is outlined so it renders consistently without installing fonts. Change the copy or layout in `generate.py` to regenerate them; no application files or dependencies are changed.
-
-## Regenerate
-
-Create an isolated Python environment with `fonttools[woff]`, then run `generate.py`. Export each SVG to a PNG at its intrinsic size using an SVG renderer (for example Sharp). DM Sans's existing license is at `desktop/src/assets/fonts/OFL-DM-Sans.txt`.
-
-## Verification
-
-- All PNG dimensions and file sizes checked.
-- PNGs visually reviewed at full cover width and small logo size.
-- Only this asset folder is included in the commit.
+No external profile was updated. Upload and inspect the crop in LinkedIn before
+publishing; these files do not establish how a platform currently crops them.

@@ -155,7 +155,8 @@ ipcMain.handle("orbyn:open-window", (_event, where) => {
     height: 900,
     minWidth: 480,
     minHeight: 400,
-    backgroundColor: "#f7f8fa",
+    backgroundColor: "#fafafa",
+    icon: path.join(__dirname, "dist/icon-512.png"),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -187,7 +188,8 @@ const create = () => {
     height: 960,
     minWidth: 800,
     minHeight: 600,
-    backgroundColor: "#f7f8fa",
+    backgroundColor: "#fafafa",
+    icon: path.join(__dirname, "dist/icon-512.png"),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -221,10 +223,17 @@ const reveal = () => {
 };
 
 const buildTray = () => {
-  // Reuse the app icon, scaled down for the menu bar / system tray.
+  // macOS recolors the monochrome template for light/dark menu bars.
+  const template = process.platform === "darwin";
   const icon = nativeImage
-    .createFromPath(path.join(__dirname, "dist/icon-192.png"))
+    .createFromPath(
+      path.join(
+        __dirname,
+        template ? "dist/trayTemplate.png" : "dist/icon-192.png",
+      ),
+    )
     .resize({ width: 18, height: 18 });
+  if (template) icon.setTemplateImage(true);
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   tray.setToolTip("Orbyn");
   tray.setContextMenu(
@@ -288,6 +297,12 @@ app.whenReady().then(async () => {
     guard,
     getWindow: () => win,
   });
+  if (process.platform === "darwin") {
+    const dockIcon = nativeImage.createFromPath(
+      path.join(__dirname, "dist/icon-512.png"),
+    );
+    if (!dockIcon.isEmpty()) app.dock?.setIcon(dockIcon);
+  }
   create();
   buildTray();
   app.on("activate", () => {

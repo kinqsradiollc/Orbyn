@@ -1,3 +1,4 @@
+const { light: brandPalette } = require("../../../assets/brand/palette.json");
 /** @type {import('@bacons/apple-targets/app.plugin').ConfigFunction} */
 module.exports = (config) => ({
   type: "widget",
@@ -8,7 +9,7 @@ module.exports = (config) => ({
   frameworks: ["SwiftUI", "WidgetKit", "AppIntents", "ActivityKit"],
   // The brand accent (matches the app palette in docs/mobile.md); the widget
   // references it as Color("accent"). Not a palette change — the same value.
-  colors: { $accent: "#376c51" },
+  colors: { $accent: brandPalette.accent },
   // Share the App Group with the app so the widget can read the glance the app
   // writes. Mirrors app.json's ios.entitlements when present.
   entitlements: {

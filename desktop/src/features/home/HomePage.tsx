@@ -168,7 +168,12 @@ export function HomePage({ signedIn, onNavigate }: Props) {
       <header className="home-nav">
         <a href="/" className="brand" aria-label="Orbyn home">
           <Orbit />
-          orbyn<span>•</span>
+          <span className="brand-name">
+            orbyn
+            <span className="brand-dot" aria-hidden="true">
+              •
+            </span>
+          </span>
         </a>
         <nav aria-label="Homepage">
           <a href="#features">Features</a>
@@ -700,7 +705,12 @@ export function HomePage({ signedIn, onNavigate }: Props) {
       <footer className="home-footer">
         <a href="/" className="brand">
           <Orbit />
-          orbyn<span>•</span>
+          <span className="brand-name">
+            orbyn
+            <span className="brand-dot" aria-hidden="true">
+              •
+            </span>
+          </span>
         </a>
         <span>Tasks, calendar, projects and notes.</span>
         <nav className="home-footer-links" aria-label="Footer">

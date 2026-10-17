@@ -1,37 +1,6 @@
-/* The Clipper's look: Orbyn's own palette and type sizes (11/13/15/18). */
-:root {
-  color-scheme: light;
-  --color-background: #f7f8fa;
-  --color-surface: #ffffff;
-  --color-border: #e8ece9;
-  --color-text: #27382f;
-  --color-muted: #849089;
-  --color-accent: #376c51;
-  --color-accent-pressed: #2c5842;
-  --color-accent-soft: #e7f0ea;
-  --color-on-accent: #ffffff;
-  --color-danger: #b0573b;
-  --color-hover: #f5f7f4;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-pill: 999px;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --color-background: #121614;
-    --color-surface: #1a1f1c;
-    --color-border: #2c342f;
-    --color-text: #e2e8e3;
-    --color-muted: #8e9a92;
-    --color-accent: #7cc49a;
-    --color-accent-pressed: #9ad3b0;
-    --color-accent-soft: #1e3327;
-    --color-on-accent: #0e1712;
-    --color-danger: #ec8f71;
-    --color-hover: #232a25;
-  }
-}
+/* Orbyn Clipper: shared palette, local extension layout. */
+@import url("./brand.css");
+
 * {
   box-sizing: border-box;
 }

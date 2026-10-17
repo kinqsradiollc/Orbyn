@@ -1,0 +1,34 @@
+/* Generated from core presentation tokens. */
+:root {
+  color-scheme: light;
+  --color-background: #fafafa;
+  --color-surface: #ffffff;
+  --color-border: #e4e4e7;
+  --color-text: #202124;
+  --color-muted: #67676f;
+  --color-accent: #2563eb;
+  --color-accent-pressed: #1d4ed8;
+  --color-accent-soft: #eff6ff;
+  --color-on-accent: #ffffff;
+  --color-danger: #b42318;
+  --color-hover: #f4f4f5;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-pill: 999px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  --color-background: #171717;
+  --color-surface: #202020;
+  --color-border: #383838;
+  --color-text: #f4f4f5;
+  --color-muted: #a1a1aa;
+  --color-accent: #93c5fd;
+  --color-accent-pressed: #bfdbfe;
+  --color-accent-soft: #213047;
+  --color-on-accent: #171717;
+  --color-danger: #fda29b;
+  --color-hover: #292929;
+  }
+}

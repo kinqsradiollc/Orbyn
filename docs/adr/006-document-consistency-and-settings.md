@@ -149,3 +149,13 @@ The public mobile landing page uses neutral supporting text and wrapping header,
 actions and preview metadata. Rendered verification and test/review role runs
 remain waived under the owner's delivery preference; package/type results are
 recorded separately. No environment variables or migrations change.
+
+### 18 October follow-up — brand consistency
+
+Retain the orbit/wordmark; regenerate favicon, install/native/extension icons
+and social exports from the current shared palette and bundled font families.
+One committed generator owns those exports. Version browser asset references,
+keep native masks safe, and use a monochrome macOS tray template. Archive legacy
+green cover exports. Metadata supplies the first-party icon without changing
+connection authority. See the brand refresh ledger for build evidence and the
+unperformed native/cache/host rendering checks.
