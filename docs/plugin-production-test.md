@@ -53,8 +53,8 @@ A host without UI must still receive usable text/structured results. Workspace A
 needs a separate approved provider/model/allowance; verify receipt retry, paused
 worker and unknown-outcome recovery without another provider dispatch.
 
-Use the [current implementation handoff](reviews/c6-unified-mcp-implementation.md)
-for exact candidate and remaining gates. Local qualification is not real-host
+Use [verification boundaries](verification.md) and a new scoped task record
+for the exact candidate and remaining checks. Local qualification is not real-host
 acceptance; the legacy observations below do not qualify the new `/mcp` runtime.
 
 ---

@@ -42,7 +42,7 @@ lives in its own top-level folder.
 | `backend/`             | `@orbyn/backend`    | Fastify + PostgreSQL API, reminder worker, migrations, Dockerfile. Organised by `modules/`. |
 | `desktop/`             | `@orbyn/desktop`    | React + Vite web app, also packaged as an Electron desktop app. Organised by `features/`.   |
 | `mobile/`              | `@orbyn/mobile`     | Expo (React Native) app for iOS and Android. Organised by `screens/`.                       |
-| `docs/`                |                     | Setup, architecture, API reference, deployment, and mobile guides.                          |
+| `docs/`                |                     | Current product references and engineering workflow guides.                          |
 | `gateway/`             |                     | nginx gateway template, rendered from environment settings at start.                        |
 | `pgbouncer/`           |                     | Connection pooler image with primary and read-replica routes.                               |
 | `ocr/`                 |                     | OCR service for imported scans (Unlimited-OCR on CPU); Compose profile `ocr`.               |
@@ -101,7 +101,7 @@ choose its model. Nothing AI-related goes in `.env`; see [setup](docs/setup.md#a
 cp .env.example .env
 printf '\nDOC_PDF_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
 docker compose up -d postgres mailpit
-npm install
+npm ci
 npm run build:packages        # compile the shared packages first
 npm run migrate
 PORT=8008 npm run dev:api     # API on http://localhost:8008
@@ -116,7 +116,18 @@ npm run build -w backend && npm run worker -w backend
 
 For mobile, see [docs/mobile.md](docs/mobile.md).
 
+## Development workflow
+
+[AGENTS.md](AGENTS.md) is the shared repository policy for Codex and Claude Code.
+Use [orbyn-workflow](skills/orbyn-workflow/SKILL.md) for substantial engineering
+work and [Orbyn roles](docs/agents/roles.md) for scoped assignments. Host settings
+use GPT-6.1 Sol/medium and Sonnet/medium; requested project sessions may use
+bounded subagents. See [coordination](docs/agents/coordination.md).
+
 ## Documentation
+
+Start at the [documentation index](docs/README.md) for current guides and their
+owning source. The old ADR queue and checkpoint reports have been retired.
 
 - [Setup guide](docs/setup.md) - every environment variable, Docker and local workflows
 - [Architecture](docs/architecture.md) - services, data model, reminder pipeline, AI proposal flow
@@ -139,9 +150,9 @@ All commands run from the repository root.
 | `npm run dev:web`             | Web app dev server on port 5173                                                          |
 | `npm run dev:mobile`          | Expo dev server                                                                          |
 | `npm run typecheck`           | Build packages, then type-check backend, desktop, and mobile                             |
-| `npm test`                    | Backend integration tests (needs an `orbyn_test` database)                               |
+| `npm test`                    | Default backend `.test.ts` suite (guarded test DB where needed)                               |
 | `npm run build`               | Build packages, backend, and the web bundle                                              |
-| `npm run format`              | Format everything with Prettier                                                          |
+| `npm run format`              | Format the authored paths selected by the root script                                                          |
 | `npm run desktop -w desktop`  | Launch the Electron shell against the built web app                                      |
 | `npm run package -w desktop`  | Produce installers (dmg, nsis, AppImage)                                                 |
 | `./scripts/deploy.sh`         | Install or update a server without downtime: pull, back up, build, migrate, roll out     |
@@ -153,6 +164,10 @@ All commands run from the repository root.
 > `@orbyn/core` cannot be resolved after `npm install`, run `rm -rf node_modules/@orbyn && npx npm@latest install`.
 
 ## Tests
+
+Run these when testing is in scope. The default backend script does not include
+separate `.integration.ts` lanes; inspect the owning scripts for the requested
+contract. See [verification](docs/verification.md).
 
 The backend tests use their own throwaway PostgreSQL, separate from the app's database:
 

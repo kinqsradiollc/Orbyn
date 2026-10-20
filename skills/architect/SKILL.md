@@ -1,0 +1,28 @@
+---
+name: architect
+description: "Design data shapes, interfaces and ownership for substantive features or refactors before implementation."
+---
+
+# Architect
+
+Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+
+Read the relevant [stack boundaries](../../docs/agents/stack.md). Use
+[orbyn-research](../orbyn-research/SKILL.md) for a consequential external unknown
+and [orbyn-plan](../orbyn-plan/SKILL.md) when the design needs a delivery sequence.
+
+Trace the current design with [how](../how/SKILL.md). Write the caller's usage
+first, then the necessary types, owner, interfaces and lifecycle. Include authority,
+concurrency, failure, recovery and compatibility when the task affects them.
+
+Compare plausible alternatives where the choice is consequential. A small sketch
+is sufficient when an established pattern fits. Use [arena](../arena/SKILL.md)
+only when competing candidates would settle a real uncertainty; do not launch a
+model panel for every function boundary.
+
+Choose the smallest coherent design and explain its trade-off. Implement when
+requested; a design-only request ends with the design. Keep sketches out of
+production code unless they are being completed in the same delivery.
+Repeated escape hatches or duplicated state interpretation mean reconsider the
+owner/type design. Fix that source of complexity instead of adding wrappers.
+Record a durable rationale only when future maintainers need the decision.

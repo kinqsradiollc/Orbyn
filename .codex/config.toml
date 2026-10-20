@@ -1,0 +1,10 @@
+# Project defaults; parent permissions, providers and MCP settings apply.
+model = "gpt-6.1-sol"
+model_reasoning_effort = "medium"
+
+[agents]
+max_threads = 2
+
+[agents.orbyn-agent]
+description = "Orbyn engineering agent; reads orbyn-workflow and executes the assigned workflow role."
+config_file = "agents/orbyn-agent.toml"

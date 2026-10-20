@@ -115,7 +115,7 @@ Use the shared scale by role at normal text settings:
 ## AI interactions in Orbyn
 
 - Assistant is the conversational workspace. Character configuration belongs to
-  Background/Overnight agents, following the agreed task requirements; it must not block ordinary chat.
+  Background/Overnight agents, following the current product contract; it must not block ordinary chat.
 - Background and Overnight have distinct identities, runs, activity, and outputs.
   Show actual Idle/Queued/Running/Waiting/Stopped/Failed states and last activity;
   animate only supported active states. Describe collaboration without implying
@@ -142,16 +142,20 @@ Select representative states for the agreed risk, not every axis automatically.
 User exclusions and `AGENT.md` take precedence; this is a menu of checks, not a
 new requirement for native builds, enlarged text or repeated visual sweeps:
 
-| Axis          | Representative checks                                                                                                    |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Width/height  | Web 320/390/768/1280; mobile browser 320/390; short window and landscape where relevant                                  |
-| Containers    | Expanded/collapsed main nav, secondary panel, nested picker/dialog, actual pane width                                    |
-| Density/UX    | Useful task space at 320×740; concise copy; clear first action; complete, cancel, recover and return without losing work |
-| Appearance    | Light/Dark at normal settings; enlarged text/zoom only when included in the agreed check                                 |
-| Content       | Empty/populated, long/localized labels, large catalogs, selected/manual values                                           |
-| Network/state | Loading, offline/error, retry, success, disabled, stale/revoked where relevant                                           |
-| Interaction   | Pointer, Tab/Shift+Tab, Escape, focus return, scroll-to-last-item, keyboard visible                                      |
-| Platforms     | Shared web/desktop browser and Expo web; installed desktop/iOS/Android only when explicitly requested                    |
+When visual checks are authorized, select the cases relevant to the changed flow.
+This is a reference menu, not a mandatory sweep. Native checks require explicit
+scope; keep unperformed cases unverified.
+
+| Axis | Candidate checks |
+| --- | --- |
+| Width/height | Web 320/390/768/1280; mobile browser 320/390; short window and landscape where relevant |
+| Containers | Expanded/collapsed main nav, secondary panel, nested picker/dialog, actual pane width |
+| Density/UX | Useful task space at 320×740; concise copy; clear first action; complete, cancel, recover and return without losing work |
+| Appearance | Light/Dark at normal settings; enlarged text/zoom only when in scope |
+| Content | Empty/populated, long/localized labels, large catalogs, selected/manual values |
+| Network/state | Loading, offline/error, retry, success, disabled, stale/revoked where relevant |
+| Interaction | Pointer, Tab/Shift+Tab, Escape, focus return, scroll-to-last-item, keyboard visible |
+| Platforms | Browser checks; installed desktop/iOS/Android only when requested; native gaps stay explicit |
 
 At 320 CSS px, ordinary horizontal prose must not need horizontal scrolling;
 if an accessibility resizing audit is requested, include its agreed zoom/text
@@ -160,7 +164,7 @@ Check increased text spacing and accessible names/roles as appropriate. Screensh
 establish visible containment only; interaction and accessibility need their own
 checks. This matrix does not replace a full accessibility audit.
 
-Visual Check's Markdown report should record source ref, URL, viewport, theme,
+An authorized visual report should record source ref, URL, viewport, theme,
 state/actions, image path or inline capture ID, inspected outcome, severity,
 reproduction, and unverified scope. Separate confirmed defects from capture/DPR
 errors. Acceptance requires the changed flow to remain readable, reachable, and
@@ -186,7 +190,8 @@ breakpoints; passing a few fixed screenshots does not prove every size works.
   in a focused surface; retain essential scope and consent at the decision point.
 
 Reference: the bounded 13 October inspection in
-`docs/reviews/chatgpt-reference-2026-10-13.md`. Its desktop observations inform these
+`docs/reviews/chatgpt-reference-2026-10-13.md`, now retained in Git history.
+Its desktop observations inform these
 choices but do not prove Orbyn usability or long-list/mobile/split-pane behavior.
 The four-line input cap is the owner's Orbyn preference; the observed ChatGPT Work
 composer allowed more growth.

@@ -7,7 +7,7 @@ description: Write and arrange concise Orbyn product content, labels, status, er
 
 Make the next action understandable at a glance. Routine Orbyn screens must not
 read like product documentation or a generated essay. Use with the layout skill
-at `skills/orbyn-ui-design/SKILL.md`; follow the agreed task scope and `AGENT.md`.
+at `skills/orbyn-ui-design/SKILL.md`; follow the agreed task scope and `AGENTS.md`.
 
 ## Whole-product editing
 
@@ -81,8 +81,8 @@ with tests or clipping text.
 
 Before handoff, remove repetition and read only the visible headings, values and
 actions: the task should still make sense. Check that optional help is discoverable
-and essential information stays visible. Give Orbyn Visual Check specific content
-risks in the stable-candidate batch; do not start another screenshot sweep solely
+and essential information stays visible. If independent visual review is requested, give the assigned inspector specific
+content risks in the stable-candidate batch; do not start another screenshot sweep solely
 because this skill or documentation changed. Evaluate scanability and task space,
 not just whether all boxes fit. Preserve the full agreed acceptance requirements.
 

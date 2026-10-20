@@ -1,37 +1,35 @@
-# Delivery verification
+# Verification
 
-This records the implementation checks performed on the `feature/rbac` branch on
-15 September 2026. It distinguishes working local delivery from release steps that
-require deployment credentials or a physical device.
+Verification is scoped to the current task and candidate. Follow
+[delivery](agents/delivery.md), [development](agents/development.md) and the user's
+requested checks. This guide is not a record of a previously qualified release.
 
-| Requirement                         | Evidence                                                                                                                     | Result                                                                                                                  |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Separate backend and PostgreSQL     | TypeScript/Fastify services, migrations, Docker images, gateway and PgBouncer started against PostgreSQL                     | Verified locally                                                                                                        |
-| Web homepage and planner            | Public homepage and authentication routes; browser checks of calendar, team creation and admin dashboard                     | Verified locally                                                                                                        |
-| Desktop application                 | Exact Electron version pinned; unsigned arm64 macOS app packaged, launched, signed in and loaded planner                     | Verified locally; no notarization or Windows/Linux installer validation claimed                                         |
-| Mobile application                  | iOS simulator workflows and CI iOS/Android Metro exports; shared typed API client                                            | Simulator and bundles verified; physical-device push remains pending                                                    |
-| Web/mobile consistency              | Shared colors, labels, assistant copy, schemas and overview calculation; regressions for counts, grouping and activity dates | Type-checks and focused tests pass                                                                                      |
-| AI provider support                 | Admin-managed provider adapters, encrypted keys, proposal validation and approval                                            | Live configured provider summarized, proposed a task with history, applied it, and rejected access from another account |
-| Planner CRUD, teams and permissions | Live API smoke run through gateway                                                                                           | 44 checks passed, including AI                                                                                          |
-| Deadline email                      | Created a near-due QA task; received its subject in local Mailpit; removed the test task                                     | Actual SMTP delivery verified                                                                                           |
-| Mobile push transport               | Tests for acceptance tickets, successful receipts, unregistered devices and retryable errors                                 | Three mocked-transport regressions pass; not evidence of APNs/FCM device delivery                                       |
-| Environment and documentation       | Ignored local `.env`, `.env.example`, mobile build profiles, setup/API/architecture/deployment guides                        | Present; secrets remain untracked                                                                                       |
-| GitHub delivery                     | Commits pushed to existing PR #2, stacked on PR #1                                                                           | Open for review; not merged or publicly deployed                                                                        |
+## Select evidence
 
-The backend suite passed 65 tests before the three push transport regressions were
-added; those three also passed separately. Hosted CI runs the combined suite,
-workspace type-checks, mobile bundle exports, Docker builds and live API smoke checks.
-Use the latest PR checks for the authoritative result at a particular commit.
+| Change | Relevant evidence when authorized | Limit |
+| --- | --- | --- |
+| Docs, skills or host config | Paths/links, schema parsing, import hashes, expected discovery structure | Static checks do not prove a model run |
+| Shared types and application code | Workspace types, focused behavior tests, affected callers | A build alone does not prove behavior |
+| Database/API boundary | Guarded disposable DB, authority/conflict/retry cases | No real user database or secrets |
+| UI | Changed flows at actual pane widths, focus/selection/recovery | Web preview does not establish native behavior |
+| Provider or OAuth integration | Deterministic fixtures and separately authorized live lifecycle evidence | Mocks do not prove provider renewal or availability |
+| Deployment | Requested target, migration/recovery plan and observed service state | A local commit or image is not deployment |
 
-## Remaining release verification
+Do not add or run tests unless requested or required by higher-priority session
+instructions. When allowed, inspect the owning package script; the default backend
+suite selects `tests/*.test.ts` and does not run every `.integration.ts` file.
+Database tests require `TEST_DATABASE_URL`, a database ending in `_test`, and the
+`orbyn.environment='test'` marker. See [setup](setup.md#4-tests).
 
-- Configure an Expo EAS project and native push credentials, install a development or
-  distribution build on a physical device, enable notifications in Settings, and
-  verify a reminder arrives. Follow [the mobile guide](mobile.md).
-- Sign/notarize desktop installers and build the target operating systems for a
-  public desktop release.
-- Configure production HTTPS, SMTP and database backups before public deployment.
-  Follow [the deployment guide](deployment.md).
+For agent asset changes, `python3 scripts/check-agent-assets.py` checks source
+integrity, host links/defaults and documentation references. It starts no model,
+server, browser or application tests. Host runtime discovery needs separate
+observation; report it explicitly if it was not exercised.
 
-These checks do not claim app-store publication, production deployment, or delivery
-to an actual mobile device.
+## Record the result
+
+Name the branch/revision or dirty diff, command, exit outcome, relevant output and
+known limits. Preserve failed attempts. Distinguish self-review from independent
+review, and local changes from committed/pushed/merged/deployed work. Use a scoped
+work record only when it helps a future handoff; do not recreate historical ADR
+queues as an active acceptance checklist.

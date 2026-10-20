@@ -98,7 +98,8 @@ For the changed feature, record an outcome, not just an opened screen:
 | Narrow and enlarged | Actual viewport/scale, usable task space, keyboard/overlays, no trapped action |
 | Equivalent clients  | Same supported task and authority on web/desktop/mobile; explicit native gaps  |
 
-Ask Orbyn Visual Check for the authorized interaction review and Markdown report.
+When independent interaction review is requested, give the assigned inspector a
+bounded brief and report destination under the repository coordination policy.
 Use plain task goals for exploratory review rather than giving away every click;
 give exact steps for a known defect's recheck. Agent walkthroughs are expert QA,
 not evidence from representative human participants. Where user testing is done,

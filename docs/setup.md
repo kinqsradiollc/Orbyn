@@ -454,7 +454,8 @@ without uninstalling the bot for other owners. Unknown sends are not replayed.
 Teams question cards carry the exact waiting ID and accept replies only through
 the verified personal conversation under current consent and source authority.
 Approvals open the owned Orbyn review. Live tenant delivery is a deferred
-qualification check; see [C5 status](reviews/c5-progress.md) for current acceptance.
+qualification check; use [verification boundaries](verification.md) for a new
+acceptance run. Historical C5 records remain in Git history.
 
 ## Personal ChatGPT provider
 

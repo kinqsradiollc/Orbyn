@@ -30,6 +30,10 @@ live on different machines; see [scalability.md](scalability.md).
 | `ocr`       | `ocr/server.py`         | Unlimited-OCR on CPU for scanned pages (Compose profile `ocr`, off by default)                                                                                                  |
 | `migrate`   | `migrate.ts`            | Applies `migrations/*.sql` in order under an advisory lock, then exits                                                                                                          |
 | gateway     | `gateway/` (nginx)      | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, `/files/{u,p,r}/*` to files, `/mcp` to mcp, rest to api; port 8082 routes separate MCP and plugin recipients |
+| `assistant-background` | `services/assistant-background.ts` | Background assistant worker lane |
+| `assistant-overnight` | `services/assistant-overnight.ts` | Overnight assistant worker lane |
+| `pdf` | `services/pdf.ts` | Private bounded document renderer |
+| `measure` | `services/measure.ts` | Optional semantic indexing worker; `semantic` Compose profile |
 
 `server.ts` runs every module in one process for local development and tests.
 `services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
@@ -65,7 +69,8 @@ or preview-mode transition starts compilation. Export captures source/revision,
 retains cancellation/account/document checks, and leaves the HTML workspace in
 place on success or failure. PDF.js remains for PDF attachments/imports; it is not
 the LaTeX editing preview. Assistant changes remain proposals requiring a decision.
-See [ADR 005](adr/005-document-workspace.md) for acceptance and boundaries.
+See [verification boundaries](verification.md) for evidence requirements; retired
+document-workspace acceptance records remain in Git history.
 
 The private `pdf` (`services/pdf.ts`) and `latex` (`services/latex.ts`) services
 receive signed snapshots rather than database/provider credentials. TeX runs in
@@ -805,8 +810,7 @@ The mobile app shares its look with the web app so both read as one product:
   panes before squeezing the main task. Fixed dialogs remain viewport-owned.
 - **Settings.** Web uses its owned modal and compact category picker; mobile uses
   a sheet. Grouped rows and named optional help keep controls easy to scan.
-  The current delivery and qualification are recorded in
-  [ADR 003](adr/003-product-ui-ux-redesign.md).
+  Follow [UI guidance](agents/ui-ux.md) for current design and evidence scope.
 - **Full screen.** The app draws edge to edge. The header extends under the status bar, the tab bar
   under the home indicator, and each applies safe-area insets itself. Landscape and iPad
   multitasking are enabled in `app.json`; content is capped at 720 points wide and centred on large
@@ -848,7 +852,8 @@ content; live links follow edits only to the selected IDs. Every anonymous read
 rechecks expiry, publisher access, source location and workspace publishing policy.
 Revocation removes the capability; media access is limited to files in the selected
 content and rechecked after storage fetch. Gateway/access logs redact capability
-paths. Implementation and qualification status: [C5 record](reviews/c5-progress.md).
+paths. See [verification boundaries](verification.md); prior qualification records
+remain in Git history and do not establish current live-tenant delivery.
 
 ## Personal ChatGPT credential boundary
 

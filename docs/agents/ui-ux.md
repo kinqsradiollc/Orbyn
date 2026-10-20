@@ -1,44 +1,42 @@
-# UI and UX rules
+# UI and UX
 
-Use web preview to qualify the shared web/desktop UI; do not require a separate
-desktop-app check unless the user explicitly requests it again. Browser evidence
-does not establish native integration behavior.
+Read the [UI skill](../../skills/orbyn-ui-design/SKILL.md) for layout and interaction,
+and the [content skill](../../skills/orbyn-content-design/SKILL.md) for visible copy.
+Use existing shared components and tokens; inspect the current screen before
+adding an override. Preserve drafts, selection, focus, permissions and run states.
 
-Use Expo web to preview the mobile app UI. Record mobile-browser results
-separately from responsive desktop/web and native-device results.
+## Product conventions
 
-Use the agreed task requirements to choose acceptance checks. Record exclusions
-in the task report as untested, not passed; do not invent extra verification gates.
+- Keep one clear action per outcome. Remove duplicate controls, competing toolbars
+  and explanations of obvious actions. Put rare management actions in the existing
+  overflow menu. Icon-only controls need accessible names and keyboard focus.
+- Use the current accent, neutral surfaces, text roles and spacing tokens. Do not
+  introduce a new palette or shrink text to hide layout problems. Filled/bordered
+  controls need padding and consistent heights; mobile touch targets remain usable.
+- Respond to the actual pane width. Preserve user-selected sidebar widths; opening
+  another pane must not reset them. Align pane/tab headers and avoid duplicate
+  gutters. Keep primary work usable with a compact navigation rail and secondary
+  panels. Hover labels also need keyboard and touch alternatives.
+- Reuse one Library layout inside and outside documents. Keep source and preview
+  together where requested and retain synchronization/error location semantics.
+  Selection menus appear after selection settles, not while dragging.
+- Keep settings compact, statuses factual and error recovery close to the action.
+  Separate connected external agents from Background/Overnight work. Do not put
+  implementation details in routine product flows.
 
 For a full redesign, assess every screen family and shared surface: layout,
 style, spacing, positions, copy, states and interactions. Keep a coverage ledger;
 shared token changes alone do not establish that every layout has been reviewed.
 
-## UI and UX Conventions
+## Scoped visual evidence
 
-- **Design skill:** read `skills/orbyn-ui-design/SKILL.md` for UI/UX changes.
-  Its rules cover task flows, concise copy, compact layout, recovery and acceptance.
-- **Content skill:** read `skills/orbyn-content-design/SKILL.md` when writing or
-  arranging product copy. Routine screens show the task, current state and action;
-  optional explanations go behind named help. Remove repeated headings, marketing
-  filler and technical QA wording. Keep essential consent/consequences visible
-  and preserve user-authored content. Shorten copy before shrinking its text.
-- **Compact and readable:** use shared text roles; reserve display headings for deliberate
-  hero content. Keep user text scaling enabled and reflow layouts instead of shrinking text.
-- **No unintended overlap:** adapt to the remaining pane width, wrap or stack controls,
-  and collapse secondary panels before they obscure the main task. Verify open overlays,
-  short heights, long labels, both themes and enlarged text in the changed flow.
-- **Brief copy, usable space:** use a label and only a necessary short helper.
-  Put optional explanations behind disclosure; keep consent/consequences visible.
-  Review density and task completion at narrow sizes, not just whether boxes fit.
+When visual verification is authorized, preview shared web/desktop UI in the web
+app and mobile UI through Expo web. Record the actual URL, source revision,
+viewport, zoom, theme and checked states; browser evidence does not establish
+native integration behavior. Do not require native builds unless in scope.
 
-- **Colours:** use the agreed product palette; palette changes require an explicit design decision. Use theme tokens (`var(--color-*)` on web, `colors.*` on mobile); no colour literals in new code.
-- **Corners:** web uses the radius scale in `desktop/src/styles/global.css` — `--radius-xs` (4, bars and marks), `--radius-sm` (8, controls), `--radius-md` (12, cards and panels), `--radius-lg` (16, dialogs), `--radius-pill`. Mobile uses `radii.input` / `radii.card` / `radii.pill` (and `radii.check` for checkboxes). No raw pixel radii.
-- **Controls are ours, not the browser's:** `Select` (`components/Select.tsx`) instead of `<select>`, `DateField` (`components/DateField.tsx`) instead of `<input type="date|time|datetime-local">`. Bare fields, checkboxes and radios are styled at zero specificity in `global.css`; a switch is a checkbox with `role="switch"` and `className="ai-switch"`. Mobile switches set `trackColor={{ true: colors.accent }}`.
-- **Managing things lives behind ⋯:** rename, delete, leave and similar rare actions go in a menu beside the title (`MoreMenu` on mobile, a bottom action sheet; small toolbar icons on web), never as a row of buttons over the content.
-- **Mobile type is light, like the web:** `fonts.semibold` renders at 500 and `fonts.bold` at 600; controls reserve a 44pt target in layout. A smaller visual mark can sit inside that target; expanded hit areas must not overlap neighbouring actions. Selected chips are a soft accent tint, not a solid fill.
-- **Spacing:** anything with a border or fill has inner padding — nothing touches its box's edge. Siblings that repeat (chips, pickers, rows) share one height and line up.
-- **Room to work:** the web sidebar collapses to an icon rail (⌘\\, remembered per browser); the Docs library can be hidden for a full-width page. On mobile, tapping the tab you're on scrolls to the top and refreshes.
-- **Verify material UI changes with targeted preview checks** on affected web
-  (5174) and mobile web (8083) surfaces, following the on-demand cadence above.
-  Unchanged screens and purely functional/API changes need no visual rerun.
+Inspect changed flows and concrete risks, not a matrix of unchanged screens.
+Independent inspection is optional unless requested; choose the session/subagent
+arrangement from [coordination](coordination.md). Builds and DOM dimensions alone
+do not establish usable visuals. Keep failed/blocked states and evidence limits.
+A blocked browser origin is not permission to retry through another transport.

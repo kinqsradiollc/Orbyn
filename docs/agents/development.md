@@ -1,86 +1,76 @@
-# Development rules
+# Development
 
-## Start from the current repository
+Start with [AGENTS.md](../../AGENTS.md). Identify the requested outcome, active
+checkout and existing changes. Read nearby source, its callers and applicable
+nested instructions. The current manifests and contracts outrank old reports.
 
-- Read `AGENT.md` and [roles](coordination.md); check `AGENTS.md`, `CLAUDE.md`,
-  `.cursorrules` and `codex.md` where present in the affected scope.
-- Confirm checkout, branch, worktrees and uncommitted ownership before editing.
-  Preserve user/other-session changes. Never overwrite an existing environment file.
-- Read the current task request, plan and handoff. Confirm scope and delivery
-  order; do not substitute a historical report for current requirements.
-- Read the relevant [architecture](../architecture.md) and [setup](../setup.md)
-  sections. Env schema: `backend/src/config/env.ts`; permissions:
-  `packages/core/src/rbac.ts`. Never print credentials or put them in reports.
+## Understand, design, implement
+
+Use [how](../../skills/how/SKILL.md) to trace the affected path. For a substantive
+interface change, use [architect](../../skills/architect/SKILL.md): caller usage,
+data shape, owner, lifecycle and error behavior before implementation. Inspect
+history with [why](../../skills/why/SKILL.md) when a strange constraint may be
+intentional. Keep speculative improvements outside the agreed change.
+
+Prefer one authoritative representation. Remove redundant interpretation and
+proven obsolete internal paths after migrating their callers. Public APIs,
+stored records and older clients need an explicit compatibility plan. A broad
+rewrite is not the default response to a local defect.
 
 ## Dependency boundaries
 
 ```text
-web/desktop, mobile → @orbyn/api-client, @orbyn/core
-@orbyn/api-client → @orbyn/core
-backend → @orbyn/core, @orbyn/api-client
+web/desktop, mobile -> @orbyn/api-client, @orbyn/core
+@orbyn/api-client -> @orbyn/core
+backend -> @orbyn/core, @orbyn/api-client
 ```
 
-Shared packages must not import apps or backend code. Backend must not import
-app code. Apps must not import one another. `@orbyn/core` currently uses Zod and Yjs; manifests and the
-lockfile are authoritative. Shared schemas/types belong in core; API transport
-belongs in api-client. Backend enforces authority; UI permission checks are hints.
+Shared packages must not import apps/backend. Apps must not import one another;
+backend must not import app code. Shared schemas/types belong in core and API
+transport in api-client. Backend enforces authority; UI checks are hints.
+Read relevant [architecture](../architecture.md) and [setup](../setup.md) sections.
 
-## Implementation conventions
+Use [TypeScript guidance](../../skills/typescript-best-practices/SKILL.md).
+Validate untrusted input at boundaries, keep authority checks near effects, and
+preserve optimistic concurrency, transaction boundaries, cancellation and cleanup.
+Types do not replace runtime validation of persisted or external data.
 
-- Match neighboring code and repository Prettier output; no unrelated reformatting.
-  Existing TypeScript uses double quotes. Older single-quote guidance is stale.
-- Use kebab-case modules, PascalCase React components/types and camelCase functions.
-  Keep responsibilities clear, types precise and helpers justified.
-- New configuration must update the applicable `.env.example`,
-  service bindings and deployment instructions. Keep private `.env.production`
-  synchronized locally without committing its values.
-  Run `node scripts/check-env-examples.mjs` to check template coverage.
-  Client `VITE_*` and `EXPO_PUBLIC_*` values are public; never put secrets there.
-- Document public contracts and non-obvious business rules. Use structured logging
-  where needed; never log secrets, provider tokens or private document content.
-- Preserve optimistic concurrency, transaction boundaries, cancellation and cleanup.
-  Do not bypass ownership/visibility checks or silently change fallback behavior.
-- Apply [UI/UX rules](ui-ux.md) for product UI/copy and
-  [operations](operations.md) for services, migrations, privacy and deployment.
+Match repository Prettier and neighboring code. Current TypeScript uses double
+quotes. Use kebab-case modules and PascalCase components/types. Avoid arbitrary
+function-length limits, obligatory wrappers and catch/log/rethrow in every helper.
+Document non-obvious constraints; never log secrets or private document content.
+New configuration must update applicable `.env.example` templates, service
+bindings and deployment instructions. Keep private configuration local; client
+`VITE_*` and `EXPO_PUBLIC_*` values are public. Use
+`node scripts/check-env-examples.mjs` for template coverage when in scope.
 
-## Development and verification
+## Commands and evidence
 
-Builder owns product/test source and development checks. Tester owns formal
-delivery verification; Reviewer assesses code quality and test evidence without
-coding or running tests. Follow **Implement → Test → Review** for the agreed scope.
-Documentation-only changes need document checks, not product builds or visual sweeps.
+Read the current `package.json` before choosing a command. Orbyn requires Node
+22+ and npm 10+; vendored tools have separate requirements and lockfiles.
 
-- Unit tests isolate dependencies. Integration/runtime tests may use the guarded,
-  disposable PostgreSQL test database documented in [setup](../setup.md#4-tests).
-  Do not use a production database. Mock external providers for deterministic tests.
-- New/changed endpoints need applicable authentication, authorization, validation,
-  rate-limit and error/recovery coverage. Do not force irrelevant status cases into
-  every test or equate mocked SQL with real transaction/migration verification.
-- Record exact source, command, terminal exit and result. Failed setup attempts,
-  skipped checks and older source-scoped evidence remain explicit.
-- Live provider measurements need an authorized isolated fixture and protected
-  credentials; distinguish them from deterministic test results.
-- Build shared packages before focused tests that import their generated exports.
-  Retest changed behavior; reuse older results only with relevant source equivalence.
+| Purpose | Command |
+| --- | --- |
+| Install Orbyn dependencies when needed | `npm ci` |
+| Shared exports | `npm run build:packages` |
+| API example | `PORT=8008 npm run dev:api` |
+| Web example | `API_PROXY_URL=http://127.0.0.1:8008 npm run dev -w desktop -- --port 5174` |
+| Expo web example | `EXPO_PUBLIC_API_URL=http://127.0.0.1:8008 npm run start -w mobile -- --web --port 8083` |
+| Types | `npm run typecheck` |
+| Backend default suite, when authorized | `npm test` |
+| Production backend/web build | `npm run build` |
 
-## Local commands
+Reuse owned matching processes; these ports are examples. Build shared packages
+before checks consuming their generated exports. Format only changed authored
+files, excluding immutable upstream snapshots. There is no root `npm run lint`.
 
-Node **22+**, npm **10+**; use `npm ci` with the committed lockfile.
-Prepare local env/test services using [setup](../setup.md); do not copy over existing envs.
+Follow the [delivery workflow](delivery.md) for scope and
+verification authorization. When testing is in scope, use the guarded disposable
+database from [setup](../setup.md#4-tests): `TEST_DATABASE_URL`, an `_test` database,
+and `orbyn.environment='test'`. Never substitute production. The default backend
+suite does not establish that every separate integration lane ran. Inspect the
+owning test scripts and record exact commands, terminal results and missing lanes.
+Mock providers for deterministic tests; mock evidence is not live-provider proof.
 
-| Purpose                       | Command                                                                                  |
-| ----------------------------- | ---------------------------------------------------------------------------------------- |
-| Shared package prerequisites  | `npm run build:packages`                                                                 |
-| Local combined backend        | `PORT=8008 npm run dev:api`                                                              |
-| Shared web/desktop UI preview | `API_PROXY_URL=http://127.0.0.1:8008 npm run dev -w desktop -- --port 5174`              |
-| Mobile UI browser preview     | `EXPO_PUBLIC_API_URL=http://127.0.0.1:8008 npm run start -w mobile -- --web --port 8083` |
-| Types across workspaces       | `npm run typecheck`                                                                      |
-| Backend tests                 | `npm test` with the guarded `TEST_DATABASE_URL` from setup                               |
-| Production backend/web build  | `npm run build`                                                                          |
-| Formatting                    | Prettier on changed files; avoid repository-wide writes for a small change               |
-
-These ports are local examples: reuse existing owned processes and matching APIs.
-Run migrations only against the intended database. Background and Overnight have
-separate runtimes; launch commands and service ownership are in setup/architecture.
-Web qualifies shared desktop UI; Expo web qualifies mobile browser UI. Do not add
-platform or enlargement verification jobs excluded from the agreed task scope.
+For migrations and services, read [operations](operations.md). For UI/copy, read
+[UI/UX](ui-ux.md). Do not run the vendored REA test suite for an Orbyn change.

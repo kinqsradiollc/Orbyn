@@ -3474,10 +3474,11 @@ status/request reads are fresh and all responses use `Cache-Control: no-store`.
 OAuth attempts expire after ten minutes. Confirmation requires the original
 live session. Callback retries cannot repeat a code exchange. Bot-token rotation
 has a durable one-use claim; uncertainty clears local credentials and requires
-explicit reconnect. This candidate's DMs link to in-app review; no signed reply
-endpoint is mounted yet. Current source/qualification and remaining provider,
-shared-workspace, native/visual gates are in
-[agent channel evidence](reviews/evidence/agent-channels.md).
+explicit reconnect. DMs link to in-app review. Signed reply endpoints are registered
+through `createSlackReplyRoutes` in `backend/src/app.ts`; their implementation is
+in `backend/src/modules/agent-channels/reply-routes.ts`. Registration is source
+evidence, not proof of a configured live Slack installation. See
+[verification](verification.md) for the current evidence requirements.
 
 ### Signed Slack question callbacks (candidate)
 

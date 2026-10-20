@@ -11,7 +11,7 @@ accessibility settings.
 
 ## Read before designing
 
-- Read `AGENT.md` and the agreed task scope; preserve scope and stage order.
+- Read `AGENTS.md` and the agreed task scope; preserve scope and stage order.
 - For product copy and information hierarchy, read
   `skills/orbyn-content-design/SKILL.md`; keep detailed content rules there.
 - Read [design rules](references/design-rules.md) for typography, layout, copy,
@@ -29,7 +29,12 @@ accessibility settings.
 Use neutral surfaces and a restrained blue accent. Prefer grouped rows over nested cards,
 compact menus over repeated buttons, and modals/sheets for focused edits. Remove
 ornamental entrance, stagger and hover-lift motion. Preserve meaningful progress.
-Read the current decision in `docs/adr/README.md` before a broad redesign.
+Use the current product guides and the user's brief before a broad redesign.
+
+Read [prototyping guidance](references/prototypes.md) when an interactive sketch
+would resolve a design question. Use `orbyn-research` for unknown platform or
+accessibility requirements; do not replace existing product tokens with a foreign
+host's theme or tool APIs.
 
 ## Design and implement
 
@@ -46,10 +51,12 @@ Read the current decision in `docs/adr/README.md` before a broad redesign.
 
 ## Review and delivery
 
-Apply the on-demand cadence in `AGENT.md`: no automatic visual sweep for every
+Apply the on-demand cadence in `AGENTS.md`: no automatic visual sweep for every
 change or checkpoint. Prefer tests/API evidence for functional behavior and reuse
 valid prior UI evidence. For a material layout/interaction risk or reproduced
-visual defect, send one bounded request to **Orbyn Visual Check**. Give it the candidate checkout/ref,
+visual defect, inspect the relevant flow when authorized. If an independent
+visual role is requested, use the session/subagent topology in
+[coordination](../../docs/agents/coordination.md). Give that inspector the candidate checkout/ref,
 URLs, exact states, viewport sizes, themes, and a Markdown report destination.
 Specify whether its assignment is capture-only or includes analysis, following
 the user's current authorization. Report delegated pixel review as delegated;
