@@ -66,6 +66,6 @@ also preserved in the local worktree recovery archive and Git history.
 
 Checkout cleanup recovery: `/Users/anhdang/Documents/Orbyn worktree archives/20261021-105013`.
 This contains original local configuration, untracked source/reference material,
-ignored native project files and the latest retired-document snapshot. Managed
-worktree snapshots remain recoverable through the app. Recovery data is local
-and is not part of the repository.
+ignored native project files and the latest retired-document snapshot. Worktree sources and original commit refs are preserved for recovery. App
+archive requests are separate from these verified local copies. Recovery data is
+local and is not part of the repository.
