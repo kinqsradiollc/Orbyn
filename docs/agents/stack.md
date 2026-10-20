@@ -4,17 +4,17 @@ Inspect current manifests before choosing APIs, tools or a new dependency. This
 map is derived from the repository source; exact installed versions live in the
 workspace manifests and lockfile. Skills must fit the affected layer.
 
-| Layer | Current stack and source | Working rule |
-| --- | --- | --- |
-| Shared domain | TypeScript, Zod; `packages/core` | Schemas, state contracts and domain helpers; no application imports |
-| Transport | TypeScript fetch client; `packages/api-client` | Shared API behavior; preserve errors, authority and concurrency semantics |
-| Web/desktop UI | React, Vite, Electron; `desktop/package.json` | Reuse components, local CSS/tokens and Electron boundaries |
-| Mobile | Expo, React Native, native navigation/modules; `mobile/package.json` | Native components and theme; browser parity does not establish native behavior |
-| API/services | Fastify, TypeScript, PostgreSQL; `backend/package.json` | Authority at effects, transactions, retries and resource lifecycle |
-| Assistant | Repository-owned orchestration and provider adapters; `backend/src/modules/ai/agent/`, service workers | Inspect existing runtime before proposing external orchestration frameworks |
-| Deployment | Compose, nginx, PgBouncer, optional Kubernetes; `compose.yaml`, `deploy/` | Respect environment/target ownership; repo edits are not deployment |
-| Agent tooling | Portable Markdown skills, Codex TOML, Claude JSON/Markdown | Use supported host tools; no implicit global configuration |
-| Artifact investigation | Isolated third-party tooling under `tools/` | Separate toolchain, licenses and runtime prerequisites from Orbyn workspaces |
+| Layer                  | Current stack and source                                                                               | Working rule                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| Shared domain          | TypeScript, Zod; `packages/core`                                                                       | Schemas, state contracts and domain helpers; no application imports            |
+| Transport              | TypeScript fetch client; `packages/api-client`                                                         | Shared API behavior; preserve errors, authority and concurrency semantics      |
+| Web/desktop UI         | React, Vite, Electron; `desktop/package.json`                                                          | Reuse components, local CSS/tokens and Electron boundaries                     |
+| Mobile                 | Expo, React Native, native navigation/modules; `mobile/package.json`                                   | Native components and theme; browser parity does not establish native behavior |
+| API/services           | Fastify, TypeScript, PostgreSQL; `backend/package.json`                                                | Authority at effects, transactions, retries and resource lifecycle             |
+| Assistant              | Repository-owned orchestration and provider adapters; `backend/src/modules/ai/agent/`, service workers | Inspect existing runtime before proposing external orchestration frameworks    |
+| Deployment             | Compose, nginx, PgBouncer, optional Kubernetes; `compose.yaml`, `deploy/`                              | Respect environment/target ownership; repo edits are not deployment            |
+| Agent tooling          | Portable Markdown skills, Codex TOML, Claude JSON/Markdown                                             | Use supported host tools; no implicit global configuration                     |
+| Artifact investigation | Isolated third-party tooling under `tools/`                                                            | Separate toolchain, licenses and runtime prerequisites from Orbyn workspaces   |
 
 ## Before choosing an approach
 

@@ -6,14 +6,14 @@ requested checks. This guide is not a record of a previously qualified release.
 
 ## Select evidence
 
-| Change | Relevant evidence when authorized | Limit |
-| --- | --- | --- |
-| Docs, skills or host config | Paths/links, schema parsing, import hashes, expected discovery structure | Static checks do not prove a model run |
-| Shared types and application code | Workspace types, focused behavior tests, affected callers | A build alone does not prove behavior |
-| Database/API boundary | Guarded disposable DB, authority/conflict/retry cases | No real user database or secrets |
-| UI | Changed flows at actual pane widths, focus/selection/recovery | Web preview does not establish native behavior |
-| Provider or OAuth integration | Deterministic fixtures and separately authorized live lifecycle evidence | Mocks do not prove provider renewal or availability |
-| Deployment | Requested target, migration/recovery plan and observed service state | A local commit or image is not deployment |
+| Change                            | Relevant evidence when authorized                                        | Limit                                               |
+| --------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------- |
+| Docs, skills or host config       | Paths/links, schema parsing, import hashes, expected discovery structure | Static checks do not prove a model run              |
+| Shared types and application code | Workspace types, focused behavior tests, affected callers                | A build alone does not prove behavior               |
+| Database/API boundary             | Guarded disposable DB, authority/conflict/retry cases                    | No real user database or secrets                    |
+| UI                                | Changed flows at actual pane widths, focus/selection/recovery            | Web preview does not establish native behavior      |
+| Provider or OAuth integration     | Deterministic fixtures and separately authorized live lifecycle evidence | Mocks do not prove provider renewal or availability |
+| Deployment                        | Requested target, migration/recovery plan and observed service state     | A local commit or image is not deployment           |
 
 Do not add or run tests unless requested or required by higher-priority session
 instructions. When allowed, inspect the owning package script; the default backend

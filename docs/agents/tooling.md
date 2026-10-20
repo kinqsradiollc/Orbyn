@@ -8,10 +8,10 @@ session. No global client settings or MCP registration are changed by this migra
 
 ## Complete upstream sources
 
-| Project | Permanent source | Snapshot |
-| --- | --- | --- |
-| pstack | [tools/pstack](../../tools/pstack/README.md) | `74dd2291e8e37b12fd6dc49b2acbd655c6bdaf12`, plugin 0.9.0 |
-| REA | [tools/rea](../../tools/rea/README.md) | `ccc7da309d7db385d5c6d73b0a3a8e093be33504`, package 6.7.0 |
+| Project | Permanent source                             | Snapshot                                                  |
+| ------- | -------------------------------------------- | --------------------------------------------------------- |
+| pstack  | [tools/pstack](../../tools/pstack/README.md) | `74dd2291e8e37b12fd6dc49b2acbd655c6bdaf12`, plugin 0.9.0  |
+| REA     | [tools/rea](../../tools/rea/README.md)       | `ccc7da309d7db385d5c6d73b0a3a8e093be33504`, package 6.7.0 |
 
 All tracked files are preserved, including scripts, tests, docs, provider adapters,
 plugin metadata, licenses and original skills. Nested `.git` histories, generated

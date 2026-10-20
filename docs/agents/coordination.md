@@ -5,11 +5,11 @@ separately, prefer a named project session with its own outcome and ownership.
 That session may use bounded subagents for supporting questions. These are two
 levels of coordination, not interchangeable names for the same tool.
 
-| Work | Owner |
-| --- | --- |
-| Small edit or tightly coupled change | Current session |
-| Separately tracked implementation, investigation or qualification requested by the user | Named project session |
-| Bounded search, comparison or review supporting that session | Native subagent inside that session |
+| Work                                                                                    | Owner                               |
+| --------------------------------------------------------------------------------------- | ----------------------------------- |
+| Small edit or tightly coupled change                                                    | Current session                     |
+| Separately tracked implementation, investigation or qualification requested by the user | Named project session               |
+| Bounded search, comparison or review supporting that session                            | Native subagent inside that session |
 
 ## Project sessions
 

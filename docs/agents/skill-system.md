@@ -6,26 +6,26 @@ plan, changed files or a verification record. They do not recursively invoke eac
 other or load the whole catalog. [Roles](roles.md) define responsibility;
 [stack](stack.md) defines the technology boundary.
 
-| Task or unknown | Primary skill | Useful input / handoff |
-| --- | --- | --- |
-| Clear bounded implementation | `orbyn-workflow` | Current source → scoped change → authorized evidence |
-| Broad or explicitly requested plan | `orbyn-plan` | Outcome + stack + findings → ordered executable plan |
-| Unknown current behavior | `how` | Owning files → mechanism and evidence |
-| Historical reason | `why` | Relevant Git/source history → constraints, with uncertainty |
-| External/version uncertainty | `orbyn-research` | Specific question → cited finding for the planner/designer |
-| Interface/ownership decision | `architect` | Grounded requirements → chosen contracts and lifecycle |
-| Consequential competing designs | `arena` | Shared criteria → bounded alternatives and one decision |
-| Large execution | `figure-it-out` | Agreed plan → completed units and concise handoffs |
-| UI flow/layout | `orbyn-ui-design` + `orbyn-content-design` | User task + actual tokens → coherent UI/copy |
-| TypeScript contract | `typescript-best-practices` | Existing schema/callers → precise valid states |
-| Requested tests/TDD | `tdd` | Failure contract + allowed environment → focused regression and fix |
-| Existing security findings | `orbyn-security-remediation` | Saved findings + current source → scoped fixes and authorized evidence; no new scan |
-| Concrete adversarial review | `interrogate` | Candidate + intended behavior → actionable findings |
-| Artifact/runtime investigation | `reverse-engineer-anything` | Target + authority + actual tools → traceable evidence |
-| Skill creation/refinement | `orbyn-skill-creator` | Routing gap → integrated skill, links and docs |
-| Host configuration | `orbyn-setup` | Supported host + user preferences → scoped configuration |
-| Lessons/preferences | `reflect` / `automate-me` | Current-task evidence + authorization → owning instruction change |
-| Prose / durable evidence | `unslop` / `show-me-your-work` | Supported facts → concise result or decision record |
+| Task or unknown                    | Primary skill                              | Useful input / handoff                                                              |
+| ---------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Clear bounded implementation       | `orbyn-workflow`                           | Current source → scoped change → authorized evidence                                |
+| Broad or explicitly requested plan | `orbyn-plan`                               | Outcome + stack + findings → ordered executable plan                                |
+| Unknown current behavior           | `how`                                      | Owning files → mechanism and evidence                                               |
+| Historical reason                  | `why`                                      | Relevant Git/source history → constraints, with uncertainty                         |
+| External/version uncertainty       | `orbyn-research`                           | Specific question → cited finding for the planner/designer                          |
+| Interface/ownership decision       | `architect`                                | Grounded requirements → chosen contracts and lifecycle                              |
+| Consequential competing designs    | `arena`                                    | Shared criteria → bounded alternatives and one decision                             |
+| Large execution                    | `figure-it-out`                            | Agreed plan → completed units and concise handoffs                                  |
+| UI flow/layout                     | `orbyn-ui-design` + `orbyn-content-design` | User task + actual tokens → coherent UI/copy                                        |
+| TypeScript contract                | `typescript-best-practices`                | Existing schema/callers → precise valid states                                      |
+| Requested tests/TDD                | `tdd`                                      | Failure contract + allowed environment → focused regression and fix                 |
+| Existing security findings         | `orbyn-security-remediation`               | Saved findings + current source → scoped fixes and authorized evidence; no new scan |
+| Concrete adversarial review        | `interrogate`                              | Candidate + intended behavior → actionable findings                                 |
+| Artifact/runtime investigation     | `reverse-engineer-anything`                | Target + authority + actual tools → traceable evidence                              |
+| Skill creation/refinement          | `orbyn-skill-creator`                      | Routing gap → integrated skill, links and docs                                      |
+| Host configuration                 | `orbyn-setup`                              | Supported host + user preferences → scoped configuration                            |
+| Lessons/preferences                | `reflect` / `automate-me`                  | Current-task evidence + authorization → owning instruction change                   |
+| Prose / durable evidence           | `unslop` / `show-me-your-work`             | Supported facts → concise result or decision record                                 |
 
 Select principle leaves when the decision needs them: ownership and boundaries,
 root cause, idempotency, shared-state isolation, simpler design, compatibility,

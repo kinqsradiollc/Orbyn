@@ -3653,7 +3653,6 @@ Collection honors Privacy analytics opt-out. Existing records remain until their
 owner/job references, timestamps and counters are retained, without prompts,
 replies, raw response identifiers or provider credentials.
 
-
 ### Standalone LaTeX preview
 
 `POST /docs/:id/latex/preview` accepts `{source, version}` and returns a PDF.

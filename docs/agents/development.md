@@ -49,16 +49,16 @@ bindings and deployment instructions. Keep private configuration local; client
 Read the current `package.json` before choosing a command. Orbyn requires Node
 22+ and npm 10+; vendored tools have separate requirements and lockfiles.
 
-| Purpose | Command |
-| --- | --- |
-| Install Orbyn dependencies when needed | `npm ci` |
-| Shared exports | `npm run build:packages` |
-| API example | `PORT=8008 npm run dev:api` |
-| Web example | `API_PROXY_URL=http://127.0.0.1:8008 npm run dev -w desktop -- --port 5174` |
-| Expo web example | `EXPO_PUBLIC_API_URL=http://127.0.0.1:8008 npm run start -w mobile -- --web --port 8083` |
-| Types | `npm run typecheck` |
-| Backend default suite, when authorized | `npm test` |
-| Production backend/web build | `npm run build` |
+| Purpose                                | Command                                                                                  |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Install Orbyn dependencies when needed | `npm ci`                                                                                 |
+| Shared exports                         | `npm run build:packages`                                                                 |
+| API example                            | `PORT=8008 npm run dev:api`                                                              |
+| Web example                            | `API_PROXY_URL=http://127.0.0.1:8008 npm run dev -w desktop -- --port 5174`              |
+| Expo web example                       | `EXPO_PUBLIC_API_URL=http://127.0.0.1:8008 npm run start -w mobile -- --web --port 8083` |
+| Types                                  | `npm run typecheck`                                                                      |
+| Backend default suite, when authorized | `npm test`                                                                               |
+| Production backend/web build           | `npm run build`                                                                          |
 
 Reuse owned matching processes; these ports are examples. Build shared packages
 before checks consuming their generated exports. Format only changed authored
