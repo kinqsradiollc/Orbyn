@@ -4,7 +4,7 @@ import type { Principal } from "../../capabilities/policy.js";
 import type { ToolDescription } from "../../capabilities/registry.js";
 import { CapabilityError } from "../../capabilities/registry.js";
 import type { LiveSettings } from "../../lib/settings.js";
-import { pluginInferenceInput } from "../plugin/provider-policy.js";
+import { pluginInferenceInput } from "../plugin/inference-contract.js";
 import {
   enqueuePluginAi,
   readPluginAiEvents,

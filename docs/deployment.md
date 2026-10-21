@@ -931,7 +931,6 @@ installation dependency. Use a dedicated test account and record the deployed
 commit. Current Kubernetes manifests do not deploy the separate plugin service;
 the automatic plugin rollout described above applies to Compose.
 
-
 ### Standalone LaTeX compiler
 
 The `latex` service is built from `backend/Dockerfile --target latex` and rolled

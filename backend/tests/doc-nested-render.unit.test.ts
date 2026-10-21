@@ -110,6 +110,10 @@ test("actual mobile Inline consumes the same hard/soft breaks as web", () => {
       return jsxRuntime;
     },
     React,
+    session: { token: "fixture-owner" },
+    useRef: React.useRef,
+    useState: React.useState,
+    useEffect: React.useEffect,
     useContext: React.useContext,
     parseDocInline,
     tagRuns,

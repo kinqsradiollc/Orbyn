@@ -92,6 +92,7 @@ test("both real pressable wrappers forward web state and retain native props", (
       const react = {
         createElement: (type: unknown, props: unknown) => ({ type, props }),
         forwardRef: (fn: unknown) => fn,
+        useEffect: () => {},
         useRef: (current: unknown) => ({ current }),
         useState: (value: unknown) => [value, () => {}],
       };

@@ -1,8 +1,5 @@
 import { mergeDocs, type DocBlock } from "./docs.js";
-import {
-  docContainerBlocks,
-  type DocContainerNode,
-} from "./doc-containers.js";
+import { docContainerBlocks, type DocContainerNode } from "./doc-containers.js";
 import {
   parseVersionedDocContent,
   versionedDocContentKey,
@@ -154,4 +151,3 @@ export function mergeVersionedDocContent(
     { projected: true },
   );
 }
-

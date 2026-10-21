@@ -43,7 +43,13 @@ test("chat viewport rules outrank workspace padding and obsolete character spaci
   assert.ok(css.includes(".app.workspace .shell > .content:has(.ai-chat)"));
   assert.ok(!css.includes("min-height: 148px"));
   assert.ok(css.includes("align-self: center"));
-  assert.ok(css.includes("flex: 0 1 38%"));
+  const emptyThread = css.match(
+    /\.ai-chat\.is-empty \.ai-thread\s*\{([^}]+)\}/,
+  )?.[1];
+  assert.ok(emptyThread, "empty chat has its own flexible thread layout");
+  assert.match(emptyThread, /flex:\s*0 1 auto/);
+  assert.match(emptyThread, /margin-top:\s*auto/);
+  assert.match(emptyThread, /overflow-y:\s*auto/);
 });
 
 test("side panels use available chat width and share one open state", async () => {

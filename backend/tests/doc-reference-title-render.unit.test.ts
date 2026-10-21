@@ -56,6 +56,10 @@ test("real web and mobile Inline bodies display authorized reference titles", ()
         return jsxRuntime;
       },
       React,
+      session: { token: "fixture-owner" },
+      useRef: React.useRef,
+      useState: React.useState,
+      useEffect: React.useEffect,
       Fragment: React.Fragment,
       useContext: React.useContext,
       FootnoteContext: React.createContext({
@@ -272,12 +276,26 @@ test("web object pills use the editor's guarded app-link handler", () => {
       ts.isFunctionDeclaration(node) && node.name?.text === "LinkPillView",
   );
   assert.ok(declaration);
-  const exports: Record<string, React.ComponentType<{ href: string; label: string; start: number }>> = {};
+  const exports: Record<
+    string,
+    React.ComponentType<{ href: string; label: string; start: number }>
+  > = {};
   const guarded = () => {};
-  let click: ((event: { stopPropagation: () => void; metaKey: boolean; ctrlKey: boolean }) => void) | undefined;
+  let click:
+    | ((event: {
+        stopPropagation: () => void;
+        metaKey: boolean;
+        ctrlKey: boolean;
+      }) => void)
+    | undefined;
   let forwarded: unknown;
-  const capture = (type: React.ElementType, props: Record<string, unknown>, key?: React.Key) => {
-    if (type === "span" && props.role === "link") click = props.onClick as typeof click;
+  const capture = (
+    type: React.ElementType,
+    props: Record<string, unknown>,
+    key?: React.Key,
+  ) => {
+    if (type === "span" && props.role === "link")
+      click = props.onClick as typeof click;
     return jsxRuntime.jsx(type, props, key);
   };
   const js = ts.transpileModule(declaration.getText(source), {

@@ -29,12 +29,17 @@ const modules: Record<string, unknown> = {
   },
   "../../motion": { Pressable: "Pressable" },
   "@orbyn/core": core,
+  "./DocLatexPreview": { DocLatexNote: "DocLatexNote" },
+  "../../hooks/usePaneWidth": {
+    usePaneWidth: () => ({ width: 390, onLayout: () => {} }),
+  },
   "./Inline": { Inline: "Inline" },
   "./MathView": { MathView: "MathView" },
   "./RichBlocks": rich,
   "../views/LiveList": { LiveList: "LiveList" },
   "../../components/Icon": { Icon: "Icon" },
   "../../theme": {
+    inputFontSize: 16,
     colors: {},
     fonts: {},
     radii: {},
@@ -184,7 +189,10 @@ test("owned children respect whole-page folds and cumulative parent layout offse
     onLineLayout: (index: number, y: number) => events.push([index, y]),
     onTargetLayout: (y: number) => events.push(y),
   });
-  find(tree, (node) => !!node.props.onLayout)[0].props.onLayout({
+  find(
+    tree,
+    (node) => node !== tree && !!node.props.onLayout,
+  )[0].props.onLayout({
     nativeEvent: { layout: { y: 12 } },
   });
   assert.deepEqual(events, [[1, 152], 152]);

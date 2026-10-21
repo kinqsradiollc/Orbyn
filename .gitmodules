@@ -1,0 +1,15 @@
+[submodule "tools/rea/third_party/binwalk"]
+	path = tools/rea/third_party/binwalk
+	url = https://github.com/ReFirmLabs/binwalk.git
+[submodule "tools/rea/third_party/ghidra-nativeaot"]
+	path = tools/rea/third_party/ghidra-nativeaot
+	url = https://github.com/Washi1337/ghidra-nativeaot.git
+[submodule "tools/rea/third_party/jadx-headless-mcp"]
+	path = tools/rea/third_party/jadx-headless-mcp
+	url = https://github.com/1013503897/jadx-headless-mcp.git
+[submodule "tools/rea/third_party/unblob"]
+	path = tools/rea/third_party/unblob
+	url = https://github.com/onekey-sec/unblob.git
+[submodule "tools/rea/third_party/wakaru"]
+	path = tools/rea/third_party/wakaru
+	url = https://github.com/pionxzh/wakaru.git

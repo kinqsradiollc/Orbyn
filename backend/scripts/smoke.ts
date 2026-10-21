@@ -5,8 +5,8 @@
  *   SMOKE_API_URL=http://localhost:8008 SMOKE_ADMIN_EMAIL=admin@example.com \
  *   SMOKE_ADMIN_PASSWORD=... npm run smoke -w backend
  *
- * The admin account is signed in (or registered, which makes it an admin when
- * it is listed in the server's ADMIN_EMAILS or no admin exists yet). Set
+ * The admin account must be verified and promoted with the server-side
+ * grant-admin command before this runs; public registration creates members. Set
  * SMOKE_AI=skip to skip the AI checks. Accounts it creates are deleted at the end.
  */
 import { randomUUID } from "node:crypto";
@@ -108,7 +108,7 @@ await check("admin sign-in (POST /auth/login or /auth/register)", async () => {
   const me = await admin.client.me();
   assert(
     me.role === "admin",
-    `${adminEmail} is ${me.role}; add it to ADMIN_EMAILS`,
+    `${adminEmail} is ${me.role}; promote it with the server-side grant-admin command`,
   );
 });
 

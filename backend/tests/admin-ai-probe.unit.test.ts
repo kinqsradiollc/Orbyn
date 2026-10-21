@@ -86,11 +86,14 @@ for (const platform of ["web", "mobile"] as const) {
       const providerRevision: { current: string | null } = { current: "same" };
       const providerGeneration: { current: string | null } = { current: "7" };
       const loadRequest = { current: 1 };
+      const mounted = { current: true };
       let pending: Promise<void> | undefined;
       let resolve!: (result: any) => void;
       const published: any[] = [];
       const callback = evaluate(platform === "web" ? web : mobile, {
         p,
+        session: { get: () => "account", token: "account" },
+        mounted,
         dataRef,
         loadRequest,
         providerRevision,
@@ -125,6 +128,7 @@ for (const platform of ["web", "mobile"] as const) {
         providerGeneration.current = "8";
       }
       if (scenario === "unmounted") {
+        mounted.current = false;
         dataRef.current = null;
         providerRevision.current = null;
         providerGeneration.current = null;
@@ -156,6 +160,7 @@ for (const platform of ["web", "mobile"] as const) {
     let calls = 0;
     let pending: Promise<void> | undefined;
     const callback = evaluate(platform === "web" ? web : mobile, {
+      session: { get: () => "account", token: "account" },
       loadRequest: { current: 1 },
       p: { id: "p", updated_at: "same" },
       typed: "chosen-model",

@@ -1,0 +1,285 @@
+{
+  "schema_version": 1,
+  "categories": [
+    "Workflow and planning",
+    "Engineering practice",
+    "Engineering principles",
+    "Product design",
+    "Artifact investigation and REA maintenance"
+  ],
+  "skills": [
+    {
+      "name": "architect",
+      "category": "Engineering practice",
+      "related": [
+        "how",
+        "why",
+        "arena",
+        "orbyn-plan"
+      ]
+    },
+    {
+      "name": "arena",
+      "category": "Engineering practice",
+      "related": []
+    },
+    {
+      "name": "automate-me",
+      "category": "Workflow and planning",
+      "related": [
+        "orbyn-skill-creator"
+      ]
+    },
+    {
+      "name": "figure-it-out",
+      "category": "Workflow and planning",
+      "related": [
+        "orbyn-plan",
+        "show-me-your-work"
+      ]
+    },
+    {
+      "name": "how",
+      "category": "Engineering practice",
+      "related": []
+    },
+    {
+      "name": "interrogate",
+      "category": "Engineering practice",
+      "related": [
+        "how"
+      ]
+    },
+    {
+      "name": "orbyn-content-design",
+      "category": "Product design",
+      "related": [
+        "orbyn-ui-design"
+      ]
+    },
+    {
+      "name": "orbyn-plan",
+      "category": "Workflow and planning",
+      "related": [
+        "how",
+        "why",
+        "architect",
+        "orbyn-research",
+        "figure-it-out"
+      ]
+    },
+    {
+      "name": "orbyn-research",
+      "category": "Workflow and planning",
+      "related": [
+        "how",
+        "orbyn-plan",
+        "architect",
+        "orbyn-ui-design"
+      ]
+    },
+    {
+      "name": "orbyn-security-remediation",
+      "category": "Engineering practice",
+      "related": [
+        "how",
+        "principle-boundary-discipline",
+        "principle-fix-root-causes"
+      ]
+    },
+    {
+      "name": "orbyn-setup",
+      "category": "Workflow and planning",
+      "related": [
+        "orbyn-skill-creator"
+      ]
+    },
+    {
+      "name": "orbyn-skill-creator",
+      "category": "Workflow and planning",
+      "related": [
+        "orbyn-research",
+        "orbyn-setup",
+        "reflect"
+      ]
+    },
+    {
+      "name": "orbyn-ui-design",
+      "category": "Product design",
+      "related": [
+        "orbyn-content-design",
+        "orbyn-research"
+      ]
+    },
+    {
+      "name": "orbyn-workflow",
+      "category": "Workflow and planning",
+      "related": [
+        "orbyn-plan",
+        "how",
+        "architect",
+        "orbyn-ui-design",
+        "orbyn-skill-creator"
+      ]
+    },
+    {
+      "name": "principle-boundary-discipline",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-build-the-lever",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-encode-lessons-in-structure",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-exhaust-the-design-space",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-experience-first",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-fix-root-causes",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-foundational-thinking",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-guard-the-context-window",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-laziness-protocol",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-make-operations-idempotent",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-migrate-callers-then-delete-legacy-apis",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-minimize-reader-load",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-never-block-on-the-human",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-outcome-oriented-execution",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-prove-it-works",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-redesign-from-first-principles",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-separate-before-serializing-shared-state",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-sequence-verifiable-units",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-subtract-before-you-add",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "principle-type-system-discipline",
+      "category": "Engineering principles",
+      "related": []
+    },
+    {
+      "name": "rea-analysis-optimization",
+      "category": "Artifact investigation and REA maintenance",
+      "related": []
+    },
+    {
+      "name": "rea-changelog-update",
+      "category": "Artifact investigation and REA maintenance",
+      "related": []
+    },
+    {
+      "name": "rea-ci-tests-audit",
+      "category": "Artifact investigation and REA maintenance",
+      "related": []
+    },
+    {
+      "name": "rea-tool-design",
+      "category": "Artifact investigation and REA maintenance",
+      "related": []
+    },
+    {
+      "name": "reflect",
+      "category": "Workflow and planning",
+      "related": [
+        "orbyn-skill-creator"
+      ]
+    },
+    {
+      "name": "reverse-engineer-anything",
+      "category": "Artifact investigation and REA maintenance",
+      "related": []
+    },
+    {
+      "name": "show-me-your-work",
+      "category": "Workflow and planning",
+      "related": []
+    },
+    {
+      "name": "tdd",
+      "category": "Engineering practice",
+      "related": [
+        "principle-prove-it-works"
+      ]
+    },
+    {
+      "name": "typescript-best-practices",
+      "category": "Engineering practice",
+      "related": []
+    },
+    {
+      "name": "unslop",
+      "category": "Engineering practice",
+      "related": []
+    },
+    {
+      "name": "why",
+      "category": "Engineering practice",
+      "related": []
+    }
+  ]
+}

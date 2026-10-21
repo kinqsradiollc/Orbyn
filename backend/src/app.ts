@@ -38,6 +38,7 @@ import { aiRoutes } from "./modules/ai/routes.js";
 import { aiAdminRoutes } from "./modules/ai/admin.js";
 import { teamRoutes } from "./modules/teams/routes.js";
 import { adminRoutes } from "./modules/admin/routes.js";
+import { publishingRoutes } from "./modules/publishing/routes.js";
 import { statusRoutes } from "./modules/status/routes.js";
 import { organizeRoutes } from "./modules/organize/routes.js";
 import { docContentRoutes } from "./modules/docs/content-routes.js";
@@ -151,6 +152,7 @@ export const serviceModules: Record<
     notificationRoutes,
     teamRoutes,
     adminRoutes,
+    publishingRoutes,
     organizeRoutes,
     docRoutes,
     docContentRoutes,

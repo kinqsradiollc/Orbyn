@@ -549,6 +549,7 @@ test("task drawer leaves Escape and Tab to a higher command dialog", () => {
       {
         document: dom.window.document,
         overlay: true,
+        embedded: false,
         root: { current: peek },
         hasHigherDialog: exports.hasHigherDialog,
         onClose: () => peekClosed++,

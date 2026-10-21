@@ -578,7 +578,13 @@ test("the native pieces are all there: widget, controls, Siri, the tile and the 
     out.android.adaptiveIcon.monochromeImage,
   ])
     assert.ok(existsSync(at(file.replace(/^\.\//, ""))), file);
-  // The icon stays in the palette's own green.
-  assert.equal(out.android.adaptiveIcon.backgroundColor, "#376c51");
+  // The icon uses the same current brand palette as app.config.js.
+  const palette = JSON.parse(
+    readFileSync(
+      new URL("../../assets/brand/palette.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(out.android.adaptiveIcon.backgroundColor, palette.light.accent);
   assert.ok(out.ios.infoPlist.NSMicrophoneUsageDescription);
 });

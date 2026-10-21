@@ -1,40 +1,48 @@
-# Architecture and operations reference
+# Architecture and operations
 
-## Backend Architecture
+Read current source and deployment configuration before using historical service
+names, defaults or incident reports. Keep runtime changes within the user's
+requested environment and delivery scope. Repository changes are not deployment.
 
-| Service     | Owns                                                                              |
-| ----------- | --------------------------------------------------------------------------------- |
-| `api`       | Auth, users, items, teams, admin, devices, notifications, planner, booking        |
-| `ai`        | Assistant chat, proposals, provider settings                                      |
-| `status`    | Probes every 30s, `GET /status`                                                   |
-| `notifier`  | Reminder scheduling & delivery                                                    |
-| `realtime`  | Live streams (`/events`, doc presence), fanned out through Postgres LISTEN/NOTIFY |
-| `mcp`       | Outside AI agents over MCP (`/mcp`): stateless, limits per connection             |
-| `files`     | File store for imports: signed uploads, encrypted, gone in a day unless kept      |
-| `converter` | Turns imported PDFs/Word/photos into pages in Docs → Uploads                      |
-| `formula`   | pix2tex for equations on scans (`formula/`), Compose profile `formula`, optional  |
-| `ocr`       | Unlimited-OCR on CPU (`ocr/`), profile `ocr`, OFF by default (too heavy)          |
-| `measure`   | Search by meaning (profile `semantic`, off by default): measures changed pages    |
-| `migrate`   | Applies migrations under advisory lock                                            |
+## Locate the owning contract
 
-## Operations
+| Concern             | Source                                                         |
+| ------------------- | -------------------------------------------------------------- |
+| Environment parsing | `backend/src/config/env.ts`                                    |
+| Authorization       | `packages/core/src/rbac.ts`                                    |
+| Data/API design     | `docs/architecture.md`, `docs/api.md`                          |
+| Deployment          | `docs/deployment.md`, `deploy/`                                |
+| Scale and queues    | `docs/scalability.md` and the owning worker                    |
+| Request diagnostics | `backend/src/lib/request-log.ts`                               |
+| Record retention    | `backend/src/lib/sweep.ts`                                     |
+| Imports             | `packages/core/src/imports.ts`, `backend/src/modules/imports/` |
+| Legal/privacy copy  | `packages/core/src/legal.ts`                                   |
 
-- **Request tracing:** every service records requests via `backend/src/lib/request-log.ts` (batched, route patterns, no IPs); the gateway forwards `X-Request-Id`. Admin → Requests and Analytics read it.
-- **The sweeper** (`backend/src/lib/sweep.ts`) clears outdated records hourly from the worker. A new table that grows without bound gets a rule there, not an ad-hoc `DELETE` on a timer.
-- **Study:** cards are `Question :: Answer` lines in pages (`packages/core/src/study.ts`), synced per person into `study_cards`; no imports from other apps, everything free. AI study routes only suggest, grade and explain — adding cards is the person's own page edit, and revision plans are applied only when approved.
-- **Importing into Docs:** PDF, .docx and photos become pages in Uploads (`packages/core/src/imports.ts`, `backend/src/modules/imports/`). Files go to our own `files` service (not MinIO/S3) and are deleted when the import ends and always within 24 h. Pages are read cheapest first: Word (OMML equations → exact LaTeX), a PDF's own text with its fonts (`pageToMarkdown` in `packages/core/src/pdftext.ts`: columns, running headers, tables, maths fonts → LaTeX, guessed equations get `check: true`), then Tesseract (English, in the backend image) for scans, then the optional `formula` model for equations on scans. The heavy Unlimited-OCR `ocr` profile stays off by default (it crashed the server). Never build the `formula`/`ocr` images locally. Admins see stored files in Admin → Storage (information and delete only, never contents). Study cards: `Q :: A`, `A ::: B` (both ways), `{{cloze}}`.
-- **Privacy and consent:** Terms/Privacy texts live in `packages/core/src/legal.ts` (admin-editable in Admin → System); both apps gate on the agreement version. Anything new that collects personal data or sends it to a third party must be added to the Privacy Policy text. Usage analytics must honour `users.analytics_opt_out`. Keep web assets first-party: no third-party fonts, scripts or trackers (fonts are bundled in `desktop/src/assets/fonts`).
+Trace service boundaries, persistence, retry/idempotency rules and recovery before
+changing APIs, jobs or connectors. Keep secrets out of logs, screenshots and
+reports. Capture non-secret request IDs and failure reasons where available.
+Adding a growing table requires an explicit retention plan, not an unrelated
+periodic delete job. Preserve migration ordering and existing advisory locking.
 
-## Key References
+## Operational boundaries
 
-| Topic                                                             | Location                                                                   |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Env vars                                                          | `backend/src/config/env.ts`                                                |
-| RBAC                                                              | `packages/core/src/rbac.ts`                                                |
-| Data model                                                        | `docs/architecture.md#data-model`                                          |
-| API                                                               | `docs/api.md`                                                              |
-| AI pipeline                                                       | `docs/architecture.md#ai-assistant`                                        |
-| Deployment                                                        | `docs/deployment.md`, `deploy/k8s/`                                        |
-| Scaling                                                           | `docs/scalability.md`                                                      |
-| Follow-through (asks, proofs, reality check, re-entry, attention) | `backend/src/modules/followthrough/`, `packages/core/src/followthrough.ts` |
-| Work records (promises, decisions, experiments, meeting outcomes) | `backend/src/modules/work-records/`, `packages/core/src/work-records.ts`   |
+- Inspect environment examples and schemas; preserve local credentials/config.
+  Do not run production migrations, change infrastructure or restart services
+  without applicable authorization. Do not connect checks to a normal user DB.
+  Authorized database tests follow [development](development.md).
+- Match mocks and fixtures to their actual claim. A simulated provider response
+  is not live-provider evidence; a local build is not deployment or OAuth renewal.
+- Keep assets first-party and respect analytics opt-out. New personal-data
+  collection or third-party sharing needs matching privacy text and appropriate
+  consent. Admin visibility must not expose file contents or credentials.
+- Inspect import storage/expiry and the cheapest extraction path first. Preserve
+  source provenance and flag uncertain equations. Do not build heavy `formula`
+  or `ocr` images locally. Optional provider engines stay optional.
+- Preserve user approvals for assistant proposals, study edits and revision plans.
+  A workflow document cannot authorize externally visible messages or publication.
+- For packaged-app or native investigation, read [tooling](tooling.md). Copying
+  REA source does not install its engines, register MCP or authorize target runs.
+
+Record what was changed, the commands actually run, remaining manual checks,
+rollback/recovery considerations and exact delivery state. Report denied actions
+rather than bypassing host restrictions.

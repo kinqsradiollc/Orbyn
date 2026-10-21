@@ -35,6 +35,10 @@ function fixture(native: boolean, initial = view) {
   const hooks = {
     ...React,
     useId: () => "permission",
+    useRef: (initial: any) => {
+      const index = at++;
+      return states[index] ?? (states[index] = { current: initial });
+    },
     useState: (initial: any) => {
       const index = at++;
       if (!(index in states)) states[index] = initial;
@@ -79,6 +83,7 @@ function fixture(native: boolean, initial = view) {
     "@orbyn/core": core,
     "../../lib/api": { client },
     "../lib/api": { client },
+    "./SettingsEditor": { SettingsEditor: "settings-editor" },
     "react-native": { Text: "text", View: "view" },
     "../styles": { shared: {} },
     "../components/Field": { Field: "field", NumberInput: "number" },
@@ -111,7 +116,11 @@ function fixture(native: boolean, initial = view) {
   function render() {
     at = 0;
     effectAt = 0;
-    return exports.PluginAiPermission({ grantId: grant });
+    const wrapper = exports.PluginAiPermission({
+      grantId: grant,
+      grantName: "Fixture plugin",
+    });
+    return wrapper.type(wrapper.props);
   }
   function nodes(tree: any): any[] {
     if (!tree || typeof tree !== "object") return [];

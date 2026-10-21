@@ -161,7 +161,10 @@ test("Docs owns the available editor width and uses shared source mode controls"
     new URL("../../mobile/src/screens/docs/DocsSheet.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(sheet, /open && !navigationOpen\s*\? \[styles.editorColumn, \{ flex: 1, minHeight: 0 \}\]/);
+  assert.match(
+    sheet,
+    /open && !navigationOpen\s*\? \[styles.editorColumn, \{ flex: 1, minHeight: 0 \}\]/,
+  );
   assert.match(sheet, /editorColumn: \{ maxWidth: "100%" \}/);
   assert.match(sheet, /sideList: \{\s*flexGrow: 0,\s*flexShrink: 0,/);
   const source = readFileSync(

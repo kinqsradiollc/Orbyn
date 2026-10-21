@@ -148,7 +148,7 @@
 .character-tabs button {
   flex: 1;
   min-width: 64px;
-  min-height: 44px;
+  min-height: var(--button-h);
   white-space: normal;
   overflow-wrap: anywhere;
   padding: 8px;
@@ -193,7 +193,7 @@
 }
 .character-editor-actions button,
 .character-preview button {
-  min-height: 44px;
+  min-height: var(--button-h);
   white-space: normal;
 }
 @container character-editor (max-width: 22rem) {

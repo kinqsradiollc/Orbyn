@@ -76,7 +76,7 @@ function fixture(loading: boolean, error: string | null = null) {
   const { ProviderRow } = compile(
     `import React, {useState,useRef,useEffect} from "react";
      import {View,Text,TextInput} from "react-native";
-     const {AI_PROVIDERS,SmallAction,FadeIn,PressableScale,Pressable,Switch,MoreMenu,Pill,AiModelControls,shared,s,colors}=require("fixture");
+     const {AI_PROVIDERS,SmallAction,FadeIn,PressableScale,Pressable,Switch,MoreMenu,Pill,ModelPicker,AiModelControls,shared,s,colors}=require("fixture");
      const MAX_CHIPS=40;
      ${row.getText(tree)}
      exports.ProviderRow=ProviderRow;`,
@@ -99,6 +99,7 @@ function fixture(loading: boolean, error: string | null = null) {
           Switch: empty,
           MoreMenu: empty,
           Pill: empty,
+          ModelPicker: empty,
           AiModelControls: empty,
           shared: {},
           s: {},

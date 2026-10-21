@@ -98,8 +98,8 @@ Copy the reviewed private `.env.production` to the server's `.env` before runnin
 `scripts/deploy.sh`. Keep one `.env.example` per workspace. Client envs contain no
 connector URL/provider secret. `ENV_FILE=...` is supported only for `--check`.
 
-The runtime changes are an **unqualified local candidate**, not the deployed
-legacy host evidence. See [ADR 002](adr/archive/002-unified-mcp-integration.md) and
-[implementation handoff](reviews/c6-unified-mcp-implementation.md). Kubernetes
+Legacy host evidence does not qualify the current runtime. See
+[verification boundaries](verification.md) and the current source; retired
+ADR 002 and C6 records remain in Git history. Kubernetes
 currently has no integration Deployment/Service/Ingress; Compose evidence does
 not qualify that deployment target.

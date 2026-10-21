@@ -442,7 +442,7 @@ test("goal check-ins use the person's local Monday and the Agent tool saves them
     db: pool,
     now: new Date(),
     timezone: "Australia/Melbourne",
-    spaces: {},
+    spaces: { personal: true },
     cursor: { seal: async () => "", open: async () => 0 },
   };
   const result = await manageGoals.run(

@@ -1,59 +1,43 @@
-# Orbyn Reviewer
+# Review
 
-Reviewer is the independent technical decision-maker for the frozen delivery scope.
-When assigned a stronger model, use its analysis to improve the correction plan.
-Implementation stays with Builder; test execution stays with Tester.
+Review the actual requested artifact and its surrounding contracts. State the
+candidate revision or working diff and intended outcome. Use
+[interrogate](../../skills/interrogate/SKILL.md) for deliberate adversarial review;
+additional reviewers are optional and follow the same named-agent and concurrency
+boundaries as other delegation. The owning lead always reviews substantial
+delegated work against the actual diff and evidence.
 
-## Review inputs
+## Evaluate the change
 
-- Current task requirements and direct user dispositions.
-- Exact candidate checkout, branch, commit and changed files.
-- Test source plus Tester's commands, terminal results, failures and limitations.
-- Applicable runtime/visual reports and previous findings.
+- Correctness: trace inputs, state changes and observable results, including the
+  meaningful failure/recovery cases and the full agreed scope.
+- Authority: inspect authentication, ownership, tenant isolation, consent,
+  validation, secret handling and effects at their real boundaries.
+- Design: inspect data ownership, dependency direction, duplicated interpretation,
+  lifecycle cleanup, concurrency, retries and unnecessary complexity.
+- Evidence: read assertions as well as results. Check candidate applicability,
+  fixture realism, terminal completion and the limits of mocks or static analysis.
+- Experience: apply [UI/UX](ui-ux.md) for affected flows, respecting the authorized
+  platforms and finite visual scope. Code inspection does not establish layout.
 
-Missing inputs are named evidence gaps. Older green results apply only when their
-relevant source and dependencies are shown unchanged.
+Do not turn preferences, hypothetical redesigns or unrelated cleanup into blockers.
+One concrete reproducible finding is stronger than several agents agreeing on a
+speculation. Treat automated comments as claims to investigate.
 
-## What to inspect
+## Findings and decision
 
-| Area                  | Review questions                                                                                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Correctness and scope | Does the full agreed scope work through success, empty, loading, error and recovery states? Are edge cases and client parity covered?                              |
-| Security and data     | Are authority, ownership, consent, validation, credential handling and privacy enforced at the correct boundary?                                                   |
-| Code quality          | Are responsibilities clear, dependencies valid and changes maintainable? Check duplication, coupling, naming, types, lifecycle cleanup and unnecessary complexity. |
-| Runtime behavior      | Are transactions, concurrency, retries, cancellation, migrations, resource use and failure recovery appropriate?                                                   |
-| Test quality          | Do assertions prove the contract and cover regressions? Check fixture realism, mocks, isolation, determinism and missing failure cases.                            |
-| Test evidence         | Did the intended checks finish on this candidate? Are failed attempts, skipped cases, retained receipts and limits disclosed accurately?                           |
-| UI/UX, when affected  | Does the evidence support usable layout, concise content, controls and recovery? Apply current user scope and on-demand visual rules.                              |
+Each actionable finding needs a priority, location, failing scenario, impact,
+expected contract, correction direction and useful verification case. Separate
+confirmed defects, evidence gaps and optional improvements. Explain dismissals
+when resolving a supplied finding. Batch related corrections.
 
-Review test code and results together. A green suite does not prove that its
-assertions cover the intended behavior. Distinguish product defects, weak tests,
-missing evidence and optional improvements.
+For an assigned independent review, write approve, changes required or evidence
+pending against the frozen candidate. The reviewer owns reports only; the engineer owns
+fixes and the verifier owns execution. Maximum three full rounds; early approval is
+valid. Closure of known fixes can finish the same round without restarting it.
 
-## Guide Builder on fixes
-
-Write one prioritized Markdown report for the complete agreed scope. Each actionable
-finding includes:
-
-- **Priority and location:** file/line or exact requirement/evidence.
-- **Problem:** failing scenario and user/system impact.
-- **Expected behavior:** what the contract requires.
-- **Builder guidance:** a concrete correction approach and affected boundaries.
-- **Verification:** regression case or evidence Tester should obtain.
-
-Explain the reasoning and tradeoffs; avoid vague “improve quality” requests.
-Do not turn stylistic preferences or speculative risks into acceptance blockers.
-Keep optional recommendations separate. Batch findings instead of sending a new
-handoff for every small issue.
-
-## Decision and closure
-
-Record **approve**, **changes required** or **evidence pending**, with source,
-review round and unresolved findings. Builder owns every product/test fix; Tester
-owns execution; Reviewer inspects their revised diff and receipts. Reviewer may
-write reports and decisions but **must not code or run tests/builds**.
-
-Approve as soon as retained requirements and findings are satisfied; three rounds
-is a ceiling, not a target. Preserve the counter and historical failures. Approval,
-merge, push and production deployment are separate facts. Explicit user exclusions
-are recorded as excluded/untested, never as passes.
+For ordinary lead review, distinguish the delegate's implementation from any
+lead-owned edits. Lead-owned edits remain self-reviewed unless a separate reviewer
+actually inspected them. Record checks excluded by the
+user as unverified. Acceptance, merge, push and deployment remain separate facts.
+See [delivery](delivery.md).

@@ -114,7 +114,14 @@ function fixture(
         return { colors: {}, fonts: {}, themed: (fn: () => unknown) => fn() };
       if (path.endsWith("/styles")) return { shared: {} };
       if (path.endsWith("/motion")) return { FadeIn: control };
-      for (const name of ["Button", "Icon", "Pill", "Segmented", "Disclosure"])
+      for (const name of [
+        "Button",
+        "Icon",
+        "Pill",
+        "Segmented",
+        "Disclosure",
+        "InlineDetails",
+      ])
         if (path.endsWith(`/components/${name}`)) return { [name]: control };
       return require(path);
     },
@@ -192,8 +199,14 @@ for (const mobile of [false, true]) {
       embedding_provider_id: null,
     });
     const html = renderToStaticMarkup(view.tree);
-    assert.match(html, /Database measurements are unavailable/);
-    assert.match(html, /The measuring service is offline/);
+    assert.match(
+      html,
+      mobile ? /Database unavailable/ : /Database measurements are unavailable/,
+    );
+    assert.match(
+      html,
+      mobile ? /Indexing service offline/ : /The measuring service is offline/,
+    );
     assert.match(html, /Select an embedding provider/);
     assert.doesNotMatch(
       html,
@@ -206,10 +219,7 @@ for (const mobile of [false, true]) {
     const view = fixture(mobile);
     if (mobile)
       view.elements
-        .find(
-          (node) =>
-            node.props.title === "Validate and turn on search by meaning",
-        )
+        .find((node) => node.props.title === "Validate and enable")
         .props.onPress();
     else
       view.elements
@@ -249,10 +259,7 @@ for (const mobile of [false, true]) {
     const view = fixture(mobile, {}, true);
     if (mobile)
       view.elements
-        .find(
-          (node) =>
-            node.props.title === "Validate and turn on search by meaning",
-        )
+        .find((node) => node.props.title === "Validate and enable")
         .props.onPress();
     else
       view.elements
@@ -309,9 +316,9 @@ for (const mobile of [false, true]) {
     const view = fixture(mobile, {}, false, { embedding_revision: undefined });
     const submit = view.elements.find((node) =>
       mobile
-        ? node.props.title === "Validate and turn on search by meaning"
+        ? node.props.title === "Validate and enable"
         : node.type === "button" &&
-          node.props.children === "Validate and turn on search by meaning",
+          node.props.children === "Validate and enable",
     );
     assert.equal(submit.props.disabled, true);
   });
@@ -342,9 +349,8 @@ for (const mobile of [false, true]) {
     const view = fixture(mobile);
     const control = view.elements.find((node) =>
       mobile
-        ? node.props.title === "Load embedding model catalog"
-        : node.type === "button" &&
-          node.props.children === "Load embedding model catalog",
+        ? node.props.title === "Load models"
+        : node.type === "button" && node.props.children === "Load models",
     );
     assert.ok(control);
     if (!mobile) assert.equal(control.props.className, "secondary");
@@ -413,7 +419,7 @@ for (const name of ["Embedding recipient", "Changed recipient"]) {
     assert.ok(consent);
     assert.equal(
       consent.props.accessibilityLabel,
-      `I understand that the words of every page (except projects and teams kept out of the assistant) are sent to ${name} to be measured.`,
+      `I agree to send workspace page text to ${name} for search indexing, excluding projects and teams kept out of the assistant.`,
     );
     const text = renderToStaticMarkup(view.tree);
     assert.ok(text.includes(consent.props.accessibilityLabel));
@@ -426,7 +432,10 @@ test("mobile missing eligible recipient retains full consent scope without enabl
   const consent = view.elements.find((node) => node.props.onValueChange);
   assert.ok(consent);
   assert.match(consent.props.accessibilityLabel, /projects and teams kept out/);
-  assert.match(consent.props.accessibilityLabel, /the selected embedding provider/);
+  assert.match(
+    consent.props.accessibilityLabel,
+    /the selected embedding provider/,
+  );
   assert.equal(consent.props.disabled, true);
   assert.deepEqual(view.calls, []);
 });

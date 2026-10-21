@@ -1,3 +1,5 @@
+import { mockProviderTransport } from "./provider-transport-fixture.js";
+mockProviderTransport();
 import { test } from "node:test";
 import assert from "node:assert/strict";
 // Unit tests for the agent's provider protocol: no database or network.

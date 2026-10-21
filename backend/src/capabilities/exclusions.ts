@@ -490,6 +490,15 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /admin/sweep/run": "admin",
   "GET /admin/teams": "admin",
   "GET /admin/updates": "admin",
+  "GET /admin/publishing": "admin",
+  "POST /admin/publishing": "admin",
+  "GET /admin/publishing/linkedin": "admin",
+  "DELETE /admin/publishing/linkedin": "admin",
+  "POST /admin/publishing/linkedin/connect": "admin",
+  "POST /admin/publishing/suggest": "admin",
+  "GET /admin/publishing/:id": "admin",
+  "PUT /admin/publishing/:id": "admin",
+  "POST /admin/publishing/:id/:action": "admin",
   "GET /admin/users": "admin",
   "DELETE /admin/users/:id": "admin",
   "GET /admin/users/:id": "admin",
@@ -573,6 +582,8 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /docs/:id/ask": "hosted_ai",
   "POST /docs/:id/assist": "hosted_ai",
   "GET /docs/:id/export": "export_file",
+  // Editor compilation returns PDF bytes; agents use typed page source tools.
+  "POST /docs/:id/latex/preview": "export_file",
   "GET /docs/:id/updates": "editor_sync",
   "POST /docs/:id/updates": "editor_sync",
   "GET /docs/:id/live": "stream",
@@ -717,6 +728,11 @@ export const PENDING: string[] = [];
  * documents. Listed so a new public route is looked at before it ships.
  */
 export const PUBLIC: string[] = [
+  // Published changelog snapshots only; draft text and commentary are omitted.
+  "GET /changelog/updates",
+  "GET /changelog/updates/:id/image",
+  // LinkedIn callback binds expiring OAuth state, browser cookie and a live admin session.
+  "GET /admin/publishing/linkedin/callback",
   // OAuth state captures a pending install; linking requires the originating app session.
   "GET /agent-channels/slack/callback",
   "GET /agent-channels/teams/callback",

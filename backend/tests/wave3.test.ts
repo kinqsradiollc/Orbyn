@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { colors as productColors } from "@orbyn/core";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 // Connects only to a verified test database (see setup.ts).
@@ -712,7 +713,7 @@ test("profile pages list active booking pages; handles are checked", async () =>
       slug,
       description: "Twenty minutes to see if we fit.",
       durations: [20, 40],
-      color: "#376c51",
+      color: productColors.accent,
     },
   ]);
   assert.equal(

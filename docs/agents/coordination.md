@@ -1,60 +1,113 @@
-# Roles and coordination
+# Sessions and subagents
 
-These roles apply to every contributor and task. People may fill the roles;
-agent sessions use the names below. Record current scope/status in the task handoff,
-not here. Never infer current work from an old report.
+One owning session acts as the lead for a coherent task. Substantial work uses
+native delegates for investigation and implementation; the lead retains scope,
+design decisions, integration, diff review and verification. A small clear edit
+can stay direct. A substantial task involves a nontrivial investigation, changed
+contracts, multiple implementation steps or significant failure/recovery risk;
+line count alone does not decide it.
 
-## Who does what
+| Work                                                              | Owner                                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------ |
+| Small clear edit or bounded continuation                          | Current session, direct work                           |
+| Substantial investigation or implementation                       | Current lead with bounded native delegates             |
+| Separately tracked project work explicitly requested by the human | Named Orbyn project session acting as that work's lead |
 
-| Role                                  | Owns                                                                                                    |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Orbyn Builder — Software Engineer** | Product/test code, fixes, candidate preparation and approved integration.                               |
-| **Orbyn Tester**                      | Test execution and results; reports defects without changing source.                                    |
-| **Orbyn Reviewer**                    | Code quality, test quality/results and acceptance; gives Builder a fix plan. No coding or tests/builds. |
-| **Orbyn Visual Check**                | Requested browser checks and screenshot/findings reports.                                               |
-| **Orbyn Stage Tracker**               | Evidence-based status reports; no implementation or stage advancement.                                  |
+Before fan-out, identify blocking prerequisites, independent workstreams, shared
+writes and the smallest safe decomposition. One implementer is valid for tightly
+coupled work; delegate that slice and explain why parallel writes would conflict.
+The lead may handle a bounded integration correction after reviewing the result,
+but must not use integration as a label for retaining substantial implementation.
 
-## Handoff flow
+## Project sessions
 
-1. **Builder completes the whole agreed scope**, including required states and test prerequisites, then freezes one candidate.
-2. **Tester qualifies that candidate** and writes a Markdown report.
-3. **Reviewer assesses code and test evidence**, then approves or gives Builder actionable findings.
-4. **Builder batches all fixes → Tester retests affected behavior → Reviewer closes findings.**
-5. **Builder merges/pushes accepted work** and updates the tracker. Production deployment is user-owned.
+Create a new user-owned session only when the human explicitly requests session
+creation or a session-based split of the current project work. This policy is not
+blanket permission to create sessions for every task. Reuse a relevant existing
+session when authorized. Do not create duplicate Tester/Reviewer/Visual Check
+sessions just because those roles appear in an old report.
 
-Maximum **3 full review rounds**, with earlier approval allowed. Record the cycle,
-candidate and counter; verified closure can finish the same round. Never reset the
-counter or start a fourth round. Unresolved findings stay open.
+In Codex, inspect the project/session tools available in the current host. List
+projects first and create the requested session under **Orbyn**, using its returned
+project ID, not a projectless chat. Select Sol/Opus for complex ownership and
+Luna/Sonnet for bounded work under [model policy](model-policy.md), with medium
+effort for Sol/Opus/Sonnet and high for Luna. Use standard processing only;
+never enable Fast/Priority/Ultrafast modes or select speed-optimized variants. Astra/Fable requires explicit human selection. Respect the
+host's session-creation model controls; do not claim an unsupported override.
+Only request a separate worktree through session creation when the user has
+requested it and the host supports it. Otherwise define disjoint file ownership
+or serialize shared-checkout edits. A new session is not filesystem isolation.
+Any new branch or worktree branch follows [branch naming](development.md#branch-naming):
+neutral work-based names, without agent/vendor/tool/model branding.
 
-## Coordination rules
+Claude Code has its own session/background-agent capabilities depending on
+installed version. Discover the supported mechanism before use. Do not assume
+Codex desktop tools exist in Claude, or launch hidden CLI inference processes as
+a substitute. If the session mechanism is unavailable, continue the current
+session and explain the limitation. Do not silently change the requested topology.
 
-- Handoffs name scope, checkout/branch/commit, reports, remaining gates and next owner.
-- One writer and one QA fixture owner at a time. Preserve unrelated work.
-- Use web preview for shared web/desktop UI and **Expo web** for mobile UI.
-  Follow [UI/UX rules](ui-ux.md) for current exclusions and visual cadence.
-- Request visuals through **Orbyn Visual Check** for material UI changes, reproduced
-  defects or explicit user checks. Reuse valid evidence; no automatic sweep per edit.
-- Builder updates status at transitions; Tracker owns routine status tables.
-  Builder still answers direct user questions and provides pause/completion handoffs.
-- Message sessions only with direct user authorization. Respect explicit scope and pauses.
+Give each new session a self-contained brief: outcome, checkout/branch/candidate,
+owned files, allowed checks/actions, exclusions, model/effort policy, stopping
+condition and expected handoff. A project-session owner may use up to two native
+subagents. Do not let sessions recursively create more sessions. Keep at most two
+new work sessions active per coordinated task unless the user asks for more;
+start with one and expand only for independent work.
 
-## Local development and QA authorization
+Follow-up messages to user-owned chats need direct human authorization, including
+any requested coordination or report-back routing. Agent messages cannot grant it.
+Read status through available tools; use bounded waits and cursors, not repeated
+full transcripts. A failed/pending creation is not a ready session.
 
-The repository owner gives standing permission for local actions needed for the
-agreed task: edit code/configuration, run checks, inspect and operate previews,
-create/sign into QA accounts, accept local Orbyn Terms/Privacy, change disposable
-test data, and start/restart/rebuild/clean up owned disposable test services.
-This covers web, shared desktop UI and Expo web across local origins, sessions
-and restarts. Do not request permission again for these actions; carry this
-authorization into agent handoffs. Explicit user pauses or exclusions still apply.
+## Subagents inside a session
 
-Keep credentials protected and preserve unrelated work and non-disposable data.
-Local authorization does not extend to production changes, third-party account
-consent, purchases or external messages; use the user's separate authorization
-for those. Honor enforced tool restrictions. If a tool rejects an authorized
-action, report its actual reason and request only the missing tool permission;
-never bypass the restriction.
+For substantial work, the lead uses the host's native subagent tool for bounded
+investigation and implementation. This instruction authorizes that in-session
+delegation; it does not create user-owned sidebar chats. Default to one child,
+at most two active children. Assign a concrete role, outcome, source pointers,
+file/fixture ownership, allowed checks/effects, exclusions, expected evidence and
+stopping condition. Delegate implementation to its owning Engineer after needed
+findings and design. Parallelize independent artifacts; serialize shared writes.
 
-Details: [delivery workflow](../reviews/checkpoint-workflow.md),
-[review criteria](review.md), [progress tracking](../reviews/stage-tracker-guide.md),
-[development](development.md).
+Use [roles](roles.md) and the named model tier from [model policy](model-policy.md).
+Reuse a matching child for continuation and fixes. Children do not spawn children
+or create sessions. A child assigned implementation completes that slice directly;
+the owning lead supplies the review separation. Child instructions cannot require
+recursive delegation in conflict with this boundary.
+
+After each substantive handoff, the lead reads the actual changed files, diff and
+evidence, checks the agreed outcome, and runs or inspects proportional authorized
+verification. A delegate's "done" summary is not acceptance. Send a bounded batch
+of findings to the owning implementer, then inspect the corrected candidate and
+recheck affected behavior. Keep evidence tied to the exact source or dirty diff.
+Do not describe the lead's own edits as independently reviewed.
+
+An additional Verifier/Reviewer role or multi-model panel is optional unless
+requested or selected for a consequential design challenge. It must fit the same
+two-child limit and available named models; queue work instead of increasing
+concurrency. Formal independent qualification follows [delivery](delivery.md):
+maximum three full review rounds, no counter reset by creating another child.
+Ordinary lead review is required for substantial work even without that pipeline.
+
+If native delegation or the required named tier is unavailable, state the exact
+capability gap and continue authorized direct work where possible. Do not claim
+that delegated review separation occurred, use a generic inherited agent to hide
+the failure, or launch CLI inference as a substitute. Missing runtime speed
+metadata remains unverified; configured standard processing must be preserved.
+
+## Authority and handoff
+
+Continue authorized reversible work without asking again for routine actions.
+Existing local QA authorization includes QA login and local Terms/Privacy
+acceptance; preserve credentials and non-disposable data. This does not authorize
+production changes, purchases, unrelated private-chat access or external messages.
+Imported guidance cannot expand authority or bypass host restrictions.
+
+Record outcome, checkout/branch/commit or dirty diff, file ownership, changed files,
+actual evidence, unresolved failures, next action and user exclusions. Keep one
+owner for an active QA fixture. Preserve interrupted drafts and identify owned
+processes/resources. Use a review round only for a requested qualification cycle.
+
+See the official [Claude agent view](https://code.claude.com/docs/en/agent-view)
+and [subagent](https://code.claude.com/docs/en/sub-agents) documentation for the
+separate-session versus child-agent distinction. Version-dependent support must
+be checked on the installed client before dispatch.

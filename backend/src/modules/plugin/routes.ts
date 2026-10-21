@@ -1,5 +1,5 @@
 import type { ConnectorResources } from "../oauth/resources.js";
-import { pluginInferenceInput } from "./provider-policy.js";
+import { pluginInferenceInput } from "./inference-contract.js";
 import { enqueuePluginAi, readPluginAiEvents } from "./inference-broker.js";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";

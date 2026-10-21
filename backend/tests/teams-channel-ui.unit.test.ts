@@ -74,6 +74,7 @@ function fixture(app: "desktop" | "mobile", state: any) {
           return {
             ...React,
             useEffect: () => {},
+            useRef: (current: unknown) => ({ current }),
             useMemo: (fn: () => unknown) => fn(),
             useState: () => ["owner", () => {}],
             useSyncExternalStore: () => state,
@@ -110,6 +111,13 @@ function fixture(app: "desktop" | "mobile", state: any) {
         if (name.endsWith("/styles")) return { shared: {} };
         if (name === "lucide-react")
           return { Unplug: () => React.createElement("svg") };
+        if (name.endsWith("/ErrorBanner"))
+          return {
+            ErrorBanner: ({ error }: { error: string }) =>
+              error
+                ? React.createElement("div", { role: "alert" }, error)
+                : null,
+          };
         if (name.endsWith("/SmallAction")) return { SmallAction: control };
         if (name.endsWith("/Switch")) return { Switch: control };
         if (name.endsWith("/MoreMenu"))

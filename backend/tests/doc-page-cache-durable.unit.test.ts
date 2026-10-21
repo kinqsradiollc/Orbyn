@@ -32,6 +32,8 @@ function fixture(
     exports,
     require: (name: string) => {
       if (name === "@orbyn/core") return core;
+      if (name === "./session")
+        return { session: { token: "fixture-account" } };
       if (name === "@react-native-async-storage/async-storage")
         return {
           getItem: async (key: string) => storage.get(key) ?? null,
