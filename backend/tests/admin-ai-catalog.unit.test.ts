@@ -71,6 +71,8 @@ for (const scenario of [
           });
         },
       },
+      session: { get: () => "account", token: "account" },
+      mounted: { current: true },
       dataRef,
       loadRequest,
       models: {},
@@ -144,6 +146,7 @@ for (const scenario of [
     let resolve!: (result: { models: string[] }) => void;
     let pending: Promise<void> | undefined;
     const providerRevision: { current: string | null } = { current: "v1" };
+    const providerGeneration = { current: "7" };
     let calls = 0;
     const callback = evaluate(mobileCallback("Load models"), {
       act: (fn: () => Promise<void>) => {
@@ -158,16 +161,16 @@ for (const scenario of [
           });
         },
       },
+      session: { token: "account" },
       p: { id: "p", updated_at: "v1", controls_revision: "7" },
       providerRevision,
-      providerGeneration: {
-        current: scenario === "same-timestamp" ? "8" : "7",
-      },
+      providerGeneration,
       setCatalogLoading: () => {},
       setCatalogError: () => {},
       setModels: () => calls++,
     });
     callback();
+    if (scenario === "same-timestamp") providerGeneration.current = "8";
     if (scenario === "revised" || scenario === "unmounted")
       providerRevision.current = scenario === "unmounted" ? null : "v2";
     resolve({ models: ["first-other-model"] });
@@ -271,10 +274,13 @@ for (const outcome of ["success", "error"] as const) {
       let resolve!: (value: unknown) => void;
       let reject!: (error: Error) => void;
       const loadRequest = { current: 0 };
+      const mounted = { current: true };
       const data: unknown[] = [];
       const failures: boolean[] = [];
       const callback = evaluate(expression, {
         loadRequest,
+        mounted,
+        session: { token: "account" },
         client: {
           listAiProviders: () =>
             new Promise((yes, no) => {
@@ -286,7 +292,8 @@ for (const outcome of ["success", "error"] as const) {
         setFailed: (value: boolean) => failures.push(value),
       });
       const pending = callback();
-      if (lifecycle !== "current") loadRequest.current++;
+      if (lifecycle === "superseded") loadRequest.current++;
+      if (lifecycle === "unmounted") mounted.current = false;
       const error = new Error("offline");
       if (outcome === "success") resolve({ providers: [] });
       else reject(error);
@@ -326,6 +333,8 @@ for (const platform of ["web", "mobile"] as const) {
           : mobileCallback("Load models"),
         {
           p,
+          session: { get: () => "account", token: "account" },
+          mounted: { current: true },
           dataRef,
           providerRevision,
           providerGeneration,

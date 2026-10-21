@@ -1,3 +1,5 @@
+import { mockProviderTransport } from "./provider-transport-fixture.js";
+mockProviderTransport();
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";

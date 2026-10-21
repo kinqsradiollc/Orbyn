@@ -39,6 +39,11 @@ live on different machines; see [scalability.md](scalability.md).
 `services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
 with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 
+MCP workspace-AI requests validate the shared, provider-free
+`modules/plugin/inference-contract.ts` contract and enqueue broker work. Provider
+execution remains in the inference worker through `provider-policy.ts`; request
+handlers do not import the provider adapters merely to validate input.
+
 ## Workspace and document ownership
 
 The web app keeps one shared planner and independent pane controllers. Each pane

@@ -86,7 +86,7 @@ for (const operation of ["delete", "turn-off"] as const) {
         pending = callback;
       },
       run: async (fn: () => Promise<void>) => fn(),
-      act: async (fn: () => Promise<void>) => fn(),
+      ownedAct: async (fn: () => Promise<void>) => fn(),
       setSettings: (value: unknown) => calls.push(value),
       client: {
         deleteAiProvider: async (id: string) => {

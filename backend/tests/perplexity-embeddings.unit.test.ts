@@ -1,3 +1,5 @@
+import { mockProviderTransport } from "./provider-transport-fixture.js";
+mockProviderTransport();
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { embed, ProviderError } from "../src/modules/ai/providers/adapters.js";

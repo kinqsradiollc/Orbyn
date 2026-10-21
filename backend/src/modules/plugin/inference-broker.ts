@@ -18,7 +18,7 @@ import {
   pluginInferenceInput,
   assertNewPluginOperation,
   type PluginManagedPermission,
-} from "./provider-policy.js";
+} from "./inference-contract.js";
 import type { ProviderRow } from "../ai/providers/resolve.js";
 import { pluginJobCursor } from "./job-cursor.js";
 

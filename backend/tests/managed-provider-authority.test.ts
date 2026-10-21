@@ -1,4 +1,7 @@
 import "./setup.js";
+const { mockProviderTransport } =
+  await import("./provider-transport-fixture.js");
+mockProviderTransport();
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";

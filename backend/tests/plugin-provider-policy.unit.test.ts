@@ -5,11 +5,13 @@ import type { Principal } from "../src/capabilities/policy.js";
 import type { ResolvedAi } from "../src/modules/ai/providers/adapters.js";
 import {
   assertPluginManagedProvider,
-  assertNewPluginOperation,
   callPluginManagedProvider,
+} from "../src/modules/plugin/provider-policy.js";
+import {
+  assertNewPluginOperation,
   pluginInferenceInput,
   type PluginManagedPermission,
-} from "../src/modules/plugin/provider-policy.js";
+} from "../src/modules/plugin/inference-contract.js";
 
 function operationId(time = Date.now()) {
   const stamp = time.toString(16).padStart(12, "0");

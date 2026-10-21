@@ -26,6 +26,16 @@ integrity, host links/defaults and documentation references. It starts no model,
 server, browser or application tests. Host runtime discovery needs separate
 observation; report it explicitly if it was not exercised.
 
+## Deterministic fixtures
+
+Provider tests that mock `fetch` must use the explicit
+`backend/tests/provider-transport-fixture.ts` bridge when exercising the guarded
+provider adapters. The bridge refuses an unstubbed network call; production keeps
+its validated DNS and pinned sockets. Database tests must dynamically import the
+bridge after `setup.js` finishes, so configuration is captured from the guarded
+test database. UI callback fixtures must supply current session, mount and request
+ownership dependencies and exercise changes after dispatch.
+
 ## Record the result
 
 Name the branch/revision or dirty diff, command, exit outcome, relevant output and
