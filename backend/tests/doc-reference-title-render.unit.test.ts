@@ -272,12 +272,26 @@ test("web object pills use the editor's guarded app-link handler", () => {
       ts.isFunctionDeclaration(node) && node.name?.text === "LinkPillView",
   );
   assert.ok(declaration);
-  const exports: Record<string, React.ComponentType<{ href: string; label: string; start: number }>> = {};
+  const exports: Record<
+    string,
+    React.ComponentType<{ href: string; label: string; start: number }>
+  > = {};
   const guarded = () => {};
-  let click: ((event: { stopPropagation: () => void; metaKey: boolean; ctrlKey: boolean }) => void) | undefined;
+  let click:
+    | ((event: {
+        stopPropagation: () => void;
+        metaKey: boolean;
+        ctrlKey: boolean;
+      }) => void)
+    | undefined;
   let forwarded: unknown;
-  const capture = (type: React.ElementType, props: Record<string, unknown>, key?: React.Key) => {
-    if (type === "span" && props.role === "link") click = props.onClick as typeof click;
+  const capture = (
+    type: React.ElementType,
+    props: Record<string, unknown>,
+    key?: React.Key,
+  ) => {
+    if (type === "span" && props.role === "link")
+      click = props.onClick as typeof click;
     return jsxRuntime.jsx(type, props, key);
   };
   const js = ts.transpileModule(declaration.getText(source), {

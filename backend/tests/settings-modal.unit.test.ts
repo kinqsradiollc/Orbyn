@@ -253,7 +253,10 @@ test("a failed opener focus attempts the visible navigation return target", () =
 test("responsive navigation and account menu expose Settings return targets", () => {
   const source = read("desktop/src/components/Topbar.tsx");
   assert.doesNotMatch(source, /workspace-rail-toggle/);
-  assert.match(read("desktop/src/components/Sidebar.tsx"), /className="sidebar-account-trigger"[^>]*data-settings-focus-return/);
+  assert.match(
+    read("desktop/src/components/Sidebar.tsx"),
+    /className="sidebar-account-trigger"[^>]*data-settings-focus-return/,
+  );
   assert.match(
     source,
     /className="icon-button mobile-menu"[^>]*data-settings-focus-return/,

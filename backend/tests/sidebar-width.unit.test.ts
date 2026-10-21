@@ -61,7 +61,10 @@ test("drag widths snap to the same icon rail; resizer remains reachable in rail 
 });
 
 test("rail starts compact and offers labels on hover and focus", () => {
-  const sidebar = readFileSync(new URL("../../desktop/src/components/Sidebar.tsx", import.meta.url), "utf8");
+  const sidebar = readFileSync(
+    new URL("../../desktop/src/components/Sidebar.tsx", import.meta.url),
+    "utf8",
+  );
   assert.equal(load().savedSidebarWidth(), 72);
   assert.match(sidebar, /onMouseOver=\{/);
   assert.match(sidebar, /onFocus=\{/);

@@ -426,7 +426,10 @@ test("mobile missing eligible recipient retains full consent scope without enabl
   const consent = view.elements.find((node) => node.props.onValueChange);
   assert.ok(consent);
   assert.match(consent.props.accessibilityLabel, /projects and teams kept out/);
-  assert.match(consent.props.accessibilityLabel, /the selected embedding provider/);
+  assert.match(
+    consent.props.accessibilityLabel,
+    /the selected embedding provider/,
+  );
   assert.equal(consent.props.disabled, true);
   assert.deepEqual(view.calls, []);
 });

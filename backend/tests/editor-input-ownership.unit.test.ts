@@ -54,11 +54,7 @@ test("pane tabs claim focus while shared header actions retain the current pane"
       null,
       "clicking a pane tab must reach its owning pane's focus capture",
     );
-    for (const label of [
-      "Search or ask",
-      "Notifications",
-      "Toggle navigation",
-    ])
+    for (const label of ["Search or ask", "Notifications", "Toggle navigation"])
       assert.ok(
         document
           .querySelector(`[aria-label="${label}"]`)!

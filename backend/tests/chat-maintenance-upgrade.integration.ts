@@ -21,9 +21,7 @@ test("258 upgrade preserves legacy authority and old-writer progress through act
     for (const name of (await readdir(directory))
       .filter((n) => n.endsWith(".sql") && n < "258_")
       .sort()) {
-      await db.query(
-        await readFile(new URL(name, directory), "utf8"),
-      );
+      await db.query(await readFile(new URL(name, directory), "utf8"));
       await db.query("INSERT INTO migrations(name) VALUES($1)", [name]);
     }
   });

@@ -16,9 +16,7 @@ test("responsive navigation and mobile drawer reference the same accessible navi
     source("components/Topbar.tsx"),
     source("components/Sidebar.tsx"),
   ]);
-  assert.ok(
-    app.includes("sidebarLayout("),
-  );
+  assert.ok(app.includes("sidebarLayout("));
   assert.ok(app.includes("navigationOpen={mobileNav}"));
   assert.ok(!top.includes("onToggleRail"));
   assert.ok(top.includes('aria-controls="workspace-navigation"'));
