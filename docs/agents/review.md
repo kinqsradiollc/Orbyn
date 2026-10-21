@@ -3,7 +3,9 @@
 Review the actual requested artifact and its surrounding contracts. State the
 candidate revision or working diff and intended outcome. Use
 [interrogate](../../skills/interrogate/SKILL.md) for deliberate adversarial review;
-multiple reviewers are optional and require authorized delegation.
+additional reviewers are optional and follow the same named-agent and concurrency
+boundaries as other delegation. The owning lead always reviews substantial
+delegated work against the actual diff and evidence.
 
 ## Evaluate the change
 
@@ -34,6 +36,8 @@ pending against the frozen candidate. The reviewer owns reports only; the engine
 fixes and the verifier owns execution. Maximum three full rounds; early approval is
 valid. Closure of known fixes can finish the same round without restarting it.
 
-For an ordinary self-review, say it was self-review. Record checks excluded by the
+For ordinary lead review, distinguish the delegate's implementation from any
+lead-owned edits. Lead-owned edits remain self-reviewed unless a separate reviewer
+actually inspected them. Record checks excluded by the
 user as unverified. Acceptance, merge, push and deployment remain separate facts.
 See [delivery](delivery.md).

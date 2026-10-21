@@ -98,7 +98,7 @@ for doc in docs:
 
 for host, suffix in [('.codex', '*.toml'), ('.claude', '*.md')]:
     actual = {p.stem for p in (ROOT / host / 'agents').glob(suffix)}
-    check(actual == {'orbyn-agent'}, f'{host} must expose only the Orbyn agent: {actual}')
+    check(actual == {'orbyn-agent', 'orbyn-light'}, f'{host} must expose the two routine Orbyn tiers: {actual}')
 # Imported source names are preserved in provenance only, not active agent identity.
 active = [ROOT / p for p in ['AGENTS.md', 'AGENT.md', 'CLAUDE.md']]
 active += list((ROOT / 'skills').rglob('*.md'))
@@ -107,19 +107,16 @@ active += list((ROOT / '.codex').rglob('*.toml')) + list((ROOT / '.claude/agents
 for path in active:
     check(not re.search(r'poteto|pstack', path.read_text(), re.I), f'Inherited active branding: {relative(path)}')
 
+model_check = subprocess.run([sys.executable, str(ROOT / 'scripts/sync-agent-models.py'), '--check'], cwd=ROOT, capture_output=True, text=True)
+check(model_check.returncode == 0, model_check.stderr.strip() or 'Model registry drift')
 config = tomllib.loads((ROOT / '.codex/config.toml').read_text())
-check(config.get('model') == 'gpt-6.1-sol' and config.get('model_reasoning_effort') == 'medium', 'Codex default must be Sol/medium')
-check(config.get('agents', {}).get('orbyn-agent', {}).get('config_file') == 'agents/orbyn-agent.toml', 'Wrong Orbyn agent routing')
 check(config.get('agents', {}).get('max_threads') == 2, 'Codex child limit must be two')
 for path in (ROOT / '.codex/agents').glob('*.toml'):
     role = tomllib.loads(path.read_text())
-    check(role.get('model') == 'gpt-6.1-sol' and role.get('model_reasoning_effort') == 'medium', f'Wrong role default: {relative(path)}')
     check(bool(role.get('developer_instructions')), f'Missing role instructions: {relative(path)}')
-claude = json.loads((ROOT / '.claude/settings.json').read_text())
-check(claude.get('model') == 'sonnet' and claude.get('effortLevel') == 'medium', 'Claude default must be Sonnet/medium')
 for path in (ROOT / '.claude/agents').glob('*.md'):
     text = path.read_text().split('---')[1]
-    check('\nmodel: sonnet\n' in text and '\neffort: medium\n' in text, f'Wrong Claude role default: {relative(path)}')
+    check('\ndisallowedTools: Agent, Task\n' in text, f'Child delegation must remain disabled: {relative(path)}')
 
 if errors:
     print('\n'.join(errors), file=sys.stderr)

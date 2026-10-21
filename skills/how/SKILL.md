@@ -15,9 +15,12 @@ Start with a focused search, then read the smallest files needed to complete the
 path. Separate source-derived behavior from runtime observations. A filename or
 comment alone does not establish execution. Missing links stay explicit.
 
-For a large independent slice, use an in-task explorer subagent with file pointers
-and one question; ask for a compact source-cited result. Do not delegate a simple
-function explanation. Explain the mechanism first, then critique only if requested.
+For substantial investigation, the owning lead delegates bounded source questions
+to named native Orbyn Investigators under the [workflow](../orbyn-workflow/SKILL.md).
+Pass file pointers and ask for a compact source-cited result. Keep at most two
+children active, with no recursive delegation; a child traces its assigned path
+directly. Narrow explanations stay direct. The lead inspects the evidence,
+reconciles contradictions and owns the final explanation. Explain the mechanism first, then critique only if requested.
 Use [why](../why/SKILL.md) when intent cannot be established from source.
 
 Return the answer, the few source locations needed to verify it, and meaningful

@@ -17,7 +17,10 @@ contradictory evidence and plausible alternatives. Code establishes mechanics,
 not necessarily motivation. An empty bounded search does not prove a record
 never existed. Describe the searched boundary.
 
-Use an in-task subagent for a substantial independent evidence question when
-useful. Do not create tickets or send messages while investigating.
+For substantial historical investigation, the lead delegates bounded evidence
+questions to named Orbyn Investigators under the [workflow](../orbyn-workflow/SKILL.md),
+then inspects their cited records and owns the explanation. Narrow questions and
+children assigned a slice proceed directly. Do not create tickets or send messages
+while investigating.
 Return the supported explanation with sources, inference and unknowns. If work
 will change the design, identify constraints to preserve and decisions to revisit.

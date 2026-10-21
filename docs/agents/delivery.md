@@ -1,20 +1,25 @@
 # Delivery workflow
 
 Use [AGENTS.md](../../AGENTS.md) and the current task's requested scope. This guide
-replaces the blanket role pipeline for every change. Retired checkpoint reports do not govern current work.
+defines lead-owned delivery without a blanket independent-role pipeline for every change. Retired checkpoint reports do not govern current work.
 
 ## Default delivery
 
-1. Understand the outcome and affected system; choose the relevant
-   [playbook](../../skills/orbyn-workflow/SKILL.md).
-2. Implement the complete agreed behavior in coherent units. Keep a short plan or
-   decision trail when scope warrants it. Preserve unrelated changes.
-3. Obtain the checks authorized for this task and proportional to its risks.
-   Respect explicit exclusions and session instructions about testing. Inspect
-   the result and diff; missing checks remain unverified.
-4. Review the artifact for correctness, ownership, unnecessary complexity and
-   unresolved requirements. Self-review is sufficient unless independent review
-   was requested. Use [review criteria](review.md).
+1. Ground the outcome, current source, affected contracts and relevant
+   [playbook](../../skills/orbyn-workflow/SKILL.md). Keep a brief plan, including
+   blocking work, independent slices and shared state when substantial.
+2. For substantial work, the lead delegates investigation and implementation to
+   named native Orbyn agents under [coordination](coordination.md). A small clear
+   edit can stay direct. A delegated child completes its owned slice directly;
+   no recursive fan-out. Preserve unrelated changes and assign disjoint writes.
+3. The lead reads the actual artifacts, diff and evidence. Review correctness,
+   ownership, unnecessary complexity and unresolved requirements using
+   [review criteria](review.md); a delegate summary is not sufficient.
+4. Verify the integrated candidate with checks authorized for this task and
+   proportional to its risks. Inspect actual outcomes, record exclusions as
+   unverified, and route bounded fix batches back to the owning implementer.
+   Review corrections and recheck affected behavior. Additional independent
+   verifier/reviewer roles are optional unless requested; lead review is not.
 5. Deliver to the requested state. Commit, PR, merge, publish and deployment are
    distinct actions; do not initiate them solely because a playbook mentions them.
 

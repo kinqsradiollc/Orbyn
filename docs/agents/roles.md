@@ -1,12 +1,14 @@
 # Orbyn agent roles
 
-`orbyn-agent` is the shared agent identity for repository work in Codex and Claude
-Code. A role describes the assignment it receives, its allowed effects and the
+`orbyn-agent` and `orbyn-light` are the shared agent types for repository work
+in Codex and Claude Code. A role describes the assignment it receives, its allowed effects and the
 result it returns. Roles do not require separate permanent agents or sessions.
-The owning session coordinates work and remains responsible for the final result.
+The owning session acts as Lead for substantial work and remains responsible
+for the final result. It delegates execution, then reviews and verifies handoffs.
 
 | Role                | Responsibility and output                                                                        | Primary skills                                                 | Effects                                                                        |
 | ------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Lead                | Ground scope and design; assign bounded owners; integrate, review and verify actual results      | `orbyn-workflow`, `orbyn-plan`, `architect` as applicable      | Coordination and scoped integration; no implicit external effects              |
 | Investigator        | Trace current behavior and relevant history; return source locations, mechanisms and uncertainty | `how`, `why`                                                   | Read-only                                                                      |
 | Planner             | Ground scope, research unknowns and sequence coherent delivery units                             | `orbyn-plan`, `orbyn-research`                                 | Plan-only unless implementation is authorized                                  |
 | Architect           | Define interfaces, ownership, lifecycle and alternatives; return a concrete design               | `architect`, `arena`                                           | Design artifacts only unless implementation is requested                       |
@@ -27,19 +29,37 @@ checks and stopping condition. Read only the mapped skills needed for that task.
 A role may run in the current session, in a separately requested project session,
 or as a bounded native subagent under [coordination](coordination.md).
 
-Select `orbyn-agent` when the host supports the named definition. Resume the same
+Select `orbyn-agent` for complex work or `orbyn-light` for bounded work when the
+host supports the named definition; follow [model policy](model-policy.md). Resume the same
 child for continuation instead of creating a duplicate. If the host cannot select
-the definition, pass its required reads and boundaries explicitly and state the
-actual execution arrangement. Do not claim a named agent ran when it did not.
+the definition, report that capability gap and continue authorized direct work
+where possible; do not substitute a generic inherited agent or CLI process. Do not claim a named agent ran when it did not.
 Children report to the owning session and do not recursively delegate. Independent
 review or verification remains separate from the engineer's implementation work.
-A role label never authorizes tests, publication or other external effects by itself.
+Lead review and proportional authorized verification are required for substantial
+work; extra independent roles follow the requested qualification scope. A role
+label never authorizes tests, publication or other external effects by itself.
 
-## Defaults
+## Model routing
 
-All roles use **GPT-6.1 Sol / medium** in Codex and **Sonnet / medium** in Claude
-Code. No Astra, Fable, xhigh, max or ultra. A panel is not required for a decision;
-one well-scoped assignment is the default. See [model policy](model-policy.md).
+Roles describe responsibility; agent types select the model and effort. Use
+Sol/medium or Luna/high in Codex; Opus/medium or Sonnet/medium in Claude.
+Standard processing only, without Fast/Priority/Ultrafast modes or speed variants.
+Route by the actual assignment:
 
-Host definitions: [Codex](../../.codex/agents/orbyn-agent.toml),
-[Claude Code](../../.claude/agents/orbyn-agent.md).
+| Assignment                                                                                                      | Agent type                   | OpenAI / Claude                     |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------- | ----------------------------------- |
+| Cross-cutting planning, architecture, complex implementation, difficult diagnosis, consequential review         | `orbyn-agent`                | GPT-6.1 Sol / medium; Opus / medium |
+| Bounded source lookup, clear small edits, routine authorized checks, documentation, focused evidence collection | `orbyn-light`                | GPT-6 Luna / high; Sonnet / medium  |
+| Strongest-model work explicitly selected by the human                                                           | Human-selected session/model | Astra / Fable                       |
+
+An Investigator may need Sol/Opus for an ambiguous subsystem; a Reviewer may use
+Luna/Sonnet for a small, clear diff. Do not force every role onto the same tier or
+create extra agents merely to use multiple models. The owner may move a bounded
+assignment from Luna/Sonnet to Sol/Opus when complexity warrants it, recording why.
+Never automatically select Astra/Fable. See [model policy](model-policy.md).
+
+Host definitions: Codex [standard](../../.codex/agents/orbyn-agent.toml) and
+[light](../../.codex/agents/orbyn-light.toml); Claude Code
+[standard](../../.claude/agents/orbyn-agent.md) and
+[light](../../.claude/agents/orbyn-light.md).

@@ -18,10 +18,14 @@ Choose evidence and reversible recovery for each unit. Use existing tools before
 building automation; create a small reusable helper when repetition or reliable
 checking justifies it. Follow the user's verification scope.
 
-For each unit: state the hypothesis, make the change, inspect the result, retain
-useful evidence and correct disproven assumptions. Do not repeat an unchanged
-failed attempt without a new explanation. Delegate only independent bounded work
-to in-task subagents; the parent owns integration.
+For each unit, the lead states the hypothesis and throughput checkpoint, delegates
+substantial investigation/implementation with owned files, inspects the actual
+artifact and diff, and performs authorized verification. Follow the
+[workflow lead contract](../orbyn-workflow/SKILL.md); keep coupled code with one
+owner and no more than two active children. Route corrections to the same owner.
+A child executes its owned unit directly without delegation. Retain useful
+evidence and correct disproven assumptions; do not repeat an unchanged failed
+attempt without a new explanation.
 
 Use [show-me-your-work](../show-me-your-work/SKILL.md) for decisions that matter
 later. Revisit the full checklist at the end. Report verified, unverified and

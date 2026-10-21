@@ -20,8 +20,12 @@ is sufficient when an established pattern fits. Use [arena](../arena/SKILL.md)
 only when competing candidates would settle a real uncertainty; do not launch a
 model panel for every function boundary.
 
-Choose the smallest coherent design and explain its trade-off. Implement when
-requested; a design-only request ends with the design. Keep sketches out of
+Choose the smallest coherent design and explain its trade-off. For substantial
+implementation, the lead delegates against the selected design under the
+[workflow](../orbyn-workflow/SKILL.md), reviews the returned diff and performs
+authorized verification. Route repeated design friction back into the contract.
+A child implements its owned scope directly; a design-only request ends with the
+design. Keep sketches out of
 production code unless they are being completed in the same delivery.
 Repeated escape hatches or duplicated state interpretation mean reconsider the
 owner/type design. Fix that source of complexity instead of adding wrappers.

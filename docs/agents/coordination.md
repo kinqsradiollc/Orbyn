@@ -1,15 +1,23 @@
 # Sessions and subagents
 
-Use one session for a coherent task. For substantial work the user wants tracked
-separately, prefer a named project session with its own outcome and ownership.
-That session may use bounded subagents for supporting questions. These are two
-levels of coordination, not interchangeable names for the same tool.
+One owning session acts as the lead for a coherent task. Substantial work uses
+native delegates for investigation and implementation; the lead retains scope,
+design decisions, integration, diff review and verification. A small clear edit
+can stay direct. A substantial task involves a nontrivial investigation, changed
+contracts, multiple implementation steps or significant failure/recovery risk;
+line count alone does not decide it.
 
-| Work                                                                                    | Owner                               |
-| --------------------------------------------------------------------------------------- | ----------------------------------- |
-| Small edit or tightly coupled change                                                    | Current session                     |
-| Separately tracked implementation, investigation or qualification requested by the user | Named project session               |
-| Bounded search, comparison or review supporting that session                            | Native subagent inside that session |
+| Work                                                              | Owner                                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------ |
+| Small clear edit or bounded continuation                          | Current session, direct work                           |
+| Substantial investigation or implementation                       | Current lead with bounded native delegates             |
+| Separately tracked project work explicitly requested by the human | Named Orbyn project session acting as that work's lead |
+
+Before fan-out, identify blocking prerequisites, independent workstreams, shared
+writes and the smallest safe decomposition. One implementer is valid for tightly
+coupled work; delegate that slice and explain why parallel writes would conflict.
+The lead may handle a bounded integration correction after reviewing the result,
+but must not use integration as a label for retaining substantial implementation.
 
 ## Project sessions
 
@@ -21,10 +29,13 @@ sessions just because those roles appear in an old report.
 
 In Codex, inspect the project/session tools available in the current host. List
 projects first and create the requested session under **Orbyn**, using its returned
-project ID, not a projectless chat. Use the configured Sol/medium default; when
-explicitly selecting a model under the user's preference, use `gpt-6.1-sol` and
-`medium`. Only request a separate worktree through session creation when the user
-has requested it and the host supports it. Otherwise define disjoint file ownership
+project ID, not a projectless chat. Select Sol/Opus for complex ownership and
+Luna/Sonnet for bounded work under [model policy](model-policy.md), with medium
+effort for Sol/Opus/Sonnet and high for Luna. Use standard processing only;
+never enable Fast/Priority/Ultrafast modes or select speed-optimized variants. Astra/Fable requires explicit human selection. Respect the
+host's session-creation model controls; do not claim an unsupported override.
+Only request a separate worktree through session creation when the user has
+requested it and the host supports it. Otherwise define disjoint file ownership
 or serialize shared-checkout edits. A new session is not filesystem isolation.
 
 Claude Code has its own session/background-agent capabilities depending on
@@ -47,18 +58,39 @@ full transcripts. A failed/pending creation is not a ready session.
 
 ## Subagents inside a session
 
-Use the current host's native subagent tool for bounded supporting work. Default
-to one child, at most two active children per session. Pass a short brief and file
-pointers rather than the full conversation. Assign disjoint writes; serialize
-shared state. Children report to their owning session and do not spawn children
-or create user sessions. The owner inspects and integrates returned artifacts.
-Apply [model policy](model-policy.md) to every level; no automatic model panels.
+For substantial work, the lead uses the host's native subagent tool for bounded
+investigation and implementation. This instruction authorizes that in-session
+delegation; it does not create user-owned sidebar chats. Default to one child,
+at most two active children. Assign a concrete role, outcome, source pointers,
+file/fixture ownership, allowed checks/effects, exclusions, expected evidence and
+stopping condition. Delegate implementation to its owning Engineer after needed
+findings and design. Parallelize independent artifacts; serialize shared writes.
 
-Use [Orbyn roles](roles.md) and `orbyn-agent`; preserve the assigned role's reads
-and effects in the brief. Independent verification and review are optional unless
-requested. Those assignments follow [delivery](delivery.md), with the same frozen
-candidate and a maximum of three full review rounds. Role names are not existing
-chat identities; do not route work to old named chats without authorization.
+Use [roles](roles.md) and the named model tier from [model policy](model-policy.md).
+Reuse a matching child for continuation and fixes. Children do not spawn children
+or create sessions. A child assigned implementation completes that slice directly;
+the owning lead supplies the review separation. Child instructions cannot require
+recursive delegation in conflict with this boundary.
+
+After each substantive handoff, the lead reads the actual changed files, diff and
+evidence, checks the agreed outcome, and runs or inspects proportional authorized
+verification. A delegate's "done" summary is not acceptance. Send a bounded batch
+of findings to the owning implementer, then inspect the corrected candidate and
+recheck affected behavior. Keep evidence tied to the exact source or dirty diff.
+Do not describe the lead's own edits as independently reviewed.
+
+An additional Verifier/Reviewer role or multi-model panel is optional unless
+requested or selected for a consequential design challenge. It must fit the same
+two-child limit and available named models; queue work instead of increasing
+concurrency. Formal independent qualification follows [delivery](delivery.md):
+maximum three full review rounds, no counter reset by creating another child.
+Ordinary lead review is required for substantial work even without that pipeline.
+
+If native delegation or the required named tier is unavailable, state the exact
+capability gap and continue authorized direct work where possible. Do not claim
+that delegated review separation occurred, use a generic inherited agent to hide
+the failure, or launch CLI inference as a substitute. Missing runtime speed
+metadata remains unverified; configured standard processing must be preserved.
 
 ## Authority and handoff
 

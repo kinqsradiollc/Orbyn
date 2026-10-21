@@ -23,5 +23,7 @@ Broad investigations follow [coordination](../../docs/agents/coordination.md):
 use a named project session when the user requests separately tracked work, and
 at most two native subagents inside it for bounded questions. Give each a target,
 evidence pointer and stopping condition. No recursive session/agent fanout;
-Sol/medium or Sonnet/medium defaults, never Astra, Fable or maximum effort.
+select Sol/Opus or Luna/Sonnet by task complexity under model policy, with medium
+effort for Sol/Opus/Sonnet and high for Luna. Use standard processing only;
+never enable Fast/Priority/Ultrafast or choose speed-optimized variants. Astra/Fable requires explicit human selection.
 Close only owned resources when finished and keep unresolved cleanup explicit.
