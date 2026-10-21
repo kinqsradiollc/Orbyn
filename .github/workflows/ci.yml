@@ -149,7 +149,7 @@ jobs:
       - name: Start services and run the live API smoke test
         run: |
           cp .env.example .env
-          printf '\nDOC_PDF_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
+          printf '\nDOC_PDF_KEY=%s\nSECRETS_KEY=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -base64 32)" >> .env
           # Every backend service shares this image. Derive its Compose tag so
           # new services cannot silently be omitted from the smoke deployment.
           docker compose --profile '*' config --format json |

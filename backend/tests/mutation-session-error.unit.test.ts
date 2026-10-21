@@ -19,12 +19,18 @@ for (const platform of ["desktop", "mobile"] as const) {
           true,
         );
         let initializer: ts.Expression | undefined;
+        let resultInitializer: ts.Expression | undefined;
         const visit = (node: ts.Node) => {
           if (
             ts.isVariableDeclaration(node) &&
             node.name.getText(source) === "act"
           )
             initializer = node.initializer;
+          if (
+            ts.isVariableDeclaration(node) &&
+            node.name.getText(source) === "actResult"
+          )
+            resultInitializer = node.initializer;
           ts.forEachChild(node, visit);
         };
         visit(source);
@@ -34,9 +40,13 @@ for (const platform of ["desktop", "mobile"] as const) {
           clears = 0,
           maintenance = 0;
         const act = vm.runInNewContext(
-          ts.transpileModule(`(${initializer.getText(source)})`, {
-            compilerOptions: { target: ts.ScriptTarget.ES2022 },
-          }).outputText,
+          ts.transpileModule(
+            `${resultInitializer ? `const actResult = ${resultInitializer.getText(source)};` : ""}
+(${initializer.getText(source)})`,
+            {
+              compilerOptions: { target: ts.ScriptTarget.ES2022 },
+            },
+          ).outputText,
           {
             tokenRef,
             setBusy: () => {},

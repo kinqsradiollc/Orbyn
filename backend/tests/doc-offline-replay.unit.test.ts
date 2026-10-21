@@ -72,6 +72,7 @@ function fixture(
     },
     "@orbyn/core": core,
     "./api": { client },
+    "./session": { session: { token: "fixture-account" } },
     "./errors": { errorText: (e: unknown) => String(e) },
     "./pageCache": { rememberPage: async () => {} },
   };

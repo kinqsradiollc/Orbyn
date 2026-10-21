@@ -22,7 +22,9 @@ test("compact task controls preserve named saved-view, progress and filter actio
   const source = read("desktop/src/features/tasks/TasksView.tsx");
   assert.match(source, /aria-label="Saved view options"/);
   assert.match(source, /aria-label="Done this week"/);
-  assert.match(source, /aria-controls="task-filters"/);
+  assert.match(source, /const filtersId = useId\(\);/);
+  assert.match(source, /aria-controls=\{filtersId\}/);
+  assert.match(source, /id=\{filtersId\}/);
   assert.match(source, /aria-label="Layout"/);
   assert.match(source, /onClick=\{\(\) => setLayout\("board"\)\}/);
   const css = read("desktop/src/styles/planning.css");
@@ -45,18 +47,26 @@ test("agent summaries stay short while detailed examples remain available", () =
   }
 });
 
-test("Home guide controls precede expandable content on both clients", () => {
+test("Home agent rows open activity and optional guide and characters retain disclosure controls", () => {
+  // ADR 003 made each lane an activity action and moved optional guidance below it.
   const web = read("desktop/src/features/overview/HomeCompanions.tsx");
-  assert.ok(
-    web.indexOf("home-companions-actions") <
-      web.indexOf("home-companions-work"),
+  assert.match(
+    web,
+    /className="home-agent-row"[\s\S]*?onClick=\{\(\) => setAgentsOpen\(true\)\}/,
   );
+  assert.match(web, /aria-haspopup="dialog"/);
+  assert.match(web, /aria-expanded=\{guideOpen\}/);
+  assert.match(web, /onClick=\{\(\) => setGuideOpen\(!guideOpen\)\}/);
+  assert.match(
+    web,
+    /\{guideOpen && \(\s*<div className="home-companions-guide">/,
+  );
+  assert.match(web, /\{guideOpen && expanded && \(/);
   const mobile = read("mobile/src/components/HomeCompanions.tsx");
-  assert.ok(
-    mobile.indexOf('title="Activity"') < mobile.indexOf("HOME_AGENT_GUIDE.map"),
-  );
-  assert.ok(
-    mobile.indexOf("accessibilityState={{ expanded: guideOpen }}") <
-      mobile.indexOf("HOME_AGENT_GUIDE.map"),
-  );
+  assert.match(mobile, /accessibilityLabel=\{`Open \$\{agent.name\} work`\}/);
+  assert.match(mobile, /setOpenLane\([\s\S]*?setAgentsOpen\(true\)/);
+  assert.match(mobile, /accessibilityState=\{\{ expanded: guideOpen \}\}/);
+  assert.match(mobile, /onPress=\{\(\) => setGuideOpen\(!guideOpen\)\}/);
+  assert.match(mobile, /\{guideOpen && \(\s*<View/);
+  assert.match(mobile, /\{guideOpen && expanded && \(/);
 });

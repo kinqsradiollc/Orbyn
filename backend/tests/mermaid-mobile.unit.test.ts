@@ -58,6 +58,7 @@ function preview(windowHeight = 960, onAppLink?: (url: string) => void) {
     },
     "@orbyn/core": core,
     "./DiagramSurface": { DiagramSurface: surface },
+    "./InlineDetails": { InlineDetails: container },
     "../theme": {
       colors: core.colors,
       fonts: {},

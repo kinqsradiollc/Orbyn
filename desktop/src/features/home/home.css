@@ -1619,9 +1619,9 @@ html.js .home .reveal {
 }
 @media (max-width: 374px) {
   .home-nav .brand {
-    font-size: 22px;
+    font-size: 24px;
   }
   .home-hero h1 {
-    font-size: 2rem;
+    font-size: 36px;
   }
 }

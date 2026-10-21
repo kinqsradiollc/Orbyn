@@ -37,7 +37,15 @@ function webMenu(context: object) {
     web,
     (node) =>
       ts.isJsxElement(node) &&
-      node.openingElement.tagName.getText(web) === "Popover",
+      node.openingElement.tagName.getText(web) === "Popover" &&
+      node.openingElement.attributes.properties.some(
+        (attr) =>
+          ts.isJsxAttribute(attr) &&
+          attr.name.getText(web) === "label" &&
+          attr.initializer &&
+          ts.isStringLiteral(attr.initializer) &&
+          attr.initializer.text === "Task options",
+      ),
   )[0];
   assert.ok(popover);
   let expression = popover.parent;
@@ -48,7 +56,7 @@ function webMenu(context: object) {
     optionsAt: {},
     canWrite: true,
     current: { kind: "task", status: "todo", title: "Fixture" },
-    pending: false,
+    locked: false,
     isClosed,
     Popover: "Popover",
     Ban: "Ban",
@@ -107,7 +115,7 @@ test("web options respects viewer, event and closed-task guards and busy state",
     { kind: "task", status: "cancelled" },
   ])
     assert.equal(webMenu({ current }), false);
-  const menu = webMenu({ pending: true });
+  const menu = webMenu({ locked: true });
   assert.equal(menu.props.children[0].props.children[0].props.disabled, true);
 });
 
@@ -149,6 +157,8 @@ function mobileActions(context: object) {
   return evaluate(attribute.initializer.expression, mobile, {
     item: { id: "fixture", title: "Fixture" },
     starred: false,
+    starFailure: false,
+    starPending: false,
     cancelAction: null,
     currentCancelAction: { current: null },
     ...context,
@@ -187,59 +197,35 @@ test("mobile cancellation lives in the existing menu, never a persistent body Bu
   );
 });
 
-test("mobile cancellation uses the cross-platform confirmation before mutation", () => {
+test("mobile cancellation opens its owned confirmation only for a writable current owner", () => {
   const declaration = find(
     mobile,
     (node) =>
       ts.isVariableDeclaration(node) &&
       node.name.getText(mobile) === "cancelTask",
   )[0] as ts.VariableDeclaration;
-  assert.ok(declaration.initializer);
-  for (const subtasks of [[], [{}]]) {
-    let confirmation: (() => void) | undefined;
-    const statuses: string[] = [];
-    const cancel = evaluate(declaration.initializer, mobile, {
-      Platform: { OS: "ios" },
-      subtasks,
-      confirmAction: (
-        title: string,
-        message: string,
-        label: string,
-        onConfirm: () => void,
-      ) => {
-        assert.equal(title, "Cancel this task?");
-        assert.ok(message.includes("You can reopen it later."));
-        assert.equal(label, "Cancel task");
-        confirmation = onConfirm;
-      },
-      setStatus: (status: string) => statuses.push(status),
-    });
-    cancel();
-    assert.deepEqual(statuses, []);
-    assert.ok(confirmation);
-    confirmation();
-    assert.deepEqual(statuses, ["cancelled"]);
+  for (const owner of [false, true]) {
+    for (const locked of [false, true]) {
+      for (const pending of [false, true]) {
+        const calls: unknown[] = [];
+        const cancel = evaluate(declaration.initializer!, mobile, {
+          owns: () => owner,
+          writeState: { current: { locked } },
+          mutation: { current: pending },
+          item: { id: "fixture" },
+          setCancelConfirmId: (id: string) => calls.push(id),
+          setCancelVisible: (visible: boolean) => calls.push(visible),
+          setStatus: () =>
+            assert.fail("Opening confirmation cannot cancel the task"),
+        });
+        cancel();
+        assert.deepEqual(
+          calls,
+          owner && !locked && !pending ? ["fixture", true] : [],
+        );
+      }
+    }
   }
-});
-
-test("mobile browser opens its owned confirmation without a browser-native prompt", () => {
-  const declaration = find(
-    mobile,
-    (node) =>
-      ts.isVariableDeclaration(node) &&
-      node.name.getText(mobile) === "cancelTask",
-  )[0] as ts.VariableDeclaration;
-  const calls: string[] = [];
-  const cancel = evaluate(declaration.initializer!, mobile, {
-    Platform: { OS: "web" },
-    item: { id: "fixture" },
-    setCancelConfirmId: (id: string) => calls.push(id),
-    confirmAction: () =>
-      assert.fail("Browser-native confirmation must not run"),
-    setStatus: () => assert.fail("Opening confirmation cannot cancel the task"),
-  });
-  cancel();
-  assert.deepEqual(calls, ["fixture"]);
 });
 
 test("owned confirmation uses current task eligibility before cancellation", () => {
@@ -276,6 +262,7 @@ test("owned confirmation uses current task eligibility before cancellation", () 
       ...context,
       item: { id: "fixture" },
       setStatus: (status: string) => statuses.push(status),
+      setCancelVisible: (value: boolean) => assert.equal(value, false),
       setCancelConfirmId: (value: unknown) => {
         assert.equal(value, null);
         closed = true;

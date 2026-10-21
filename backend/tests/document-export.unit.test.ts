@@ -37,8 +37,10 @@ test("actual source editor exports only on request and preserves source/HTML on 
     get: () => 1100,
   });
   let downloads = 0;
-  dom.window.HTMLAnchorElement.prototype.click = () => {
+  const downloadLinks: { href: string; name: string }[] = [];
+  dom.window.HTMLAnchorElement.prototype.click = function () {
     downloads++;
+    downloadLinks.push({ href: this.href, name: this.download });
   };
   let account = "owner-a",
     ready = false,
@@ -48,6 +50,9 @@ test("actual source editor exports only on request and preserves source/HTML on 
     finish: ((blob: Blob) => void) | undefined,
     fail: ((error: Error) => void) | undefined;
   const snapshots: string[] = [];
+  const exportPdfHandle: { current: (() => Promise<void>) | null } = {
+    current: null,
+  };
   const source = String.raw`\documentclass{article}\begin{document}Saved text\end{document}`;
   const blocks: core.DocBlock[] = [
     { type: "code", lang: "latex-document", id: "main-source", text: source },
@@ -117,8 +122,10 @@ test("actual source editor exports only on request and preserves source/HTML on 
         docId: "test-note",
         inline: true,
         initialMode: "latex",
+        initialSourceNumber: 0,
         showModes: false,
         compileReady: ready,
+        exportPdfHandle,
         onClose: () => {},
         onAppLink: () => {},
         onLatexChange: readOnly
@@ -136,10 +143,13 @@ test("actual source editor exports only on request and preserves source/HTML on 
         },
       }),
     );
-  const exportButton = () =>
-    [...dom.window.document.querySelectorAll("button")].find(
-      (button: any) => button.textContent === "Export PDF",
-    ) as HTMLButtonElement | undefined;
+  const requestExport = () => {
+    assert.ok(
+      exportPdfHandle.current,
+      "source editor supplies the header download action",
+    );
+    void exportPdfHandle.current();
+  };
   try {
     await React.act(async () => {
       render();
@@ -154,12 +164,15 @@ test("actual source editor exports only on request and preserves source/HTML on 
     const input = dom.window.document.querySelector(
       '[aria-label="LaTeX source"]',
     ) as HTMLTextAreaElement;
-    assert.ok(exportButton()?.disabled);
-    await React.act(() => exportButton()!.click());
+    assert.equal(
+      dom.window.document.querySelector('button[title="Export PDF"]'),
+      null,
+    );
+    await React.act(() => requestExport());
     assert.equal(calls, 0);
     ready = true;
     await React.act(render);
-    await React.act(() => exportButton()!.click());
+    await React.act(() => requestExport());
     assert.equal(calls, 1);
     assert.equal(snapshots[0], source);
     await React.act(async () => {
@@ -167,14 +180,18 @@ test("actual source editor exports only on request and preserves source/HTML on 
       await new Promise((resolve) => setImmediate(resolve));
     });
     assert.equal(downloads, 1);
-    assert.match(dom.window.document.body.textContent!, /PDF ready/);
-    const retry = dom.window.document.querySelector(
-      'a[download="document.pdf"]',
+    assert.doesNotMatch(dom.window.document.body.textContent!, /Exporting PDF/);
+    assert.deepEqual(downloadLinks, [
+      { href: "blob:export", name: "document.pdf" },
+    ]);
+    assert.equal(
+      dom.window.document.querySelector('a[download="document.pdf"]'),
+      null,
+      "temporary download link is removed",
     );
-    assert.equal(retry?.getAttribute("href"), "blob:export");
     assert.equal(dom.window.document.querySelector("iframe"), frame);
     assert.equal(input.value, source);
-    await React.act(() => exportButton()!.click());
+    await React.act(() => requestExport());
     await React.act(async () => {
       fail!(new Error("Compiler unavailable"));
       await new Promise((resolve) => setImmediate(resolve));
@@ -183,7 +200,7 @@ test("actual source editor exports only on request and preserves source/HTML on 
     assert.equal(input.value, source);
     assert.equal(dom.window.document.querySelector("iframe"), frame);
     assert.equal(downloads, 1);
-    await React.act(() => exportButton()!.click());
+    await React.act(() => requestExport());
     assert.ok(signal && !signal.aborted);
     account = "owner-b";
     await React.act(() => root.unmount());

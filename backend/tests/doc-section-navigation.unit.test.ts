@@ -49,13 +49,16 @@ function section(native: boolean) {
       exports,
       React,
       ...core,
-      useState: () => [
-        {
-          doc_id: props.docId,
-          title: "Source",
-          blocks,
-          references: props.references,
-        },
+      useRef: (current: unknown) => ({ current }),
+      useState: (initial: unknown) => [
+        initial === null
+          ? {
+              doc_id: props.docId,
+              title: "Source",
+              blocks,
+              references: props.references,
+            }
+          : initial,
         () => {},
       ],
       useCallback: (callback: unknown) => callback,

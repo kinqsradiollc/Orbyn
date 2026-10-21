@@ -43,7 +43,8 @@ async function mount(app: "desktop" | "mobile") {
     reject: (error: unknown) => void;
   }[] = [];
   const exports: any = {};
-  const jsx = (type: any, props: any) => ({ type, props });
+  const jsx = (type: any, props: any): any =>
+    typeof type === "function" ? type(props) : { type, props };
   runInNewContext(compiled, {
     exports,
     AbortController,
@@ -53,6 +54,7 @@ async function mount(app: "desktop" | "mobile") {
         return { jsx, jsxs: jsx, Fragment: "Fragment" };
       if (id === "react")
         return {
+          useId: () => "managed-usage",
           useState: (initial: any) => {
             const i = cursor++;
             if (!(i in slots)) slots[i] = initial;
@@ -98,6 +100,11 @@ async function mount(app: "desktop" | "mobile") {
       if (id.endsWith("/errors"))
         return { errorText: () => "Failed to load usage" };
       if (id === "react-native") return { View: "View", Text: "Text" };
+      if (id.endsWith("/ErrorBanner"))
+        return {
+          ErrorBanner: ({ error }: { error: string }) =>
+            jsx("Text", { children: error }),
+        };
       if (id.endsWith("/SmallAction")) return { SmallAction: "SmallAction" };
       if (id.endsWith("/styles")) return { shared: { small: {}, body: {} } };
       throw new Error(id);
@@ -135,7 +142,8 @@ function content(value: any): string {
 function open(tree: any) {
   const button = nodes(tree).find(
     (n) =>
-      n.props?.label === "Workspace usage" || content(n) === " Workspace usage",
+      ["Workspace usage", "Hide workspace usage"].includes(n.props?.label) ||
+      [" Workspace usage", " Hide workspace usage"].includes(content(n)),
   );
   assert.ok(button);
   (button.props.onPress ?? button.props.onClick)();
@@ -183,7 +191,7 @@ for (const app of ["desktop", "mobile"] as const) {
       assert.match(content(tree), /Failed to load usage/);
       const refresh = nodes(tree).find(
         (n) =>
-          n.props?.label === "Refresh usage" || content(n) === " Refresh usage",
+          n.props?.label === "Retry usage" || content(n) === " Retry usage",
       );
       assert.ok(refresh);
       (refresh.props.onPress ?? refresh.props.onClick)();

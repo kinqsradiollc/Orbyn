@@ -13,6 +13,7 @@ test("PDF deployment preflight rejects missing keys and describes renderer-befor
   const directory = mkdtempSync(join(tmpdir(), "orbyn-pdf-deploy-check-"));
   const secret = "test-only-pdf-deployment-secret-at-least-32-characters";
   const environment = join(directory, "deployment.env");
+  const baseEnvironment = `APP_URL=https://test.example\nSECRETS_KEY=${Buffer.alloc(32, 1).toString("base64")}\n`;
   const calls = join(directory, "docker-calls");
   writeFileSync(
     join(directory, "docker"),
@@ -34,17 +35,14 @@ test("PDF deployment preflight rejects missing keys and describes renderer-befor
       },
     );
   try {
-    writeFileSync(environment, "APP_URL=https://test.example\n");
+    writeFileSync(environment, baseEnvironment);
     const missing = run();
     assert.equal(missing.status, 1);
     assert.match(missing.stderr, /Set DOC_PDF_KEY/);
-    writeFileSync(
-      environment,
-      `APP_URL=https://test.example\nDOC_PDF_KEY=${secret}\n`,
-    );
+    writeFileSync(environment, `${baseEnvironment}DOC_PDF_KEY=${secret}\n`);
     const ready = run();
     assert.equal(ready.status, 0, ready.stderr);
-    assert.match(ready.stdout, /roll out pdf, api/);
+    assert.match(ready.stdout, /roll out pdf, latex, api/);
     assert.match(ready.stdout, /Preflight: OK/);
     assert.doesNotMatch(ready.stdout + ready.stderr, new RegExp(secret));
     const invoked = readFileSync(calls, "utf8").trim().split("\n");
@@ -63,7 +61,7 @@ test("PDF deployment preflight rejects missing keys and describes renderer-befor
     const script = file("scripts/deploy.sh");
     assert.match(
       script,
-      /rollout pdf "\$\(setting PDF_REPLICAS 1\)"\nrollout api/,
+      /rollout pdf "\$\(setting PDF_REPLICAS 1\)"\nrollout latex 1\nrollout api/,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });

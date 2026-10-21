@@ -139,6 +139,19 @@ export const COMMAND_TOOLS: Record<string, CommandPlace> = {
   "settings.passkeys": { reason: why.signIn },
   "settings.signed-in": { reason: why.signIn },
   "settings.chatgpt-models": { reason: why.planConnection },
+  "settings.automation-profiles": {
+    reason:
+      "Names, styles and appearance for Orbyn’s background and overnight agents are the person’s configuration of the hosted assistant.",
+  },
+  "settings.agent-context": { tool: "get_context", args: {} },
+  "settings.overnight-schedule": {
+    reason:
+      "The person chooses when Orbyn may work overnight; outside agents cannot change the hosted assistant’s work schedule.",
+  },
+  "settings.reminder-nudges": {
+    reason:
+      "The person chooses the hosted assistant’s reminder channels, cadence and quiet windows; outside agents cannot configure those reminders.",
+  },
   "settings.assistant-rules": {
     reason:
       "Assistant permissions and approval rules are the person’s choice; agents cannot expand their own authority.",

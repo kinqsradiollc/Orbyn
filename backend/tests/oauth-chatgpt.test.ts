@@ -228,6 +228,7 @@ type Variant = {
   name: string;
   resource?: string;
   scope?: string;
+  stayConnected?: boolean;
   aud?: (tokenEndpoint: string, issuer: string) => string | string[];
   body?: "form" | "json";
   clientIdInBody?: boolean;
@@ -296,7 +297,13 @@ async function connect(v: Variant) {
     method: "POST",
     url: "/oauth/authorize",
     headers: { authorization: `Bearer ${session}` },
-    payload: { request, access: "write" },
+    payload: {
+      request,
+      access: "write",
+      ...(v.stayConnected === undefined
+        ? {}
+        : { stay_connected: v.stayConnected }),
+    },
   });
   assert.equal(allowed.statusCode, 200, `${v.name}: ${allowed.body}`);
   const back = new URL(allowed.json().redirect_to);
@@ -327,8 +334,15 @@ async function connect(v: Variant) {
   assert.equal(exchanged.statusCode, 200, `${v.name}: ${exchanged.body}`);
   const tokens = exchanged.json();
   assert.equal(tokens.token_type, "Bearer");
-  assert.ok(
-    tokens.access_token && tokens.refresh_token && tokens.expires_in > 0,
+  assert.ok(tokens.access_token && tokens.expires_in > 0);
+  const offlineAllowed =
+    v.stayConnected ??
+    v.scope?.split(/\s+/).includes("offline_access") ??
+    false;
+  assert.equal(typeof tokens.refresh_token === "string", offlineAllowed);
+  assert.equal(
+    tokens.scope.split(/\s+/).includes("offline_access"),
+    offlineAllowed,
   );
   assert.equal(exchanged.headers["cache-control"], "no-store");
 
@@ -362,7 +376,12 @@ async function connect(v: Variant) {
     result.structuredContent,
   );
 
-  // Refresh, with a fresh assertion.
+  if (!offlineAllowed) {
+    assert.equal(tokens.refresh_token, undefined);
+    return tokens;
+  }
+
+  // Refresh only with granted offline access, using a fresh assertion.
   const refreshBody: Record<string, string> = {
     grant_type: "refresh_token",
     refresh_token: tokens.refresh_token,
@@ -377,7 +396,11 @@ async function connect(v: Variant) {
   if (res) refreshBody.resource = res;
   const refreshed = await tokenCall(refreshBody, v.body);
   assert.equal(refreshed.statusCode, 200, `${v.name}: ${refreshed.body}`);
-  const again = await initialize(refreshed.json().access_token);
+  const rotated = refreshed.json();
+  assert.ok(rotated.refresh_token);
+  assert.notEqual(rotated.refresh_token, tokens.refresh_token);
+  assert.notEqual(rotated.access_token, tokens.access_token);
+  const again = await initialize(rotated.access_token);
   assert.equal(again.status, 200);
   return tokens;
 }
@@ -389,6 +412,15 @@ const VARIANTS: Variant[] = [
     scope: "orbyn:read orbyn:propose orbyn:write orbyn:bookings",
   },
   { name: "with offline_access", scope: "orbyn:read offline_access" },
+  {
+    name: "no scope with explicit Stay connected consent",
+    stayConnected: true,
+  },
+  {
+    name: "offline_access declined by the person",
+    scope: "orbyn:read offline_access",
+    stayConnected: false,
+  },
   {
     name: "resource without a path",
     resource: new URL(env.MCP_PUBLIC_URL).origin,

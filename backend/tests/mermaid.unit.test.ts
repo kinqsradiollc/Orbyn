@@ -214,6 +214,8 @@ test("journey task labels use readable theme text beside section labels", () => 
   const css = mermaidDiagramCss(DIAGRAM_EXPORT_PALETTE);
   assert.match(
     css,
-    /text\.task, text\.task tspan \{ fill: #27382f !important;/,
+    new RegExp(
+      `text\\.task, text\\.task tspan \\{ fill: ${DIAGRAM_EXPORT_PALETTE.textColor} !important;`,
+    ),
   );
 });

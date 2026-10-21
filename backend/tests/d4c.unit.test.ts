@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import {
@@ -295,7 +295,12 @@ test("every setting the phone lists names a section or sheet its Settings has", 
       "utf8",
     );
   const source =
-    read("SettingsScreen.tsx") + read("settings/PrivacySection.tsx");
+    read("SettingsScreen.tsx") +
+    read("AgentContext.tsx") +
+    readdirSync(new URL("../../mobile/src/screens/settings/", import.meta.url))
+      .filter((name) => name.endsWith(".tsx"))
+      .map((name) => read(`settings/${name}`))
+      .join("\n");
   const places = new Set(
     [...source.matchAll(/(?:title|name)="([^"]+)"/g)].map((m) =>
       sectionKey(m[1]),

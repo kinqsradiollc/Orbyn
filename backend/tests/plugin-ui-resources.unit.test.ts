@@ -31,7 +31,7 @@ test("plugin Markdown file entrypoint uses host resources without returning file
   });
   assert.deepEqual(pluginToolUiMeta(PLUGIN_MARKDOWN_FILE)?.ui, {
     resourceUri: "ui://orbyn/markdown-file.html",
-    visibility: ["app"],
+    visibility: ["model", "app"],
   });
   assert.equal(
     pluginMarkdownFileInput.safeParse({

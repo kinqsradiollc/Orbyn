@@ -7,21 +7,28 @@ import * as core from "@orbyn/core";
 
 /** Actual ProviderRow closure; physical rendering is verified separately through browser captures. */
 function row() {
-  const states: any[] = [];
+  const rowStates: any[] = [];
+  const pickerStates: any[] = [];
+  let states = rowStates;
   const effects: (() => void)[] = [];
   let cursor = 0;
   let calls = 0;
   const hooks = {
     useState(initial: any) {
       const at = cursor++;
-      if (!(at in states))
-        states[at] = typeof initial === "function" ? initial() : initial;
+      const owner = states;
+      if (!(at in owner))
+        owner[at] = typeof initial === "function" ? initial() : initial;
       return [
-        states[at],
+        owner[at],
         (next: any) => {
-          states[at] = typeof next === "function" ? next(states[at]) : next;
+          owner[at] = typeof next === "function" ? next(owner[at]) : next;
         },
       ];
+    },
+    useMemo(fn: () => any, _deps: unknown[]) {
+      cursor++;
+      return fn();
     },
     useRef(initial: any) {
       const at = cursor++;
@@ -57,27 +64,45 @@ function row() {
     format: "cjs",
     jsx: "automatic",
   }).code;
+  const pickerModule = { exports: {} as any };
+  const pickerCode = transformSync(
+    readFileSync(
+      new URL("../../mobile/src/components/ModelPicker.tsx", import.meta.url),
+      "utf8",
+    ),
+    { loader: "tsx", format: "cjs", jsx: "automatic" },
+  ).code;
   const components = new Proxy({}, { get: (_target, key) => String(key) });
+  const requireModule = (name: string): any => {
+    if (name === "react") return hooks;
+    if (name === "react/jsx-runtime") return { jsx, jsxs: jsx };
+    if (name === "@orbyn/core") return core;
+    if (name === "react-native")
+      return {
+        FlatList: "FlatList",
+        Text: "Text",
+        TextInput: "TextInput",
+        View: "View",
+        StyleSheet: { create: (v: any) => v, hairlineWidth: 1 },
+      };
+    if (name === "../lib/api") return { client };
+    if (name === "../lib/session") return { session: { token: "account" } };
+    if (name === "../components/ModelPicker")
+      return { ModelPicker: "ModelPicker" };
+    if (name === "../theme")
+      return { colors: {}, fonts: {}, radii: {}, themed: (fn: any) => fn() };
+    if (name === "../styles") return { shared: {} };
+    return components;
+  };
   vm.runInNewContext(code, {
     module,
     exports: module.exports,
-    require(name: string) {
-      if (name === "react") return hooks;
-      if (name === "react/jsx-runtime") return { jsx, jsxs: jsx };
-      if (name === "@orbyn/core") return core;
-      if (name === "react-native")
-        return {
-          Text: "Text",
-          TextInput: "TextInput",
-          View: "View",
-          StyleSheet: { create: (v: any) => v, hairlineWidth: 1 },
-        };
-      if (name === "../lib/api") return { client };
-      if (name === "../theme")
-        return { colors: {}, fonts: {}, radii: {}, themed: (fn: any) => fn() };
-      if (name === "../styles") return { shared: {} };
-      return components;
-    },
+    require: requireModule,
+  });
+  vm.runInNewContext(pickerCode, {
+    module: pickerModule,
+    exports: pickerModule.exports,
+    require: requireModule,
   });
   const props = {
     provider: {
@@ -108,11 +133,19 @@ function row() {
     render() {
       let tree: any;
       for (let i = 0; i < 3; i++) {
+        states = rowStates;
         cursor = 0;
         tree = module.exports.ProviderRow(props);
         effects.splice(0).forEach((fn) => fn());
       }
       return tree;
+    },
+    picker(tree: any) {
+      const node = nodes(tree, (x) => x.type === "ModelPicker")[0];
+      assert.ok(node);
+      states = pickerStates;
+      cursor = 0;
+      return pickerModule.exports.ModelPicker(node.props);
     },
     get calls() {
       return calls;
@@ -128,46 +161,62 @@ function nodes(tree: any, predicate: (x: any) => boolean): any[] {
   ];
 }
 const input = (tree: any) => nodes(tree, (x) => x.type === "TextInput")[0];
-const chips = (tree: any) =>
-  nodes(tree, (x) => x.props?.accessibilityRole === "radio");
-const texts = (tree: any) =>
-  nodes(tree, (x) => x.type === "Text")
-    .flatMap((x) => x.props.children)
-    .filter((x) => typeof x === "string")
-    .join(" ");
+const list = (tree: any) => nodes(tree, (x) => x.type === "FlatList")[0];
 async function loaded() {
   const r = row();
   const tree = r.render();
   await nodes(tree, (x) => x.props?.label === "Load models")[0].props.onPress();
   return r;
 }
-test("exact matching late model remains visible and selected instead of resetting to first chips", async () => {
+function choose(r: ReturnType<typeof row>) {
+  const tree = r.picker(r.render());
+  nodes(tree, (x) => x.props?.label === "Choose model")[0].props.onPress();
+  return r.picker(r.render());
+}
+test("exact matching late model remains available and selection updates the manual model", async () => {
   const r = await loaded();
-  let tree = r.render();
-  assert.equal(chips(tree).length, 40);
-  input(tree).props.onChangeText("c1-fixture-model-249");
-  tree = r.render();
-  assert.equal(chips(tree).length, 1);
-  assert.equal(chips(tree)[0].props.accessibilityState.checked, true);
-  assert.match(texts(tree), /c1-fixture-model-249/);
-  assert.equal(r.calls, 1, "typing makes no extra catalog request");
-});
-test("partial, case-insensitive and blank queries retain bounded catalog/manual values", async () => {
-  const r = await loaded();
-  let tree = r.render();
-  input(tree).props.onChangeText("  C1-FIXTURE-MODEL-24 ");
-  tree = r.render();
-  assert.equal(chips(tree).length, 10);
-  input(tree).props.onChangeText("manual-unlisted-model");
-  tree = r.render();
-  assert.equal(chips(tree).length, 0);
-  assert.equal(input(tree).props.value, "manual-unlisted-model");
-  assert.match(texts(tree), /No matching models/);
-  input(tree).props.onChangeText("");
-  tree = r.render();
-  assert.equal(chips(tree).length, 40);
+  let picker = choose(r);
+  assert.equal(list(picker).props.data.length, 250);
+  assert.equal(list(picker).props.initialNumToRender, 16);
+  assert.equal(list(picker).props.maxToRenderPerBatch, 20);
+  input(picker).props.onChangeText("c1-fixture-model-249");
+  picker = r.picker(r.render());
+  assert.equal(list(picker).props.data.length, 1);
+  const selected = list(picker).props.data[0];
+  list(picker).props.renderItem({ item: selected }).props.onPress();
+  assert.equal(input(r.render()).props.value, selected);
+  picker = choose(r);
+  const chip = list(picker).props.renderItem({ item: selected });
+  assert.equal(chip.props.accessibilityState.checked, true);
   assert.equal(
-    nodes(tree, (x) => x.props?.label === "Test connection")[0].props.disabled,
+    r.calls,
+    1,
+    "search and selection make no extra catalog request",
+  );
+});
+test("partial, case-insensitive and blank picker searches preserve the manual model", async () => {
+  const r = await loaded();
+  input(r.render()).props.onChangeText("manual-unlisted-model");
+  let picker = choose(r);
+  input(picker).props.onChangeText("  C1-FIXTURE-MODEL-24 ");
+  picker = r.picker(r.render());
+  assert.equal(list(picker).props.data.length, 10);
+  assert.equal(input(r.render()).props.value, "manual-unlisted-model");
+  input(picker).props.onChangeText("no-matching-model");
+  picker = r.picker(r.render());
+  assert.equal(list(picker).props.data.length, 0);
+  assert.equal(
+    list(picker).props.ListEmptyComponent.props.children,
+    "No matching models.",
+  );
+  assert.equal(input(r.render()).props.value, "manual-unlisted-model");
+  input(picker).props.onChangeText("");
+  picker = r.picker(r.render());
+  assert.equal(list(picker).props.data.length, 250);
+  input(r.render()).props.onChangeText("");
+  assert.equal(
+    nodes(r.render(), (x) => x.props?.label === "Test connection")[0].props
+      .disabled,
     true,
   );
   assert.equal(r.calls, 1);

@@ -91,6 +91,8 @@ async function mount(app: "desktop" | "mobile") {
       if (id.endsWith("/errors"))
         return { errorText: () => "Failed to load usage" };
       if (id === "react-native") return { View: "View", Text: "Text" };
+      if (id.endsWith("/InlineDetails"))
+        return { InlineDetails: "InlineDetails" };
       if (id.endsWith("/SmallAction")) return { SmallAction: "SmallAction" };
       if (id.endsWith("/styles")) return { shared: { small: {}, body: {} } };
       throw new Error(id);

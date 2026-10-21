@@ -56,6 +56,10 @@ test("real web and mobile Inline bodies display authorized reference titles", ()
         return jsxRuntime;
       },
       React,
+      session: { token: "fixture-owner" },
+      useRef: React.useRef,
+      useState: React.useState,
+      useEffect: React.useEffect,
       Fragment: React.Fragment,
       useContext: React.useContext,
       FootnoteContext: React.createContext({

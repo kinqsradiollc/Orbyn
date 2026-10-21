@@ -174,7 +174,7 @@ test("refresh cannot replace a foreign recipient or promote a plugin grant into 
     const token = `ort_${randomUUID()}`;
     const family = randomUUID();
     await pool.query(
-      "INSERT INTO agent_tokens(token_hash,grant_id,kind,family,resource,expires_at,family_expires_at) VALUES ($1,$2,'refresh',$3,$4,now()+interval '1 day',now()+interval '2 days')",
+      "INSERT INTO agent_tokens(token_hash,grant_id,kind,family,resource,expires_at,family_expires_at,offline_allowed) VALUES ($1,$2,'refresh',$3,$4,now()+interval '1 day',now()+interval '2 days',true)",
       [
         digest(token),
         grant.id,
