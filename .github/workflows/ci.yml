@@ -168,6 +168,17 @@ jobs:
             while read -r target image; do docker tag "orbyn-$target:ci" "$image"; done
           docker compose up -d --no-build --wait --wait-timeout 120
           curl --fail --retry 5 --retry-all-errors http://localhost:8080/api/health
+          # Public registration cannot grant admin authority. Provision the
+          # smoke operator only inside this disposable Compose database.
+          docker compose exec -T api node --input-type=module <<'NODE'
+          import argon2 from 'argon2';
+          import { pool } from './backend/dist/db/pool.js';
+          await pool.query(
+            'INSERT INTO users(email,name,password_hash,role,email_verified) VALUES($1,$2,$3,$4,true)',
+            ['smoke-admin@orbyn.local', 'Smoke admin', await argon2.hash('smoke-admin-password'), 'admin'],
+          );
+          await pool.end();
+          NODE
           SMOKE_AI=skip npm run smoke -w backend
       - name: Docker logs
         if: failure()
