@@ -51,6 +51,14 @@ or consequential cross-cutting work, `orbyn-research` for unresolved external fa
 and `orbyn-skill-creator` when changing this skill system. Update the owning docs
 with the contract; do not recreate a stale ADR queue or duplicate policies.
 
+## Branch names
+
+Name new branches for the work, using neutral prefixes such as `feat/`, `fix/`,
+`chore/`, `refactor/` or `docs/`. Never put agent, assistant, vendor, tool or model
+branding in a new branch name, including `codex/`, `claude/`, `openai/` or similar
+names anywhere in the branch path. Follow [development](docs/agents/development.md#branch-naming)
+for examples and existing-branch handling.
+
 ## Sessions and models
 
 Use [coordination](docs/agents/coordination.md) for separately requested project

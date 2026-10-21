@@ -4,6 +4,25 @@ Start with [AGENTS.md](../../AGENTS.md). Identify the requested outcome, active
 checkout and existing changes. Read nearby source, its callers and applicable
 nested instructions. The current manifests and contracts outrank old reports.
 
+## Branch naming
+
+Use a lowercase, purpose-based branch name. Prefer `<type>/<short-description>`
+with a neutral work type such as `feat`, `fix`, `chore`, `refactor` or `docs`.
+Examples are `fix/session-recovery`, `feat/calendar-sharing` and
+`chore/agent-workflow`. The name describes the change rather than its author.
+
+Never create a branch with agent, assistant, vendor, tool or model branding in
+any path component or descriptive suffix. This includes `codex`, `claude`,
+`openai`, `anthropic`, `chatgpt`, `copilot` and equivalent product/model names.
+Do not copy a host's branded default prefix when creating a branch or worktree;
+choose a neutral purpose-based name and check it before creation.
+
+Existing branches and historical source references are not new names. Preserve
+them when continuing existing work. Renaming or deleting a shared remote branch,
+or moving another chat's checkout, requires an explicit request; this policy
+alone does not authorize those operations. An existing branded branch is not a
+reason to recreate it for a new task.
+
 ## Understand, design, implement
 
 Use [how](../../skills/how/SKILL.md) to trace the affected path. For a substantive

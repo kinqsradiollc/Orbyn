@@ -37,6 +37,8 @@ host's session-creation model controls; do not claim an unsupported override.
 Only request a separate worktree through session creation when the user has
 requested it and the host supports it. Otherwise define disjoint file ownership
 or serialize shared-checkout edits. A new session is not filesystem isolation.
+Any new branch or worktree branch follows [branch naming](development.md#branch-naming):
+neutral work-based names, without agent/vendor/tool/model branding.
 
 Claude Code has its own session/background-agent capabilities depending on
 installed version. Discover the supported mechanism before use. Do not assume
