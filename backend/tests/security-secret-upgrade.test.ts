@@ -2,13 +2,44 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes, createCipheriv, randomUUID } from "node:crypto";
 import "./setup.js";
+import pg from "pg";
+
+// Rewrapping visits every encrypted field and retires a database-wide key.
+// Other suite files deliberately retire/recreate that key, so their remaining
+// ciphertext cannot share this migration fixture's database.
+const admin = new pg.Client({
+  connectionString: process.env.TEST_DATABASE_URL,
+});
+await admin.connect();
+const databaseName = `orbyn_secret_upgrade_${randomUUID().replaceAll("-", "")}_test`;
+const databaseUrl = new URL(process.env.TEST_DATABASE_URL!);
+databaseUrl.pathname = `/${databaseName}`;
+let created = false;
+let closeFixtureDatabase = async () => {};
+after(async () => {
+  try {
+    await closeFixtureDatabase();
+  } finally {
+    try {
+      if (created) await admin.query(`DROP DATABASE "${databaseName}"`);
+    } finally {
+      await admin.end();
+    }
+  }
+});
+await admin.query(`CREATE DATABASE "${databaseName}"`);
+created = true;
+await admin.query(
+  `ALTER DATABASE "${databaseName}" SET orbyn.environment TO 'test'`,
+);
+process.env.DATABASE_URL = databaseUrl.href;
 process.env.SECRETS_KEY = randomBytes(32).toString("base64");
 const { pool, closeDatabase } = await import("../src/db/pool.js");
+closeFixtureDatabase = closeDatabase;
 const { migrate } = await import("../src/db/migrate.js");
 const { rewrapLegacySecrets } = await import("../src/lib/rewrap-secrets.js");
 const { decryptSecret } = await import("../src/lib/secrets.js");
 await migrate();
-after(closeDatabase);
 test("upgrade rewraps legacy provider/SMTP secrets and retires the dump key", async () => {
   await pool.query(
     "INSERT INTO app_secrets(name,value) VALUES('credentials_key',$1) ON CONFLICT(name) DO NOTHING",
