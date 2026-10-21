@@ -19,6 +19,7 @@ import { Button } from "./Button";
 import { Chip, ChipRow } from "./Chip";
 import { ChoicePicker } from "./ChoicePicker";
 import { InlineDetails } from "./InlineDetails";
+import { AssistantControls } from "./AssistantControls";
 import { ErrorBanner } from "./ErrorBanner";
 import { DateField, Field, TimeField } from "./Field";
 import { MoreMenu, type MoreAction } from "./MoreMenu";
@@ -87,11 +88,13 @@ export function AssistantUpcoming(props: Parameters<typeof UpcomingBody>[0]) {
 function UpcomingBody({
   agentName,
   visible,
+  conversationEnabled = false,
   onClose,
 }: {
   /** The name the person gave their assistant. */
   agentName: string;
   visible: boolean;
+  conversationEnabled?: boolean;
   onClose: () => void;
 }) {
   const owner = session.token;
@@ -475,6 +478,9 @@ function UpcomingBody({
         automaticallyAdjustKeyboardInsets
       >
         <View style={sheetStyles.column}>
+          {visible && (
+            <AssistantControls deliveryEnabled={conversationEnabled} />
+          )}
           <ErrorBanner error={error} onDismiss={() => setError("")} />
           <Text style={[shared.small, s.intro]}>
             {agentName} · {timezone}

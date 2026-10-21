@@ -64,6 +64,8 @@ export * from "./character.js";
 export * from "./assistant-ideas.js";
 export * from "./goals.js";
 export * from "./assistant-workspace.js";
+export * from "./assistant-conversation.js";
+export * from "./assistant-delivery.js";
 export * from "./assistant-activity.js";
 export * from "./memory.js";
 export * from "./page-tags.js";

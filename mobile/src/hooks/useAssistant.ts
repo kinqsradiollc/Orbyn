@@ -1,4 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  useSyncExternalStore,
+} from "react";
+import {
+  AssistantConversationStore,
+  conversationDisplayItems,
+} from "@orbyn/api-client";
 import { AppState } from "react-native";
 import {
   HttpError,
@@ -8,6 +18,7 @@ import {
   proposalNote,
   savedReply,
   type ChatTurn,
+  type AssistantConversationEntry,
   type ChatScope,
   type ChatTraceEntry,
   type ReminderNudgeCard,
@@ -25,7 +36,7 @@ import type { AssistantRunProgress, ChatResult } from "@orbyn/api-client";
 export type TurnState = "pending" | "applied" | "discarded" | "info";
 
 export type Turn =
-  | { id: string; role: "user"; text: string }
+  | { id: string; role: "user"; text: string; turnId?: string }
   | {
       id: string;
       role: "assistant";
@@ -85,6 +96,47 @@ const nextId = () => `turn-${++sequence}`;
  */
 export function useAssistant({ token, act, refresh, items }: Options) {
   const [message, setMessage] = useState("");
+  const messageRef = useRef(message);
+  messageRef.current = message;
+  const drafts = useRef(
+    new Map<string, { message: string; replyId: string | null }>(),
+  );
+  const answerAttempts = useRef(new Map<string, string>());
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+  const conversationStore = useMemo(
+    () => new AssistantConversationStore(client, () => tokenRef.current),
+    [],
+  );
+  const conversation = useSyncExternalStore(
+    conversationStore.subscribe,
+    conversationStore.getSnapshot,
+  );
+  const [conversationReady, setConversationReady] = useState(false);
+  const [conversationIssue, setConversationIssue] = useState("");
+  const [conversationEnabled, setConversationEnabled] = useState(false);
+  const conversationEnabledRef = useRef(conversationEnabled);
+  conversationEnabledRef.current = conversationEnabled;
+  const [focusedConversationSequence, setFocusedConversationSequence] =
+    useState<string | null>(null);
+  const [legacyHistoryAvailable, setLegacyHistoryAvailable] = useState(false);
+  const [legacyHistoryTarget, setLegacyHistoryTarget] = useState<{
+    destinationId: string;
+    chatId: string;
+  } | null>(null);
+  const [personalChatId, setPersonalChatId] = useState<string | null>(null);
+  const [replyTarget, setReplyTarget] = useState<Extract<
+    AssistantConversationEntry,
+    { kind: "update" }
+  > | null>(null);
+  const pendingReplyId = useRef<string | null>(null);
+  const replyLookupId = useRef<string | null>(null);
+  const [replyStatus, setReplyStatus] = useState<
+    "loading" | "unavailable" | null
+  >(null);
+  const replyTargetRef = useRef(replyTarget);
+  replyTargetRef.current = replyTarget;
+
   const [turns, setTurns] = useState<Turn[]>([]);
   const [thinking, setThinking] = useState(false);
   const [restoringChat, setRestoringChat] = useState<string | null>(null);
@@ -129,6 +181,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       scope?.id,
       historyKindRef.current,
       chatSearchRef.current,
+      conversationEnabledRef.current,
     ]);
     if (chatsContext.current !== context) {
       chatsContext.current = context;
@@ -137,6 +190,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     return client
       .aiChats({
         search: chatSearchRef.current,
+        conversation_only: conversationEnabledRef.current,
         ...(scope?.kind === "project" ? { project_id: scope.id } : {}),
         kind:
           scope?.kind === "project"
@@ -217,7 +271,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       clearTimeout(timer);
       chatsRequest.current += 1;
     };
-  }, [chatSearch, token]);
+  }, [chatSearch, token, conversationEnabled]);
 
   const stopPolling = () => {
     setRestoringChat(null);
@@ -235,6 +289,13 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     setThinking(false);
     setRunProgress(null);
     setTurns([]);
+    setReplyTarget(null);
+    pendingReplyId.current = null;
+    replyLookupId.current = null;
+    setReplyStatus(null);
+    setFocusedConversationSequence(null);
+    setLegacyHistoryAvailable(false);
+    setLegacyHistoryTarget(null);
     setMessage("");
     chatId.current = null;
     setActiveChatId(null);
@@ -272,8 +333,15 @@ export function useAssistant({ token, act, refresh, items }: Options) {
 
   const previousToken = useRef(token);
   useEffect(() => {
+    drafts.current.clear();
+    answerAttempts.current.clear();
     clearConversation(!!previousToken.current && !token);
     previousToken.current = token;
+    conversationStore.reset();
+    setConversationEnabled(false);
+    setConversationReady(false);
+    setConversationIssue("");
+    setPersonalChatId(null);
     setScopeState(null);
     scopeRef.current = null;
     historyKindRef.current = "chat";
@@ -353,7 +421,87 @@ export function useAssistant({ token, act, refresh, items }: Options) {
 
   const ask = (text: string = message) => {
     const trimmed = text.trim();
-    if (!trimmed || sending.current) return Promise.resolve();
+    if (
+      !trimmed ||
+      sending.current ||
+      !conversationReady ||
+      pendingReplyId.current
+    )
+      return Promise.resolve();
+    const question = replyTargetRef.current;
+    if (question?.event === "question") {
+      const destination = conversationStore.getSnapshot().destination;
+      if (!destination || destination.chat_id !== chatId.current)
+        return Promise.resolve();
+      const key = JSON.stringify([destination.id, question.id, trimmed]);
+      const previousAttempt = answerAttempts.current.get(key);
+      if (
+        !previousAttempt &&
+        (question.actionable === false || question.waiting_kind !== "person")
+      )
+        return act(async () => {
+          throw new Error(
+            question.waiting_kind === "approval"
+              ? "Open this request in Review."
+              : "This question changed or was answered. Refresh before answering.",
+          );
+        });
+      const turnId = previousAttempt ?? newId();
+      answerAttempts.current.set(key, turnId);
+      const request = generation.current;
+      const account = tokenRef.current;
+      const userTurn: Turn = {
+        id: nextId(),
+        role: "user",
+        text: trimmed,
+        turnId,
+      };
+      sending.current = true;
+      setTurns((turns) => [...turns, userTurn]);
+      setMessage("");
+      return act(async () => {
+        try {
+          await client.answerAssistantConversationQuestion(
+            destination.id,
+            question.id,
+            trimmed,
+            turnId,
+          );
+          if (account !== tokenRef.current) return;
+          answerAttempts.current.delete(key);
+          if (request !== generation.current) {
+            const draft = drafts.current.get(destination.chat_id);
+            if (draft?.replyId === question.id)
+              drafts.current.set(destination.chat_id, {
+                ...draft,
+                replyId: null,
+              });
+            return;
+          }
+          setReplyTarget((current) =>
+            current?.id === question.id ? null : current,
+          );
+          await conversationStore.refresh();
+        } catch (error) {
+          if (account !== tokenRef.current) return;
+          if (request !== generation.current) {
+            const draft = drafts.current.get(destination.chat_id);
+            drafts.current.set(destination.chat_id, {
+              message: draft?.message
+                ? `${trimmed}\n\n${draft.message}`
+                : trimmed,
+              replyId: question.id,
+            });
+            return;
+          }
+          setTurns((turns) => turns.filter((turn) => turn.id !== userTurn.id));
+          setMessage((draft) => (draft ? `${trimmed}\n\n${draft}` : trimmed));
+          throw error;
+        } finally {
+          if (request === generation.current) sending.current = false;
+        }
+      });
+    }
     sending.current = true;
     const request = ++generation.current;
     const prior = history();
@@ -362,10 +510,17 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     setActiveChatId(requestedChatId);
     void saveAssistantChat(requestedChatId);
     const requestedTurnId = newId();
+    const selectedReply = replyTargetRef.current;
+    setReplyTarget(null);
     stopPolling();
     const controller = new AbortController();
     poll.current = controller;
-    const userTurn: Turn = { id: nextId(), role: "user", text: trimmed };
+    const userTurn: Turn = {
+      id: nextId(),
+      role: "user",
+      text: trimmed,
+      turnId: requestedTurnId,
+    };
     setTurns((t) => [...t, userTurn]);
     setMessage("");
     setCharacterOutcome(null);
@@ -380,7 +535,11 @@ export function useAssistant({ token, act, refresh, items }: Options) {
             kind: scopeRef.current.kind,
             id: scopeRef.current.id,
           },
-          { chatId: requestedChatId, turnId: requestedTurnId },
+          {
+            chatId: requestedChatId,
+            turnId: requestedTurnId,
+            replyToEntryId: selectedReply?.id,
+          },
           (progress) => {
             // A run left behind (new scope, chat or session) stays out of view.
             if (request !== generation.current) return;
@@ -392,11 +551,13 @@ export function useAssistant({ token, act, refresh, items }: Options) {
         if (request !== generation.current) return;
         chatId.current = result.chat_id;
         acceptResult(result);
+        void conversationStore.refresh();
       } catch (error) {
         if (request !== generation.current) return;
         setCharacterOutcome("error");
         // Nothing typed is lost: the message goes back in the box and act() shows the error.
         setTurns((t) => t.filter((x) => x.id !== userTurn.id));
+        setReplyTarget((current) => current ?? selectedReply);
         setMessage((draft) => (draft ? `${trimmed}\n\n${draft}` : trimmed));
         await act(async () => {
           throw error;
@@ -587,7 +748,18 @@ export function useAssistant({ token, act, refresh, items }: Options) {
 
   /** Pick up any saved assistant chat where it was left. */
   const openChat = async (id: string) => {
+    const initialDraft = chatId.current ? null : messageRef.current;
+    if (chatId.current)
+      drafts.current.set(chatId.current, {
+        message: messageRef.current,
+        replyId: replyTargetRef.current?.id ?? pendingReplyId.current,
+      });
     clearConversation(false);
+    const savedDraft = drafts.current.get(id);
+    if (savedDraft) {
+      setMessage(savedDraft.message);
+      pendingReplyId.current = savedDraft.replyId;
+    } else if (initialDraft !== null) setMessage(initialDraft);
     const request = generation.current;
     const restoring = new AbortController();
     poll.current = restoring;
@@ -624,7 +796,15 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     if (!chat || request !== generation.current) return;
     setRestoringChat(null);
     chatId.current = chat.id;
+    setLegacyHistoryAvailable(chat.has_legacy_history ?? false);
+    setLegacyHistoryTarget(
+      chat.has_legacy_history && chat.legacy_history_destination_id
+        ? { destinationId: chat.legacy_history_destination_id, chatId: chat.id }
+        : null,
+    );
     setActiveChatId(chat.id);
+    setConversationReady(true);
+    setConversationIssue("");
     void saveAssistantChat(chat.id);
     const nextScope = chat.scope
       ? {
@@ -640,7 +820,12 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     setTurns(
       chat.turns.map((t, n): Turn =>
         t.role === "user"
-          ? { id: `${t.turn_id ?? nextId()}-user`, role: "user", text: t.text }
+          ? {
+              id: `${t.turn_id ?? nextId()}-user`,
+              role: "user",
+              text: t.text,
+              turnId: t.turn_id,
+            }
           : {
               id: `${t.turn_id ?? nextId()}-assistant`,
               role: "assistant",
@@ -726,14 +911,208 @@ export function useAssistant({ token, act, refresh, items }: Options) {
         timer = setTimeout(() => void restore(id), 10000);
       }
     };
-    void loadAssistantChat().then((id) => {
-      if (id) void restore(id);
-    });
+    const initialize = async () => {
+      try {
+        const home = await client.assistantConversation();
+        if (disposed) return;
+        setPersonalChatId(
+          home.enabled ? (home.destination?.chat_id ?? null) : null,
+        );
+        // Capability belongs to the account, not whichever chat finished restoring.
+        // A concurrent explicit chat open must not discard unified delivery.
+        setConversationEnabled(home.enabled);
+        if (request !== generation.current) return;
+        if (home.enabled) {
+          if (home.destination) await restore(home.destination.chat_id);
+          if (!disposed) {
+            setConversationEnabled(true);
+            if (home.destination && chatId.current === home.destination.chat_id)
+              setConversationReady(true);
+          }
+          return;
+        }
+        setConversationEnabled(false);
+      } catch (error) {
+        if (disposed) return;
+        if (!(error instanceof HttpError && error.statusCode === 404)) {
+          setConversationIssue("Couldn't load your conversation. Retrying…");
+          timer = setTimeout(() => void initialize(), 10000);
+          return;
+        }
+      }
+      const id = await loadAssistantChat();
+      if (id && !disposed && request === generation.current) await restore(id);
+      if (!disposed && request === generation.current) {
+        setConversationReady(true);
+        setConversationIssue("");
+      }
+    };
+    void initialize();
     return () => {
       disposed = true;
       if (timer) clearTimeout(timer);
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!token || !conversationEnabled || !activeChatId) {
+      conversationStore.select(null);
+      return;
+    }
+    let live = true;
+    const id = activeChatId;
+    const abort = new AbortController();
+    const update = () => {
+      if (!live || AppState.currentState !== "active") return;
+      if (conversationStore.getSnapshot().destination) {
+        void conversationStore.refresh();
+        return;
+      }
+      void client
+        .assistantConversationForChat(id, abort.signal)
+        .then((destination) => {
+          if (live) conversationStore.select(destination);
+        })
+        .catch(() => undefined);
+    };
+    update();
+    const timer = setInterval(update, 3000);
+    const stop = onLive((news) => {
+      if (news.kind === "changed" && (!news.area || news.area === "assistant"))
+        update();
+    });
+    return () => {
+      live = false;
+      abort.abort();
+      clearInterval(timer);
+      stop();
+      conversationStore.reset();
+    };
+  }, [token, conversationEnabled, activeChatId, conversationStore]);
+  useEffect(() => {
+    const id = pendingReplyId.current ?? replyTargetRef.current?.id;
+    const destination = conversation.destination;
+    if (!id || !destination || conversation.loading) return;
+    const entry = conversation.entries.find(
+      (entry) => entry.id === id && entry.kind === "update",
+    );
+    if (entry?.kind === "update" && !conversation.error) {
+      pendingReplyId.current = null;
+      replyLookupId.current = null;
+      setReplyStatus(null);
+      setReplyTarget(entry);
+      return;
+    }
+    pendingReplyId.current = id;
+    setReplyTarget(null);
+    if (replyLookupId.current === id) return;
+    replyLookupId.current = id;
+    setReplyStatus("loading");
+    const owner = tokenRef.current;
+    const current = () =>
+      tokenRef.current === owner &&
+      pendingReplyId.current === id &&
+      conversationStore.getSnapshot().destination?.id === destination.id;
+    void client
+      .assistantConversationEntry(destination.id, id)
+      .then(async (location) => {
+        if (!current()) return;
+        await conversationStore.reveal(location.sequence);
+        if (!current()) return;
+        const restored = conversationStore
+          .getSnapshot()
+          .entries.find((entry) => entry.id === id && entry.kind === "update");
+        if (restored?.kind !== "update") {
+          setReplyStatus("unavailable");
+          return;
+        }
+        pendingReplyId.current = null;
+        replyLookupId.current = null;
+        setReplyTarget(restored);
+        setReplyStatus(null);
+      })
+      .catch(() => {
+        if (current()) setReplyStatus("unavailable");
+      });
+  }, [
+    conversation.entries,
+    conversation.destination?.id,
+    conversation.loading,
+    conversation.error,
+  ]);
+  const openPersonalConversation = () =>
+    act(async () => {
+      const owner = tokenRef.current;
+      const draft = chatId.current ? null : messageRef.current;
+      setConversationReady(false);
+      setConversationIssue("");
+      try {
+        const destination = await client.openAssistantConversation();
+        if (owner !== tokenRef.current) return;
+        setPersonalChatId(destination.chat_id);
+        setConversationEnabled(true);
+        historyKindRef.current = "chat";
+        setHistoryKindState("chat");
+        await openChat(destination.chat_id);
+        if (owner !== tokenRef.current) return;
+        if (draft !== null) setMessage(draft);
+      } catch (error) {
+        if (owner === tokenRef.current)
+          setConversationIssue("Couldn't open your conversation. Try again.");
+        throw error;
+      }
+    });
+  const openConversationEntry = async (
+    destinationId: string,
+    entryId: string,
+  ) => {
+    const owner = tokenRef.current;
+    const location = await client.assistantConversationEntry(
+      destinationId,
+      entryId,
+    );
+    if (owner !== tokenRef.current) return;
+    await openChat(location.destination.chat_id);
+    if (
+      owner !== tokenRef.current ||
+      chatId.current !== location.destination.chat_id
+    )
+      return;
+    setConversationEnabled(true);
+    conversationStore.select(location.destination);
+    if (!(await conversationStore.reveal(location.sequence)))
+      throw new Error("Update is no longer available.");
+    if (
+      owner === tokenRef.current &&
+      chatId.current === location.destination.chat_id
+    )
+      setFocusedConversationSequence(location.sequence);
+  };
+  const conversationItems = conversationDisplayItems<Turn>(
+    conversation,
+    turns,
+    (turn) =>
+      turn.role === "user"
+        ? {
+            id: `${turn.turn_id}-user`,
+            role: "user",
+            text: turn.text,
+            turnId: turn.turn_id,
+          }
+        : {
+            id: `${turn.turn_id}-assistant`,
+            role: "assistant",
+            proposal: savedReply(turn, 0) as Proposal,
+            nudge: turn.nudge,
+            state:
+              turn.outcome === "pending" ? "info" : (turn.outcome ?? "info"),
+            before: [],
+            turnId: turn.turn_id ?? newId(),
+            trace: [],
+            changesJob: turn.changes_job ?? null,
+            planApplied: turn.outcome === "applied",
+          },
+  );
 
   const deleteChat = async (id: string) => {
     await client.deleteProjectChat(id);
@@ -792,6 +1171,37 @@ export function useAssistant({ token, act, refresh, items }: Options) {
 
   const pending = latestPending();
   return {
+    conversation,
+    conversationItems,
+    focusedConversationSequence,
+    clearConversationFocus: () => setFocusedConversationSequence(null),
+    openConversationEntry,
+    conversationEnabled,
+    legacyHistoryAvailable,
+    legacyHistoryTarget,
+    conversationReady,
+    conversationIssue,
+    personalChatId,
+    openPersonalConversation,
+    refreshConversation: conversationStore.refresh,
+    loadEarlierConversation: conversationStore.loadEarlier,
+    acknowledgeConversation: conversationStore.acknowledge,
+    replyTarget,
+    replyStatus,
+    selectReply: (
+      entry: Extract<AssistantConversationEntry, { kind: "update" }>,
+    ) => {
+      pendingReplyId.current = null;
+      replyLookupId.current = null;
+      setReplyStatus(null);
+      setReplyTarget(entry);
+    },
+    clearReply: () => {
+      pendingReplyId.current = null;
+      replyLookupId.current = null;
+      setReplyStatus(null);
+      setReplyTarget(null);
+    },
     message,
     setMessage,
     turns,

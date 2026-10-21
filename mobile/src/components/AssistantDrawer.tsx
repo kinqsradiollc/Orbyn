@@ -40,6 +40,7 @@ export function AssistantDrawer({
   onClose,
   afterClose,
   agentName,
+  primaryConversation,
   chats,
   activeChatId,
   search,
@@ -56,6 +57,7 @@ export function AssistantDrawer({
   onClose: () => void;
   afterClose?: () => void;
   agentName: string;
+  primaryConversation?: { id: string | null; onOpen: () => void };
   /** null while loading. */
   chats: AiChatSummary[] | null;
   activeChatId: string | null;
@@ -139,8 +141,9 @@ export function AssistantDrawer({
     [offset],
   );
 
-  const pinned = chats?.filter((c) => c.pinned) ?? [];
-  const recents = chats?.filter((c) => !c.pinned) ?? [];
+  const history = chats?.filter((c) => c.id !== primaryConversation?.id);
+  const pinned = history?.filter((c) => c.pinned) ?? [];
+  const recents = history?.filter((c) => !c.pinned) ?? [];
   const menuChat = chats?.find((chat) => chat.id === menuFor?.id) ?? null;
   const backdrop = offset.interpolate({
     inputRange: [-panel, 0],
@@ -230,7 +233,7 @@ export function AssistantDrawer({
         >
           <View style={s.head}>
             <Text style={s.name} accessibilityRole="header">
-              {agentName}
+              {primaryConversation ? "Chats" : agentName}
             </Text>
             <Pressable
               accessibilityRole="button"
@@ -255,15 +258,34 @@ export function AssistantDrawer({
             <Pressable
               accessibilityRole="button"
               disabled={locked}
-              onPress={onNewChat}
+              onPress={primaryConversation?.onOpen ?? onNewChat}
+              accessibilityLabel={
+                primaryConversation ? `Open ${agentName}` : "New chat"
+              }
+              accessibilityState={{
+                selected:
+                  !!primaryConversation?.id &&
+                  primaryConversation.id === activeChatId,
+                disabled: locked,
+              }}
               style={({ pressed }) => [
                 s.newChat,
+                primaryConversation &&
+                  primaryConversation.id !== activeChatId && {
+                    backgroundColor: "transparent",
+                  },
                 pressed && { backgroundColor: colors.border },
                 locked && { opacity: 0.5 },
               ]}
             >
-              <Icon name="squarePen" size={18} color={colors.text} />
-              <Text style={s.newChatText}>New chat</Text>
+              <Icon
+                name={primaryConversation ? "sparkles" : "squarePen"}
+                size={18}
+                color={colors.text}
+              />
+              <Text style={s.newChatText}>
+                {primaryConversation ? agentName : "New chat"}
+              </Text>
             </Pressable>
           </View>
           {searching && (
@@ -351,6 +373,21 @@ export function AssistantDrawer({
             )}
           </ScrollView>
           <View style={s.foot}>
+            {primaryConversation && (
+              <Pressable
+                accessibilityRole="button"
+                disabled={locked}
+                onPress={onNewChat}
+                style={({ pressed }) => [
+                  s.newChat,
+                  pressed && { backgroundColor: colors.border },
+                  locked && { opacity: 0.5 },
+                ]}
+              >
+                <Icon name="squarePen" size={18} color={colors.text} />
+                <Text style={s.newChatText}>New chat</Text>
+              </Pressable>
+            )}
             {onSettings && (
               <Pressable
                 accessibilityRole="button"

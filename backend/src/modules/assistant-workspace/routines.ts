@@ -1,3 +1,4 @@
+import { recordScheduleConversation } from "./conversation-schedules.js";
 import {
   agentRoutineInput,
   agentRoutineUpdate,
@@ -103,7 +104,7 @@ export async function saveAgentRoutine(
   userId: string,
   id: string | null,
   raw: unknown,
-  options: { advance?: boolean } = {},
+  options: { advance?: boolean; deliveryJobId?: string } = {},
 ): Promise<AgentRoutine> {
   const current = id
     ? (
@@ -186,6 +187,14 @@ export async function saveAgentRoutine(
         )
       ).rows[0]?.id;
   if (!savedId) fail(404, "Assistant routine not found.");
+  if (!current || options.deliveryJobId)
+    await recordScheduleConversation(
+      db,
+      userId,
+      "routine",
+      savedId,
+      options.deliveryJobId,
+    );
   if (current && current.instruction !== parsed.instruction)
     await clearRoutineApprovalScopes(db, userId, savedId);
   const saved = (

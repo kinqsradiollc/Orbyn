@@ -3,6 +3,7 @@ import { session, onSessionChange } from "../../lib/session";
 import { providerDetailLines } from "@orbyn/core";
 import {
   useEffect,
+  useLayoutEffect,
   useId,
   useMemo,
   useSyncExternalStore,
@@ -56,9 +57,11 @@ import { TurnChanges } from "./TurnChanges";
 import { ReminderNudge } from "./ReminderNudge";
 import { ProposalReview } from "../../components/ProposalReview";
 import { AssistantUpcoming } from "./AssistantUpcoming";
+import { SavedConversationHistory } from "./SavedConversationHistory";
 import { client } from "../../lib/api";
 import type { Assistant } from "../../hooks/useAssistant";
 import "./assistant.css";
+import { ConversationUpdate } from "./ConversationUpdate";
 
 /** One icon per suggestion, in the shared list's order. */
 const SUGGESTION_ICONS: LucideIcon[] = [CalendarDays, Flag, Sunrise, PenLine];
@@ -228,20 +231,126 @@ export function AssistantView({
     : SUGGESTIONS;
   const upcomingId = useId();
   const threadRef = useRef<HTMLDivElement>(null);
+  const followingConversation = useRef(true);
+  const readingAnchor = useRef<{ sequence: string; offset: number } | null>(
+    null,
+  );
+  const previousConversation = useRef<string | null>(null);
+  const previousTail = useRef<string | null>(null);
+  const previousSubmission = useRef<string | null>(null);
+  const [newConversationContent, setNewConversationContent] = useState(false);
+  const rememberReadingPosition = () => {
+    const thread = threadRef.current;
+    if (!thread) return;
+    followingConversation.current =
+      thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
+    if (followingConversation.current) setNewConversationContent(false);
+    const top = thread.getBoundingClientRect().top;
+    const row = [
+      ...thread.querySelectorAll<HTMLElement>("[data-conversation-sequence]"),
+    ].find((row) => row.getBoundingClientRect().bottom > top);
+    readingAnchor.current = row
+      ? {
+          sequence: row.dataset.conversationSequence!,
+          offset: row.getBoundingClientRect().top - top,
+        }
+      : null;
+  };
+  const showLatestConversation = () => {
+    followingConversation.current = true;
+    readingAnchor.current = null;
+    setNewConversationContent(false);
+    const thread = threadRef.current;
+    if (thread) thread.scrollTo({ top: thread.scrollHeight, behavior: "auto" });
+  };
+  const earlierConversation = () => {
+    rememberReadingPosition();
+    followingConversation.current = false;
+    void assistant.loadEarlierConversation();
+  };
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [quickMenu, setQuickMenu] = useState<DOMRect | null>(null);
   const chatRef = useRef<HTMLElement>(null);
   const [compactPanels, setCompactPanels] = useState(true);
-  const [panel, setPanel] = useState<"history" | "upcoming" | null>(
+  const [panel, setPanel] = useState<"history" | "upcoming" | "legacy" | null>(
     openUpcoming > 0 ? "upcoming" : null,
   );
+
+  const initializedHome = useRef(false);
+  useEffect(() => {
+    if (!assistant.conversationEnabled) {
+      initializedHome.current = false;
+      return;
+    }
+    if (initializedHome.current) return;
+    initializedHome.current = true;
+    if (!activeChatId && !scope) void assistant.openPersonalConversation();
+  }, [assistant.conversationEnabled]);
+  useEffect(() => {
+    const thread = threadRef.current;
+    if (
+      !thread ||
+      agentLane ||
+      panel ||
+      document.hidden ||
+      !assistant.conversation.destination
+    )
+      return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (document.hidden || !document.hasFocus()) return;
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .map((entry) =>
+            entry.target.getAttribute("data-conversation-sequence"),
+          )
+          .filter((value): value is string => !!value);
+        if (visible.length)
+          void assistant.acknowledgeConversation(
+            visible.reduce((a, b) => (BigInt(a) > BigInt(b) ? a : b)),
+          );
+      },
+      { root: thread, threshold: 0.5 },
+    );
+    const observe = () => {
+      observer.disconnect();
+      thread
+        .querySelectorAll("[data-conversation-sequence]")
+        .forEach((node) => observer.observe(node));
+    };
+    observe();
+    window.addEventListener("focus", observe);
+    document.addEventListener("visibilitychange", observe);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("focus", observe);
+      document.removeEventListener("visibilitychange", observe);
+    };
+  }, [assistant.conversation.entries, agentLane, panel]);
+
+  useEffect(() => {
+    const sequence = assistant.focusedConversationSequence;
+    if (!sequence) return;
+    followingConversation.current = false;
+    const frame = requestAnimationFrame(() => {
+      threadRef.current
+        ?.querySelector<HTMLElement>(
+          `[data-conversation-sequence="${sequence}"]`,
+        )
+        ?.scrollIntoView({ block: "center" });
+      rememberReadingPosition();
+      assistant.clearConversationFocus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [assistant.focusedConversationSequence]);
+
   const historyOpen = panel === "history";
   const upcomingOpen = panel === "upcoming";
   const navigationOpenRef = useRef(navigationOpen);
   navigationOpenRef.current = navigationOpen;
   const panelOrigin = useRef<HTMLElement | null>(null);
   const closePanels = () => setPanel(null);
-  const togglePanel = (next: "history" | "upcoming") => {
+  const togglePanel = (next: "history" | "upcoming" | "legacy") => {
     if (!panel)
       panelOrigin.current = document.activeElement as HTMLElement | null;
     onOpenSidePanel?.();
@@ -334,9 +443,14 @@ export function AssistantView({
       .finally(() => setChatActionPending(false));
   };
   const waiting = runProgress?.state === "waiting" ? runProgress.waiting : null;
-  const locked = busy || thinking || !!waiting;
+  const locked =
+    busy ||
+    thinking ||
+    !!waiting ||
+    !assistant.conversationReady ||
+    !!assistant.replyStatus;
   useEffect(() => setPersonAnswer(""), [runProgress?.waiting?.question]);
-  const empty = turns.length === 0 && !thinking;
+  const empty = assistant.conversationItems.length === 0 && !thinking;
   // Quick replies only make sense on the newest assistant reply.
   const latestReplyId = [...turns]
     .reverse()
@@ -359,18 +473,52 @@ export function AssistantView({
     };
   }, []);
 
-  // Keep the newest message in view by scrolling the conversation itself,
-  // never the page, so the composer stays where it is. Once per message,
-  // not on every render.
-  useEffect(() => {
-    const el = threadRef.current;
-    if (!el || (turns.length === 0 && !thinking && !runProgress)) return;
-    const reduce = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+  // Preserve a reader's visible row; follow new content only while near the end.
+  useLayoutEffect(() => {
+    const thread = threadRef.current;
+    if (!thread) return;
+    if (previousConversation.current !== activeChatId) {
+      previousConversation.current = activeChatId;
+      followingConversation.current = true;
+      readingAnchor.current = null;
+      setNewConversationContent(false);
+      previousTail.current = null;
+    }
+    const submitted =
+      turns
+        .filter((turn) => turn.role === "user" && turn.id.startsWith("turn-"))
+        .at(-1)?.id ?? null;
+    if (submitted && submitted !== previousSubmission.current) {
+      followingConversation.current = true;
+      readingAnchor.current = null;
+    }
+    previousSubmission.current = submitted;
+    const tail = assistant.conversationItems.at(-1)?.id ?? null;
+    if (assistant.focusedConversationSequence) {
+      followingConversation.current = false;
+      return;
+    }
+    if (followingConversation.current) thread.scrollTop = thread.scrollHeight;
+    else {
+      const anchor = readingAnchor.current;
+      const row =
+        anchor &&
+        thread.querySelector<HTMLElement>(
+          `[data-conversation-sequence="${anchor.sequence}"]`,
+        );
+      if (row)
+        thread.scrollTop +=
+          row.getBoundingClientRect().top -
+          thread.getBoundingClientRect().top -
+          anchor!.offset;
+      if (previousTail.current && tail !== previousTail.current)
+        setNewConversationContent(true);
+    }
+    previousTail.current = tail;
+    rememberReadingPosition();
   }, [
-    agentLane,
+    activeChatId,
+    assistant.conversation.entries,
     turns.length,
     thinking,
     runProgress?.state,
@@ -486,6 +634,16 @@ export function AssistantView({
           />
         </div>
         <div className="ai-history-list">
+          {assistant.legacyHistoryAvailable &&
+            assistant.legacyHistoryTarget && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => togglePanel("legacy")}
+              >
+                Previous saved history
+              </button>
+            )}
           {(["background", "overnight"] as const)
             .filter((lane) => {
               const profile = profiles.data?.profiles.find(
@@ -657,12 +815,31 @@ export function AssistantView({
                 Work
               </button>
             </div>
-            <span
-              className="ai-chat-label"
-              title={activeChat?.title ?? "New chat"}
-            >
-              {activeChat?.title ?? "New chat"}
-            </span>
+            {assistant.conversationEnabled && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => void assistant.openPersonalConversation()}
+                disabled={
+                  busy ||
+                  thinking ||
+                  !!waiting ||
+                  (assistant.conversationReady &&
+                    activeChatId === assistant.personalChatId)
+                }
+              >
+                {agentName}
+              </button>
+            )}
+            {(!assistant.conversationEnabled ||
+              activeChatId !== assistant.personalChatId) && (
+              <span
+                className="ai-chat-label"
+                title={activeChat?.title ?? "New chat"}
+              >
+                {activeChat?.title ?? "New chat"}
+              </span>
+            )}
             {/* History and New chat live in the Chats panel; on a phone the
               panel is hidden, so these two open it or start afresh. */}
             <button
@@ -711,8 +888,43 @@ export function AssistantView({
             </button>
           </div>
 
-          <div className="ai-thread" aria-live="polite" ref={threadRef}>
+          <div
+            className="ai-thread"
+            aria-live="polite"
+            ref={threadRef}
+            onScroll={rememberReadingPosition}
+          >
+            {!!assistant.conversationIssue && (
+              <p role="status">{assistant.conversationIssue}</p>
+            )}
             {restoringChat && <p role="status">{restoringChat}</p>}
+            {assistant.conversation.destination && (
+              <div className="ai-conversation-status">
+                {assistant.conversation.hasEarlier && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={assistant.conversation.loading}
+                    onClick={earlierConversation}
+                  >
+                    Earlier messages
+                  </button>
+                )}
+                {assistant.conversation.error && (
+                  <>
+                    <span role="alert">Couldn’t load updates.</span>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => void assistant.refreshConversation()}
+                    >
+                      Retry
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             {empty && !restoringChat && (
               <>
                 <div className="ai-intro">
@@ -740,13 +952,37 @@ export function AssistantView({
               </div>
             )}
 
-            {turns.map((turn) =>
-              turn.role === "user" ? (
-                <div key={turn.id} className="ai-row ai-row-user">
+            {assistant.conversationItems.map((item) => {
+              if (item.kind === "update")
+                return (
+                  <ConversationUpdate
+                    key={item.id}
+                    entry={item.entry}
+                    onReply={() => {
+                      assistant.selectReply(item.entry);
+                      inputRef.current?.focus();
+                    }}
+                    onWork={(id) => void openChat(id)}
+                    onActivity={setAgentLane}
+                    onSource={onOpenSource}
+                    onRefresh={() => void assistant.refreshConversation()}
+                  />
+                );
+              const turn = item.turn;
+              return turn.role === "user" ? (
+                <div
+                  key={item.id}
+                  data-conversation-sequence={item.sequence ?? undefined}
+                  className="ai-row ai-row-user"
+                >
                   <div className="ai-bubble ai-bubble-user">{turn.text}</div>
                 </div>
               ) : (
-                <div key={turn.id} className="ai-row">
+                <div
+                  key={item.id}
+                  data-conversation-sequence={item.sequence ?? undefined}
+                  className="ai-row"
+                >
                   <div className="ai-reply">
                     <ProposalReview
                       proposal={turn.proposal}
@@ -797,8 +1033,8 @@ export function AssistantView({
                     <TurnSteps entries={turn.trace} />
                   </div>
                 </div>
-              ),
-            )}
+              );
+            })}
 
             {waiting && (
               <div className="ai-row">
@@ -1053,6 +1289,50 @@ export function AssistantView({
                 })}
               </div>
             )}
+            {newConversationContent && (
+              <button
+                type="button"
+                className="text-button ai-latest"
+                onClick={showLatestConversation}
+              >
+                Latest <ChevronDown size={14} aria-hidden="true" />
+              </button>
+            )}
+            {!!assistant.replyStatus && (
+              <div className="ai-reply-target" role="status">
+                <span>
+                  {assistant.replyStatus === "loading"
+                    ? "Restoring reply…"
+                    : "This update is no longer available."}
+                </span>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy || thinking}
+                  onClick={assistant.clearReply}
+                >
+                  Cancel reply
+                </button>
+              </div>
+            )}
+            {assistant.replyTarget && (
+              <div className="ai-reply-target">
+                <span>
+                  Replying to{" "}
+                  {assistant.replyTarget.lane === "overnight"
+                    ? "Overnight"
+                    : "Background"}
+                </span>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Cancel reply"
+                  onClick={assistant.clearReply}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
             <form
               className="ai-composer"
               onSubmit={(e) => {
@@ -1295,10 +1575,20 @@ export function AssistantView({
       )}
       {upcomingOpen && (
         <AssistantUpcoming
+          conversationEnabled={assistant.conversationEnabled}
           id={upcomingId}
           agentName={agentName}
           modal={compactPanels}
           onClose={() => closePanels()}
+        />
+      )}
+      {panel === "legacy" && assistant.legacyHistoryTarget && (
+        <SavedConversationHistory
+          key={assistant.legacyHistoryTarget.destinationId}
+          destinationId={assistant.legacyHistoryTarget.destinationId}
+          chatId={assistant.legacyHistoryTarget.chatId}
+          modal={compactPanels}
+          onClose={closePanels}
         />
       )}
     </section>

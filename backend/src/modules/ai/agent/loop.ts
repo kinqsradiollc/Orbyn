@@ -99,6 +99,8 @@ export type AgentLoopCheckpoint = {
 
 /** Optional controls for the shared internal and specialist loop. */
 export type AgentLoopOptions = {
+  /** Revalidate admitted private context immediately before every provider attempt. */
+  beforeProvider?: () => Promise<void>;
   resume?: AgentLoopCheckpoint;
   /** Replay an already completed tool before retry/budget guards. */
   completedTool?: (call: ToolCall) => LoopToolResult | undefined;
@@ -285,6 +287,7 @@ export async function runAgent(
   const replyReserve = 8192; // At most 32 KiB of serialized output is accepted.
   const call = async (toolsAllowed: boolean): Promise<StepResult> => {
     for (let attempt = 1; ; attempt++) {
+      await options.beforeProvider?.();
       try {
         if (
           pendingProvider?.model !== undefined &&

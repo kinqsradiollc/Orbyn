@@ -5,6 +5,7 @@ import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js
 import { assistantProposalSourcesVisible } from "../../lib/assistant-proposal-visibility.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
+import { conversationNoticeVisible } from "../assistant-workspace/conversation-notifications.js";
 
 /**
  * The in-app notification tray, for the routes and the agents (get_today
@@ -56,6 +57,14 @@ export async function listNotifications(
     // Build only the guard needed by an actual page of notices. Expanding every
     // source family into ordinary planner reads is costly for PostgreSQL/JIT.
     const families = [
+      {
+        ids: page
+          .filter(
+            (n) => n.kind === "assistant" && n.ref?.startsWith("conversation:"),
+          )
+          .map((n) => n.id),
+        guard: () => conversationNoticeVisible(),
+      },
       {
         ids: page
           .filter(

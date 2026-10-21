@@ -1,4 +1,5 @@
 import { session } from "../lib/session";
+import { SmallAction } from "../components/SmallAction";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
@@ -387,6 +388,26 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
   /** A time block is being dragged: the page holds still. */
   const [dragging, setDragging] = useState(false);
   const scroller = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const conversationViewport = useRef<React.ComponentRef<typeof View>>(null);
+  const [conversationVisibility, setConversationVisibility] = useState(0);
+  const conversationScroll = useRef({
+    offset: 0,
+    height: 0,
+    viewport: 0,
+    following: true,
+    chat: null as string | null,
+    tail: null as string | null,
+    submission: null as string | null,
+  });
+  const [newConversationContent, setNewConversationContent] = useState(false);
+  const latestConversation = () => {
+    conversationScroll.current.following = true;
+    setNewConversationContent(false);
+    scroller.current?.scrollToEnd({ animated: !isReducedMotion() });
+  };
+  const settleConversation = () => {
+    if (tab === "AI") setConversationVisibility((value) => value + 1);
+  };
   /** The page's content column, and how far down the scroll content it starts. */
   const content = useRef<React.ComponentRef<typeof View>>(null);
   const contentY = useRef(0);
@@ -398,21 +419,44 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
   const keyboard = useKeyboardInset(keyboardArea, tab === "AI");
   const centerNewChat =
     tab === "AI" &&
-    assistant.turns.length === 0 &&
+    assistant.conversationItems.length === 0 &&
     !assistant.thinking &&
     !assistant.restoringChat &&
     !assistant.runProgress &&
     !assistant.activeChatId;
-  // Show the newest message: once per new message or reply, after it's laid
-  // out. Tied to the count, not to content size, so it can't feed back.
-  const messages = assistant.turns.length + (assistant.thinking ? 1 : 0);
+  const conversationTail = assistant.conversationItems.at(-1)?.id ?? null;
+  const conversationSubmission =
+    assistant.turns
+      .filter((turn) => turn.role === "user" && turn.id.startsWith("turn-"))
+      .at(-1)?.id ?? null;
   useEffect(() => {
-    if (tab !== "AI" || !messages) return;
-    const frame = requestAnimationFrame(() =>
-      scroller.current?.scrollToEnd({ animated: !isReducedMotion() }),
-    );
-    return () => cancelAnimationFrame(frame);
-  }, [messages, tab]);
+    if (tab !== "AI") return;
+    const state = conversationScroll.current;
+    if (state.chat !== assistant.activeChatId) {
+      state.chat = assistant.activeChatId;
+      state.following = true;
+      state.tail = null;
+      setNewConversationContent(false);
+    }
+    if (conversationSubmission && state.submission !== conversationSubmission)
+      state.following = true;
+    state.submission = conversationSubmission;
+    if (!state.following && state.tail && state.tail !== conversationTail)
+      setNewConversationContent(true);
+    state.tail = conversationTail;
+    if (state.following && !assistant.focusedConversationSequence) {
+      const frame = requestAnimationFrame(() =>
+        scroller.current?.scrollToEnd({ animated: false }),
+      );
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [
+    conversationTail,
+    conversationSubmission,
+    assistant.activeChatId,
+    assistant.thinking,
+    tab,
+  ]);
   /** The occurrence of a repeating item the task sheet was opened on. */
   const [taskOccurrence, setTaskOccurrence] = useState<OccurrenceRef | null>(
     null,
@@ -1225,7 +1269,13 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
       typeof data[key] === "string" ? (data[key] as string) : "";
     const kind = text("kind");
     const itemId = text("itemId");
-    if (kind === "assistant" && text("ref").startsWith("overnight:")) {
+    if (kind === "assistant" && text("ref").startsWith("conversation:")) {
+      const [, destinationId, entryId] = text("ref").split(":");
+      setTab("AI");
+      void assistant
+        .openConversationEntry(destinationId, entryId)
+        .catch((error: Error) => setError(error.message));
+    } else if (kind === "assistant" && text("ref").startsWith("overnight:")) {
       present({
         sheet: "overnight",
         nightId: text("ref").slice("overnight:".length),
@@ -1545,13 +1595,45 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
               </View>
             </View>
           )}
-          <View style={taskBeside ? s.split : s.fill}>
+          <View
+            ref={conversationViewport}
+            collapsable={false}
+            onLayout={settleConversation}
+            style={taskBeside ? s.split : s.fill}
+          >
             <ScrollView
               // Sticky headers can't be switched on and off on a mounted
               // ScrollView: on iOS the calendar came back blank from another
               // tab until the app reloaded. The calendar gets its own.
               key={tab === "Calendar" ? "calendar" : "page"}
               ref={scroller}
+              onScroll={(event) => {
+                if (tab !== "AI") return;
+                const { contentOffset, contentSize, layoutMeasurement } =
+                  event.nativeEvent;
+                const state = conversationScroll.current;
+                state.offset = contentOffset.y;
+                state.height = contentSize.height;
+                state.viewport = layoutMeasurement.height;
+                state.following =
+                  contentSize.height -
+                    contentOffset.y -
+                    layoutMeasurement.height <
+                  80;
+                if (state.following) setNewConversationContent(false);
+              }}
+              scrollEventThrottle={32}
+              onContentSizeChange={(_width, height) => {
+                if (tab !== "AI") return;
+                conversationScroll.current.height = height;
+                if (
+                  conversationScroll.current.following &&
+                  !assistant.focusedConversationSequence
+                )
+                  scroller.current?.scrollToEnd({ animated: false });
+              }}
+              onScrollEndDrag={settleConversation}
+              onMomentumScrollEnd={settleConversation}
               style={s.scroll}
               scrollEnabled={!dragging}
               stickyHeaderIndices={tab === "Calendar" ? [1] : undefined}
@@ -1655,6 +1737,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                   )}
                   {tab === "Today" && (
                     <TodayScreen
+                      conversationEnabled={assistant.conversationEnabled}
                       canOpenAgentOutput={
                         !busy &&
                         !assistant.thinking &&
@@ -1792,6 +1875,26 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                   )}
                   {tab === "AI" && (
                     <AssistantScreen
+                      onPrepareEarlier={() => {
+                        conversationScroll.current.following = false;
+                      }}
+                      onPreserveConversationPosition={(delta) => {
+                        const state = conversationScroll.current;
+                        state.following = false;
+                        state.offset = Math.max(0, state.offset + delta);
+                        scroller.current?.scrollTo({
+                          y: state.offset,
+                          animated: false,
+                        });
+                      }}
+                      onConversationFocus={(view) => {
+                        conversationScroll.current.following = false;
+                        scrollToView(view, 0);
+                        assistant.clearConversationFocus();
+                      }}
+                      conversationViewport={conversationViewport}
+                      conversationVisibility={conversationVisibility}
+                      conversationVisible={!sheet && !assistantMenu}
                       centerComposer={centerNewChat}
                       assistant={assistant}
                       drawerOpen={assistantMenu}
@@ -1832,6 +1935,12 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                   )}
                   {tab === "Inbox" && (
                     <InboxScreen
+                      onOpenConversation={(_notice, destinationId, entryId) => {
+                        setTab("AI");
+                        void assistant
+                          .openConversationEntry(destinationId, entryId)
+                          .catch((error: Error) => setError(error.message));
+                      }}
                       onOpenOvernight={(n) => {
                         void markRead(n);
                         present({
@@ -1948,6 +2057,15 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
           {tab === "AI" && !centerNewChat && (
             <View style={[s.footer, sidePadding]}>
               <View style={s.column}>
+                {newConversationContent && (
+                  <View style={{ alignItems: "center" }}>
+                    <SmallAction
+                      label="Latest"
+                      disabled={false}
+                      onPress={latestConversation}
+                    />
+                  </View>
+                )}
                 <AssistantComposer assistant={assistant} busy={busy} />
               </View>
             </View>
@@ -1961,7 +2079,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
             // the bottom, so there it goes to the newest message instead.
             if (t === tab) {
               const animated = !isReducedMotion();
-              if (t === "AI") scroller.current?.scrollToEnd({ animated });
+              if (t === "AI") latestConversation();
               else scroller.current?.scrollTo({ y: 0, animated });
               if (!refreshing) void act(() => refresh());
               return;

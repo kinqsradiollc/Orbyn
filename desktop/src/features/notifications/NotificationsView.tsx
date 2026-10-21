@@ -61,6 +61,7 @@ type Props = {
    */
   onOpenSetting?: (id: string) => void;
   /** Reopens a saved assistant chat, including its active run. */
+  onOpenConversation?: (destinationId: string, entryId: string) => void;
   onOpenChat?: (id: string) => void;
   onOpenOvernight?: (id: string) => void;
 };
@@ -289,6 +290,7 @@ export function NotificationsView({
   onStartSession,
   onOpenReview,
   onOpenSetting,
+  onOpenConversation,
   onOpenChat,
   onOpenOvernight,
 }: Props) {
@@ -411,6 +413,19 @@ export function NotificationsView({
                   <LayoutTemplate size={14} /> Review
                 </button>
               )}
+              {n.kind === "assistant" &&
+                n.ref?.startsWith("conversation:") &&
+                onOpenConversation && (
+                  <button
+                    className="secondary notice-action"
+                    onClick={() => {
+                      const [, destinationId, entryId] = n.ref!.split(":");
+                      onOpenConversation(destinationId, entryId);
+                    }}
+                  >
+                    <Bot size={14} /> Open conversation
+                  </button>
+                )}
               {n.kind === "assistant" &&
                 n.ref?.startsWith("overnight:") &&
                 onOpenOvernight && (

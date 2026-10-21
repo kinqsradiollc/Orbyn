@@ -1,3 +1,4 @@
+import { exportConversationPages } from "../assistant-workspace/conversation-export.js";
 import { Readable } from "node:stream";
 import { pageFile, safeFileName, type DocBlock } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
@@ -75,6 +76,9 @@ bring somewhere else.
   and its project and tags.
 - \`planner.json\`: your tasks, events, lists, tags and habits. Orbyn can
   bring this file back in (Settings, Import & export).
+- \`assistant-conversations/\`: retained personal conversation history in ordered
+  JSON pages. Includes currently accessible personal content. Importing planner
+  data does not restore these records or resume assistant work.
 - \`projects.json\`: your ${counts.projects} project${counts.projects === 1 ? "" : "s"}, with their stages and deadlines.
 - \`folders.json\`: your ${counts.folders} folder${counts.folders === 1 ? "" : "s"}.
 - \`views.json\`: your ${counts.views} saved view${counts.views === 1 ? "" : "s"}, and your own fields on your pages and
@@ -101,7 +105,7 @@ export async function exportArchive(
 ): Promise<{ name: string; body: Readable }> {
   const date = now.toISOString().slice(0, 10);
   const root = `orbyn-export-${date}`;
-  const planner = await exportData(db, userId);
+  const planner = await exportData(db, userId, { conversations: false });
 
   const folders = (
     await db.query<{
@@ -354,6 +358,12 @@ export async function exportArchive(
   async function* everything(): AsyncGenerator<ZipEntry> {
     yield { name: `${root}/README.md`, body: README(date, counts) };
     yield { name: `${root}/planner.json`, body: json(planner) };
+    for await (const page of exportConversationPages(db, userId)) {
+      yield {
+        name: `${root}/assistant-conversations/${page.destination.id}/${page.entries[0]?.sequence ?? page.cursor}-${page.cursor}.json`,
+        body: json(page),
+      };
+    }
     yield {
       name: `${root}/projects.json`,
       body: json(

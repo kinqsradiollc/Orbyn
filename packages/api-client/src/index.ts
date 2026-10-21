@@ -41,6 +41,7 @@ export type {
 } from "./chatgpt-plan.js";
 
 export * from "./assistant-profile-store.js";
+export * from "./assistant-conversation-store.js";
 
 export * from "./chatgpt-remote-store.js";
 
@@ -69,3 +70,5 @@ export * from "./view-draft-store.js";
 export * from "./latex-preview-store.js";
 
 export * from "./doc-assist-target.js";
+export * from "./assistant-controls-store.js";
+export * from "./assistant-saved-history-store.js";

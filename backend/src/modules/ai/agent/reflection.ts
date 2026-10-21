@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Queryable } from "../../../db/pool.js";
-import { assistantChatVisible } from "../../../lib/assistant-visibility.js";
+import {
+  assistantChatVisible,
+  conversationExecutionChatVisible,
+} from "../../../lib/assistant-visibility.js";
+import { deliveryBindingVisible } from "../../../lib/assistant-binding-visibility.js";
 import { assistantJobSourcesVisible } from "../../../lib/assistant-job-sources.js";
 import {
   Params,
@@ -63,12 +67,16 @@ export async function reflectionEvidence(
       run_origin: string;
       error_message: string | null;
     }>(
-      `SELECT j.id,j.chat_id,c.title,j.state,j.result,j.apply_result,j.run_origin,j.error_message,
+      `SELECT j.id,j.chat_id,CASE WHEN EXISTS(SELECT 1 FROM assistant_conversation_streams retained_source WHERE retained_source.chat_id=c.id AND retained_source.retired_at IS NULL)
+        AND NOT ${assistantChatVisible("c", "$1", jobScope)} THEN 'Conversation' ELSE c.title END AS title,j.state,j.result,j.apply_result,j.run_origin,j.error_message,
        j.run_state->'state'->'waiting' AS waiting
      FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id
      WHERE ${jobScope?.user ?? "$1"}::uuid=$1::uuid
-       AND j.state IN ('done','failed','waiting') AND ${assistantChatVisible("c", "$1", jobScope)}
+       AND j.state IN ('done','failed','waiting') AND ${conversationExecutionChatVisible("c", "$1", jobScope)}
        AND ${assistantJobSourcesVisible("j", "$1", false, jobScope)}
+       AND NOT EXISTS(SELECT 1 FROM assistant_delivery_bindings source_binding JOIN assistant_conversation_streams source_destination ON source_destination.id=source_binding.destination_id
+         WHERE source_binding.work_kind='job' AND source_binding.work_id=j.id AND source_binding.owner_id=$1
+           AND (source_destination.retired_at IS NOT NULL OR NOT ${deliveryBindingVisible("source_binding", "$1")}))
        AND NOT EXISTS(SELECT 1 FROM assistant_night_runs nr WHERE nr.job_id=j.id AND nr.kind='reflection')
        AND (($2::uuid[] IS NULL AND j.created_at >= $3::timestamptz-interval '36 hours' AND j.created_at <= $3)
          OR j.id=ANY($2::uuid[]))

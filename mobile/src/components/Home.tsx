@@ -186,6 +186,7 @@ export function HomeSection({
   onOpenAgentOutput,
   layout,
   agentName,
+  conversationEnabled,
   onOpenLink,
   onOpenStudy,
   onOpenDoc,
@@ -194,6 +195,7 @@ export function HomeSection({
   onOpenAgentOutput: (id: string) => void;
   layout: HomeLayout | undefined;
   agentName: string;
+  conversationEnabled: boolean;
   onOpenLink: (
     link:
       { kind: "project" | "doc" | "view"; id: string } | { kind: "overnight" },
@@ -413,6 +415,7 @@ export function HomeSection({
       />
       <AssistantUpcoming
         agentName={agentName}
+        conversationEnabled={conversationEnabled}
         visible={upcoming}
         onClose={() => setUpcoming(false)}
       />

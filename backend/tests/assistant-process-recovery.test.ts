@@ -405,83 +405,169 @@ test("SIGKILL mid-night resumes its specialist and continues the saved night lis
 });
 
 test("SIGKILL after apply commits reuses its durable receipt even after client_ref expiry", async () => {
-  const run = await enqueue("Add a task called Commit survives.");
-  const step = {
-    id: "s1",
-    tool: "create_tasks" as const,
-    args: { tasks: [{ title: "Commit survives", kind: "task" }] },
-  };
-  run.checkpoint.state.answer = "The committed task is ready.";
-  run.checkpoint.state.plan = [step];
-  run.checkpoint.state.selected_steps = [step];
-  run.checkpoint.state.reports = [
-    {
-      specialist: "projects",
-      task_id: "r1t1",
-      status: "done",
-      summary: "Staged the task",
-      findings: [],
-      steps: [step],
-      open_questions: [],
-    },
-  ];
-  await pool.query("UPDATE ai_jobs SET run_state = $2::jsonb WHERE id = $1", [
-    run.id,
-    JSON.stringify(run.checkpoint),
-  ]);
-  const first = await start(true);
-  await message(first, "after-apply");
-  const committed = await job(run.id);
-  assert.equal(committed.state, "running");
-  assert.equal(committed.apply_result.applied, true);
-  assert.equal(
-    (
+  const { env } = await import("../src/config/env.js");
+  const { transaction } = await import("../src/db/pool.js");
+  const { assistantPrincipal } =
+    await import("../src/modules/agents/assistant.js");
+  const { openPersonalConversation } =
+    await import("../src/modules/assistant-workspace/conversation-storage.js");
+  const { bindConversationWork, publishConversationIntent } =
+    await import("../src/modules/assistant-workspace/conversation-delivery.js");
+  const { conversationFeed } =
+    await import("../src/modules/assistant-workspace/conversation-feed.js");
+  const previous = env.ASSISTANT_CONVERSATION_ENABLED,
+    previousProcess = process.env.ASSISTANT_CONVERSATION_ENABLED;
+  env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  process.env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  try {
+    await assistantPrincipal(user);
+    await pool.query(
+      "INSERT INTO agent_settings(user_id,reminder_nudges) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET reminder_nudges=$2",
+      [user.id, { quiet_start: "00:00", quiet_end: "00:00" }],
+    );
+    const home = await transaction((db) =>
+      openPersonalConversation(db, user.id),
+    );
+    const run = await enqueue("Add a task called Commit survives.", {
+      kind: "task",
+    });
+    await pool.query("UPDATE ai_jobs SET sources_checked=true WHERE id=$1", [
+      run.id,
+    ]);
+    await transaction((db) =>
+      bindConversationWork(db, {
+        ownerId: user.id,
+        work: { kind: "job", id: run.id },
+        lane: "background",
+        timezone: "UTC",
+        destinationId: home.id,
+      }),
+    );
+    const step = {
+      id: "s1",
+      tool: "create_tasks" as const,
+      args: { tasks: [{ title: "Commit survives", kind: "task" }] },
+    };
+    run.checkpoint.state.answer = "The committed task is ready.";
+    run.checkpoint.state.plan = [step];
+    run.checkpoint.state.selected_steps = [step];
+    run.checkpoint.state.reports = [
+      {
+        specialist: "projects",
+        task_id: "r1t1",
+        status: "done",
+        summary: "Staged the task",
+        findings: [],
+        steps: [step],
+        open_questions: [],
+      },
+    ];
+    await pool.query("UPDATE ai_jobs SET run_state = $2::jsonb WHERE id = $1", [
+      run.id,
+      JSON.stringify(run.checkpoint),
+    ]);
+    const first = await start(true, undefined, "background");
+    await message(first, "after-apply");
+    const committed = await job(run.id);
+    assert.equal(committed.state, "running");
+    assert.equal(committed.apply_result.applied, true);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT id FROM items WHERE user_id = $1 AND title = 'Commit survives'",
+          [user.id],
+        )
+      ).rowCount,
+      1,
+    );
+    await end(first, "SIGKILL");
+    await pool.query(
+      "UPDATE mcp_request_state SET expires_at = now() - interval '2 days' WHERE kind = 'client_ref' AND grant_id IN (SELECT id FROM agent_grants WHERE user_id = $1)",
+      [user.id],
+    );
+    await pool.query(
+      "UPDATE ai_jobs SET lease_until = now() - interval '1 second' WHERE id = $1",
+      [run.id],
+    );
+    const second = await start(false, undefined, "background");
+    const finished = await until(
+      () => job(run.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(finished.state, "done", JSON.stringify(finished));
+    assert.equal(
+      finished.result.assistant_run.plan_job,
+      committed.apply_result.structured.job,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT id FROM items WHERE user_id = $1 AND title = 'Commit survives'",
+          [user.id],
+        )
+      ).rowCount,
+      1,
+    );
+    const chat = (
+      await pool.query("SELECT turns FROM ai_chats WHERE id = $1", [run.chatId])
+    ).rows[0];
+    assert.equal(
+      chat.turns.filter(
+        (turn: { role: string; turn_id: string }) =>
+          turn.role === "assistant" && turn.turn_id === run.turnId,
+      ).length,
+      1,
+    );
+    await end(second, "SIGTERM");
+    const intent = (
       await pool.query(
-        "SELECT id FROM items WHERE user_id = $1 AND title = 'Commit survives'",
-        [user.id],
+        "SELECT i.id FROM assistant_delivery_intents i JOIN assistant_delivery_bindings b ON b.id=i.binding_id WHERE b.work_id=$1",
+        [run.id],
       )
-    ).rowCount,
-    1,
-  );
-  await end(first, "SIGKILL");
-  await pool.query(
-    "UPDATE mcp_request_state SET expires_at = now() - interval '2 days' WHERE kind = 'client_ref' AND grant_id IN (SELECT id FROM agent_grants WHERE user_id = $1)",
-    [user.id],
-  );
-  await pool.query(
-    "UPDATE ai_jobs SET lease_until = now() - interval '1 second' WHERE id = $1",
-    [run.id],
-  );
-  const second = await start();
-  const finished = await until(
-    () => job(run.id),
-    (row) => row.state === "done" || row.state === "failed",
-  );
-  assert.equal(finished.state, "done", JSON.stringify(finished));
-  assert.equal(
-    finished.result.assistant_run.plan_job,
-    committed.apply_result.structured.job,
-  );
-  assert.equal(
-    (
-      await pool.query(
-        "SELECT id FROM items WHERE user_id = $1 AND title = 'Commit survives'",
-        [user.id],
-      )
-    ).rowCount,
-    1,
-  );
-  const chat = (
-    await pool.query("SELECT turns FROM ai_chats WHERE id = $1", [run.chatId])
-  ).rows[0];
-  assert.equal(
-    chat.turns.filter(
-      (turn: { role: string; turn_id: string }) =>
-        turn.role === "assistant" && turn.turn_id === run.turnId,
-    ).length,
-    1,
-  );
-  await end(second, "SIGTERM");
+    ).rows[0].id;
+    await assert.rejects(
+      transaction(async (db) => {
+        assert.equal(await publishConversationIntent(db, intent), true);
+        throw new Error("Publisher interrupted before commit");
+      }),
+      /Publisher interrupted/,
+    );
+    assert.equal(
+      (await conversationFeed(pool, user.id, home.id, {})).entries.length,
+      0,
+    );
+    await Promise.all([
+      transaction((db) => publishConversationIntent(db, intent)),
+      transaction((db) => publishConversationIntent(db, intent)),
+    ]);
+    const entries = (await conversationFeed(pool, user.id, home.id, {}))
+      .entries;
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].kind === "update" && entries[0].work.id, run.id);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT 1 FROM assistant_conversation_alerts WHERE entry_id=$1",
+          [entries[0].id],
+        )
+      ).rowCount,
+      1,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT 1 FROM items WHERE user_id=$1 AND title='Commit survives'",
+          [user.id],
+        )
+      ).rowCount,
+      1,
+    );
+  } finally {
+    env.ASSISTANT_CONVERSATION_ENABLED = previous;
+    if (previousProcess === undefined)
+      delete process.env.ASSISTANT_CONVERSATION_ENABLED;
+    else process.env.ASSISTANT_CONVERSATION_ENABLED = previousProcess;
+  }
 });
 
 test("a night claim and its chat roll back together when queueing fails", async () => {

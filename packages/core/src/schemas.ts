@@ -906,6 +906,8 @@ export const chatRequest = z.object({
   chat_id: z.uuid().optional(),
   /** Idempotency and trace key for this user/assistant turn pair. */
   turn_id: z.uuid().optional(),
+  /** Stable timeline target; plain text never implicitly resumes a waiting job. */
+  reply_to_entry_id: z.uuid().optional(),
   message: z.string().trim().min(1).max(4000),
   timezone: z.string().max(80).default("UTC"),
   /** Most recent turns first-to-last; the server keeps only what it needs. */

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { conversationHandoffRoute } from "./conversation-delivery.js";
 import { z } from "zod";
 import {
   assistantHandoff,
@@ -403,6 +404,8 @@ export async function dispatchAssistantHandoff(
       windowEnd = window.end.toISOString();
     }
     let evidence: { answer: string; rulesRevision: number } | null = null;
+    let deliveryRoute: Awaited<ReturnType<typeof conversationHandoffRoute>> =
+      {};
     let failure: "access" | "revision" | "policy" | null = null;
     try {
       const producer = await handoffProducerEvidence(
@@ -412,13 +415,19 @@ export async function dispatchAssistantHandoff(
       );
       if (producer.source.revision !== receipt.producer_revision)
         failure = "revision";
-      else
+      else {
         evidence = await receivingHandoffEvidence(
           db,
           receipt.owner_id,
           receipt.producer_job_id,
           lane,
         );
+        deliveryRoute = await conversationHandoffRoute(
+          db,
+          receipt.owner_id,
+          receipt.producer_job_id,
+        );
+      }
     } catch (error) {
       if (
         error instanceof HttpError &&
@@ -450,6 +459,7 @@ export async function dispatchAssistantHandoff(
     );
     const { startAssistantAutomation } = await import("../ai/agent/run.js");
     const jobId = await startAssistantAutomation({
+      ...deliveryRoute,
       db,
       userId: receipt.owner_id,
       title: receipt.title,
@@ -462,6 +472,19 @@ export async function dispatchAssistantHandoff(
         ...(windowEnd ? { end_at: windowEnd } : {}),
       },
       onQueued: async (work, id) => {
+        await work.query(
+          `INSERT INTO assistant_turn_entry_sources(chat_id,turn_id,source_entry_id)
+           SELECT receiving.chat_id,receiving.turn_id,source.source_entry_id FROM ai_jobs receiving
+           CROSS JOIN LATERAL (
+             SELECT s.source_entry_id FROM ai_jobs producer JOIN assistant_turn_entry_sources s ON s.chat_id=producer.chat_id AND s.turn_id=producer.turn_id
+             WHERE producer.id=$1 AND producer.user_id=$3
+             UNION SELECT s.source_entry_id FROM assistant_delivery_bindings b JOIN assistant_delivery_entry_sources s ON s.binding_id=b.id
+             WHERE b.work_kind='job' AND b.work_id=$1 AND b.owner_id=$3
+           ) source
+           WHERE receiving.id=$2 AND receiving.user_id=$3 AND receiving.chat_id IS NOT NULL AND receiving.turn_id IS NOT NULL
+           ON CONFLICT DO NOTHING`,
+          [receipt.producer_job_id, id, receipt.owner_id],
+        );
         await work.query(
           `INSERT INTO assistant_job_sources(job_id,source_kind,source_id)
             SELECT $2,source_kind,source_id FROM assistant_job_sources WHERE job_id=$1

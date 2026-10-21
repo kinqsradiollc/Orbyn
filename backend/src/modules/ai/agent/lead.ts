@@ -215,6 +215,7 @@ export async function runLead(input: {
   signal?: AbortSignal;
   checkpoint?: () => Promise<void>;
   recordSources?: (value: unknown, targets?: string[]) => Promise<void>;
+  beforeProvider?: () => Promise<void>;
 }): Promise<{ state: LeadState; partial: boolean }> {
   const { state } = input;
 
@@ -332,6 +333,7 @@ export async function runLead(input: {
             await input.checkpoint?.();
           },
           recordSources: input.recordSources,
+          beforeProvider: input.beforeProvider,
           timezone: input.timezone,
           identity: input.identity,
           memory: state.memory,
@@ -537,6 +539,7 @@ export async function runLead(input: {
     },
     {
       systemPrompt,
+      beforeProvider: input.beforeProvider,
       tools: leadTools,
       executeTool,
       maxSteps: Math.min(LEAD_MAX_STEPS - state.lead_steps, 8),

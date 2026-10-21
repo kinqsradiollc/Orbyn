@@ -19,7 +19,9 @@ export const ACTIVE_DAYS = 14;
 export const assistantActive = (userColumn: string) =>
   `EXISTS (SELECT 1 FROM agent_grants ag
             WHERE ag.user_id = ${userColumn} AND ag.kind = 'assistant'
-              AND ag.revoked_at IS NULL AND ag.suspended_at IS NULL)`;
+              AND ag.revoked_at IS NULL AND ag.suspended_at IS NULL)
+   AND NOT EXISTS(SELECT 1 FROM agent_settings admission_settings
+     WHERE admission_settings.user_id=${userColumn} AND admission_settings.background_paused)`;
 
 /** Night-shift users run due goals and routines through their serialized night queue. */
 export const nightShiftOwns = (userColumn: string) =>

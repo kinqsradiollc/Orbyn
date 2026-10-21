@@ -103,6 +103,8 @@ export type ActiveChatJob = {
 };
 
 export type AiChat = AiChatSummary & {
+  has_legacy_history?: boolean;
+  legacy_history_destination_id?: string | null;
   active_job?: ActiveChatJob | null;
   turns: SavedChatTurn[];
   trace: ChatTraceEntry[];

@@ -215,6 +215,183 @@ after(async () => {
   ]);
 });
 
+test("a retained foreground answer and two background calls keep independent execution and publication", async () => {
+  const { env } = await import("../src/config/env.js");
+  const { startAssistantAutomation } =
+    await import("../src/modules/ai/agent/run.js");
+  const { flushConversationDeliveries } =
+    await import("../src/modules/assistant-workspace/conversation-delivery.js");
+  const previous = env.ASSISTANT_CONVERSATION_ENABLED;
+  env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  const gates = new Map<string, () => void>();
+  const entered = new Set<string>();
+  const answerFor = (name: string): MockReply => ({
+    name: "finish",
+    arguments: { answer: `${name} finished independently`, steps: [] },
+  });
+  respond = async (request) => {
+    const text = request.messages
+      .map((message) => message.content ?? "")
+      .join("\n");
+    const name = [
+      "isolation-followup",
+      "isolation-background-a",
+      "isolation-background-b",
+      "isolation-foreground",
+    ].find((marker) => text.includes(marker));
+    assert.ok(
+      name,
+      "Only this test's independent calls reach the fixture provider",
+    );
+    if (name !== "isolation-followup" && !entered.has(name)) {
+      entered.add(name);
+      await new Promise<void>((resolve) => gates.set(name, resolve));
+    }
+    return toolNames(request).includes("finish")
+      ? answerFor(name)
+      : { content: `${name} finished independently` };
+  };
+  const waitFor = async (predicate: () => boolean) => {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      if (predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.fail(
+      "Independent provider calls did not reach their observable boundary",
+    );
+  };
+  try {
+    const user = await register();
+    const opened = await app.inject({
+      method: "POST",
+      url: "/me/assistant/conversation",
+      headers: auth(user.token),
+    });
+    assert.equal(opened.statusCode, 200, opened.body);
+    const destination = opened.json();
+    await pool.query(
+      "INSERT INTO agent_settings(user_id,reminder_nudges) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET reminder_nudges=$2",
+      [user.id, { quiet_start: "00:00", quiet_end: "00:00" }],
+    );
+    const background = [];
+    for (const marker of ["isolation-background-a", "isolation-background-b"]) {
+      const id = await startAssistantAutomation({
+        userId: user.id,
+        message: marker,
+        timezone: "UTC",
+        automation: { kind: "task" },
+      });
+      assert.ok(id);
+      background.push(id);
+    }
+    const startForeground = async (message: string) => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/ai/chat/start",
+        remoteAddress: nextAddress(),
+        headers: auth(user.token),
+        payload: { message, timezone: "UTC", chat_id: destination.chat_id },
+      });
+      assert.equal(response.statusCode, 202, response.body);
+      return response.json();
+    };
+    const foreground = await startForeground("isolation-foreground");
+    await waitFor(() => gates.size === 3);
+    const foregroundRequest = requests.findLast((request) =>
+      request.messages.some((message) =>
+        message.content?.includes("isolation-foreground"),
+      ),
+    );
+    assert.ok(foregroundRequest);
+    gates.get("isolation-background-a")!();
+    assert.equal(
+      (await poll(user.token, background[0], ["done", "failed"])).state,
+      "done",
+    );
+    await flushConversationDeliveries({ onlyOwner: user.id });
+    const feedUrl = `/me/assistant/conversations/${destination.id}`;
+    const during = (
+      await app.inject({ url: feedUrl, headers: auth(user.token) })
+    ).json();
+    assert.ok(
+      during.entries.some(
+        (entry: any) =>
+          entry.kind === "update" && entry.work.id === background[0],
+      ),
+    );
+    assert.equal(
+      (
+        await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [
+          foreground.id,
+        ])
+      ).rows[0].state,
+      "running",
+    );
+    assert.equal(
+      (
+        await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [
+          background[1],
+        ])
+      ).rows[0].state,
+      "running",
+    );
+    assert.ok(
+      !JSON.stringify(foregroundRequest).includes(
+        "isolation-background-a finished independently",
+      ),
+      "Arrival cannot mutate the submitted provider context",
+    );
+    gates.get("isolation-foreground")!();
+    assert.equal(
+      (await poll(user.token, foreground.id, ["done", "failed"])).state,
+      "done",
+    );
+    const followup = await startForeground("isolation-followup");
+    assert.equal(
+      (await poll(user.token, followup.id, ["done", "failed"])).state,
+      "done",
+    );
+    assert.equal(
+      (
+        await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [
+          background[1],
+        ])
+      ).rows[0].state,
+      "running",
+    );
+    gates.get("isolation-background-b")!();
+    assert.equal(
+      (await poll(user.token, background[1], ["done", "failed"])).state,
+      "done",
+    );
+    await flushConversationDeliveries({ onlyOwner: user.id });
+    const final = (
+      await app.inject({ url: feedUrl, headers: auth(user.token) })
+    ).json();
+    assert.equal(
+      final.entries.filter((entry: any) => entry.kind === "update").length,
+      2,
+    );
+    assert.ok(
+      final.entries.some(
+        (entry: any) =>
+          entry.kind === "turn" &&
+          entry.turn.text === "isolation-foreground finished independently",
+      ),
+    );
+    assert.ok(
+      final.entries.some(
+        (entry: any) =>
+          entry.kind === "turn" &&
+          entry.turn.text === "isolation-followup finished independently",
+      ),
+    );
+  } finally {
+    for (const release of gates.values()) release();
+    env.ASSISTANT_CONVERSATION_ENABLED = previous;
+  }
+});
+
 test("the lead delegates, stages specialist work, and applies one checked plan", async () => {
   requests.length = 0;
   respond = (request) => {

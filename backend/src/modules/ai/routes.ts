@@ -38,6 +38,10 @@ import { completeFeature } from "./providers/feature-call.js";
 import { assistantProviderCapabilities } from "./providers/admission.js";
 import { privateProviderFailureMessage } from "./providers/user-choice.js";
 import { beginChatTurn, resolveChatScope } from "./chats.js";
+import {
+  prepareConversationContext,
+  conversationExecutionChatVisible,
+} from "../assistant-workspace/conversation-context.js";
 import { type AgentContext, getItem } from "./agent/tools.js";
 import { getProject } from "./agent/workspace.js";
 import { rewriteAgenda } from "../docs/agenda.js";
@@ -177,6 +181,13 @@ async function prepareChatTurn(u: UserRow, d: ChatRequest, db: Db) {
   const turnId = d.turn_id ?? randomUUID();
   const scope = await resolveChatScope(db, u.id, chatId, d.scope);
   const scoped = await scopeOverview(u, d.timezone, scope);
+  const conversation = await prepareConversationContext(
+    db,
+    u.id,
+    chatId,
+    turnId,
+    d.reply_to_entry_id,
+  );
   const history = await beginChatTurn(
     u,
     {
@@ -188,11 +199,28 @@ async function prepareChatTurn(u: UserRow, d: ChatRequest, db: Db) {
     },
     db,
   );
+  if (conversation?.identity.reply_to_entry_id)
+    await db.query(
+      `UPDATE assistant_conversation_entries SET reply_to_entry_id=$3
+      WHERE destination_id=$1 AND turn_id=$2 AND role='user'`,
+      [
+        conversation.identity.destination_id,
+        turnId,
+        conversation.identity.reply_to_entry_id,
+      ],
+    );
   return {
     chatId,
     turnId,
     scoped,
-    request: { ...d, chat_id: chatId, turn_id: turnId, scope, history },
+    request: {
+      ...d,
+      chat_id: chatId,
+      turn_id: turnId,
+      scope,
+      history: conversation?.history ?? history,
+      ...(conversation ? { conversation_context: conversation.identity } : {}),
+    },
   };
 }
 
@@ -367,7 +395,7 @@ export async function aiRoutes(app: FastifyInstance) {
         await resolveChatScope(db, u.id, submission.chat_id, submission.scope);
         const saved = (
           await db.query(
-            `SELECT turns FROM ai_chats c WHERE c.id=$1 AND ${assistantChatVisible("c", "$2")}`,
+            `SELECT turns FROM ai_chats c WHERE c.id=$1 AND ${conversationExecutionChatVisible("c", "$2")}`,
             [submission.chat_id, u.id],
           )
         ).rows[0];
@@ -378,6 +406,19 @@ export async function aiRoutes(app: FastifyInstance) {
         );
         if (!turn || turn.text !== submission.message.slice(0, 12000))
           fail(409, "This turn ID belongs to a different message.");
+        const target = (
+          await db.query<{ reply_to_entry_id: string | null }>(
+            `SELECT e.reply_to_entry_id
+          FROM assistant_conversation_entries e JOIN assistant_conversation_streams s ON s.id=e.destination_id
+          WHERE s.owner_id=$1 AND s.chat_id=$2 AND e.turn_id=$3 AND e.role='user'`,
+            [u.id, submission.chat_id, submission.turn_id],
+          )
+        ).rows[0];
+        if (
+          (target?.reply_to_entry_id ?? null) !==
+          (submission.reply_to_entry_id ?? null)
+        )
+          fail(409, "This turn ID belongs to a different reply target.");
         return {
           id: existing.id,
           chat_id: submission.chat_id,
@@ -406,6 +447,17 @@ export async function aiRoutes(app: FastifyInstance) {
           ],
         )
       ).rows[0];
+      if (prepared.request.conversation_context) {
+        await db.query(
+          `INSERT INTO assistant_job_sources(job_id,source_kind,source_id)
+          SELECT $1,source_kind,source_id FROM assistant_chat_sources WHERE chat_id=$2 AND turn_id=$3
+          ON CONFLICT DO NOTHING`,
+          [job.id, prepared.chatId, prepared.turnId],
+        );
+        await db.query("UPDATE ai_jobs SET sources_checked=true WHERE id=$1", [
+          job.id,
+        ]);
+      }
       return { id: job.id, chat_id: prepared.chatId, turn_id: prepared.turnId };
     });
   };
@@ -432,7 +484,9 @@ export async function aiRoutes(app: FastifyInstance) {
   app.get("/ai/chat/:id", async (r) => {
     const u = await authenticate(r);
     const jobId = idParam(r);
-    const visible = `EXISTS(SELECT 1 FROM ai_chats c WHERE c.id=j.chat_id AND ${assistantChatVisible("c", "$2")}) AND (j.state IN ('queued','running') OR ${assistantJobSourcesVisible("j", "$2")})`;
+    const visible = `EXISTS(SELECT 1 FROM ai_chats c WHERE c.id=j.chat_id AND ${conversationExecutionChatVisible("c", "$2")})
+      AND ((j.state IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM assistant_conversation_streams ps
+        WHERE ps.chat_id=j.chat_id AND ps.owner_id=$2 AND ps.retired_at IS NULL)) OR (${assistantJobSourcesVisible("j", "$2")} AND (j.sources_checked OR NOT EXISTS(SELECT 1 FROM assistant_conversation_streams ps WHERE ps.chat_id=j.chat_id AND ps.owner_id=$2 AND ps.retired_at IS NULL))))`;
     const job = (
       await pool.query(
         `SELECT state, result, error_status, error_message, progress, run_state, sources_checked FROM ai_jobs j WHERE j.id=$1 AND j.user_id=$2 AND ${visible}`,

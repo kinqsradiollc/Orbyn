@@ -1,9 +1,16 @@
 import { providerDetailLines } from "@orbyn/core";
 import { ReminderNudge } from "../components/ReminderNudge";
+import {
+  ConversationSeen,
+  type ConversationViewport,
+} from "../components/ConversationSeen";
+import { ConversationUpdate } from "../components/ConversationUpdate";
 import { AssistantProfileStore } from "@orbyn/api-client";
 import { session } from "../lib/session";
 import React, {
   useEffect,
+  useLayoutEffect,
+  useCallback,
   useMemo,
   useSyncExternalStore,
   useRef,
@@ -37,6 +44,7 @@ import { AssistantDrawer } from "../components/AssistantDrawer";
 import { PlanView, tickedMoves } from "../components/PlanView";
 import { SmallAction } from "../components/SmallAction";
 import { AssistantUpcoming } from "../components/AssistantUpcoming";
+import { SavedConversationHistory } from "../components/SavedConversationHistory";
 import { TurnChanges } from "../components/TurnChanges";
 import type { MoreAction } from "../components/MoreMenu";
 import { ProposalReview } from "../components/ProposalReview";
@@ -95,6 +103,16 @@ export function AssistantTopBar({
   const switchMode = (kind: "chat" | "work") => {
     if (locked || kind === (workMode ? "work" : "chat")) return;
     const draft = assistant.message;
+    if (kind === "chat" && assistant.conversationEnabled) {
+      const owner = session.token;
+      const restoreDraft = () => {
+        if (session.token === owner) assistant.setMessage(draft);
+      };
+      void assistant
+        .openPersonalConversation()
+        .then(restoreDraft, restoreDraft);
+      return;
+    }
     assistant.reset();
     assistant.setHistoryKind(kind);
     if (kind === "chat" || assistant.scope?.kind === "task")
@@ -122,7 +140,13 @@ export function AssistantTopBar({
           onPress={() => switchMode("chat")}
           style={[s.modeButton, !workMode && s.modeSelected]}
         >
-          <Text style={s.modeText}>Chat</Text>
+          <Text style={s.modeText}>
+            {!workMode &&
+            assistant.conversationEnabled &&
+            assistant.activeChatId === assistant.personalChatId
+              ? agentName
+              : "Chat"}
+          </Text>
         </Pressable>
         {
           <Pressable
@@ -175,6 +199,12 @@ export function AssistantScreen({
   onOpenAgentNotes,
   onOpenOvernight,
   onOpenSettings,
+  conversationViewport,
+  onConversationFocus,
+  onPrepareEarlier,
+  onPreserveConversationPosition,
+  conversationVisibility = 0,
+  conversationVisible = true,
   centerComposer = false,
 }: {
   assistant: Assistant;
@@ -186,6 +216,12 @@ export function AssistantScreen({
   onOpenOvernight?: () => void;
   /** Settings → Connected agents, where the assistant is set up. */
   onOpenSettings?: () => void;
+  conversationViewport?: ConversationViewport;
+  onPrepareEarlier?: () => void;
+  onPreserveConversationPosition?: (delta: number) => void;
+  onConversationFocus?: (view: React.ComponentRef<typeof View>) => void;
+  conversationVisibility?: number;
+  conversationVisible?: boolean;
   centerComposer?: boolean;
   items: Item[];
   busy: boolean;
@@ -225,6 +261,77 @@ export function AssistantScreen({
     identity,
     agentName,
   } = assistant;
+  const initializedHome = useRef<string | null>(null);
+  useEffect(() => {
+    if (!assistant.conversationEnabled) {
+      initializedHome.current = null;
+      return;
+    }
+    if (initializedHome.current === session.token) return;
+    initializedHome.current = session.token;
+    if (!activeChatId && !scope) void assistant.openPersonalConversation();
+  }, [assistant.conversationEnabled, session.token]);
+  const conversationRows = useRef(
+    new Map<string, React.ComponentRef<typeof View>>(),
+  );
+  const registerConversationRow = useCallback(
+    (sequence: string, view: React.ComponentRef<typeof View> | null) => {
+      if (view) conversationRows.current.set(sequence, view);
+      else conversationRows.current.delete(sequence);
+    },
+    [],
+  );
+  const earlierAnchor = useRef<{
+    sequence: string;
+    top: number;
+    destination: string;
+  } | null>(null);
+  const loadEarlier = async () => {
+    const destination = assistant.conversation.destination?.id;
+    if (!destination || !conversationViewport?.current) return;
+    onPrepareEarlier?.();
+    const viewport = await new Promise<{ top: number; bottom: number }>(
+      (resolve) =>
+        conversationViewport.current!.measureInWindow((_x, y, _w, h) =>
+          resolve({ top: y, bottom: y + h }),
+        ),
+    );
+    const rows = await Promise.all(
+      [...conversationRows.current].map(
+        ([sequence, view]) =>
+          new Promise<{ sequence: string; top: number; bottom: number }>(
+            (resolve) =>
+              view.measureInWindow((_x, y, _w, h) =>
+                resolve({ sequence, top: y, bottom: y + h }),
+              ),
+          ),
+      ),
+    );
+    const first = rows
+      .filter((row) => row.bottom > viewport.top && row.top < viewport.bottom)
+      .sort((a, b) => a.top - b.top)[0];
+    if (first)
+      earlierAnchor.current = {
+        sequence: first.sequence,
+        top: first.top,
+        destination,
+      };
+    await assistant.loadEarlierConversation();
+  };
+  useEffect(() => {
+    const anchor = earlierAnchor.current;
+    if (!anchor || assistant.conversation.loading) return;
+    earlierAnchor.current = null;
+    if (anchor.destination !== assistant.conversation.destination?.id) return;
+    const frame = requestAnimationFrame(() =>
+      conversationRows.current
+        .get(anchor.sequence)
+        ?.measureInWindow((_x, y) =>
+          onPreserveConversationPosition?.(y - anchor.top),
+        ),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [assistant.conversation.entries, assistant.conversation.loading]);
   const owner = session.token;
   const alive = useRef(true);
   useEffect(() => {
@@ -267,6 +374,8 @@ export function AssistantScreen({
     null,
   );
   const [upcomingOpen, setUpcomingOpen] = useState(false);
+  const [savedHistoryOpen, setSavedHistoryOpen] = useState(false);
+  useEffect(() => setSavedHistoryOpen(false), [owner, activeChatId]);
   const [renameTarget, setRenameTarget] = useState<AiChatSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
@@ -345,7 +454,13 @@ export function AssistantScreen({
     },
   ];
   const waiting = runProgress?.state === "waiting" ? runProgress.waiting : null;
-  const locked = busy || thinking || !!waiting || actionBusy;
+  const locked =
+    busy ||
+    thinking ||
+    !!waiting ||
+    actionBusy ||
+    !assistant.conversationReady ||
+    !!assistant.replyStatus;
   useEffect(() => setPersonAnswer(""), [runProgress?.waiting?.question]);
   // Quick replies only make sense on the newest assistant reply.
   const latestReplyId = [...turns]
@@ -363,6 +478,17 @@ export function AssistantScreen({
           if (next?.owner === session.token) next.run();
         }}
         agentName={agentName}
+        primaryConversation={
+          assistant.conversationEnabled
+            ? {
+                id: assistant.personalChatId,
+                onOpen: () => {
+                  onDrawerChange(false);
+                  void assistant.openPersonalConversation();
+                },
+              }
+            : undefined
+        }
         chats={savedChats}
         activeChatId={activeChatId}
         search={chatSearch}
@@ -393,6 +519,16 @@ export function AssistantScreen({
           },
         ]}
         shortcuts={[
+          ...(assistant.legacyHistoryAvailable && assistant.legacyHistoryTarget
+            ? [
+                {
+                  icon: "fileText" as const,
+                  label: "Previous saved history",
+                  onPress: () =>
+                    closeDrawerThen(() => setSavedHistoryOpen(true)),
+                },
+              ]
+            : []),
           {
             icon: "calendarCheck",
             label: "Upcoming",
@@ -546,10 +682,19 @@ export function AssistantScreen({
         </Text>
       ) : null}
       <AssistantUpcoming
+        conversationEnabled={assistant.conversationEnabled}
         agentName={agentName}
         visible={upcomingOpen}
         onClose={() => setUpcomingOpen(false)}
       />
+      {savedHistoryOpen && assistant.legacyHistoryTarget && (
+        <SavedConversationHistory
+          key={assistant.legacyHistoryTarget.destinationId}
+          destinationId={assistant.legacyHistoryTarget.destinationId}
+          chatId={assistant.legacyHistoryTarget.chatId}
+          onClose={() => setSavedHistoryOpen(false)}
+        />
+      )}
       {scope && (
         <View style={s.scopeRow}>
           <SmallAction
@@ -566,7 +711,7 @@ export function AssistantScreen({
           )}
         </View>
       )}
-      {turns.length === 0 && (
+      {assistant.conversationItems.length === 0 && (
         <View style={s.welcome}>
           {activeChat?.swept_at ? (
             <View style={s.sweptNote}>
@@ -599,78 +744,151 @@ export function AssistantScreen({
         </Text>
       )}
       <View style={s.thread}>
-        {turns.map((turn) =>
-          turn.role === "user" ? (
-            <View key={turn.id} style={s.userRow}>
-              <View style={s.userBubble}>
-                <Text selectable style={s.userText}>
-                  {turn.text}
-                </Text>
+        {!!assistant.conversationIssue && (
+          <Text style={shared.small}>{assistant.conversationIssue}</Text>
+        )}
+        {assistant.conversationEnabled && !assistant.conversationReady && (
+          <SmallAction
+            label="Open conversation"
+            disabled={busy || thinking || !!restoringChat}
+            onPress={() => void assistant.openPersonalConversation()}
+          />
+        )}
+        {assistant.conversationEnabled &&
+          assistant.conversationReady &&
+          activeChatId !== assistant.personalChatId && (
+            <SmallAction
+              label={agentName}
+              disabled={locked}
+              onPress={() => void assistant.openPersonalConversation()}
+            />
+          )}
+
+        {assistant.conversation.hasEarlier && (
+          <SmallAction
+            label="Earlier messages"
+            disabled={assistant.conversation.loading}
+            onPress={() => void loadEarlier()}
+          />
+        )}
+        {assistant.conversation.error && (
+          <SmallAction
+            label="Retry loading conversation"
+            disabled={assistant.conversation.loading}
+            onPress={() => void assistant.refreshConversation()}
+          />
+        )}
+        {assistant.conversationItems.map((item) => {
+          const wrap = (children: React.ReactNode) => (
+            <ConversationSeen
+              key={item.id}
+              sequence={item.sequence}
+              viewport={conversationViewport}
+              revision={conversationVisibility}
+              active={
+                conversationVisible &&
+                !drawerOpen &&
+                !agentLane &&
+                !upcomingOpen &&
+                !savedHistoryOpen &&
+                !renameTarget &&
+                !deleteTarget
+              }
+              onSeen={assistant.acknowledgeConversation}
+              onRow={registerConversationRow}
+              focused={item.sequence === assistant.focusedConversationSequence}
+              onFocus={onConversationFocus}
+            >
+              {children}
+            </ConversationSeen>
+          );
+          if (item.kind === "update")
+            return wrap(
+              <ConversationUpdate
+                key={item.id}
+                entry={item.entry}
+                busy={locked}
+                onReply={() => assistant.selectReply(item.entry)}
+                onWork={(id) => void openChat(id)}
+                onActivity={setAgentLane}
+                onSource={onOpenSource}
+                onRefresh={() => void assistant.refreshConversation()}
+              />,
+            );
+          const turn = item.turn;
+          return wrap(
+            turn.role === "user" ? (
+              <View key={turn.id} style={s.userRow}>
+                <View style={s.userBubble}>
+                  <Text selectable style={s.userText}>
+                    {turn.text}
+                  </Text>
+                </View>
               </View>
-            </View>
-          ) : (
-            <View key={turn.id} style={s.botRow}>
-              <View style={s.botBubble}>
-                <ProposalReview
-                  proposal={turn.proposal}
-                  items={items}
-                  before={turn.before}
-                  busy={locked}
-                  state={turn.nudge ? "info" : turn.state}
-                  onApprove={(giveTasksDeadlines) =>
-                    apply(turn.id, giveTasksDeadlines)
-                  }
-                  onDiscard={() => discard(turn.id)}
-                  onOpenSource={onOpenSource}
-                  onKeptNote={onKeptNote}
-                  onFollowUp={
-                    turn.id === latestReplyId
-                      ? (text) => void ask(text)
-                      : undefined
-                  }
-                />
-                {turn.proposal.plan && (
-                  <PlanCard
-                    plan={turn.proposal.plan}
-                    applied={turn.planApplied}
-                    result={turn.planResult}
-                    onShowOnCalendar={
-                      onShowOnCalendar && turn.planAt
-                        ? () => onShowOnCalendar(turn.planAt!)
+            ) : (
+              <View key={turn.id} style={s.botRow}>
+                <View style={s.botBubble}>
+                  <ProposalReview
+                    proposal={turn.proposal}
+                    items={items}
+                    before={turn.before}
+                    busy={locked}
+                    state={turn.nudge ? "info" : turn.state}
+                    onApprove={(giveTasksDeadlines) =>
+                      apply(turn.id, giveTasksDeadlines)
+                    }
+                    onDiscard={() => discard(turn.id)}
+                    onOpenSource={onOpenSource}
+                    onKeptNote={onKeptNote}
+                    onFollowUp={
+                      turn.id === latestReplyId
+                        ? (text) => void ask(text)
                         : undefined
                     }
-                    busy={locked}
-                    onApply={(moves) =>
-                      void assistant.applyPlan(turn.id, moves)
-                    }
                   />
-                )}
-                {turn.nudge && (
-                  <ReminderNudge
-                    card={turn.nudge}
-                    busy={locked}
-                    chatId={activeChatId}
-                    turnId={turn.turnId}
-                    skipped={turn.state === "discarded"}
-                  />
-                )}
-                {turn.changesJob && (
-                  <TurnChanges
-                    job={turn.changesJob}
-                    load={turnChanges}
-                    undo={undoTurnChanges}
-                  />
-                )}
-                {providerDetailLines(turn.trace).map((label) => (
-                  <Text key={label} style={shared.small}>
-                    {label}
-                  </Text>
-                ))}
-                <ChatTrace trace={turn.trace} />
+                  {turn.proposal.plan && (
+                    <PlanCard
+                      plan={turn.proposal.plan}
+                      applied={turn.planApplied}
+                      result={turn.planResult}
+                      onShowOnCalendar={
+                        onShowOnCalendar && turn.planAt
+                          ? () => onShowOnCalendar(turn.planAt!)
+                          : undefined
+                      }
+                      busy={locked}
+                      onApply={(moves) =>
+                        void assistant.applyPlan(turn.id, moves)
+                      }
+                    />
+                  )}
+                  {turn.nudge && (
+                    <ReminderNudge
+                      card={turn.nudge}
+                      busy={locked}
+                      chatId={activeChatId}
+                      turnId={turn.turnId}
+                      skipped={turn.state === "discarded"}
+                    />
+                  )}
+                  {turn.changesJob && (
+                    <TurnChanges
+                      job={turn.changesJob}
+                      load={turnChanges}
+                      undo={undoTurnChanges}
+                    />
+                  )}
+                  {providerDetailLines(turn.trace).map((label) => (
+                    <Text key={label} style={shared.small}>
+                      {label}
+                    </Text>
+                  ))}
+                  <ChatTrace trace={turn.trace} />
+                </View>
               </View>
-            </View>
-          ),
-        )}
+            ),
+          );
+        })}
         {waiting && (
           <View
             style={[shared.card, s.runCard]}
@@ -1008,14 +1226,34 @@ export function AssistantComposer({
   } = assistant;
   const running = runProgress?.state === "running";
   const locked =
-    busy || thinking || !!restoringChat || runProgress?.state === "waiting";
+    busy ||
+    thinking ||
+    !!restoringChat ||
+    runProgress?.state === "waiting" ||
+    !assistant.conversationReady ||
+    !!assistant.replyStatus;
   const workMode =
     assistant.historyKind === "work" || scope?.kind === "project";
   const needsProject = workMode && scope?.kind !== "project";
   const canSend = !locked && !needsProject && !!message.trim();
   // Four lines at the user's text size, not four lines of the default size.
-  const { fontScale } = useWindowDimensions();
+  const { fontScale, width } = useWindowDimensions();
   const [inputHeight, setInputHeight] = useState(44);
+  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+  useLayoutEffect(() => {
+    if (Platform.OS !== "web") return;
+    const element = inputRef.current as unknown as HTMLTextAreaElement | null;
+    if (!element) return;
+    // scrollHeight includes the current box height. Reset it before measuring
+    // so deleting text can shrink the composer instead of retaining four lines.
+    element.style.height = "0px";
+    const height = Math.max(
+      44,
+      Math.min(element.scrollHeight, LINE * 4 * fontScale + 20),
+    );
+    element.style.height = `${height}px`;
+    setInputHeight(height);
+  }, [message, fontScale, width]);
   useEffect(() => {
     if (!message) setInputHeight(44);
   }, [message]);
@@ -1025,8 +1263,39 @@ export function AssistantComposer({
       {workMode && (
         <WorkProjectPicker assistant={assistant} disabled={locked} />
       )}
+      {!!assistant.replyStatus && (
+        <View>
+          <Text style={shared.small}>
+            {assistant.replyStatus === "loading"
+              ? "Restoring reply…"
+              : "This update is no longer available."}
+          </Text>
+          <SmallAction
+            label="Cancel reply"
+            disabled={busy || thinking}
+            onPress={assistant.clearReply}
+          />
+        </View>
+      )}
+      {assistant.replyTarget && (
+        <View style={s.replyContext}>
+          <Text numberOfLines={2} style={[shared.small, s.replyContextText]}>
+            Replying to: {assistant.replyTarget.text}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cancel reply"
+            disabled={locked}
+            onPress={assistant.clearReply}
+            style={s.replyCancel}
+          >
+            <Icon name="x" size={18} color={colors.textSoft} />
+          </Pressable>
+        </View>
+      )}
       <View style={s.composer}>
         <TextInput
+          ref={inputRef}
           style={[
             s.input,
             ...(Platform.OS === "web"
@@ -1042,10 +1311,14 @@ export function AssistantComposer({
           ]}
           multiline
           scrollEnabled
-          onContentSizeChange={(event) =>
-            setInputHeight(event.nativeEvent.contentSize.height)
+          onContentSizeChange={
+            Platform.OS === "web"
+              ? undefined
+              : (event) => setInputHeight(event.nativeEvent.contentSize.height)
           }
-          placeholder={workMode ? "Work with Orbyn…" : "Ask Orbyn…"}
+          placeholder={
+            workMode ? `Work with ${agentName}…` : `Message ${agentName}…`
+          }
           placeholderTextColor={colors.faint}
           value={message}
           onChangeText={setMessage}
@@ -1093,7 +1366,7 @@ export function AssistantComposer({
           </Pressable>
         )}
       </View>
-      {turns.length === 0 && !thinking && (
+      {assistant.conversationItems.length === 0 && !thinking && (
         <View style={s.suggestions}>
           {suggestions.map((suggestion, n) => (
             <Pressable
@@ -1481,6 +1754,19 @@ const s = themed(() =>
       borderRadius: radii.card,
       padding: 5,
       paddingLeft: 12,
+    },
+    replyContext: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 6,
+    },
+    replyContextText: { flex: 1, minWidth: 0 },
+    replyCancel: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
     },
     input: {
       flex: 1,

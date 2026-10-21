@@ -15,6 +15,8 @@ const { encryptSecret } = await import("../src/lib/secrets.js");
 const { enqueueMemory, readMemory } =
   await import("../src/modules/memory/service.js");
 const { drainMemoryQueue } = await import("../src/worker/memory.js");
+const { openPersonalConversation, retainConversationTurn } =
+  await import("../src/modules/assistant-workspace/conversation-storage.js");
 const { sweepOldChats } = await import("../src/worker/chat-sweep.js");
 const {
   completeChatMaintenance,
@@ -395,6 +397,149 @@ test("source change during extraction cannot save generated Memory", async () =>
       ])
     ).rows[0].state,
     "failed",
+  );
+});
+
+test("retained Memory extraction survives raw-window truncation and keeps exact generation references", async () => {
+  await pool.query("DELETE FROM memory_queue");
+  const owner = await person(),
+    turn = randomUUID();
+  const destination = await transaction((db) =>
+    openPersonalConversation(db, owner),
+  );
+  await transaction(async (db) => {
+    await db.query(
+      "INSERT INTO ai_jobs(user_id,chat_id,turn_id,state,run_origin,sources_checked) VALUES($1,$2,$3,'done','person',true)",
+      [owner, destination.chat_id, turn],
+    );
+    await retainConversationTurn(db, owner, destination.chat_id, {
+      role: "user",
+      text: "I prefer compact plans",
+      turn_id: turn,
+    });
+    await retainConversationTurn(db, owner, destination.chat_id, {
+      role: "assistant",
+      text: "Understood",
+      turn_id: turn,
+    });
+    await enqueueMemory(db, {
+      userId: owner,
+      chatId: destination.chat_id,
+      sourceTurnId: turn,
+      sourceProjectId: null,
+      turns: [],
+    });
+  });
+  await pool.query("UPDATE ai_chats SET turns=$2 WHERE id=$1", [
+    destination.chat_id,
+    JSON.stringify(
+      Array.from({ length: 200 }, (_, i) => ({
+        role: "user",
+        text: `Later ${i}`,
+      })),
+    ),
+  ]);
+  let sent = "";
+  await drainMemoryQueue({
+    ai: fake,
+    completeTurn: async (_ai, messages) => {
+      sent = messages.map((message) => message.content).join("\n");
+      return JSON.stringify({
+        topics: [
+          { topic: "Retained preference", facts: ["Prefers compact plans"] },
+        ],
+      });
+    },
+  });
+  assert.match(sent, /I prefer compact plans/);
+  assert.doesNotMatch(sent, /Later 199/);
+  const learned = await readMemory(pool, owner, "Retained preference");
+  assert.ok(learned);
+  assert.equal(
+    (
+      await pool.query("SELECT 1 FROM memory_entry_sources WHERE doc_id=$1", [
+        learned.id,
+      ])
+    ).rowCount,
+    2,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT retained_entries FROM memory_sources WHERE doc_id=$1 AND source_type='chat'",
+        [learned.id],
+      )
+    ).rows[0].retained_entries,
+    true,
+  );
+  await pool.query("UPDATE ai_chats SET swept_at=now() WHERE id=$1", [
+    destination.chat_id,
+  ]);
+  assert.equal(await readMemory(pool, owner, "Retained preference"), null);
+  assert.equal(
+    (
+      await pool.query("SELECT 1 FROM memory_entry_sources WHERE doc_id=$1", [
+        learned.id,
+      ])
+    ).rowCount,
+    2,
+    "Retirement does not erase the invalid dependency",
+  );
+});
+
+test("editing a retained source during extraction rejects Memory publication", async () => {
+  await pool.query("DELETE FROM memory_queue");
+  const owner = await person(),
+    turn = randomUUID();
+  const destination = await transaction((db) =>
+    openPersonalConversation(db, owner),
+  );
+  await transaction(async (db) => {
+    await db.query(
+      "INSERT INTO ai_jobs(user_id,chat_id,turn_id,state,run_origin,sources_checked) VALUES($1,$2,$3,'done','person',true)",
+      [owner, destination.chat_id, turn],
+    );
+    await retainConversationTurn(db, owner, destination.chat_id, {
+      role: "user",
+      text: "An old preference",
+      turn_id: turn,
+    });
+    await retainConversationTurn(db, owner, destination.chat_id, {
+      role: "assistant",
+      text: "Understood",
+      turn_id: turn,
+    });
+    await enqueueMemory(db, {
+      userId: owner,
+      chatId: destination.chat_id,
+      sourceTurnId: turn,
+      sourceProjectId: null,
+      turns: [],
+    });
+  });
+  let called = 0;
+  await drainMemoryQueue({
+    ai: fake,
+    completeTurn: async () => {
+      called++;
+      await pool.query(
+        "UPDATE assistant_conversation_entries SET payload=jsonb_set(payload,'{text}','\"Revised preference\"') WHERE destination_id=$1 AND role='user'",
+        [destination.id],
+      );
+      return JSON.stringify({
+        topics: [
+          {
+            topic: "Stale retained preference",
+            facts: ["Must not be published"],
+          },
+        ],
+      });
+    },
+  });
+  assert.equal(called, 1);
+  assert.equal(
+    await readMemory(pool, owner, "Stale retained preference"),
+    null,
   );
 });
 

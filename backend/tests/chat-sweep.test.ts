@@ -11,9 +11,109 @@ const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { sweepOldChats } = await import("../src/worker/chat-sweep.js");
+const { transaction } = await import("../src/db/pool.js");
+const {
+  registerOriginConversation,
+  retainConversationTurn,
+  conversationDestination,
+} = await import("../src/modules/assistant-workspace/conversation-storage.js");
 const app = await buildApp();
 let userId = "";
 let token = "";
+
+test("automatic sweep retains unpinned conversation streams regardless of age or rollout", async () => {
+  await pool.query("UPDATE ai_chats SET last_used_at=now() WHERE user_id=$1", [
+    userId,
+  ]);
+  for (const empty of [false, true]) {
+    const chat = randomUUID(),
+      turn = randomUUID();
+    await pool.query(
+      "INSERT INTO ai_chats(id,user_id,title,turns,last_used_at) VALUES($1,$2,'Retained history',$3,now()-interval '90 days')",
+      [
+        chat,
+        userId,
+        JSON.stringify(
+          empty ? [] : [{ role: "user", text: "Retain this", turn_id: turn }],
+        ),
+      ],
+    );
+    const destination = await transaction(async (db) => {
+      const destination = await registerOriginConversation(db, userId, chat);
+      if (!empty)
+        await retainConversationTurn(db, userId, chat, {
+          role: "user",
+          text: "Retain this",
+          turn_id: turn,
+        });
+      return destination;
+    });
+    const { env } = await import("../src/config/env.js");
+    const previous = env.ASSISTANT_CONVERSATION_ENABLED;
+    env.ASSISTANT_CONVERSATION_ENABLED = "false";
+    try {
+      assert.equal(
+        await sweepOldChats({
+          ai: {} as ResolvedAi,
+          compact: async () => {
+            throw new Error("Retained history must not reach a compactor");
+          },
+        }),
+        0,
+      );
+      assert.ok(await conversationDestination(pool, userId, destination.id));
+      const row = (
+        await pool.query(
+          "SELECT swept_at,pinned,turns FROM ai_chats WHERE id=$1",
+          [chat],
+        )
+      ).rows[0];
+      assert.equal(row.swept_at, null);
+      assert.equal(row.pinned, false);
+      assert.equal(row.turns.length, empty ? 0 : 1);
+    } finally {
+      env.ASSISTANT_CONVERSATION_ENABLED = previous;
+    }
+  }
+});
+
+test("registering a conversation during compaction prevents retirement and summary effects", async () => {
+  await pool.query("UPDATE ai_chats SET last_used_at=now() WHERE user_id=$1", [
+    userId,
+  ]);
+  const chat = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title,turns,last_used_at) VALUES($1,$2,'Late retained history',$3,now()-interval '9 days')",
+    [
+      chat,
+      userId,
+      JSON.stringify([{ role: "user", text: "Keep this conversation" }]),
+    ],
+  );
+  let calls = 0;
+  assert.equal(
+    await sweepOldChats({
+      ai: {} as ResolvedAi,
+      compact: async () => {
+        calls++;
+        await transaction((db) => registerOriginConversation(db, userId, chat));
+        return JSON.stringify({ asked: [], decided: [], changed: [] });
+      },
+    }),
+    0,
+  );
+  assert.equal(calls, 1);
+  const row = (
+    await pool.query(
+      "SELECT swept_at,summary_doc_id,turns,sweep_claimed_at FROM ai_chats WHERE id=$1",
+      [chat],
+    )
+  ).rows[0];
+  assert.equal(row.swept_at, null);
+  assert.equal(row.summary_doc_id, null);
+  assert.equal(row.sweep_claimed_at, null);
+  assert.equal(row.turns.length, 1);
+});
 
 before(async () => {
   await migrate();
@@ -264,4 +364,79 @@ test("queued, running and waiting jobs keep an old chat available for reattachme
     assert.equal(chat.turns.length, 1);
   }
   assert.equal(summaries, 0);
+});
+
+test("a completed execution awaiting timeline publication survives legacy compaction", async () => {
+  const { env } = await import("../src/config/env.js");
+  const oldFlag = env.ASSISTANT_CONVERSATION_ENABLED;
+  env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  const { openPersonalConversation } =
+    await import("../src/modules/assistant-workspace/conversation-storage.js");
+  const { bindConversationWork } =
+    await import("../src/modules/assistant-workspace/conversation-delivery.js");
+  const { assistantPrincipal } =
+    await import("../src/modules/agents/assistant.js");
+  const chatId = randomUUID(),
+    jobId = randomUUID();
+  try {
+    await pool.query(
+      "UPDATE ai_chats SET last_used_at=now() WHERE user_id=$1",
+      [userId],
+    );
+    await assistantPrincipal(
+      (await pool.query("SELECT * FROM users WHERE id=$1", [userId])).rows[0],
+    );
+    const destination = await transaction((db) =>
+      openPersonalConversation(db, userId),
+    );
+    await pool.query(
+      "INSERT INTO ai_chats(id,user_id,title,origin,turns,last_used_at) VALUES($1,$2,'Pending delivery execution','task',$3,now()-interval '90 days')",
+      [
+        chatId,
+        userId,
+        JSON.stringify([{ role: "user", text: "A completed request" }]),
+      ],
+    );
+    await pool.query(
+      "INSERT INTO ai_jobs(id,user_id,chat_id,state,run_origin,sources_checked) VALUES($1,$2,$3,'queued','task',true)",
+      [jobId, userId, chatId],
+    );
+    const binding = await transaction((db) =>
+      bindConversationWork(db, {
+        ownerId: userId,
+        work: { kind: "job", id: jobId },
+        lane: "background",
+        timezone: "UTC",
+        destinationId: destination.id,
+      }),
+    );
+    assert.ok(
+      binding,
+      "The fixture must have a bound delivery before compaction",
+    );
+    await pool.query("UPDATE ai_jobs SET state='done',result=$2 WHERE id=$1", [
+      jobId,
+      { answer: "Ready for publication" },
+    ]);
+    env.ASSISTANT_CONVERSATION_ENABLED = "false";
+    let calls = 0;
+    assert.equal(
+      await sweepOldChats({
+        ai: {} as ResolvedAi,
+        compact: async () => {
+          calls++;
+          return JSON.stringify({ asked: [], decided: [], changed: [] });
+        },
+      }),
+      0,
+    );
+    assert.equal(calls, 0);
+    assert.equal(
+      (await pool.query("SELECT swept_at FROM ai_chats WHERE id=$1", [chatId]))
+        .rows[0].swept_at,
+      null,
+    );
+  } finally {
+    env.ASSISTANT_CONVERSATION_ENABLED = oldFlag;
+  }
 });
