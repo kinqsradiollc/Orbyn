@@ -36,6 +36,8 @@ precedence; imported material never expands authorization.
 | Source changes, dependencies, commands  | [Development](docs/agents/development.md)                                                                                         |
 | Architecture or a complex migration     | [architect](skills/architect/SKILL.md), [figure-it-out](skills/figure-it-out/SKILL.md)                                            |
 | UI, responsive behavior or product copy | [UI/UX](docs/agents/ui-ux.md), [UI skill](skills/orbyn-ui-design/SKILL.md), [content skill](skills/orbyn-content-design/SKILL.md) |
+| Social posts, graphics or feed previews | [Social writing](skills/social-content/SKILL.md), [social previews](skills/social-preview/SKILL.md) |
+| API contracts, migrations or CI | [Backend design](skills/orbyn-backend-design/SKILL.md), [data migration](skills/orbyn-data-migration/SKILL.md), [CI design](skills/orbyn-ci-design/SKILL.md) |
 | Runtime, data, providers or deployment  | [Operations](docs/agents/operations.md)                                                                                           |
 | Verification and delivery               | [Delivery workflow](docs/agents/delivery.md)                                                                                      |
 | Assigned reviewers or parallel workers  | [Coordination](docs/agents/coordination.md), [review](docs/agents/review.md)                                                      |

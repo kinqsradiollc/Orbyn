@@ -77,3 +77,21 @@ before deleting the directory. The user's CV and PDF were also copied to
 See the [research record](../../tools/research/workflow-design.md) for the adopted
 planning/UI ideas and host-specific assumptions intentionally excluded. The active
 planner and skill creator use Orbyn names and current stack boundaries.
+
+## Social writing and preview authoring
+
+Shared skills now have a public-library contribution path. See
+[upstream ownership and synchronization](skill-upstream.md) for the allowlist,
+consumer lock, export/review and CI boundaries. The original upstream snapshots
+and their integrity manifest remain unchanged.
+
+[social-content](../../skills/social-content/SKILL.md) owns posts and carousel
+copy; [social-preview](../../skills/social-preview/SKILL.md) owns visual assets
+and approximate feed views. Both use the same repository discovery links as the
+engineering skills. Their [research record](../../tools/research/social-content.md)
+distinguishes reviewed third-party ideas from copied source. No external skill
+package, provider or global setting is installed by this addition.
+
+The preview helper uses Python's standard library and produces HTML/text. Browser,
+PNG/PDF and video exports depend on the current host's actual tools; the skills
+require inspection of rendered/exported results before claiming those outputs.

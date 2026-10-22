@@ -5,7 +5,7 @@ description: "Write a focused failing-before regression and fix when the user re
 
 # Tdd
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Respect verification authorization in AGENTS.md. This skill does not itself
 permit tests excluded by the current user or session.
@@ -21,3 +21,7 @@ attempts. A passing new test without a demonstrated baseline failure provides
 less regression evidence; state that distinction. No production databases or
 unapproved live-provider calls. Read [development](../../docs/agents/development.md)
 for guarded database and package prerequisites.
+
+## Regression evidence across layers
+
+For a stale update, place the regression at the API/version boundary and assert that the rejected write preserves the original record. A snapshot of the error string alone does not prove the invariant. Add a UI check only when the changed user flow needs separate evidence and that check is authorized.

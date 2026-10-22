@@ -5,7 +5,7 @@ description: "Route substantial Orbyn engineering work through evidence-led inve
 
 # Orbyn engineering workflow
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Start from the user's requested outcome, current source and
 [stack ownership](../../docs/agents/stack.md). Use the
@@ -36,6 +36,13 @@ Use [orbyn-plan](../orbyn-plan/SKILL.md) for explicit plans or a complex change;
 use [orbyn-research](../orbyn-research/SKILL.md) for unresolved external facts and
 [orbyn-skill-creator](../orbyn-skill-creator/SKILL.md) for skill-system changes.
 
+For work crossing domain, transport, persistence and clients, use the
+[Orbyn Engineering contract](references/fullstack-contract.md). Resolve the
+consuming project’s actual owners before applying example stack conventions.
+Backend effect design belongs to [orbyn-backend-design](../orbyn-backend-design/SKILL.md),
+stored-format transitions to [orbyn-data-migration](../orbyn-data-migration/SKILL.md),
+and trusted automation to [orbyn-ci-design](../orbyn-ci-design/SKILL.md).
+
 Use [how](../how/SKILL.md) before changing unfamiliar behavior,
 [architect](../architect/SKILL.md) for consequential data/ownership decisions,
 [why](../why/SKILL.md) for historical constraints, and
@@ -45,8 +52,8 @@ Use [principles](references/principles.md) to select only the relevant leaf rule
 ## Lead contract
 
 For substantial work, the owning lead grounds and scopes the outcome, chooses the
-design and delegates substantial investigation or implementation. The lead stays
-responsible for integration, review and verification. A small clear edit or narrow
+design and delegates substantial investigation and implementation as applicable.
+The lead stays responsible for integration, review and verification. A small clear edit or narrow
 explanation can proceed directly. A child forbidden further delegation completes
 its assigned task directly and returns the artifact to its owner; it never waits
 for a nested worker.
@@ -84,9 +91,9 @@ Assign disjoint writes or serialize them, including generated files and fixtures
 Design alternatives can run sequentially when slots are occupied. Children return
 artifacts and evidence to their owner, not to other user-owned chats.
 
-Follow [model policy](../../docs/agents/model-policy.md): Sol/medium, Luna/high,
-Opus/medium or Sonnet/medium, all at standard processing speed. Never enable Fast,
-Priority, Ultrafast or speed variants. Astra/Fable requires explicit human
+Read the assignments in [the shared model registry](../../docs/agents/models.json)
+and follow [model policy](../../docs/agents/model-policy.md) for tier, effort and
+standard processing speed. Never enable Fast, Priority, Ultrafast or speed variants. The registry's human-only tier requires explicit human
 selection. Check the named type and its definition before dispatch and inspect
 effective model/effort/speed when exposed. If the named type is unavailable or
 required settings cannot be preserved, report that boundary and do permitted
@@ -112,7 +119,8 @@ documentation needs document/link checks, not product builds. When runtime or
 surface evidence is unavailable or excluded, report that limit explicitly.
 Additional independent Verifier/Reviewer assignments are optional unless requested.
 Requested independent qualification uses the same frozen candidate and at most
-three full review rounds under [delivery](../../docs/agents/delivery.md).
+three full review rounds under [delivery](../../docs/agents/delivery.md). This limit
+applies to requested independent qualification, not ordinary lead correction loops.
 
 Deliver only the requested scope. Report changed behavior/artifacts, actual
 evidence, unresolved limits and local/committed/pushed/merged/deployed state.

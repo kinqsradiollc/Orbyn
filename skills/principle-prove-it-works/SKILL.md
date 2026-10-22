@@ -5,6 +5,12 @@ description: "Match a completion claim to direct evidence about the requested ar
 
 # Principle prove it works
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Inspect the actual output, candidate and terminal results. Choose checks within user/session authorization. Static inspection, builds, mocked tests, browser behavior and live-provider evidence establish different things. Record missing evidence; no self-report or majority vote is proof. Documentation needs links and provenance checks, not product builds.
+
+## Decision in practice
+
+Which observation would falsify this completion claim?
+
+An API check can establish authorization; a web preview can establish a rendered flow; a native device check can establish platform behavior. Choose the layer named by the claim and preserve the exact candidate. Report a missing device/provider check explicitly rather than laundering a mock into acceptance evidence.

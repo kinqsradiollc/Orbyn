@@ -5,9 +5,16 @@ description: Write and arrange concise Orbyn product content, labels, status, er
 
 # Orbyn Content Design
 
-Make the next action understandable at a glance. Routine Orbyn screens must not
+Use the consuming product's vocabulary and brand. Orbyn examples illustrate the
+method; they are not required product features. Make the next action understandable
+at a glance. Routine application screens must not
 read like product documentation or a generated essay. Use with the layout skill
 at `skills/orbyn-ui-design/SKILL.md`; follow the agreed task scope and `AGENTS.md`.
+
+For LinkedIn/social announcements and personal posts, use
+[social-content](../social-content/SKILL.md), with
+[social-preview](../social-preview/SKILL.md) for graphics and feed mockups.
+This skill owns in-product language; marketing drafts do not change app copy.
 
 ## Whole-product editing
 

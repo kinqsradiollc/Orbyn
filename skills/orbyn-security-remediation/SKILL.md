@@ -30,4 +30,4 @@ description: Investigate and resolve existing Orbyn security findings, record ev
 
 ## Closeout
 
-Record finding IDs, affected source, invariant, patch, focused checks and remaining limits in a Markdown task ledger. Test the reported trigger, an alternate bypass and a legitimate control when authorized. Mark fixed only with evidence; keep unavailable checks open. Update preventive checks in the owning tests/skills. Never launch a scan to close a remediation ticket.
+Record finding IDs, affected source, invariant, patch, focused checks and remaining limits in a Markdown task ledger. Test the reported trigger, an alternate bypass and a legitimate control when authorized. Mark fixed only with evidence; keep unavailable checks open. Update preventive checks in the owning tests when testing is authorized, or in the authorized skill scope. Never launch a scan to close a remediation ticket.
