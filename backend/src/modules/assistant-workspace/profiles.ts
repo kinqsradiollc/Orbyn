@@ -69,16 +69,18 @@ export async function readAssistantProfiles(
       work_start: string | null;
       work_end: string | null;
       timezone: string | null;
-      observed_at: Date;
+      observed_at: string;
     }>(
-      `SELECT a.night_shift,p.work_start::text,p.work_end::text,p.timezone,current_timestamp AS observed_at
+      `SELECT a.night_shift,p.work_start::text,p.work_end::text,p.timezone,current_timestamp::text AS observed_at
     FROM users u LEFT JOIN agent_settings a ON a.user_id=u.id LEFT JOIN planner_prefs p ON p.user_id=u.id
     WHERE u.id=$1 AND NOT u.disabled`,
       [owner],
     )
   ).rows[0];
   if (!row) fail(404, "That assistant profile is not here.");
-  const observed = now ?? row.observed_at;
+  // Preserve database microseconds for SQL comparisons; Date is only for UI/calendar work.
+  const observedAt = now?.toISOString() ?? row.observed_at;
+  const observed = now ?? new Date(row.observed_at);
   const parsed = nightShiftInput.safeParse(row.night_shift);
   const settings = parsed.success
     ? parsed.data
@@ -109,7 +111,7 @@ export async function readAssistantProfiles(
       await db.query<{ last_seen_at: Date | null; reporting: boolean }>(
         `SELECT last_seen_at,last_seen_at BETWEEN $2::timestamptz - interval '30 seconds' AND $2::timestamptz AS reporting
          FROM service_heartbeats WHERE service=$1`,
-        [`assistant-${lane}`, observed],
+        [`assistant-${lane}`, observedAt],
       )
     ).rows[0];
     const counts = (
@@ -120,7 +122,7 @@ export async function readAssistantProfiles(
        FROM ai_jobs j LEFT JOIN ai_chats c ON c.id=j.chat_id
        WHERE j.user_id=$1 AND j.runtime_lane=$3 AND j.state IN ('queued','running','waiting')
        AND ${assistantChatVisible("c", "$1")} AND ${assistantJobSourcesVisible("j", "$1", false)}`,
-        [owner, observed, lane],
+        [owner, observedAt, lane],
       )
     ).rows[0];
     const lastActivity = await assistantLastActivity(db, owner, lane);
