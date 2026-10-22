@@ -167,3 +167,5 @@ export * from "./doc-tex.js";
 export * from "./doc-selection.js";
 
 export * from "./publishing.js";
+
+export * from "./assistant-conversation-ui.js";

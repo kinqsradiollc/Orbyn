@@ -134,8 +134,7 @@ export async function retainConversationTurn(
   chatId: string,
   value: SavedChatTurn,
 ) {
-  const turn = savedChatTurn.parse(value);
-  if (!turn.turn_id) return;
+  if (!value.turn_id) return;
   // Lock the chat before its stream, matching admission/deletion lock order.
   const stream = (
     await db.query<{ id: string }>(
@@ -146,6 +145,7 @@ export async function retainConversationTurn(
     )
   ).rows[0];
   if (!stream) return;
+  const turn = savedChatTurn.parse(value);
   const existing = (
     await db.query<{ id: string }>(
       `SELECT id FROM assistant_conversation_entries

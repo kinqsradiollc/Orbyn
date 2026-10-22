@@ -170,6 +170,28 @@ export type AssistantConversationEntry = z.output<
   typeof assistantConversationEntry
 >;
 
+/** Fresh projection only: source titles never become persisted authority. */
+export const assistantConversationDetails = z
+  .object({
+    destination_id: z.uuid(),
+    entry: assistantConversationEntry,
+    sources: z
+      .array(
+        z
+          .object({
+            kind: z.enum(["doc", "task", "project"]),
+            id: z.uuid(),
+            title: z.string().max(1000),
+          })
+          .strict(),
+      )
+      .max(500),
+  })
+  .strict();
+export type AssistantConversationDetails = z.output<
+  typeof assistantConversationDetails
+>;
+
 export const assistantConversationQuery = z
   .object({
     after: assistantConversationSequence.default("0"),

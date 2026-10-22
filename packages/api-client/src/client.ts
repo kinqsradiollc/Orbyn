@@ -35,6 +35,7 @@ import {
   assistantConversationHome,
   assistantConversationDestination,
   assistantConversationLocation,
+  assistantConversationDetails,
   assistantSavedHistory,
   assistantSavedHistoryQuery,
   assistantConversationAnswer,
@@ -4424,6 +4425,24 @@ export class OrbynClient {
       );
     return page;
   }
+  async assistantConversationDetails(
+    destinationId: string,
+    entryId: string,
+    signal?: AbortSignal,
+  ) {
+    const details = assistantConversationDetails.parse(
+      await this.request<unknown>(
+        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/entries/${encodeURIComponent(entryId)}/details`,
+        { fresh: true, signal },
+      ),
+    );
+    if (
+      details.destination_id !== destinationId ||
+      details.entry.id !== entryId
+    )
+      throw new Error("Details do not match the requested message.");
+    return details;
+  }
   async assistantConversationEntry(
     destinationId: string,
     entryId: string,
@@ -4859,7 +4878,12 @@ export class OrbynClient {
     timezone: string,
     history: ChatTurn[] = [],
     scope: ChatScope | null = null,
-    ids: { chatId?: string; turnId?: string; replyToEntryId?: string } = {},
+    ids: {
+      chatId?: string;
+      turnId?: string;
+      replyToEntryId?: string;
+      replyExcerpt?: string;
+    } = {},
     onProgress?: (progress: AssistantRunProgress) => void,
     signal?: AbortSignal,
   ) {
@@ -4877,6 +4901,7 @@ export class OrbynClient {
         scope,
         ...(ids.chatId ? { chat_id: ids.chatId } : {}),
         ...(ids.turnId ? { turn_id: ids.turnId } : {}),
+        ...(ids.replyExcerpt ? { reply_excerpt: ids.replyExcerpt } : {}),
         ...(ids.replyToEntryId
           ? { reply_to_entry_id: ids.replyToEntryId }
           : {}),

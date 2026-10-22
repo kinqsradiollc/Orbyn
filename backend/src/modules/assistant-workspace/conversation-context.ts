@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   assistantConversationEntry,
+  assistantExcerptMatches,
   fail,
   savedChatTurn,
   type ChatTurn,
@@ -16,6 +17,8 @@ export const conversationContextIdentity = z
     destination_id: z.uuid(),
     entry_ids: z.array(z.uuid()).max(13),
     reply_to_entry_id: z.uuid().optional(),
+    reply_excerpt: z.string().min(1).max(2000).optional(),
+    reply_revision: z.number().int().positive().optional(),
   })
   .strict();
 export type ConversationContextIdentity = z.output<
@@ -29,7 +32,10 @@ export async function prepareConversationContext(
   chatId: string,
   turnId: string,
   replyId?: string,
+  excerpt?: string,
 ) {
+  if (excerpt && !replyId) fail(400, "Select a message for this excerpt.");
+  let replyRevision: number | undefined;
   if (env.ASSISTANT_CONVERSATION_ENABLED !== "true") {
     if (replyId) fail(404, "Conversation entry not found.");
     // Rollback pauses delivery, not the authority of already-retained context.
@@ -92,6 +98,27 @@ export async function prepareConversationContext(
     }
     entryIds.push(replyId);
   }
+  if (excerpt && replyId) {
+    const selected = (
+      await db.query<{
+        revision: number;
+        kind: "turn" | "update";
+        payload: { text: string };
+      }>(
+        `SELECT e.revision,e.kind,e.payload FROM assistant_conversation_entries e
+       WHERE e.id=$3 AND e.destination_id=$2 AND ${conversationEntryVisible()}`,
+        [owner, stream.id, replyId],
+      )
+    ).rows[0];
+    if (!selected || !assistantExcerptMatches(selected.payload.text, excerpt))
+      fail(409, "This excerpt changed. Select the text again.");
+    replyRevision = selected.revision;
+    // Quoted content is context, never instructions or an implicit work resume.
+    history.push({
+      role: "user",
+      content: `Selected excerpt from message ${replyId}:\n${JSON.stringify(excerpt)}`,
+    });
+  }
   // Dependencies of a derived reply persist with its turn before it is saved.
   await db.query(
     `INSERT INTO assistant_chat_sources(chat_id,turn_id,source_kind,source_id)
@@ -111,6 +138,9 @@ export async function prepareConversationContext(
       destination_id: stream.id,
       entry_ids: entryIds,
       ...(replyId ? { reply_to_entry_id: replyId } : {}),
+      ...(excerpt
+        ? { reply_excerpt: excerpt, reply_revision: replyRevision }
+        : {}),
     }),
   };
 }
@@ -131,6 +161,21 @@ export async function assertConversationContext(
       [owner, context.destination_id, context.entry_ids],
     )
   ).rows[0].count;
+  if (context.reply_excerpt) {
+    const selected = (
+      await db.query<{ revision: number; payload: { text: string } }>(
+        `SELECT e.revision,e.payload FROM assistant_conversation_entries e
+       WHERE e.destination_id=$2 AND e.id=$3 AND ${conversationEntryVisible()}`,
+        [owner, context.destination_id, context.reply_to_entry_id],
+      )
+    ).rows[0];
+    if (
+      !selected ||
+      selected.revision !== context.reply_revision ||
+      !assistantExcerptMatches(selected.payload.text, context.reply_excerpt)
+    )
+      fail(409, "This excerpt changed. Select the text again.");
+  }
   if (count !== new Set(context.entry_ids).size)
     fail(
       409,

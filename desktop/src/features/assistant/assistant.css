@@ -39,18 +39,18 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow: clip;
   display: flex;
   flex-direction: row;
 }
 .ai-chat.is-empty {
-  overflow: hidden;
+  overflow: clip;
 }
 .ai-main {
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
   display: flex;
   flex-direction: column;
 }
@@ -1506,33 +1506,8 @@
 .ai-chat.is-work.is-empty .ai-suggestions {
   order: 2;
 }
-.ai-mode-switch {
-  display: flex;
-  flex-shrink: 0;
-  gap: 2px;
-  padding: 3px;
-  background: var(--color-surfaceMuted);
-  border-radius: var(--radius-pill);
-}
-.ai-mode-switch button {
-  border: 0;
-  background: transparent;
-  border-radius: var(--radius-pill);
-  min-height: 36px;
-  padding: 6px 12px;
-  font-size: 13px;
-}
-.ai-mode-switch button[aria-pressed="true"] {
-  background: var(--color-surface);
-  color: var(--color-text);
-}
 .ai-chat.is-compact .ai-chat-head {
   flex-wrap: wrap;
-}
-@media (pointer: coarse) {
-  .ai-mode-switch button {
-    min-height: 44px;
-  }
 }
 
 /* Scheduled work stays readable within either the right pane or its editor. */
@@ -1613,7 +1588,7 @@
   gap: var(--space-3, 12px);
   align-items: center;
   color: var(--color-muted);
-  font-size: var(--fs-small, 13px);
+  font-size: 13px;
 }
 .ai-update-text {
   white-space: pre-wrap;
@@ -1624,16 +1599,7 @@
   display: flex;
   gap: 16px;
   align-items: baseline;
-  font-size: var(--fs-small, 13px);
-}
-.ai-update-actions summary {
-  cursor: pointer;
-}
-.ai-update-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding: 8px 0;
+  font-size: 13px;
 }
 .ai-work-update.is-failed .ai-update-meta {
   color: var(--color-danger);
@@ -1651,7 +1617,7 @@
   gap: 8px;
   padding: 8px 12px;
   border-left: 2px solid var(--color-primary);
-  font-size: var(--fs-small, 13px);
+  font-size: 13px;
 }
 .ai-reply-target span {
   flex: 1;
@@ -1692,4 +1658,124 @@
 }
 .ai-legacy-turn > p {
   white-space: pre-wrap;
+}
+
+.ai-chat-group h3 {
+  color: var(--color-textSoft);
+  font-size: 13px;
+  font-weight: 500;
+  margin: 20px 10px 6px;
+}
+.ai-primary-chat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--color-text);
+  background: transparent;
+  text-align: left;
+}
+.ai-primary-chat[aria-current="page"] {
+  background: var(--color-surfaceMuted);
+}
+.ai-project-start {
+  margin: 8px 12px;
+}
+.ai-activity-menu {
+  position: relative;
+  margin-left: auto;
+}
+.ai-bubble-user.is-truncated {
+  max-height: 15em;
+  overflow: hidden;
+}
+.ai-message-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+.ai-row-user {
+  flex-direction: column;
+  align-items: flex-end;
+}
+.ai-copy-action {
+  display: inline-flex;
+}
+.ai-message-actions button,
+.ai-copy-action button {
+  min-height: 36px;
+}
+.ai-message-details {
+  overflow: auto;
+  padding: 20px;
+}
+.ai-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.ai-details-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.ai-details-content {
+  display: grid;
+  gap: 20px;
+}
+.ai-details-content section {
+  display: grid;
+  gap: 8px;
+}
+.ai-details-content dl {
+  display: grid;
+  gap: 8px;
+}
+.ai-details-content dt {
+  color: var(--color-textSoft);
+}
+.ai-details-content dd {
+  margin: 0 0 8px;
+}
+.ai-chat.is-history-hidden .ai-history {
+  display: none;
+}
+.ai-chat-head .ai-chat-label {
+  margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-date-group {
+  text-align: center;
+  color: var(--color-textSoft);
+  font-size: 13px;
+  margin: 24px 0;
+}
+.ai-reply > .ai-message-actions {
+  justify-content: flex-start;
+}
+@media (pointer: coarse) {
+  .ai-message-actions button,
+  .ai-copy-action button,
+  .ai-update-actions button {
+    min-height: 44px;
+  }
+}
+.ai-history-section {
+  color: var(--color-textSoft);
+  font-size: 13px;
+  font-weight: 500;
+  margin: 20px 10px 6px;
+}
+.ai-reply-target span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }

@@ -1,3 +1,4 @@
+import { assistantExcerptMatches } from "@orbyn/core";
 import {
   useEffect,
   useRef,
@@ -99,7 +100,10 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const messageRef = useRef(message);
   messageRef.current = message;
   const drafts = useRef(
-    new Map<string, { message: string; replyId: string | null }>(),
+    new Map<
+      string,
+      { message: string; replyId: string | null; excerpt?: string }
+    >(),
   );
   const answerAttempts = useRef(new Map<string, string>());
   const tokenRef = useRef(token);
@@ -125,10 +129,10 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     chatId: string;
   } | null>(null);
   const [personalChatId, setPersonalChatId] = useState<string | null>(null);
-  const [replyTarget, setReplyTarget] = useState<Extract<
-    AssistantConversationEntry,
-    { kind: "update" }
-  > | null>(null);
+  const [replyTarget, setReplyTarget] = useState<
+    (AssistantConversationEntry & { excerpt?: string }) | null
+  >(null);
+  const pendingExcerpt = useRef<string | undefined>(undefined);
   const pendingReplyId = useRef<string | null>(null);
   const replyLookupId = useRef<string | null>(null);
   const [replyStatus, setReplyStatus] = useState<
@@ -191,13 +195,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       .aiChats({
         search: chatSearchRef.current,
         conversation_only: conversationEnabledRef.current,
-        ...(scope?.kind === "project" ? { project_id: scope.id } : {}),
-        kind:
-          scope?.kind === "project"
-            ? "work"
-            : scope
-              ? "all"
-              : historyKindRef.current,
+        kind: "all",
       })
       .then(
         (list) => {
@@ -290,6 +288,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     setRunProgress(null);
     setTurns([]);
     setReplyTarget(null);
+    pendingExcerpt.current = undefined;
     pendingReplyId.current = null;
     replyLookupId.current = null;
     setReplyStatus(null);
@@ -429,7 +428,11 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     )
       return Promise.resolve();
     const question = replyTargetRef.current;
-    if (question?.event === "question") {
+    if (
+      question?.kind === "update" &&
+      question.event === "question" &&
+      !question.excerpt
+    ) {
       const destination = conversationStore.getSnapshot().destination;
       if (!destination || destination.chat_id !== chatId.current)
         return Promise.resolve();
@@ -511,6 +514,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     void saveAssistantChat(requestedChatId);
     const requestedTurnId = newId();
     const selectedReply = replyTargetRef.current;
+    pendingExcerpt.current = undefined;
     setReplyTarget(null);
     stopPolling();
     const controller = new AbortController();
@@ -539,6 +543,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
             chatId: requestedChatId,
             turnId: requestedTurnId,
             replyToEntryId: selectedReply?.id,
+            replyExcerpt: selectedReply?.excerpt,
           },
           (progress) => {
             // A run left behind (new scope, chat or session) stays out of view.
@@ -557,7 +562,18 @@ export function useAssistant({ token, act, refresh, items }: Options) {
         setCharacterOutcome("error");
         // Nothing typed is lost: the message goes back in the box and act() shows the error.
         setTurns((t) => t.filter((x) => x.id !== userTurn.id));
-        setReplyTarget((current) => current ?? selectedReply);
+        if (
+          selectedReply &&
+          (!replyTargetRef.current || replyTargetRef.current === selectedReply)
+        ) {
+          // A failed send may follow source revocation. Restore by identity
+          // through a fresh authorized feed, never from the cached payload.
+          pendingReplyId.current = selectedReply.id;
+          pendingExcerpt.current = selectedReply.excerpt;
+          replyLookupId.current = null;
+          setReplyStatus("loading");
+          void conversationStore.refresh();
+        }
         setMessage((draft) => (draft ? `${trimmed}\n\n${draft}` : trimmed));
         await act(async () => {
           throw error;
@@ -753,12 +769,14 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       drafts.current.set(chatId.current, {
         message: messageRef.current,
         replyId: replyTargetRef.current?.id ?? pendingReplyId.current,
+        excerpt: replyTargetRef.current?.excerpt ?? pendingExcerpt.current,
       });
     clearConversation(false);
     const savedDraft = drafts.current.get(id);
     if (savedDraft) {
       setMessage(savedDraft.message);
       pendingReplyId.current = savedDraft.replyId;
+      pendingExcerpt.current = savedDraft.excerpt;
     } else if (initialDraft !== null) setMessage(initialDraft);
     const request = generation.current;
     const restoring = new AbortController();
@@ -993,14 +1011,20 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     const id = pendingReplyId.current ?? replyTargetRef.current?.id;
     const destination = conversation.destination;
     if (!id || !destination || conversation.loading) return;
-    const entry = conversation.entries.find(
-      (entry) => entry.id === id && entry.kind === "update",
-    );
-    if (entry?.kind === "update" && !conversation.error) {
+    const entry = conversation.entries.find((entry) => entry.id === id);
+    if (entry && !conversation.error) {
       pendingReplyId.current = null;
       replyLookupId.current = null;
       setReplyStatus(null);
-      setReplyTarget(entry);
+      const excerpt = replyTargetRef.current?.excerpt ?? pendingExcerpt.current;
+      const text = entry.kind === "turn" ? entry.turn.text : entry.text;
+      if (excerpt && !assistantExcerptMatches(text, excerpt)) {
+        setReplyTarget(null);
+        pendingExcerpt.current = undefined;
+        setReplyStatus("unavailable");
+        return;
+      }
+      setReplyTarget({ ...entry, ...(excerpt ? { excerpt } : {}) });
       return;
     }
     pendingReplyId.current = id;
@@ -1021,14 +1045,22 @@ export function useAssistant({ token, act, refresh, items }: Options) {
         if (!current()) return;
         const restored = conversationStore
           .getSnapshot()
-          .entries.find((entry) => entry.id === id && entry.kind === "update");
-        if (restored?.kind !== "update") {
+          .entries.find((entry) => entry.id === id);
+        if (!restored) {
           setReplyStatus("unavailable");
           return;
         }
         pendingReplyId.current = null;
         replyLookupId.current = null;
-        setReplyTarget(restored);
+        const excerpt = pendingExcerpt.current;
+        const text =
+          restored.kind === "turn" ? restored.turn.text : restored.text;
+        if (excerpt && !assistantExcerptMatches(text, excerpt)) {
+          pendingExcerpt.current = undefined;
+          setReplyStatus("unavailable");
+          return;
+        }
+        setReplyTarget({ ...restored, ...(excerpt ? { excerpt } : {}) });
         setReplyStatus(null);
       })
       .catch(() => {
@@ -1188,15 +1220,37 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     acknowledgeConversation: conversationStore.acknowledge,
     replyTarget,
     replyStatus,
+    selectExcerpt: (entry: AssistantConversationEntry, excerpt: string) => {
+      const current = conversationStore
+        .getSnapshot()
+        .entries.find((value) => value.id === entry.id);
+      const text = current?.kind === "turn" ? current.turn.text : current?.text;
+      if (
+        !current ||
+        !excerpt ||
+        excerpt.length > 2000 ||
+        !text ||
+        !assistantExcerptMatches(text, excerpt)
+      )
+        return false;
+      pendingReplyId.current = null;
+      replyLookupId.current = null;
+      pendingExcerpt.current = excerpt;
+      setReplyStatus(null);
+      setReplyTarget({ ...current, excerpt });
+      return true;
+    },
     selectReply: (
       entry: Extract<AssistantConversationEntry, { kind: "update" }>,
     ) => {
       pendingReplyId.current = null;
       replyLookupId.current = null;
       setReplyStatus(null);
+      pendingExcerpt.current = undefined;
       setReplyTarget(entry);
     },
     clearReply: () => {
+      pendingExcerpt.current = undefined;
       pendingReplyId.current = null;
       replyLookupId.current = null;
       setReplyStatus(null);

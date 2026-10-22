@@ -31,6 +31,7 @@ import { FileText } from "lucide-react";
 import { session } from "../lib/session";
 
 type Props = {
+  hideSourceDetails?: boolean;
   proposal: Proposal;
   items: Item[];
   /** Items as they were when the reply arrived; diffs use these first. */
@@ -324,6 +325,7 @@ function ProposalBody({
   onShowOnCalendar,
   onOpenSource,
   onKeptNote,
+  hideSourceDetails = false,
 }: Props) {
   const count = proposal.actions.length;
   const sessionChange = proposal.session_change;
@@ -345,7 +347,7 @@ function ProposalBody({
       )}
       {/* What the assistant actually read, so the answer can be checked
           against it rather than taken on trust. */}
-      {sources.length > 0 && (
+      {!hideSourceDetails && sources.length > 0 && (
         <details className="ai-source-details">
           <summary>Sources ({sources.length})</summary>
           <div className="ai-sources">

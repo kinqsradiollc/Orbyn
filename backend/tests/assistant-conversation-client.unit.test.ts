@@ -143,3 +143,48 @@ test("conversation navigation rejects mismatched targets and refresh cannot exce
     /does not match/,
   );
 });
+
+test("details transport stays fresh and rejects another message or destination", async () => {
+  const destination = randomUUID(),
+    entry = randomUUID(),
+    turn = randomUUID();
+  let mode = "valid";
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    getToken: () => "fixture",
+    fetch: async (url, options) => {
+      assert.equal(options?.cache, "no-store");
+      assert.ok(
+        String(url).endsWith(
+          `/conversations/${destination}/entries/${entry}/details`,
+        ),
+      );
+      return Response.json({
+        destination_id: mode === "destination" ? randomUUID() : destination,
+        sources: [],
+        entry: {
+          id: mode === "entry" ? randomUUID() : entry,
+          kind: "turn",
+          sequence: "1",
+          revision: 1,
+          created_at: "2026-10-22T00:00:00Z",
+          updated_at: "2026-10-22T00:00:00Z",
+          turn_id: turn,
+          turn: { role: "user", text: "A question", turn_id: turn },
+          reply_to_entry_id: null,
+        },
+      });
+    },
+  });
+  await client.assistantConversationDetails(destination, entry);
+  mode = "entry";
+  await assert.rejects(
+    client.assistantConversationDetails(destination, entry),
+    /do not match/,
+  );
+  mode = "destination";
+  await assert.rejects(
+    client.assistantConversationDetails(destination, entry),
+    /do not match/,
+  );
+});

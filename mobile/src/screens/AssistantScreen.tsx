@@ -4,21 +4,24 @@ import {
   ConversationSeen,
   type ConversationViewport,
 } from "../components/ConversationSeen";
+import {
+  AskAboutMessage,
+  CopyMessage,
+  UserMessage,
+} from "../components/ConversationMessage";
+import { ConversationDetails } from "../components/ConversationDetails";
 import { ConversationUpdate } from "../components/ConversationUpdate";
-import { AssistantProfileStore } from "@orbyn/api-client";
 import { session } from "../lib/session";
 import React, {
   useEffect,
   useLayoutEffect,
   useCallback,
   useMemo,
-  useSyncExternalStore,
   useRef,
   useState,
 } from "react";
 import {
   ActivityIndicator,
-  AppState,
   Platform,
   StyleSheet,
   ScrollView,
@@ -29,6 +32,7 @@ import {
 } from "react-native";
 import {
   assistantSuggestions,
+  assistantDateLabel,
   type AssistantSource,
   type Item,
   type Plan,
@@ -46,7 +50,7 @@ import { SmallAction } from "../components/SmallAction";
 import { AssistantUpcoming } from "../components/AssistantUpcoming";
 import { SavedConversationHistory } from "../components/SavedConversationHistory";
 import { TurnChanges } from "../components/TurnChanges";
-import type { MoreAction } from "../components/MoreMenu";
+import { ActionSheet, type MoreAction } from "../components/MoreMenu";
 import { ProposalReview } from "../components/ProposalReview";
 import { Field } from "../components/Field";
 import { InlineDetails } from "../components/InlineDetails";
@@ -90,35 +94,19 @@ export function AssistantTopBar({
   assistant,
   busy,
   onMenu,
+  onActivity,
 }: {
   assistant: Assistant;
   busy: boolean;
   onMenu: () => void;
+  onActivity: () => void;
 }) {
-  const { agentName, reset, thinking, runProgress, turns, identity } =
-    assistant;
-  const locked = busy || thinking || runProgress?.state === "waiting";
-  const workMode =
-    assistant.historyKind === "work" || assistant.scope?.kind === "project";
-  const switchMode = (kind: "chat" | "work") => {
-    if (locked || kind === (workMode ? "work" : "chat")) return;
-    const draft = assistant.message;
-    if (kind === "chat" && assistant.conversationEnabled) {
-      const owner = session.token;
-      const restoreDraft = () => {
-        if (session.token === owner) assistant.setMessage(draft);
-      };
-      void assistant
-        .openPersonalConversation()
-        .then(restoreDraft, restoreDraft);
-      return;
-    }
-    assistant.reset();
-    assistant.setHistoryKind(kind);
-    if (kind === "chat" || assistant.scope?.kind === "task")
-      assistant.setScope(null);
-    assistant.setMessage(draft);
-  };
+  const { agentName, activeChatId, personalChatId, savedChats } = assistant;
+  const title =
+    activeChatId && activeChatId === personalChatId
+      ? agentName
+      : (savedChats?.find((chat) => chat.id === activeChatId)?.title ??
+        "New chat");
   return (
     <View style={s.topBar}>
       <Pressable
@@ -129,53 +117,12 @@ export function AssistantTopBar({
       >
         <Icon name="menu" size={20} color={colors.text} strokeWidth={2} />
       </Pressable>
-      <View style={s.modeSwitch}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{
-            selected: !workMode,
-            disabled: locked,
-          }}
-          disabled={locked}
-          onPress={() => switchMode("chat")}
-          style={[s.modeButton, !workMode && s.modeSelected]}
-        >
-          <Text style={s.modeText}>
-            {!workMode &&
-            assistant.conversationEnabled &&
-            assistant.activeChatId === assistant.personalChatId
-              ? agentName
-              : "Chat"}
-          </Text>
-        </Pressable>
-        {
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{
-              selected: workMode,
-              disabled: locked,
-            }}
-            disabled={locked}
-            onPress={() => switchMode("work")}
-            style={[s.modeButton, workMode && s.modeSelected]}
-          >
-            <Text style={s.modeText}>Work</Text>
-          </Pressable>
-        }
+      <View style={s.topIdentity}>
+        <Text style={s.modeText} numberOfLines={1} accessibilityRole="header">
+          {title}
+        </Text>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="New chat"
-        disabled={locked || turns.length === 0}
-        onPress={reset}
-        style={({ pressed }) => [
-          s.round,
-          pressed && s.roundPressed,
-          (locked || turns.length === 0) && { opacity: 0.45 },
-        ]}
-      >
-        <Icon name="squarePen" size={19} color={colors.text} />
-      </Pressable>
+      <SmallAction label="Activity" disabled={false} onPress={onActivity} />
     </View>
   );
 }
@@ -206,6 +153,8 @@ export function AssistantScreen({
   conversationVisibility = 0,
   conversationVisible = true,
   centerComposer = false,
+  openActivity = 0,
+  onActivityOpened,
 }: {
   assistant: Assistant;
   /** The side menu of chats and shortcuts, opened from the top bar. */
@@ -223,6 +172,8 @@ export function AssistantScreen({
   conversationVisibility?: number;
   conversationVisible?: boolean;
   centerComposer?: boolean;
+  openActivity?: number;
+  onActivityOpened?: () => void;
   items: Item[];
   busy: boolean;
   /** Opens a page the assistant read, at the line it cited. */
@@ -343,33 +294,23 @@ export function AssistantScreen({
   const actionPending = useRef(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<AiChatSummary | null>(null);
-  const [deleteError, setDeleteError] = useState("");
-  const profileStore = useMemo(
-    () => new AssistantProfileStore(client, () => session.token),
-    [],
-  );
-  const profiles = useSyncExternalStore(
-    profileStore.subscribe,
-    profileStore.getSnapshot,
+  const [activityOpen, setActivityOpen] = useState(false);
+  useEffect(() => {
+    if (openActivity > 0) {
+      setActivityOpen(true);
+      onActivityOpened?.();
+    }
+  }, [openActivity]);
+  const [detailsEntryId, setDetailsEntryId] = useState<string | null>(null);
+  const detailsEntry = assistant.conversation.entries.find(
+    (entry) => entry.id === detailsEntryId,
   );
   useEffect(() => {
-    if (!drawerOpen) return;
-    const refresh = () => {
-      if (AppState.currentState === "active") void profileStore.refresh();
-    };
-    void profileStore.refresh();
-    const listener = AppState.addEventListener("change", refresh);
-    const timer = setInterval(refresh, 15000);
-    return () => {
-      clearInterval(timer);
-      listener.remove();
-      profileStore.reset();
-    };
-  }, [drawerOpen, profileStore, owner]);
-  const agentNameFor = (lane: "background" | "overnight") =>
-    profiles.data?.profiles.find((profile) => profile.lane === lane)?.identity
-      ?.name ?? (lane === "background" ? "Background" : "Overnight");
+    if (!detailsEntry || !assistant.conversation.destination)
+      setDetailsEntryId(null);
+  }, [detailsEntry, assistant.conversation.destination]);
+  const [deleteTarget, setDeleteTarget] = useState<AiChatSummary | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const [agentLane, setAgentLane] = useState<"background" | "overnight" | null>(
     null,
   );
@@ -413,6 +354,8 @@ export function AssistantScreen({
     setDeleteTarget(null);
     setActionError("");
     setAgentLane(null);
+    setActivityOpen(false);
+    setDetailsEntryId(null);
     afterDrawer.current = null;
   }, [owner]);
   const chatActions = (chat: AiChatSummary): MoreAction[] => [
@@ -506,19 +449,18 @@ export function AssistantScreen({
           onDrawerChange(false);
           reset();
         }}
-        agents={[
-          {
-            label: agentNameFor("background"),
-            kind: "Background",
-            onPress: () => closeDrawerThen(() => setAgentLane("background")),
-          },
-          {
-            label: agentNameFor("overnight"),
-            kind: "Overnight",
-            onPress: () => closeDrawerThen(() => setAgentLane("overnight")),
-          },
-        ]}
         shortcuts={[
+          {
+            icon: "folder" as const,
+            label: "New project chat",
+            onPress: () =>
+              closeDrawerThen(() => {
+                const draft = assistant.message;
+                reset();
+                assistant.setHistoryKind("work");
+                assistant.setMessage(draft);
+              }),
+          },
           ...(assistant.legacyHistoryAvailable && assistant.legacyHistoryTarget
             ? [
                 {
@@ -529,11 +471,6 @@ export function AssistantScreen({
                 },
               ]
             : []),
-          {
-            icon: "calendarCheck",
-            label: "Upcoming",
-            onPress: () => closeDrawerThen(() => setUpcomingOpen(true)),
-          },
           ...(onOpenMemory
             ? [
                 {
@@ -557,6 +494,41 @@ export function AssistantScreen({
           onOpenSettings ? () => closeDrawerThen(onOpenSettings) : undefined
         }
       />
+      <ActionSheet
+        visible={activityOpen}
+        label="Activity"
+        title="Activity"
+        onClose={() => setActivityOpen(false)}
+        actions={[
+          { label: "Background", onPress: () => setAgentLane("background") },
+          { label: "Overnight", onPress: () => setAgentLane("overnight") },
+          { label: "Upcoming", onPress: () => setUpcomingOpen(true) },
+        ]}
+      />
+      {detailsEntry && assistant.conversation.destination && (
+        <ConversationDetails
+          key={`${assistant.conversation.destination.id}:${detailsEntry.id}`}
+          destinationId={assistant.conversation.destination.id}
+          entryId={detailsEntry.id}
+          onRefresh={() => void assistant.refreshConversation()}
+          revision={JSON.stringify([
+            detailsEntry.revision,
+            detailsEntry.kind === "update"
+              ? [
+                  detailsEntry.actionable,
+                  detailsEntry.waiting_kind,
+                  detailsEntry.execution_chat_id,
+                ]
+              : null,
+          ])}
+          onClose={() => setDetailsEntryId(null)}
+          onSource={onOpenSource}
+          onWork={(id) => {
+            void openChat(id);
+          }}
+          onActivity={setAgentLane}
+        />
+      )}
       <AssistantAgents
         visible={agentLane !== null}
         lane={agentLane ?? "background"}
@@ -704,7 +676,7 @@ export function AssistantScreen({
           />
           {scope.kind === "project" && onBackToProject && (
             <SmallAction
-              label={`Back to ${scope.name}`}
+              label="Open project"
               disabled={thinking}
               onPress={() => onBackToProject(scope.id)}
             />
@@ -754,15 +726,6 @@ export function AssistantScreen({
             onPress={() => void assistant.openPersonalConversation()}
           />
         )}
-        {assistant.conversationEnabled &&
-          assistant.conversationReady &&
-          activeChatId !== assistant.personalChatId && (
-            <SmallAction
-              label={agentName}
-              disabled={locked}
-              onPress={() => void assistant.openPersonalConversation()}
-            />
-          )}
 
         {assistant.conversation.hasEarlier && (
           <SmallAction
@@ -778,7 +741,20 @@ export function AssistantScreen({
             onPress={() => void assistant.refreshConversation()}
           />
         )}
-        {assistant.conversationItems.map((item) => {
+        {assistant.conversationItems.map((item, index) => {
+          const entryDate = assistant.conversation.entries.find(
+            (entry) => entry.id === item.id,
+          );
+          const previousDate = assistant.conversation.entries.find(
+            (entry) => entry.id === assistant.conversationItems[index - 1]?.id,
+          );
+          const date = entryDate
+            ? assistantDateLabel(
+                entryDate.created_at,
+                previousDate?.created_at,
+                Intl.DateTimeFormat().resolvedOptions().timeZone,
+              )
+            : null;
           const wrap = (children: React.ReactNode) => (
             <ConversationSeen
               key={item.id}
@@ -791,6 +767,8 @@ export function AssistantScreen({
                 !agentLane &&
                 !upcomingOpen &&
                 !savedHistoryOpen &&
+                !detailsEntryId &&
+                !activityOpen &&
                 !renameTarget &&
                 !deleteTarget
               }
@@ -799,6 +777,16 @@ export function AssistantScreen({
               focused={item.sequence === assistant.focusedConversationSequence}
               onFocus={onConversationFocus}
             >
+              {date && (
+                <Text
+                  style={[
+                    shared.small,
+                    { textAlign: "center", marginVertical: 16 },
+                  ]}
+                >
+                  {date}
+                </Text>
+              )}
               {children}
             </ConversationSeen>
           );
@@ -811,24 +799,50 @@ export function AssistantScreen({
                 onReply={() => assistant.selectReply(item.entry)}
                 onWork={(id) => void openChat(id)}
                 onActivity={setAgentLane}
-                onSource={onOpenSource}
-                onRefresh={() => void assistant.refreshConversation()}
+                onSelectExcerpt={(excerpt) =>
+                  assistant.selectExcerpt(item.entry, excerpt)
+                }
+                onDetails={() => setDetailsEntryId(item.entry.id)}
               />,
             );
           const turn = item.turn;
+          const retainedEntry = assistant.conversation.entries.find(
+            (entry) => entry.id === item.id,
+          );
+          const askAbout = retainedEntry ? (
+            <AskAboutMessage
+              text={
+                retainedEntry.kind === "turn"
+                  ? retainedEntry.turn.text
+                  : retainedEntry.text
+              }
+              onSelect={(excerpt) =>
+                assistant.selectExcerpt(retainedEntry, excerpt)
+              }
+            />
+          ) : null;
           return wrap(
             turn.role === "user" ? (
               <View key={turn.id} style={s.userRow}>
                 <View style={s.userBubble}>
-                  <Text selectable style={s.userText}>
-                    {turn.text}
-                  </Text>
+                  <UserMessage text={turn.text} textStyle={s.userText} />
+                </View>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                  }}
+                >
+                  <CopyMessage text={turn.text} />
+                  {askAbout}
                 </View>
               </View>
             ) : (
               <View key={turn.id} style={s.botRow}>
                 <View style={s.botBubble}>
                   <ProposalReview
+                    hideSourceDetails={!!retainedEntry}
                     proposal={turn.proposal}
                     items={items}
                     before={turn.before}
@@ -884,6 +898,20 @@ export function AssistantScreen({
                     </Text>
                   ))}
                   <ChatTrace trace={turn.trace} />
+                  <View
+                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}
+                  >
+                    <CopyMessage text={turn.proposal.summary} />
+                    {retainedEntry && (
+                      <SmallAction
+                        quiet
+                        label="Details"
+                        disabled={false}
+                        onPress={() => setDetailsEntryId(retainedEntry.id)}
+                      />
+                    )}
+                    {askAbout}
+                  </View>
                 </View>
               </View>
             ),
@@ -1240,6 +1268,9 @@ export function AssistantComposer({
   const { fontScale, width } = useWindowDimensions();
   const [inputHeight, setInputHeight] = useState(44);
   const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+  useEffect(() => {
+    if (assistant.replyTarget) inputRef.current?.focus();
+  }, [assistant.replyTarget?.id, assistant.replyTarget?.excerpt]);
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
     const element = inputRef.current as unknown as HTMLTextAreaElement | null;
@@ -1260,7 +1291,7 @@ export function AssistantComposer({
   const suggestions = suggestionsFor(scope);
   return (
     <View>
-      {workMode && (
+      {needsProject && (
         <WorkProjectPicker assistant={assistant} disabled={locked} />
       )}
       {!!assistant.replyStatus && (
@@ -1280,7 +1311,11 @@ export function AssistantComposer({
       {assistant.replyTarget && (
         <View style={s.replyContext}>
           <Text numberOfLines={2} style={[shared.small, s.replyContextText]}>
-            Replying to: {assistant.replyTarget.text}
+            Replying to:{" "}
+            {assistant.replyTarget.excerpt ??
+              (assistant.replyTarget.kind === "turn"
+                ? assistant.replyTarget.turn.text
+                : assistant.replyTarget.text)}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -1552,22 +1587,6 @@ const s = themed(() =>
       paddingVertical: 6,
     },
     newChat: { flex: 1, justifyContent: "center", minWidth: 0 },
-    modeSwitch: {
-      flex: 1,
-      minWidth: 0,
-      flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent: "center",
-      gap: 4,
-    },
-    modeButton: {
-      flexShrink: 1,
-      minHeight: 44,
-      justifyContent: "center",
-      paddingHorizontal: 16,
-      borderRadius: radii.pill,
-    },
-    modeSelected: { backgroundColor: colors.surfaceMuted },
     modeText: { color: colors.text, fontSize: 15, fontFamily: fonts.medium },
     round: {
       width: controls.tap,
@@ -1639,7 +1658,7 @@ const s = themed(() =>
       marginBottom: 12,
     },
     thread: { gap: 12, marginBottom: 14 },
-    userRow: { flexDirection: "row", justifyContent: "flex-end" },
+    userRow: { flexDirection: "column", alignItems: "flex-end" },
     userBubble: {
       maxWidth: "85%",
       backgroundColor: colors.surfaceMuted,

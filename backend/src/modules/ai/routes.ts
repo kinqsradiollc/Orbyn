@@ -187,6 +187,7 @@ async function prepareChatTurn(u: UserRow, d: ChatRequest, db: Db) {
     chatId,
     turnId,
     d.reply_to_entry_id,
+    d.reply_excerpt,
   );
   const history = await beginChatTurn(
     u,
@@ -201,12 +202,15 @@ async function prepareChatTurn(u: UserRow, d: ChatRequest, db: Db) {
   );
   if (conversation?.identity.reply_to_entry_id)
     await db.query(
-      `UPDATE assistant_conversation_entries SET reply_to_entry_id=$3
+      `UPDATE assistant_conversation_entries SET reply_to_entry_id=$3,
+       payload=CASE WHEN $4::text IS NULL THEN payload-'reply_excerpt' ELSE jsonb_set(payload,'{reply_excerpt}',to_jsonb($4::text)) END,
+       revision=revision+1,updated_at=clock_timestamp()
       WHERE destination_id=$1 AND turn_id=$2 AND role='user'`,
       [
         conversation.identity.destination_id,
         turnId,
         conversation.identity.reply_to_entry_id,
+        conversation.identity.reply_excerpt ?? null,
       ],
     );
   return {
@@ -407,8 +411,11 @@ export async function aiRoutes(app: FastifyInstance) {
         if (!turn || turn.text !== submission.message.slice(0, 12000))
           fail(409, "This turn ID belongs to a different message.");
         const target = (
-          await db.query<{ reply_to_entry_id: string | null }>(
-            `SELECT e.reply_to_entry_id
+          await db.query<{
+            reply_to_entry_id: string | null;
+            reply_excerpt: string | null;
+          }>(
+            `SELECT e.reply_to_entry_id,e.payload->>'reply_excerpt' AS reply_excerpt
           FROM assistant_conversation_entries e JOIN assistant_conversation_streams s ON s.id=e.destination_id
           WHERE s.owner_id=$1 AND s.chat_id=$2 AND e.turn_id=$3 AND e.role='user'`,
             [u.id, submission.chat_id, submission.turn_id],
@@ -419,6 +426,10 @@ export async function aiRoutes(app: FastifyInstance) {
           (submission.reply_to_entry_id ?? null)
         )
           fail(409, "This turn ID belongs to a different reply target.");
+        if (
+          (target?.reply_excerpt ?? null) !== (submission.reply_excerpt ?? null)
+        )
+          fail(409, "This turn ID belongs to a different excerpt.");
         return {
           id: existing.id,
           chat_id: submission.chat_id,

@@ -864,6 +864,32 @@ registered conversation destinations, keeping automated execution chats in work
 views. Omitted/false values preserve legacy listing behavior. The filter does
 not change direct chat authorization or run-detail access; rollback ignores it.
 
+### Conversation excerpts and message details (session)
+
+`POST /ai/chat/start` accepts an optional `reply_excerpt` (1–2,000 characters)
+with `reply_to_entry_id`. The server matches the selected visible words against
+that currently authorized entry using the shared light-Markdown renderer and
+whitespace normalization, and pins its revision. It rechecks the entry revision
+and transitive source authority before provider requests and effects. Changed
+or invented excerpts are rejected; an excerpt without a target is invalid.
+The excerpt is separate from the person's message and never implicitly answers
+or resumes a waiting job. The explicit Answer endpoint below retains that role.
+
+A submission retry must keep the same turn ID, message, target and excerpt.
+The retained user turn preserves excerpt identity after a completed run clears
+its execution checkpoint. Changing any of those values under the same turn ID
+returns `409` rather than starting different work.
+
+`GET /me/assistant/conversations/:id/entries/:entryId/details` returns
+`{ destination_id, entry, sources }` while unified conversations are enabled.
+`entry` has the feed's current waiting/execution projection. `sources` contains
+currently authorized `{ kind: "doc" | "task" | "project", id, title }` rows,
+bounded to 500. Titles are resolved in a primary read-only repeatable-read
+transaction; internal provenance edges are not turned into display labels.
+The response is private and `no-store`, and an unavailable entry returns `404`.
+Reading details does not acknowledge a message, admit work or change permissions.
+These built-in assistant controls are excluded from connected-agent capabilities.
+
 ### `POST /me/assistant/conversations/:id/entries/:entryId/answer` (session)
 
 With unified conversations enabled, accepts `{ answer, turn_id }` for the selected

@@ -3671,3 +3671,72 @@ test("multiple pollers write presence once per grace interval and fresh reads by
   await read();
   assert.notEqual((await timestamp()).revision, expired.revision);
 });
+
+test("selected excerpt submission retries stay exact after the runtime checkpoint is cleared", async () => {
+  const { env } = await import("../src/config/env.js");
+  const { retainConversationTurn } =
+    await import("../src/modules/assistant-workspace/conversation-storage.js");
+  const previous = env.ASSISTANT_CONVERSATION_ENABLED;
+  env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  try {
+    const user = await register();
+    const opened = await app.inject({
+      method: "POST",
+      url: "/me/assistant/conversation",
+      headers: auth(user.token),
+    });
+    assert.equal(opened.statusCode, 200, opened.body);
+    const destination = opened.json(),
+      sourceTurn = randomUUID(),
+      turn = randomUUID();
+    await retainConversationTurn(pool, user.id, destination.chat_id, {
+      role: "user",
+      text: "Review the selected phrase and the other phrase.",
+      turn_id: sourceTurn,
+    });
+    const entry = (
+      await pool.query<{ id: string }>(
+        "SELECT id FROM assistant_conversation_entries WHERE destination_id=$1 AND turn_id=$2",
+        [destination.id, sourceTurn],
+      )
+    ).rows[0];
+    const payload = {
+      chat_id: destination.chat_id,
+      turn_id: turn,
+      message: "Explain this",
+      reply_to_entry_id: entry.id,
+      reply_excerpt: "selected phrase",
+      timezone: "UTC",
+    };
+    const submit = (value = payload) =>
+      app.inject({
+        method: "POST",
+        url: "/ai/chat/start",
+        remoteAddress: nextAddress(),
+        headers: auth(user.token),
+        payload: value,
+      });
+    const started = await submit();
+    assert.equal(started.statusCode, 202, started.body);
+    await pool.query(
+      "UPDATE ai_jobs SET state='done',run_state=NULL WHERE id=$1",
+      [started.json().id],
+    );
+    const retry = await submit();
+    assert.equal(retry.statusCode, 202, retry.body);
+    assert.equal(retry.json().id, started.json().id);
+    const changed = await submit({ ...payload, reply_excerpt: "other phrase" });
+    assert.equal(changed.statusCode, 409, changed.body);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS count FROM ai_jobs WHERE user_id=$1 AND submission_key=$2",
+          [user.id, turn],
+        )
+      ).rows[0].count,
+      1,
+    );
+  } finally {
+    env.ASSISTANT_CONVERSATION_ENABLED = previous;
+  }
+});

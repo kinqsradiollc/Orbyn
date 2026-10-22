@@ -237,6 +237,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
   const assistant = useAssistant({ token, act, refresh, items });
   /** The assistant's side menu of chats and shortcuts. */
   const [assistantMenu, setAssistantMenu] = useState(false);
+  const [assistantActivity, setAssistantActivity] = useState(0);
   // News from another device may be a session: planned time is asked again.
   usePresence(
     token,
@@ -1591,6 +1592,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                   assistant={assistant}
                   busy={busy}
                   onMenu={() => setAssistantMenu(true)}
+                  onActivity={() => setAssistantActivity((value) => value + 1)}
                 />
               </View>
             </View>
@@ -1667,7 +1669,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                 {tab !== "AI" && tab !== "Calendar" && (
                   <View key={`head-${tab}`}>
                     <Text style={shared.title}>{tabTitle(tab, user)}</Text>
-                    {tab === "Today" && tabSubtitle(tab) && (
+                    {tab === "Today" && !!tabSubtitle(tab) && (
                       <Text style={[shared.subtitle, s.subtitle]}>
                         {tabSubtitle(tab)}
                       </Text>
@@ -1897,6 +1899,8 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                       conversationVisible={!sheet && !assistantMenu}
                       centerComposer={centerNewChat}
                       assistant={assistant}
+                      openActivity={assistantActivity}
+                      onActivityOpened={() => setAssistantActivity(0)}
                       drawerOpen={assistantMenu}
                       onDrawerChange={setAssistantMenu}
                       onOpenMemory={() => present({ sheet: "memory" })}

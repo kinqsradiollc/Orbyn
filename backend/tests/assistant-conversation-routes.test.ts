@@ -1137,3 +1137,123 @@ test("registered conversations withhold unknown legacy poll results and recheck 
     await ai.close();
   }
 });
+
+test("message details resolve current source titles and withhold revoked entries", async () => {
+  const owner = await person(),
+    other = await person();
+  const destination = (
+    await h.call(owner.token, "POST", "/me/assistant/conversation")
+  ).json();
+  const turn = randomUUID(),
+    doc = randomUUID();
+  await transaction((db) =>
+    retainConversationTurn(db, owner.id, destination.chat_id, {
+      role: "user",
+      text: "Read the research page",
+      turn_id: turn,
+    }),
+  );
+  const entry = (
+    await pool.query<{ id: string }>(
+      "SELECT id FROM assistant_conversation_entries WHERE destination_id=$1 AND turn_id=$2",
+      [destination.id, turn],
+    )
+  ).rows[0];
+  await pool.query(
+    "INSERT INTO docs(id,user_id,title) VALUES($1,$2,'Current research title')",
+    [doc, owner.id],
+  );
+  await pool.query(
+    "INSERT INTO assistant_conversation_entry_sources(entry_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [entry.id, doc],
+  );
+  const url = `/me/assistant/conversations/${destination.id}/entries/${entry.id}/details`;
+  const result = await h.call(owner.token, "GET", url);
+  assert.equal(result.statusCode, 200, result.body);
+  assert.match(result.headers["cache-control"] as string, /no-store/);
+  assert.deepEqual(result.json().sources, [
+    { kind: "doc", id: doc, title: "Current research title" },
+  ]);
+  assert.equal((await h.call(other.token, "GET", url)).statusCode, 404);
+  await pool.query("UPDATE docs SET title='Renamed research' WHERE id=$1", [
+    doc,
+  ]);
+  assert.equal(
+    (await h.call(owner.token, "GET", url)).json().sources[0].title,
+    "Renamed research",
+  );
+  await pool.query("UPDATE docs SET user_id=$2 WHERE id=$1", [doc, other.id]);
+  const revoked = await h.call(owner.token, "GET", url);
+  assert.equal(revoked.statusCode, 404);
+  assert.ok(!revoked.body.includes("Renamed research"));
+});
+
+test("selected excerpts use an exact authorized message and recheck its revision", async () => {
+  const { prepareConversationContext, assertConversationContext } =
+    await import("../src/modules/assistant-workspace/conversation-context.js");
+  const owner = await person();
+  const destination = (
+    await h.call(owner.token, "POST", "/me/assistant/conversation")
+  ).json();
+  const turn = randomUUID();
+  await transaction((db) =>
+    retainConversationTurn(db, owner.id, destination.chat_id, {
+      role: "user",
+      text: "Explain this selected phrase in context.",
+      turn_id: turn,
+    }),
+  );
+  const entry = (
+    await pool.query<{ id: string }>(
+      "SELECT id FROM assistant_conversation_entries WHERE destination_id=$1 AND turn_id=$2",
+      [destination.id, turn],
+    )
+  ).rows[0];
+  const prepared = await transaction((db) =>
+    prepareConversationContext(
+      db,
+      owner.id,
+      destination.chat_id,
+      randomUUID(),
+      entry.id,
+      "selected phrase",
+    ),
+  );
+  assert.equal(prepared?.identity.reply_excerpt, "selected phrase");
+  assert.match(prepared!.history.at(-1)!.content, /selected phrase/);
+  await assertConversationContext(pool, owner.id, prepared!.identity);
+  await assert.rejects(
+    transaction((db) =>
+      prepareConversationContext(
+        db,
+        owner.id,
+        destination.chat_id,
+        randomUUID(),
+        entry.id,
+        "made-up words",
+      ),
+    ),
+    /excerpt changed/,
+  );
+  await assert.rejects(
+    transaction((db) =>
+      prepareConversationContext(
+        db,
+        owner.id,
+        destination.chat_id,
+        randomUUID(),
+        undefined,
+        "selected phrase",
+      ),
+    ),
+    /Select a message/,
+  );
+  await pool.query(
+    "UPDATE assistant_conversation_entries SET revision=revision+1 WHERE id=$1",
+    [entry.id],
+  );
+  await assert.rejects(
+    assertConversationContext(pool, owner.id, prepared!.identity),
+    /excerpt changed/,
+  );
+});
