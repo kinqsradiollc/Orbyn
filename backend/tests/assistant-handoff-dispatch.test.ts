@@ -54,7 +54,10 @@ after(async () => {
   await pool.end();
 });
 
-async function fixture(producerLane: "background" | "overnight" = "overnight") {
+async function fixture(
+  producerLane: "background" | "overnight" = "overnight",
+  prepare?: (owner: string, job: string, doc: string) => Promise<void>,
+) {
   const owner = randomUUID();
   owners.push(owner);
   await pool.query(
@@ -98,6 +101,7 @@ async function fixture(producerLane: "background" | "overnight" = "overnight") {
     "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
     [job, doc],
   );
+  await prepare?.(owner, job, doc);
   const source = await handoffProducerEvidence(pool, owner, job);
   const handoff = await createRequestedAssistantHandoff(owner, {
     producer_job_id: job,
@@ -108,6 +112,192 @@ async function fixture(producerLane: "background" | "overnight" = "overnight") {
   });
   return { owner, job, doc, handoff };
 }
+
+test("handoffs inherit retained binding context and reject later source-grant revocation", async () => {
+  const { env } = await import("../src/config/env.js");
+  const { transaction } = await import("../src/db/pool.js");
+  const { openPersonalConversation } =
+    await import("../src/modules/assistant-workspace/conversation-storage.js");
+  const { bindConversationWork, publishConversationIntent } =
+    await import("../src/modules/assistant-workspace/conversation-delivery.js");
+  const { assistantJobSourcesVisible } =
+    await import("../src/lib/assistant-job-sources.js");
+  const previous = env.ASSISTANT_CONVERSATION_ENABLED;
+  env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  let sourceGrant = "",
+    entry = "";
+  let fixtureOwner = "";
+  try {
+    const f = await fixture("overnight", async (owner, producer, doc) => {
+      fixtureOwner = owner;
+      const home = await transaction((db) =>
+        openPersonalConversation(db, owner),
+      );
+      await pool.query(
+        "INSERT INTO agent_settings(user_id,reminder_nudges) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET reminder_nudges=$2",
+        [owner, { quiet_start: "00:00", quiet_end: "00:00" }],
+      );
+      sourceGrant = (
+        await pool.query(
+          "INSERT INTO agent_grants(user_id,kind,client_id,access,personal,team_ids) VALUES($1,'oauth','https://handoff-context.invalid','write',true,'{}') RETURNING id",
+          [owner],
+        )
+      ).rows[0].id;
+      const chat = randomUUID(),
+        job = randomUUID();
+      await pool.query(
+        "INSERT INTO ai_chats(id,user_id,title,origin) VALUES($1,$2,'Selected source','task')",
+        [chat, owner],
+      );
+      await pool.query(
+        "INSERT INTO ai_jobs(id,user_id,chat_id,state,run_origin,sources_checked) VALUES($1,$2,$3,'queued','task',true)",
+        [job, owner, chat],
+      );
+      await transaction((db) =>
+        bindConversationWork(db, {
+          ownerId: owner,
+          work: { kind: "job", id: job },
+          lane: "background",
+          timezone: "UTC",
+          destinationId: home.id,
+          grantId: sourceGrant,
+        }),
+      );
+      await pool.query(
+        "UPDATE ai_jobs SET state='done',result=$2 WHERE id=$1",
+        [job, { answer: "Selected finding" }],
+      );
+      const intent = (
+        await pool.query(
+          "SELECT i.id FROM assistant_delivery_intents i JOIN assistant_delivery_bindings b ON b.id=i.binding_id WHERE b.work_id=$1",
+          [job],
+        )
+      ).rows[0].id;
+      await transaction((db) => publishConversationIntent(db, intent));
+      entry = (
+        await pool.query(
+          "SELECT id FROM assistant_conversation_entries WHERE intent_id=$1",
+          [intent],
+        )
+      ).rows[0].id;
+      const binding = await transaction((db) =>
+        bindConversationWork(db, {
+          ownerId: owner,
+          work: { kind: "job", id: producer },
+          lane: "overnight",
+          timezone: "UTC",
+          destinationId: home.id,
+          sourcesChecked: true,
+          sources: [{ kind: "doc", id: doc }],
+        }),
+      );
+      assert.ok(binding);
+      await pool.query(
+        "INSERT INTO assistant_delivery_entry_sources(binding_id,source_entry_id) VALUES($1,$2)",
+        [binding, entry],
+      );
+    });
+    assert.equal(await dispatchAssistantHandoff("background"), f.handoff);
+    const receiver = (
+      await pool.query(
+        "SELECT h.recipient_job_id,j.chat_id,j.turn_id,j.run_state FROM assistant_handoffs h JOIN ai_jobs j ON j.id=h.recipient_job_id WHERE h.id=$1",
+        [f.handoff],
+      )
+    ).rows[0];
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT 1 FROM assistant_turn_entry_sources WHERE chat_id=$1 AND turn_id=$2 AND source_entry_id=$3",
+          [receiver.chat_id, receiver.turn_id, entry],
+        )
+      ).rowCount,
+      1,
+    );
+    const { SWEEP_RULES } = await import("../src/lib/sweep.js");
+    const rule = SWEEP_RULES.find((item) => item.key === "ai_jobs")!;
+    await pool.query(
+      "UPDATE ai_jobs SET created_at=now()-interval '2 days' WHERE id=ANY($1::uuid[])",
+      [[f.job, receiver.recipient_job_id]],
+    );
+    assert.equal(
+      (
+        await pool.query(
+          `SELECT id FROM ai_jobs WHERE id=$1 AND (${rule.where})`,
+          [f.job],
+        )
+      ).rowCount,
+      0,
+      "An accepted handoff preserves its producing evidence",
+    );
+    const { captureChatSweepJob, completeChatMaintenance } =
+      await import("../src/modules/ai/providers/chat-maintenance.js");
+    const producerChat = (
+      await pool.query("SELECT chat_id FROM ai_jobs WHERE id=$1", [f.job])
+    ).rows[0].chat_id;
+    const compaction = await transaction((db) =>
+      captureChatSweepJob(db, f.owner, producerChat),
+    );
+    let providerCalls = 0;
+    await assert.rejects(
+      completeChatMaintenance(f.owner, compaction, [], {
+        send: async () => {
+          providerCalls++;
+          return "{}";
+        },
+      }),
+      /maintenance source changed/,
+    );
+    assert.equal(
+      providerCalls,
+      0,
+      "Compaction must not transmit an active handoff's execution context",
+    );
+    await assertReceivingHandoffCurrent(
+      f.owner,
+      receiver.recipient_job_id,
+      f.handoff,
+      receiver.run_state.assistant_rules_revision,
+    );
+    await pool.query("UPDATE agent_grants SET revoked_at=now() WHERE id=$1", [
+      sourceGrant,
+    ]);
+    assert.equal(
+      (
+        await pool.query(
+          `SELECT j.id FROM ai_jobs j WHERE j.id=$2 AND ${assistantJobSourcesVisible("j", "$1", false)}`,
+          [f.owner, receiver.recipient_job_id],
+        )
+      ).rowCount,
+      0,
+    );
+    await assert.rejects(
+      assertReceivingHandoffCurrent(
+        f.owner,
+        receiver.recipient_job_id,
+        f.handoff,
+        receiver.run_state.assistant_rules_revision,
+      ),
+      HttpError,
+    );
+    await pool.query("UPDATE ai_jobs SET state='failed' WHERE id=$1", [
+      receiver.recipient_job_id,
+    ]);
+    assert.equal(
+      (
+        await pool.query(
+          `SELECT id FROM ai_jobs WHERE id=$1 AND (${rule.where})`,
+          [receiver.recipient_job_id],
+        )
+      ).rowCount,
+      0,
+      "A finished recipient survives until acknowledgement settles its handoff",
+    );
+  } finally {
+    if (fixtureOwner)
+      await pool.query("DELETE FROM users WHERE id=$1", [fixtureOwner]);
+    env.ASSISTANT_CONVERSATION_ENABLED = previous;
+  }
+});
 
 test("receiving worker queues separate source-linked work and settles its estimate", async () => {
   const { owner, job, doc, handoff } = await fixture();
@@ -256,4 +446,71 @@ test("overnight handoffs wait for their own enabled window and carry its deadlin
   assert.ok(
     Date.parse(received.run_state.request.automation.end_at) > now.getTime(),
   );
+});
+
+test("handoffs keep an admitted origin and fail rather than reroute after its deletion", async () => {
+  const { env } = await import("../src/config/env.js");
+  const { transaction } = await import("../src/db/pool.js");
+  const { openPersonalConversation, registerOriginConversation } =
+    await import("../src/modules/assistant-workspace/conversation-storage.js");
+  const { bindConversationWork } =
+    await import("../src/modules/assistant-workspace/conversation-delivery.js");
+  const previous = env.ASSISTANT_CONVERSATION_ENABLED;
+  env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  try {
+    for (const retired of [false, true]) {
+      const f = await fixture();
+      const home = await transaction((db) =>
+        openPersonalConversation(db, f.owner),
+      );
+      const originChat = randomUUID();
+      await pool.query(
+        "INSERT INTO ai_chats(id,user_id,title) VALUES($1,$2,'Requested origin')",
+        [originChat, f.owner],
+      );
+      const origin = await transaction((db) =>
+        registerOriginConversation(db, f.owner, originChat),
+      );
+      await transaction((db) =>
+        bindConversationWork(db, {
+          ownerId: f.owner,
+          work: { kind: "job", id: f.job },
+          lane: "overnight",
+          timezone: "UTC",
+          destinationId: origin.id,
+          sourcesChecked: true,
+          sources: [{ kind: "doc", id: f.doc }],
+        }),
+      );
+      if (retired)
+        await pool.query("DELETE FROM ai_chats WHERE id=$1", [originChat]);
+      assert.equal(await dispatchAssistantHandoff("background"), f.handoff);
+      const receipt = (
+        await pool.query(
+          "SELECT status,failure,recipient_job_id FROM assistant_handoffs WHERE id=$1",
+          [f.handoff],
+        )
+      ).rows[0];
+      if (retired) {
+        assert.equal(receipt.status, "failed");
+        assert.equal(receipt.failure, "access");
+        assert.equal(receipt.recipient_job_id, null);
+      } else {
+        assert.equal(receipt.status, "accepted");
+        const binding = (
+          await pool.query(
+            "SELECT destination_id FROM assistant_delivery_bindings WHERE work_kind='job' AND work_id=$1",
+            [receipt.recipient_job_id],
+          )
+        ).rows[0];
+        assert.equal(binding.destination_id, origin.id);
+        assert.notEqual(binding.destination_id, home.id);
+        await pool.query("UPDATE ai_jobs SET state='failed' WHERE id=$1", [
+          receipt.recipient_job_id,
+        ]);
+      }
+    }
+  } finally {
+    env.ASSISTANT_CONVERSATION_ENABLED = previous;
+  }
 });

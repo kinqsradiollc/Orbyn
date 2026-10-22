@@ -188,6 +188,91 @@ test("pause after human edits cancels queued, running and waiting work without r
   }
 });
 
+test("pausing a page schedule preserves healthy admitted work and blocks the next occurrence", async () => {
+  for (const state of ["queued", "running", "waiting"]) {
+    const f = await fixture();
+    const q = await queued(f);
+    let lease: string | null = null;
+    if (state !== "queued") {
+      const run = await transaction((db) =>
+        claimMaintainedPageRun(db, "background", time, q.id),
+      );
+      lease = run!.lease_token!;
+      if (state === "waiting") {
+        await pool.query("UPDATE agent_grants SET trust='ask' WHERE id=$1", [
+          f.principal.grant_id,
+        ]);
+        await transaction((db) =>
+          stageMaintainedPageRun(db, q.id, lease!, proposal, 10, time),
+        );
+        let review: unknown;
+        try {
+          await transaction((db) =>
+            applyMaintainedPageRun(db, q.id, lease!, time),
+          );
+        } catch (error) {
+          review = error;
+        }
+        assert.ok(review);
+        await transaction((db) =>
+          waitMaintainedPageRun(db, q.id, lease!, review, time),
+        );
+      }
+    }
+    const paused = await transaction((db) =>
+      updateMaintainedPageBinding(
+        db,
+        f.user,
+        f.principal,
+        f.doc.id,
+        f.binding.id,
+        { expected_revision: f.binding.revision, paused: true },
+      ),
+    );
+    await transaction((db) =>
+      expireMaintainedPageRuns(db, "background", later(1000)),
+    );
+    const saved = (
+      await pool.query(
+        "SELECT state,binding_revision FROM assistant_page_runs WHERE id=$1",
+        [q.id],
+      )
+    ).rows[0];
+    assert.equal(saved.state, state);
+    assert.equal(saved.binding_revision, paused.revision);
+    assert.equal(
+      await transaction((db) =>
+        queueMaintainedPageRun(db, f.user, f.principal, f.binding.id, time, {
+          kind: "background",
+        }),
+      ),
+      null,
+    );
+    if (state === "queued")
+      assert.equal(
+        (
+          await transaction((db) =>
+            claimMaintainedPageRun(db, "background", time, q.id),
+          )
+        )?.id,
+        q.id,
+      );
+    if (state === "running")
+      assert.equal(
+        (
+          await transaction((db) =>
+            guardMaintainedPageRun(db, q.id, lease!, time),
+          )
+        ).run.id,
+        q.id,
+      );
+    await pool.query(
+      "UPDATE assistant_page_runs SET state='cancelled',lease_token=NULL,lease_expires_at=NULL,waiting_id=NULL WHERE id=$1",
+      [q.id],
+    );
+  }
+});
+
 test("page reclaim keeps the same cumulative per-run limit", async () => {
   const f = await fixture("FREQ=DAILY", 5000);
   await replaceAssistantBudget(f.user.id, "background", {

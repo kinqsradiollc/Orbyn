@@ -4,6 +4,7 @@ import { queueAgentNightUpdate } from "../modules/agent-channels/outbox.js";
 import { transaction } from "../db/pool.js";
 import { buildOvernightSection } from "./digest.js";
 import { announceTo } from "../modules/presence/live.js";
+import { queueConversationNightSummary } from "../modules/assistant-workspace/conversation-night.js";
 
 /** Send one morning notice and refresh its saved card as late work settles. */
 export async function queueOvernightNotices(
@@ -41,6 +42,29 @@ export async function queueOvernightNotices(
         "UPDATE assistant_nights SET notice_checked_at=clock_timestamp() WHERE id=$1",
         [night.id],
       );
+      if (
+        await queueConversationNightSummary(db, night.user_id, night.id, now)
+      ) {
+        // Conversation delivery replaces Orbyn's in-app/push owner only.
+        // Existing explicitly configured outward channels keep their own outbox
+        // and dispatch-time consent/source checks, without a second app alert.
+        if (!night.notified_at) {
+          const section = await buildOvernightSection(
+            night.user_id,
+            addDays(night.day, 1),
+            night.id,
+          );
+          if (section) {
+            await queueAgentNightUpdate(db, night.id, night.user_id);
+            await queueTeamsNightUpdate(db, night.id, night.user_id);
+            await db.query(
+              "UPDATE assistant_nights SET notified_at=$2 WHERE id=$1",
+              [night.id, now],
+            );
+          }
+        }
+        continue;
+      }
       const section = await buildOvernightSection(
         night.user_id,
         addDays(night.day, 1),

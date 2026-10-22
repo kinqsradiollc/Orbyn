@@ -27,6 +27,8 @@ export const savedChatTurn = z
     /** Context sent back to the model, including the change outcome. */
     history_text: z.string().max(CHAT_TURN_CHARS).optional(),
     turn_id: z.uuid().optional(),
+    /** Retained user-selected excerpt for exact submission retry identity. */
+    reply_excerpt: z.string().min(1).max(2000).optional(),
     proposal_id: z.uuid().optional(),
     /** Capability job containing the changes and their Undo records. */
     changes_job: z.string().min(1).max(64).optional(),
@@ -103,6 +105,8 @@ export type ActiveChatJob = {
 };
 
 export type AiChat = AiChatSummary & {
+  has_legacy_history?: boolean;
+  legacy_history_destination_id?: string | null;
   active_job?: ActiveChatJob | null;
   turns: SavedChatTurn[];
   trace: ChatTraceEntry[];

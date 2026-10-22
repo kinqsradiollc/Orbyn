@@ -215,6 +215,183 @@ after(async () => {
   ]);
 });
 
+test("a retained foreground answer and two background calls keep independent execution and publication", async () => {
+  const { env } = await import("../src/config/env.js");
+  const { startAssistantAutomation } =
+    await import("../src/modules/ai/agent/run.js");
+  const { flushConversationDeliveries } =
+    await import("../src/modules/assistant-workspace/conversation-delivery.js");
+  const previous = env.ASSISTANT_CONVERSATION_ENABLED;
+  env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  const gates = new Map<string, () => void>();
+  const entered = new Set<string>();
+  const answerFor = (name: string): MockReply => ({
+    name: "finish",
+    arguments: { answer: `${name} finished independently`, steps: [] },
+  });
+  respond = async (request) => {
+    const text = request.messages
+      .map((message) => message.content ?? "")
+      .join("\n");
+    const name = [
+      "isolation-followup",
+      "isolation-background-a",
+      "isolation-background-b",
+      "isolation-foreground",
+    ].find((marker) => text.includes(marker));
+    assert.ok(
+      name,
+      "Only this test's independent calls reach the fixture provider",
+    );
+    if (name !== "isolation-followup" && !entered.has(name)) {
+      entered.add(name);
+      await new Promise<void>((resolve) => gates.set(name, resolve));
+    }
+    return toolNames(request).includes("finish")
+      ? answerFor(name)
+      : { content: `${name} finished independently` };
+  };
+  const waitFor = async (predicate: () => boolean) => {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      if (predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.fail(
+      "Independent provider calls did not reach their observable boundary",
+    );
+  };
+  try {
+    const user = await register();
+    const opened = await app.inject({
+      method: "POST",
+      url: "/me/assistant/conversation",
+      headers: auth(user.token),
+    });
+    assert.equal(opened.statusCode, 200, opened.body);
+    const destination = opened.json();
+    await pool.query(
+      "INSERT INTO agent_settings(user_id,reminder_nudges) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET reminder_nudges=$2",
+      [user.id, { quiet_start: "00:00", quiet_end: "00:00" }],
+    );
+    const background = [];
+    for (const marker of ["isolation-background-a", "isolation-background-b"]) {
+      const id = await startAssistantAutomation({
+        userId: user.id,
+        message: marker,
+        timezone: "UTC",
+        automation: { kind: "task" },
+      });
+      assert.ok(id);
+      background.push(id);
+    }
+    const startForeground = async (message: string) => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/ai/chat/start",
+        remoteAddress: nextAddress(),
+        headers: auth(user.token),
+        payload: { message, timezone: "UTC", chat_id: destination.chat_id },
+      });
+      assert.equal(response.statusCode, 202, response.body);
+      return response.json();
+    };
+    const foreground = await startForeground("isolation-foreground");
+    await waitFor(() => gates.size === 3);
+    const foregroundRequest = requests.findLast((request) =>
+      request.messages.some((message) =>
+        message.content?.includes("isolation-foreground"),
+      ),
+    );
+    assert.ok(foregroundRequest);
+    gates.get("isolation-background-a")!();
+    assert.equal(
+      (await poll(user.token, background[0], ["done", "failed"])).state,
+      "done",
+    );
+    await flushConversationDeliveries({ onlyOwner: user.id });
+    const feedUrl = `/me/assistant/conversations/${destination.id}`;
+    const during = (
+      await app.inject({ url: feedUrl, headers: auth(user.token) })
+    ).json();
+    assert.ok(
+      during.entries.some(
+        (entry: any) =>
+          entry.kind === "update" && entry.work.id === background[0],
+      ),
+    );
+    assert.equal(
+      (
+        await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [
+          foreground.id,
+        ])
+      ).rows[0].state,
+      "running",
+    );
+    assert.equal(
+      (
+        await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [
+          background[1],
+        ])
+      ).rows[0].state,
+      "running",
+    );
+    assert.ok(
+      !JSON.stringify(foregroundRequest).includes(
+        "isolation-background-a finished independently",
+      ),
+      "Arrival cannot mutate the submitted provider context",
+    );
+    gates.get("isolation-foreground")!();
+    assert.equal(
+      (await poll(user.token, foreground.id, ["done", "failed"])).state,
+      "done",
+    );
+    const followup = await startForeground("isolation-followup");
+    assert.equal(
+      (await poll(user.token, followup.id, ["done", "failed"])).state,
+      "done",
+    );
+    assert.equal(
+      (
+        await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [
+          background[1],
+        ])
+      ).rows[0].state,
+      "running",
+    );
+    gates.get("isolation-background-b")!();
+    assert.equal(
+      (await poll(user.token, background[1], ["done", "failed"])).state,
+      "done",
+    );
+    await flushConversationDeliveries({ onlyOwner: user.id });
+    const final = (
+      await app.inject({ url: feedUrl, headers: auth(user.token) })
+    ).json();
+    assert.equal(
+      final.entries.filter((entry: any) => entry.kind === "update").length,
+      2,
+    );
+    assert.ok(
+      final.entries.some(
+        (entry: any) =>
+          entry.kind === "turn" &&
+          entry.turn.text === "isolation-foreground finished independently",
+      ),
+    );
+    assert.ok(
+      final.entries.some(
+        (entry: any) =>
+          entry.kind === "turn" &&
+          entry.turn.text === "isolation-followup finished independently",
+      ),
+    );
+  } finally {
+    for (const release of gates.values()) release();
+    env.ASSISTANT_CONVERSATION_ENABLED = previous;
+  }
+});
+
 test("the lead delegates, stages specialist work, and applies one checked plan", async () => {
   requests.length = 0;
   respond = (request) => {
@@ -3493,4 +3670,73 @@ test("multiple pollers write presence once per grace interval and fresh reads by
   const expired = await timestamp();
   await read();
   assert.notEqual((await timestamp()).revision, expired.revision);
+});
+
+test("selected excerpt submission retries stay exact after the runtime checkpoint is cleared", async () => {
+  const { env } = await import("../src/config/env.js");
+  const { retainConversationTurn } =
+    await import("../src/modules/assistant-workspace/conversation-storage.js");
+  const previous = env.ASSISTANT_CONVERSATION_ENABLED;
+  env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  try {
+    const user = await register();
+    const opened = await app.inject({
+      method: "POST",
+      url: "/me/assistant/conversation",
+      headers: auth(user.token),
+    });
+    assert.equal(opened.statusCode, 200, opened.body);
+    const destination = opened.json(),
+      sourceTurn = randomUUID(),
+      turn = randomUUID();
+    await retainConversationTurn(pool, user.id, destination.chat_id, {
+      role: "user",
+      text: "Review the selected phrase and the other phrase.",
+      turn_id: sourceTurn,
+    });
+    const entry = (
+      await pool.query<{ id: string }>(
+        "SELECT id FROM assistant_conversation_entries WHERE destination_id=$1 AND turn_id=$2",
+        [destination.id, sourceTurn],
+      )
+    ).rows[0];
+    const payload = {
+      chat_id: destination.chat_id,
+      turn_id: turn,
+      message: "Explain this",
+      reply_to_entry_id: entry.id,
+      reply_excerpt: "selected phrase",
+      timezone: "UTC",
+    };
+    const submit = (value = payload) =>
+      app.inject({
+        method: "POST",
+        url: "/ai/chat/start",
+        remoteAddress: nextAddress(),
+        headers: auth(user.token),
+        payload: value,
+      });
+    const started = await submit();
+    assert.equal(started.statusCode, 202, started.body);
+    await pool.query(
+      "UPDATE ai_jobs SET state='done',run_state=NULL WHERE id=$1",
+      [started.json().id],
+    );
+    const retry = await submit();
+    assert.equal(retry.statusCode, 202, retry.body);
+    assert.equal(retry.json().id, started.json().id);
+    const changed = await submit({ ...payload, reply_excerpt: "other phrase" });
+    assert.equal(changed.statusCode, 409, changed.body);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS count FROM ai_jobs WHERE user_id=$1 AND submission_key=$2",
+          [user.id, turn],
+        )
+      ).rows[0].count,
+      1,
+    );
+  } finally {
+    env.ASSISTANT_CONVERSATION_ENABLED = previous;
+  }
 });

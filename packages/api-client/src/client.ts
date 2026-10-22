@@ -32,6 +32,21 @@ import {
   type MaintainedPageBindingInput,
   type MaintainedPageBindingUpdate,
   assistantActivityLane,
+  assistantConversationHome,
+  assistantConversationDestination,
+  assistantConversationLocation,
+  assistantConversationDetails,
+  assistantSavedHistory,
+  assistantSavedHistoryQuery,
+  assistantConversationAnswer,
+  assistantConversationAnswerInput,
+  assistantConversationQuery,
+  assistantConversationPage,
+  assistantConversationReadInput,
+  assistantConversationPreferences,
+  assistantConversationMuteInput,
+  assistantWorkControls,
+  assistantWorkControlsInput,
   assistantProfiles,
   assistantRulesInput,
   assistantRulesSnapshot,
@@ -1952,12 +1967,15 @@ export class OrbynClient {
       project_id?: string;
       limit?: number;
       kind?: "all" | "chat" | "work";
+      conversation_only?: boolean;
     } = {},
   ) {
     const query = new URLSearchParams();
     if (options.search) query.set("search", options.search);
     if (options.project_id) query.set("project_id", options.project_id);
     if (options.kind) query.set("kind", options.kind);
+    if (options.conversation_only !== undefined)
+      query.set("conversation_only", String(options.conversation_only));
     if (options.limit) query.set("limit", String(options.limit));
     const suffix = query.size ? `?${query.toString()}` : "";
     return this.request<AiChatSummary[]>(`/ai/chats${suffix}`);
@@ -4106,6 +4124,23 @@ export class OrbynClient {
       this.agentSettingsListeners.delete(listener);
     };
   }
+  async assistantWorkControls() {
+    return assistantWorkControls.parse(
+      await this.request<unknown>("/me/assistant/work-controls", {
+        fresh: true,
+      }),
+    );
+  }
+  async updateAssistantWorkControls(
+    input: Partial<import("@orbyn/core").AssistantWorkControls>,
+  ) {
+    return assistantWorkControls.parse(
+      await this.request<unknown>("/me/assistant/work-controls", {
+        method: "PATCH",
+        body: assistantWorkControlsInput.parse(input),
+      }),
+    );
+  }
   /** The person's optional night window and morning review preference. */
   nightShiftSettings() {
     return this.request<NightShiftSettings>("/me/assistant/night-shift");
@@ -4293,6 +4328,184 @@ export class OrbynClient {
     );
   }
   // ---- The Review inbox ----
+  async assistantConversation(signal?: AbortSignal) {
+    return assistantConversationHome.parse(
+      await this.request<unknown>("/me/assistant/conversation", {
+        fresh: true,
+        signal,
+      }),
+    );
+  }
+  async assistantConversationDeliveryPreferences() {
+    return assistantConversationPreferences.parse(
+      await this.request<unknown>("/me/assistant/conversation/preferences", {
+        fresh: true,
+      }),
+    );
+  }
+  async setAssistantConversationMuted(muted: boolean) {
+    return assistantConversationPreferences.parse(
+      await this.request<unknown>("/me/assistant/conversation/preferences", {
+        method: "PATCH",
+        body: assistantConversationMuteInput.parse({ muted }),
+      }),
+    );
+  }
+  async openAssistantConversation(signal?: AbortSignal) {
+    return assistantConversationDestination.parse(
+      await this.request<unknown>("/me/assistant/conversation", {
+        method: "POST",
+        signal,
+      }),
+    );
+  }
+  async assistantConversationFeed(
+    destinationId: string,
+    after = "0",
+    limit = 50,
+    signal?: AbortSignal,
+    through?: string,
+  ) {
+    const query = assistantConversationQuery.parse({ after, limit, through });
+    const page = assistantConversationPage.parse(
+      await this.request<unknown>(
+        `/me/assistant/conversations/${encodeURIComponent(destinationId)}?${new URLSearchParams({ after: query.after, limit: String(query.limit), ...(query.through ? { through: query.through } : {}) })}`,
+        { fresh: true, signal },
+      ),
+    );
+    if (
+      page.destination.id !== destinationId ||
+      page.entries.length > limit ||
+      BigInt(page.cursor) < BigInt(after) ||
+      (through !== undefined && BigInt(page.cursor) > BigInt(through)) ||
+      page.entries.some((e) => BigInt(e.sequence) <= BigInt(after))
+    )
+      throw new Error(
+        "Conversation response does not match the requested stream.",
+      );
+    return page;
+  }
+  async assistantConversationForChat(chatId: string, signal?: AbortSignal) {
+    const value = await this.request<unknown>(
+      `/me/assistant/conversation/for-chat/${encodeURIComponent(chatId)}`,
+      { fresh: true, signal },
+    );
+    if (value === null) return null;
+    const destination = assistantConversationDestination.parse(value);
+    if (destination.chat_id !== chatId)
+      throw new Error("Conversation does not match the requested chat.");
+    return destination;
+  }
+  async assistantSavedHistory(
+    destinationId: string,
+    chatId: string,
+    before?: number,
+    version?: string,
+    limit = 25,
+  ) {
+    const query = assistantSavedHistoryQuery.parse({ before, version, limit });
+    const params = new URLSearchParams({ limit: String(query.limit) });
+    if (query.before !== undefined) params.set("before", String(query.before));
+    if (query.version) params.set("version", query.version);
+    const page = assistantSavedHistory.parse(
+      await this.request<unknown>(
+        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/history?${params}`,
+        { fresh: true },
+      ),
+    );
+    if (
+      page.destination_id !== destinationId ||
+      page.chat_id !== chatId ||
+      (version && page.version !== version) ||
+      page.turns.length > limit ||
+      (before !== undefined && page.before !== null && page.before >= before)
+    )
+      throw new Error(
+        "Saved history does not match the requested conversation.",
+      );
+    return page;
+  }
+  async assistantConversationDetails(
+    destinationId: string,
+    entryId: string,
+    signal?: AbortSignal,
+  ) {
+    const details = assistantConversationDetails.parse(
+      await this.request<unknown>(
+        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/entries/${encodeURIComponent(entryId)}/details`,
+        { fresh: true, signal },
+      ),
+    );
+    if (
+      details.destination_id !== destinationId ||
+      details.entry.id !== entryId
+    )
+      throw new Error("Details do not match the requested message.");
+    return details;
+  }
+  async assistantConversationEntry(
+    destinationId: string,
+    entryId: string,
+    signal?: AbortSignal,
+  ) {
+    const location = assistantConversationLocation.parse(
+      await this.request<unknown>(
+        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/entries/${encodeURIComponent(entryId)}`,
+        { fresh: true, signal },
+      ),
+    );
+    if (
+      location.destination.id !== destinationId ||
+      location.entry_id !== entryId
+    )
+      throw new Error("Conversation entry does not match its destination.");
+    return location;
+  }
+  async answerAssistantConversationQuestion(
+    destinationId: string,
+    entryId: string,
+    answer: string,
+    turnId: string,
+  ) {
+    const result = assistantConversationAnswer.parse(
+      await this.request<unknown>(
+        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/entries/${encodeURIComponent(entryId)}/answer`,
+        {
+          method: "POST",
+          body: assistantConversationAnswerInput.parse({
+            answer,
+            turn_id: turnId,
+          }),
+        },
+      ),
+    );
+    if (
+      result.destination_id !== destinationId ||
+      result.reply_to_entry_id !== entryId ||
+      result.turn_id !== turnId
+    )
+      throw new Error("Answer receipt does not match the requested question.");
+    return result;
+  }
+  async acknowledgeAssistantConversation(
+    destinationId: string,
+    through: string,
+  ) {
+    const destination = assistantConversationDestination.parse(
+      await this.request<unknown>(
+        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/read`,
+        {
+          method: "POST",
+          body: assistantConversationReadInput.parse({ through }),
+        },
+      ),
+    );
+    if (destination.id !== destinationId)
+      throw new Error(
+        "Conversation acknowledgement does not match its destination.",
+      );
+    return destination;
+  }
   /** Recover authorized execution activity with an owner/lane-scoped cursor. */
   async assistantActivity(
     lane: AssistantActivityLane,
@@ -4665,7 +4878,12 @@ export class OrbynClient {
     timezone: string,
     history: ChatTurn[] = [],
     scope: ChatScope | null = null,
-    ids: { chatId?: string; turnId?: string } = {},
+    ids: {
+      chatId?: string;
+      turnId?: string;
+      replyToEntryId?: string;
+      replyExcerpt?: string;
+    } = {},
     onProgress?: (progress: AssistantRunProgress) => void,
     signal?: AbortSignal,
   ) {
@@ -4683,6 +4901,10 @@ export class OrbynClient {
         scope,
         ...(ids.chatId ? { chat_id: ids.chatId } : {}),
         ...(ids.turnId ? { turn_id: ids.turnId } : {}),
+        ...(ids.replyExcerpt ? { reply_excerpt: ids.replyExcerpt } : {}),
+        ...(ids.replyToEntryId
+          ? { reply_to_entry_id: ids.replyToEntryId }
+          : {}),
       },
     });
     return this.pollAssistantRun(

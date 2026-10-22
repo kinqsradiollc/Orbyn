@@ -691,6 +691,15 @@ export const SWEEP_RULES: SweepRule[] = [
       OR (state = 'running' AND run_state IS NULL AND heartbeat_at < now() - interval '1 day')
       OR (state = 'waiting' AND heartbeat_at < now() - interval '14 days'))
       AND NOT EXISTS (SELECT 1 FROM assistant_night_runs nr WHERE nr.job_id = ai_jobs.id)
+      -- Proposed/accepted handoffs still need both sides for dispatch, source
+      -- revalidation and acknowledgement after a worker outage.
+      AND NOT EXISTS (SELECT 1 FROM assistant_handoffs h WHERE h.status IN ('proposed','accepted')
+        AND (h.producer_job_id=ai_jobs.id OR h.recipient_job_id=ai_jobs.id))
+      -- The publisher still needs live work authority until it has a receipt.
+      -- Preserve quiet-hour and rollback recovery across ordinary job cleanup.
+      AND NOT EXISTS (SELECT 1 FROM assistant_delivery_bindings b JOIN assistant_delivery_intents i ON i.binding_id=b.id
+        WHERE b.work_kind='job' AND b.work_id=ai_jobs.id AND (
+          i.state IN ('pending','deferred') OR (i.state='suppressed' AND i.reason='night_summary' AND b.summary_retained_at IS NULL)))
       -- Keep captured maintenance identity while its source awaits recovery.
       -- Deleting it would make an unchanged old chat enqueue a fresh call.
       AND NOT EXISTS (SELECT 1 FROM memory_queue q WHERE q.maintenance_job_id=ai_jobs.id)

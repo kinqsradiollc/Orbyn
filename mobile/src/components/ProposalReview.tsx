@@ -353,7 +353,9 @@ function ProposalBody({
   onFollowUp,
   onOpenSource,
   onKeptNote,
+  hideSourceDetails = false,
 }: {
+  hideSourceDetails?: boolean;
   proposal: Proposal;
   /** Current planner items, used to name items an action refers to by id. */
   items: Item[];
@@ -390,7 +392,7 @@ function ProposalBody({
       )}
       {/* What the assistant actually read, so the answer can be checked
           against it rather than taken on trust. */}
-      {sources.length > 0 && (
+      {!hideSourceDetails && sources.length > 0 && (
         <InlineDetails title={`Sources (${sources.length})`}>
           <View style={s.sources}>
             {(

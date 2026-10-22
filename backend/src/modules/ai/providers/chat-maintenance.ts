@@ -15,6 +15,8 @@ import {
 } from "./managed-authority.js";
 import { resolveUserAi, ChatgptDeviceDeferred } from "./user-choice.js";
 import { complete, type ResolvedAi, type ChatMessage } from "./adapters.js";
+import { conversationEntryVisible } from "../../assistant-workspace/conversation-feed.js";
+import { assistantChatPendingDelivery } from "../../../lib/assistant-visibility.js";
 
 const context = z
   .object({
@@ -23,6 +25,7 @@ const context = z
     maintenance: z.enum(["memory", "sweep"]),
     chat_id: z.uuid(),
     queue_id: z.uuid().optional(),
+    source_entry_ids: z.array(z.uuid()).min(1).max(2).optional(),
     source_turn_count: z
       .number()
       .int()
@@ -66,11 +69,14 @@ export async function guardChatMaintenanceJob(
     fail(409, "The queued memory source is unverified.");
   const source = (
     await db.query(
-      `SELECT CASE WHEN $3::int IS NULL THEN chat_maintenance_source_digest(c) ELSE chat_maintenance_memory_digest(c,$3) END AS digest,c.origin,c.pinned,c.swept_at FROM ai_chats c JOIN users u ON u.id=c.user_id WHERE c.id=$1 AND c.user_id=$2 AND NOT u.disabled`,
+      `SELECT CASE WHEN $4::uuid[] IS NOT NULL THEN chat_maintenance_entry_digest(c,$4) WHEN $3::int IS NULL THEN chat_maintenance_source_digest(c) ELSE chat_maintenance_memory_digest(c,$3) END AS digest,c.origin,c.pinned,c.swept_at,
+       (EXISTS(SELECT 1 FROM assistant_conversation_streams s WHERE s.chat_id=c.id AND s.retired_at IS NULL) OR ${assistantChatPendingDelivery("c.id")}) AS retained
+       FROM ai_chats c JOIN users u ON u.id=c.user_id WHERE c.id=$1 AND c.user_id=$2 AND NOT u.disabled`,
       [
         state.chat_id,
         owner,
         state.maintenance === "memory" ? state.source_turn_count : null,
+        state.source_entry_ids ?? null,
       ],
     )
   ).rows[0];
@@ -78,22 +84,34 @@ export async function guardChatMaintenanceJob(
     !source ||
     source.digest !== state.source_digest ||
     (state.maintenance === "memory" && source.origin !== "person") ||
-    (state.maintenance === "sweep" && (source.pinned || source.swept_at))
+    (state.maintenance === "sweep" &&
+      (source.pinned || source.swept_at || source.retained))
   )
     fail(409, "The maintenance source changed.");
   if (state.maintenance === "memory") {
     const queue = (
       await db.query(
-        "SELECT md5(turns::text) AS digest,source_project_id FROM memory_queue WHERE id=$1 AND user_id=$2 AND chat_id=$3 AND maintenance_job_id=$4",
+        "SELECT md5(turns::text) AS digest,source_project_id,source_entry_ids FROM memory_queue WHERE id=$1 AND user_id=$2 AND chat_id=$3 AND maintenance_job_id=$4",
         [state.queue_id, owner, state.chat_id, jobId],
       )
     ).rows[0];
     if (
       !queue ||
       queue.digest !== state.input_digest ||
-      queue.source_project_id !== state.source_project_id
+      queue.source_project_id !== state.source_project_id ||
+      JSON.stringify(queue.source_entry_ids ?? null) !==
+        JSON.stringify(state.source_entry_ids ?? null)
     )
       fail(409, "The queued memory source changed.");
+    if (state.source_entry_ids) {
+      const entries = await db.query(
+        `SELECT e.id FROM assistant_conversation_entries e JOIN assistant_conversation_streams s ON s.id=e.destination_id
+         WHERE e.id=ANY($2::uuid[]) AND s.chat_id=$3 AND s.owner_id=$1 AND s.retired_at IS NULL AND ${conversationEntryVisible()}`,
+        [owner, state.source_entry_ids, state.chat_id],
+      );
+      if (entries.rowCount !== state.source_entry_ids.length)
+        fail(409, "A retained Memory source is no longer available.");
+    }
   }
   const choice = await assertJobAiProviderChoice(db, owner, jobId);
   const preference =
@@ -175,9 +193,16 @@ export async function completeChatMaintenance(
   ).rows[0];
   const state = context.parse(source?.run_state);
   await recordAssistantSources(jobId, owner, {}, [
-    `chat:${state.chat_id}`,
+    ...(state.source_entry_ids ? [] : [`chat:${state.chat_id}`]),
     ...(state.source_project_id ? [`project:${state.source_project_id}`] : []),
   ]);
+  if (state.source_entry_ids)
+    await pool.query(
+      `INSERT INTO assistant_job_sources(job_id,source_kind,source_id)
+      SELECT $1,source_kind,source_id FROM assistant_conversation_entry_sources WHERE entry_id=ANY($2::uuid[])
+      ON CONFLICT DO NOTHING`,
+      [jobId, state.source_entry_ids],
+    );
   const claim = `maintenance:${randomUUID()}`;
   const cached = await transaction(async (db) => {
     // Take the exclusive job lock before guards acquire share locks on its snapshot.

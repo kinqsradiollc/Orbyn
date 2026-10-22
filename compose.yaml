@@ -30,6 +30,7 @@ x-backend-env:
   # pooling cannot hold open, so that one connection goes straight to Postgres.
   DATABASE_LISTEN_URL: postgres://${POSTGRES_USER:-orbyn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orbyn}
   DB_POOL_MAX: ${DB_POOL_MAX:-20}
+  ASSISTANT_CONVERSATION_ENABLED: ${ASSISTANT_CONVERSATION_ENABLED:-false}
   RATE_LIMIT_PER_MINUTE: ${SERVICE_RATE_LIMIT_PER_MINUTE:-1200}
   SMTP_HOST: ${DOCKER_SMTP_HOST:-mailpit}
   # The file store, for every service that talks to it (the converter reads

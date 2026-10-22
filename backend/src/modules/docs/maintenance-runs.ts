@@ -1,4 +1,8 @@
 import { assistantRuntimeHasRoom } from "../ai/agent/runtime-slots.js";
+import { bindConversationWork } from "../assistant-workspace/conversation-delivery.js";
+import { scheduledConversationRoute } from "../assistant-workspace/conversation-schedules.js";
+import { assistantAdmissionOpen } from "../assistant-workspace/work-controls.js";
+import { assistantPageRunEntrySourcesVisible } from "../../lib/assistant-source-visibility.js";
 import {
   reserveAssistantWork,
   settleStalePageWork,
@@ -16,6 +20,8 @@ import {
   HttpError,
   nightShiftInput,
   maintainedPageRunSummary,
+  assistantConversationSource,
+  objectRefsInValue,
   type MaintainedPageModelOrigin,
 } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
@@ -114,6 +120,7 @@ export async function queueMaintainedPageRun(
     | { kind: "background" }
     | { kind: "overnight"; nightId: string; endAt: Date },
 ) {
+  if (!(await assistantAdmissionOpen(db, user.id, lane.kind))) return null;
   const queuedNightPolicy =
     lane.kind === "overnight"
       ? await requirePageNight(db, user.id, lane.nightId, lane.endAt, now)
@@ -188,6 +195,45 @@ export async function queueMaintainedPageRun(
     )
   ).rows[0];
   if (!run) return null;
+  const sources = [
+    { kind: "doc", id: binding.doc_id },
+    ...objectRefsInValue(context.blocks).map((ref) => ({
+      kind: ref.kind === "event" ? "task" : ref.kind,
+      id: ref.id,
+    })),
+  ].flatMap((source) => {
+    const parsed = assistantConversationSource.safeParse(source);
+    return parsed.success ? [parsed.data] : [];
+  });
+  const route = await scheduledConversationRoute(
+    db,
+    user.id,
+    "page_binding",
+    binding.id,
+    run.night_id ?? undefined,
+  );
+  if (route.sourceEntryIds.length)
+    await db.query(
+      `INSERT INTO assistant_page_run_entry_sources(run_id,source_entry_id)
+      SELECT $1,unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
+      [run.id, route.sourceEntryIds],
+    );
+  if (route.destinationId !== null)
+    await bindConversationWork(db, {
+      ownerId: user.id,
+      work: { kind: "page_run", id: run.id },
+      lane: lane.kind,
+      timezone: binding.timezone,
+      destinationId: route.destinationId,
+      personalOnly: route.personalOnly,
+      grantId: run.agent_grant_id,
+      sources,
+      sourcesChecked: true,
+      sourceEntryIds: route.sourceEntryIds,
+      attentionKey: `page-binding:${binding.id}`,
+      nightId: run.night_id ?? undefined,
+      notBefore: run.end_at ?? undefined,
+    });
   await db.query(
     "UPDATE assistant_page_bindings SET next_run_at=coalesce($2,next_run_at),schedule_exhausted=$3,updated_at=now() WHERE id=$1",
     [bindingId, next, next === null],
@@ -208,7 +254,7 @@ export async function expireMaintainedPageRuns(
      (r.end_at IS NOT NULL AND r.end_at<=$1 AND r.state<>'waiting')
      OR (r.state='waiting' AND r.updated_at<=$1-interval '7 days')
      OR EXISTS(SELECT 1 FROM assistant_page_bindings b JOIN docs d ON d.id=b.doc_id
-       WHERE b.id=r.binding_id AND (b.paused OR b.revision<>r.binding_revision OR d.version<>r.doc_version OR d.deleted_at IS NOT NULL
+       WHERE b.id=r.binding_id AND (b.revision<>r.binding_revision OR d.version<>r.doc_version OR d.deleted_at IS NOT NULL
          OR (b.source_comment_id IS NOT NULL AND NOT EXISTS(
            SELECT 1 FROM doc_comments c WHERE c.id=b.source_comment_id
              AND c.revision=b.source_comment_revision AND c.resolved_at IS NULL AND NOT c.detached))))
@@ -275,7 +321,7 @@ export async function claimMaintainedPageRun(
        AND (r.retry_after IS NULL OR r.retry_after<=CASE WHEN $4::boolean THEN $2::timestamptz ELSE clock_timestamp() END) AND (r.state='queued' OR (r.state='running' AND r.lease_expires_at<=$2))
        AND (assistant_lane_budget_available(r.user_id,r.lane,$2,greatest(1,1000-r.token_estimate))
          OR (r.state='running' AND r.lease_expires_at<=$2))
-       AND NOT b.paused AND b.revision=r.binding_revision AND b.snapshot->>'doc_version'=r.doc_version::text
+       AND b.revision=r.binding_revision AND b.snapshot->>'doc_version'=r.doc_version::text
        AND (r.end_at IS NULL OR r.end_at>$2)
        AND (r.lane<>'overnight' OR (
          NOT EXISTS(SELECT 1 FROM ai_jobs busy WHERE busy.user_id=r.user_id
@@ -388,6 +434,19 @@ export async function guardMaintainedPageRun(
   };
   if (principal.grant_id !== seen.agent_grant_id)
     fail(403, "This run belongs to another assistant.");
+  const sourceAuthority = (
+    await db.query<{ visible: boolean }>(
+      `SELECT ${assistantPageRunEntrySourcesVisible("$2", "$1", { user: "$1", personal: "$3", teams: "$4" })} AS visible`,
+      [
+        seen.user_id,
+        runId,
+        principal.personal,
+        principal.teams.map((team) => team.id),
+      ],
+    )
+  ).rows[0];
+  if (!sourceAuthority.visible)
+    fail(409, "The sources for this page run changed.");
   const context = await maintainedPageContext(
     db,
     user,
@@ -418,7 +477,6 @@ export async function guardMaintainedPageRun(
   if (!run || run.binding_id !== seen.binding_id)
     fail(404, "Page run not found.");
   if (
-    context.binding.paused ||
     context.binding.revision !== run.binding_revision ||
     context.binding.snapshot.doc_version !== run.doc_version
   )

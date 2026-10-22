@@ -2,6 +2,8 @@ import { scanMaintainedPages } from "../worker/maintained-page-scan.js";
 import { claimMaintainedPageWork } from "../worker/maintained-pages.js";
 import { claimScheduledAgendaWork } from "../worker/agenda-summaries.js";
 import { pool } from "../db/pool.js";
+import { flushConversationDeliveries } from "../modules/assistant-workspace/conversation-delivery.js";
+import { flushConversationAlerts } from "../modules/assistant-workspace/conversation-notifications.js";
 import { startAssistantRunner } from "../modules/ai/agent/runner.js";
 import {
   dispatchAssistantHandoff,
@@ -41,6 +43,16 @@ export async function buildAssistantWorker(lane: "background" | "overnight") {
         const now = Date.now();
         await settleAssistantHandoff(lane);
         await dispatchAssistantHandoff(lane);
+        if (lane === "background") {
+          await flushConversationDeliveries({
+            onError: (id) =>
+              app.log.warn(
+                { event: "assistant_delivery_delayed", intent_id: id },
+                "Assistant delivery will retry",
+              ),
+          });
+          await flushConversationAlerts();
+        }
         if (now - lastHeartbeat >= 10_000) {
           await pool.query(
             `INSERT INTO service_heartbeats(service, last_seen_at) VALUES($1, now())

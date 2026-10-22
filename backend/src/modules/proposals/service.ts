@@ -1074,6 +1074,7 @@ export async function applyChange(
   db: Db,
   u: UserRow,
   c: ReviewChange,
+  options: { deliveryJobId?: string } = {},
 ): Promise<{ project_id?: string }> {
   switch (c.type) {
     case "task.create": {
@@ -1160,13 +1161,14 @@ export async function applyChange(
     case "routine.save":
       await saveAgentRoutine(db, u.id, c.routine_id, c.routine, {
         advance: true,
+        deliveryJobId: options.deliveryJobId,
       });
       return {};
     case "task.hand":
-      await handTaskToAgent(db, u, c.item_id);
+      await handTaskToAgent(db, u, c.item_id, "now", options.deliveryJobId);
       return {};
     case "goal.save":
-      await saveGoal(db, u.id, c.goal_id, c.goal, true);
+      await saveGoal(db, u.id, c.goal_id, c.goal, true, options.deliveryJobId);
       return {};
     case "doc.edit":
       await saveDoc(
@@ -1474,7 +1476,9 @@ export async function applyProposal(
       if (why) fail(409, `${why} Decline it, or ask the agent again.`);
     }
     for (const i of chosen) {
-      const done = await applyChange(db, u, changes[i]);
+      const done = await applyChange(db, u, changes[i], {
+        deliveryJobId: guard?.job_id,
+      });
       projectId = done.project_id ?? projectId;
     }
     made = chosen;

@@ -153,6 +153,7 @@ export async function runSpecialist(input: {
   resume?: SpecialistCheckpoint;
   checkpoint?: (value: SpecialistCheckpoint) => Promise<void>;
   recordSources?: (value: unknown, targets?: string[]) => Promise<void>;
+  beforeProvider?: () => Promise<void>;
 }): Promise<SpecialistReport> {
   const definition = SPECIALISTS[input.task.specialist];
   const saved: SpecialistCheckpoint = input.resume ?? {
@@ -345,6 +346,7 @@ export async function runSpecialist(input: {
       },
       {
         systemPrompt,
+        beforeProvider: input.beforeProvider,
         tools: [
           ...specialistToolSpecs(input.task.specialist, input.allowChanges),
           reportTool,

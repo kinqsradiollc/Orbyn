@@ -1,3 +1,5 @@
+import { scheduledConversationRoute } from "../../assistant-workspace/conversation-schedules.js";
+import { env } from "../../../config/env.js";
 import { readAutomationIdentity } from "../../agent-context/identities.js";
 import {
   reflectionEvidence,
@@ -6,6 +8,12 @@ import {
 } from "./reflection.js";
 import { randomUUID } from "node:crypto";
 import { notifyAssistantAway } from "./notices.js";
+import { bindConversationWork } from "../../assistant-workspace/conversation-delivery.js";
+import {
+  assertConversationContext,
+  conversationExecutionChatVisible,
+  type ConversationContextIdentity,
+} from "../../assistant-workspace/conversation-context.js";
 import { recordNightRun } from "./night-status.js";
 import {
   AssistantLeaseLost,
@@ -31,8 +39,13 @@ import { currentAssistantPrincipal } from "../../../capabilities/assistant-princ
 import { pool, transaction } from "../../../db/pool.js";
 import type { Queryable, Db } from "../../../db/pool.js";
 import { keptOutFor } from "../../../lib/assistant-off.js";
-import { recordAssistantSources } from "../../../lib/assistant-job-sources.js";
+import {
+  recordAssistantSources,
+  assistantJobSourcesVisible,
+} from "../../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../../lib/assistant-visibility.js";
+import { retainWorkQuestionAnswer } from "../../assistant-workspace/conversation-answer-storage.js";
+import { assistantAdmissionOpen } from "../../assistant-workspace/work-controls.js";
 import {
   Params,
   scopeFor,
@@ -113,6 +126,7 @@ export type PersistedChatRequest = {
   turn_id: string;
   scope: ChatScope | null;
   automation?: AssistantAutomation;
+  conversation_context?: ConversationContextIdentity;
 };
 
 /** Night jobs retain the completion rules of the task, goal or routine they run. */
@@ -367,6 +381,18 @@ async function currentWriteAuthority(
   principal: Principal,
   request: PersistedChatRequest,
 ) {
+  if (request.conversation_context) {
+    await assertConversationContext(db, user.id, request.conversation_context);
+    const visible = await db.query(
+      `SELECT j.id FROM ai_jobs j WHERE j.id=$2 AND ${assistantJobSourcesVisible("j", "$1", false)}`,
+      [user.id, principal.assistant_job_id ?? null],
+    );
+    if (!visible.rowCount)
+      fail(
+        409,
+        "The sources for this reply changed. Refresh before continuing.",
+      );
+  }
   await currentNightConsent(db, user.id, request, true);
   if (request.automation?.night_kind === "reflection")
     fail(409, "Reflection suggestions require a separate reviewed request.");
@@ -407,7 +433,7 @@ async function currentWriteAuthority(
     fail(409, "Assistant trust changed. This work was held.");
   const job = (
     await db.query(
-      `SELECT 1 FROM ai_chats c WHERE c.id=$1 AND ${assistantChatVisible("c", "$2")}`,
+      `SELECT 1 FROM ai_chats c WHERE c.id=$1 AND ${conversationExecutionChatVisible("c", "$2")}`,
       [request.chat_id, user.id],
     )
   ).rowCount;
@@ -595,6 +621,12 @@ async function contextFor(
   principal: Principal,
   recordSources: (value: unknown, targets?: string[]) => Promise<void>,
 ) {
+  if (request.conversation_context)
+    await assertConversationContext(
+      pool,
+      user.id,
+      request.conversation_context,
+    );
   const identity = request.automation
     ? await readAutomationIdentity(
         pool,
@@ -1036,9 +1068,25 @@ export async function startAssistantAutomation(input: {
   onQueued?: (db: Queryable, jobId: string) => Promise<void>;
   /** The chat's title in the person's list (goal and routine runs). */
   title?: string;
+  /** Explicit conversation-originated work returns here, never to a fallback. */
+  deliveryOrigin?: { chatId: string; turnId?: string };
+  deliveryDestinationId?: string;
+  deliveryPersonalOnly?: boolean;
   /** A scheduler can commit its claim, chat and queued run together. */
   db?: Queryable;
 }): Promise<string | null> {
+  // A direct admission owns one transaction too: an invalid destination or a
+  // failed scheduler claim must not leave an orphan execution chat behind.
+  if (!input.db)
+    return transaction((db) => startAssistantAutomation({ ...input, db }));
+  const admissionLane =
+    input.automation.kind === "night" ||
+    input.automation.night_id ||
+    input.automation.recipient_lane === "overnight"
+      ? "overnight"
+      : "background";
+  if (!(await assistantAdmissionOpen(input.db, input.userId, admissionLane)))
+    return null;
   const row = (
     await (input.db ?? pool).query<{
       id: string;
@@ -1104,6 +1152,51 @@ export async function startAssistantAutomation(input: {
       )
     ).rows[0];
     if (row && input.onQueued) await input.onQueued(db, row.id);
+    let scheduleRoute:
+      Awaited<ReturnType<typeof scheduledConversationRoute>> | undefined;
+    const scheduleKind = input.automation.source_kind ?? input.automation.kind;
+    if (
+      row &&
+      !input.deliveryOrigin &&
+      !input.deliveryDestinationId &&
+      input.automation.id &&
+      (scheduleKind === "task" ||
+        scheduleKind === "goal" ||
+        scheduleKind === "routine")
+    ) {
+      scheduleRoute = await scheduledConversationRoute(
+        db,
+        user.id,
+        scheduleKind,
+        input.automation.id,
+        input.automation.night_id,
+      );
+    }
+    if (row && scheduleRoute?.sourceEntryIds.length)
+      await db.query(
+        `INSERT INTO assistant_turn_entry_sources(chat_id,turn_id,source_entry_id)
+        SELECT $1,$2,unnest($3::uuid[]) ON CONFLICT DO NOTHING`,
+        [chatId, turnId, scheduleRoute.sourceEntryIds],
+      );
+    if (row && scheduleRoute?.destinationId !== null)
+      await bindConversationWork(db, {
+        ownerId: user.id,
+        work: { kind: "job", id: row.id },
+        lane: admissionLane,
+        timezone: input.timezone,
+        origin: input.deliveryOrigin,
+        destinationId:
+          input.deliveryDestinationId ?? scheduleRoute?.destinationId,
+        personalOnly: input.deliveryPersonalOnly ?? scheduleRoute?.personalOnly,
+        sourceEntryIds: scheduleRoute?.sourceEntryIds,
+        nightId: input.automation.night_id,
+        notBefore: input.automation.end_at
+          ? new Date(input.automation.end_at)
+          : undefined,
+        attentionKey: input.automation.id
+          ? `${input.automation.source_kind ?? input.automation.kind}:${input.automation.id}`
+          : undefined,
+      });
     return row?.id ?? null;
   };
   const jobId = input.db ? await enqueue(input.db) : await transaction(enqueue);
@@ -1681,6 +1774,12 @@ export async function runAssistantJob(
         ? prepared.snapshot
         : (scoped ?? prepared.snapshot);
     await recordSources([snapshot, request.automation, request.scope]);
+    if (request.conversation_context)
+      await assertConversationContext(
+        pool,
+        user.id,
+        request.conversation_context,
+      );
     envelope.state.memory = prepared.memory;
     envelope.state.context = snapshot;
     const currentMessage = envelope.state.answer_to_person || request.message;
@@ -1711,6 +1810,27 @@ export async function runAssistantJob(
               ? "Review the blocked report and revise the plan or explain why it cannot proceed."
               : currentMessage,
             history: request.history,
+            beforeProvider: request.conversation_context
+              ? async () => {
+                  if (!principal)
+                    fail(409, "The assistant is unavailable. Try again.");
+                  await currentAssistantPrincipal(pool, principal);
+                  await assertConversationContext(
+                    pool,
+                    user.id,
+                    request.conversation_context,
+                  );
+                  const visible = await pool.query(
+                    `SELECT j.id FROM ai_jobs j WHERE j.id=$2 AND ${assistantJobSourcesVisible("j", "$1", false)}`,
+                    [user.id, jobId],
+                  );
+                  if (!visible.rowCount)
+                    fail(
+                      409,
+                      "The sources for this reply changed. Refresh before continuing.",
+                    );
+                }
+              : undefined,
             context: prepared.context,
             recordSources,
             allowChanges:
@@ -2133,13 +2253,31 @@ export async function answerAssistantQuestion(
   value: unknown,
   log: FastifyBaseLogger,
   suppliedDb?: Db,
+  answerTurnId?: string,
 ) {
   const { answer, waiting_id } = pendingInput.parse(value);
   const consume = async (db: Db) => {
+    // Lock the execution and destination chats in the same deterministic order
+    // as the conversation endpoint before touching its stream or job.
+    await db.query(
+      `SELECT c.id FROM ai_chats c WHERE c.user_id=$2 AND (c.id IN (
+         SELECT j.chat_id FROM ai_jobs j WHERE j.id=$1 AND j.user_id=$2
+       ) OR c.id IN (
+         SELECT s.chat_id FROM assistant_delivery_bindings b
+         JOIN assistant_conversation_streams s ON s.id=b.destination_id
+         WHERE b.work_kind='job' AND b.work_id=$1 AND b.owner_id=$2
+       )) ORDER BY c.id FOR UPDATE`,
+      [jobId, user.id],
+    );
     const row = (
       await db.query<{ run_state: unknown }>(
         `SELECT run_state FROM ai_jobs WHERE id = $1 AND user_id = $2
-          AND state = 'waiting' AND EXISTS(SELECT 1 FROM ai_chats c WHERE c.id=ai_jobs.chat_id AND ${assistantChatVisible("c", "$2")}) FOR UPDATE`,
+          AND state = 'waiting' AND EXISTS(SELECT 1 FROM ai_chats c WHERE c.id=ai_jobs.chat_id
+            AND ${conversationExecutionChatVisible("c", "$2")})
+          AND ${assistantJobSourcesVisible("ai_jobs", "$2")}
+          AND (ai_jobs.sources_checked OR NOT EXISTS(SELECT 1 FROM assistant_conversation_streams s
+            WHERE s.chat_id=ai_jobs.chat_id AND s.retired_at IS NULL))
+          FOR UPDATE`,
         [jobId, user.id],
       )
     ).rows[0];
@@ -2183,6 +2321,7 @@ export async function answerAssistantQuestion(
         JSON.stringify({ label: "Continuing with your answer" }),
       ],
     );
+    const turnId = answerTurnId ?? randomUUID();
     const chat = (
       await db.query<{ turns: unknown }>(
         "SELECT turns FROM ai_chats WHERE id = $1 AND user_id = $2 FOR UPDATE",
@@ -2191,12 +2330,21 @@ export async function answerAssistantQuestion(
     ).rows[0];
     if (chat) {
       const turns = Array.isArray(chat.turns) ? chat.turns : [];
-      turns.push({ role: "user", text: answer, turn_id: randomUUID() });
+      turns.push({ role: "user", text: answer, turn_id: turnId });
       await db.query(
         "UPDATE ai_chats SET turns = $3::jsonb, last_used_at = now() WHERE id = $1 AND user_id = $2",
         [envelope.request.chat_id, user.id, JSON.stringify(turns.slice(-200))],
       );
     }
+    await retainWorkQuestionAnswer(
+      db,
+      user.id,
+      jobId,
+      envelope.request.chat_id,
+      turnId,
+      answer,
+      waiting_id,
+    );
     return envelope;
   };
   if (suppliedDb) await consume(suppliedDb);

@@ -3523,6 +3523,13 @@ function WorkspaceController({
                   }}
                 />
                 <NotificationsView
+                  onOpenConversation={(destinationId, entryId) => {
+                    onDockNavigate();
+                    navigate("AI assistant");
+                    void assistant
+                      .openConversationEntry(destinationId, entryId)
+                      .catch(report);
+                  }}
                   onOpenOvernight={(id) => {
                     onDockNavigate();
                     navigate("Overnight");

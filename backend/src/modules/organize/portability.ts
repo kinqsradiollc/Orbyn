@@ -1,4 +1,8 @@
 import {
+  exportConversations,
+  type ConversationExport,
+} from "../assistant-workspace/conversation-export.js";
+import {
   droppedDateNotes,
   itemData,
   tickTickTasks,
@@ -18,6 +22,7 @@ export type ExportArchive = {
   tags: { name: string; color: string }[];
   habits: unknown[];
   items: ExportItem[];
+  assistant_conversations?: ConversationExport[];
   completion_history?: {
     item_id: string;
     created_at: string;
@@ -59,6 +64,7 @@ export type ImportSummary = {
 export async function exportData(
   db: Queryable,
   userId: string,
+  options: { conversations?: boolean } = {},
 ): Promise<ExportArchive> {
   const lists = (
     await db.query<{ name: string; color: string }>(
@@ -120,6 +126,9 @@ export async function exportData(
     habits,
     items,
     completion_history: completions,
+    ...(options.conversations === false
+      ? {}
+      : { assistant_conversations: await exportConversations(db, userId) }),
   };
 }
 
