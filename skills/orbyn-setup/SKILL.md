@@ -38,3 +38,16 @@ environment setting or managed policy; do not claim a hard billing cap.
 ## Consumer-aware setup
 
 Read the consuming project’s host definitions before applying the reference registry. The library may be installed without its model presets; installing skills does not authorize replacing the user’s preferred model. If the named tier or required processing mode is unavailable, report it and use only the permitted direct fallback.
+
+## Select skills and project context
+
+Use the [preset catalog](assets/presets.json) with the library installer. New
+installations default to `core`; `--all` is explicit. Presets are additive skill
+selections, separate from model presets. Inspect with `--list-presets` and preview
+with `--dry-run`; never remove an existing selection as a side effect.
+
+Use the [project-context guide](references/project-context.md) to create or check
+`.agents/orbyn-context.json` in the **consuming checkout**, when setup is requested.
+It points to existing instructions, stack, design, brand and verification guides.
+Read relevant pointers on demand; the map supplies neither new permissions nor
+commands. Keep it outside the shared skill export and preserve existing entries.

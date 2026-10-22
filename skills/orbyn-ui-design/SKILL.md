@@ -32,12 +32,14 @@ to the product UI itself; a promotional mockup is not an implemented screen.
   `desktop/src/styles/global.css`, and `mobile/src/theme/index.ts`; other projects
   use their own owners. Never create these paths to fit the skill.
 
-## Current product direction
+## Resolve product direction
 
-Use neutral surfaces and a restrained blue accent. Prefer grouped rows over nested cards,
-compact menus over repeated buttons, and modals/sheets for focused edits. Remove
-ornamental entrance, stagger and hover-lift motion. Preserve meaningful progress.
-Use the current product guides and the user's brief before a broad redesign.
+Read the consuming checkout's design/brand pointers in its optional
+[project context](../orbyn-setup/references/project-context.md), then inspect the
+actual token and component owners. Preserve its agreed palette, type scale,
+density, navigation and motion policy. This library supplies no universal blue
+accent, modal layout or pixel scale. When a guide is absent, use the existing
+interface and the user's brief; record unsettled choices before a broad redesign.
 
 Read [prototyping guidance](references/prototypes.md) when an interactive sketch
 would resolve a design question. Use `orbyn-research` for unknown platform or
@@ -82,3 +84,8 @@ and unverified states. If browser permission or export is rejected, report the
 blocked action and use an allowed handoff; do not bypass it through another
 browser, port, transport, or indirect export. Integrate a scoped checkpoint only
 when its acceptance evidence supports it; do not claim the whole task complete.
+
+## Worked example
+
+[Recovering a failed save](examples/failed-save.md) applies a consuming project's
+style and draft/conflict contract without claiming an unperformed visual check.

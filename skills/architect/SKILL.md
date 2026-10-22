@@ -34,3 +34,9 @@ Record a durable rationale only when future maintainers need the decision.
 ## Cross-stack handoff
 
 For a proposal-approval feature, specify the durable proposal state, authenticated apply operation, stale-version behavior and shared result shape before designing the buttons. Return a contract the API, web and mobile owners can implement without inventing their own lifecycle. A model sketch is sufficient only when it answers those ownership questions.
+
+## Worked example
+
+[Reviewing a proposed change](examples/proposal-approval.md) shows a synthetic
+input, ownership contract, recovery behavior and a tempting failure. Reuse the
+reasoning shape with the consuming project's actual owners.

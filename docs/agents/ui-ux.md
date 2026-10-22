@@ -5,6 +5,10 @@ and the [content skill](../../skills/orbyn-content-design/SKILL.md) for visible 
 Use existing shared components and tokens; inspect the current screen before
 adding an override. Preserve drafts, selection, focus, permissions and run states.
 
+Orbyn's palette, type scale, controls, composer and navigation choices live in the
+consumer-owned [design profile](design-profile.md). Shared skill updates preserve
+that profile; current source and the requested task determine implementation.
+
 ## Product conventions
 
 - Keep one clear action per outcome. Remove duplicate controls, competing toolbars

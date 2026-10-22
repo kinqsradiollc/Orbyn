@@ -58,3 +58,13 @@ remaining behavior gaps, changed files and local/committed delivery state.
 ## Maintain the public contract
 
 Treat the shared library as an upstream dependency of consuming projects. Keep private product policy and source outside public contributions. A useful skill change alters a decision or supplies a reusable artifact, not just vocabulary. Check expected and adjacent routing cases, then reconcile the catalog and consumer pin through the documented contribution path.
+
+## Evaluate a change
+
+Use the [evaluation guide](references/evaluations.md) and its versioned suite for
+positive, adjacent, no-skill and outcome cases. Update a case when its contract
+changes; do not change frozen criteria after observing a held-out result.
+`python3 skills/orbyn-skill-creator/scripts/evaluate.py validate` checks the suite.
+Prepared or incomplete trials remain unverified. Helper fixtures test the tooling;
+only captured, reviewed host trials provide evidence of skill behavior. Record
+baseline and candidate results separately before claiming an improvement.

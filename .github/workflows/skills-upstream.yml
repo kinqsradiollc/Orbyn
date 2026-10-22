@@ -17,11 +17,15 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Check skill catalog, host discovery and source integrity
         run: |
           python3 scripts/sync-agent-skills.py --check
           python3 scripts/check-agent-assets.py
+      - name: Validate project context and evaluation cases
+        run: |
+          python3 skills/orbyn-setup/scripts/project_context.py check --project .
+          python3 skills/orbyn-skill-creator/scripts/evaluate.py validate
       - name: Read the locked public revision
         id: pin
         run: |

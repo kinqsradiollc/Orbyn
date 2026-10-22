@@ -2,7 +2,7 @@
 
 The upstream owner is
 [Orbyn Fullstack Engineering Skills](https://github.com/kinqsradio/orbyn-fullstack-skills),
-maintained by Anh Dang under the Orbyn Engineering brand. This private application
+maintained by Anh Dang under the Orbyn Engineering brand. This application
 consumes the managed `skills/` content at the full revision and hashes in
 `skills/upstream-lock.json`. Product-specific root policy, project guides, runtime
 source, credentials and work records stay in this repository.
@@ -50,11 +50,46 @@ if the generator reports them. Keep the existing local host Git exclusions intac
 `.github/workflows/skills-upstream.yml` checks content against the committed lock
 and a read-only checkout of that exact revision from the canonical public repo.
 It compares the public manifest as data without executing public helper code.
-It needs no model calls, product builds or cross-repository write credentials.
+It also validates the project context pointers and versioned evaluation cases
+using the reviewed, vendored helpers in this checkout. It needs no model calls,
+product builds or cross-repository write credentials.
 It catches local drift, not the existence of newer public commits. CI enforcement
-also depends on merging this integration and requiring the check in the private
+also depends on merging this integration and requiring the check in this
 repository's branch policy. The initial addition does not change that policy.
 
 Updating the sync helper itself is an explicit tooling change; compare it with
 the public source and run its focused tests before replacing the local trusted copy.
 Neither the lock nor CI authorizes public publication, merges or production changes.
+
+## First quality milestone
+
+The shared tree includes additive presets, project customization guidance, five
+worked examples and a 22-case evaluation suite. Fresh external installs default
+to the 10-skill core; Orbyn retains all 50 existing discovery links. Preset
+selection does not change models or remove installed skills. Membership lives in
+`skills/orbyn-setup/assets/presets.json`; installation tooling belongs to the public
+library, while the vendored context and evaluation helpers work in this checkout.
+
+[Project context](../../.agents/orbyn-context.json) points to Orbyn's current
+instructions, stack, design, verification and owners. The
+[design profile](design-profile.md) preserves Orbyn's product-specific conventions
+separately from the portable UI method. Both files belong to this consumer and
+stay outside the sync/export allowlist. Existing guides remain authoritative.
+
+```sh
+python3 skills/orbyn-setup/scripts/project_context.py check --project .
+python3 skills/orbyn-skill-creator/scripts/evaluate.py validate
+```
+
+The [evaluation guide](../../skills/orbyn-skill-creator/references/evaluations.md)
+describes preparing and grading recorded host trials. CI checks the suite's
+structure; public-library CI tests its helpers with synthetic fixtures. Neither
+is evidence of improved Codex/Claude behavior. Missing host trials remain
+unverified and require supported, authorized execution to collect.
+
+This milestone is reviewed in [public-library PR #3](https://github.com/kinqsradio/orbyn-fullstack-skills/pull/3).
+Its consumer PR is stacked on [initial integration #224](https://github.com/kinqsradiollc/Orbyn/pull/224).
+The lock currently pins the public PR candidate, not a claimed release. Merge the
+public change and initial integration before delivering the consumer follow-up;
+if the public merge produces a different commit, pin that reviewed revision and
+rerun sync checks before merging the follow-up. No merge occurs automatically.

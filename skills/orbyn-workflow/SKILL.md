@@ -7,6 +7,12 @@ description: "Route substantial Orbyn engineering work through evidence-led inve
 
 Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
+Read the consuming checkout's optional `.agents/orbyn-context.json` using the
+[context contract](../orbyn-setup/references/project-context.md). Follow relevant
+pointers to existing guides; root instructions and user scope retain precedence.
+For work that needs a durable handoff, use the optional
+[task record](references/task-record.md) without duplicating an existing tracker.
+
 Start from the user's requested outcome, current source and
 [stack ownership](../../docs/agents/stack.md). Use the
 [skill system](../../docs/agents/skill-system.md) to select the relevant handoff. Choose one playbook
