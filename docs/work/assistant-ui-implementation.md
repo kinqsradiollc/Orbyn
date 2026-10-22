@@ -149,8 +149,8 @@ merge, deployment or background monitor was performed during qualification. Exis
 share/edit/branch/regenerate and orchestration behavior are outside this ADR.
 
 The default-off conversation rollout flag and existing server execution lanes
-remain unchanged. Only the 32 owned source/API-guide files and this ADR/record
-are included in UI delivery; the other session's work remains local and excluded.
+remain unchanged. Only the 32 qualified source/API-guide files, this ADR/record and the
+three CI follow-up files recorded below are included in UI delivery; the other session's work remains local and excluded.
 Preview tabs and owned local
 preview services remain available for review; test/build cleanup is recorded at
 closeout. Approved mockup SHA-256:
@@ -182,3 +182,18 @@ closeout. Approved mockup SHA-256:
   `e66e9435513a623c7ea2c531e8afa0b73a323ef24af1835fead19bdaf356a8f1`.
   Documentation records are excluded from that digest to avoid
   a self-reference; the owning API guide is included.
+
+## PR qualification follow-up
+
+PR [#223](https://github.com/kinqsradiollc/Orbyn/pull/223) is stacked on #222.
+The initial full CI run exposed two stale contract checks beyond the focused
+local suite: the panel-layout test still expected the former 1280px threshold,
+and generated MCP docs still counted 313 excluded routes. The accepted UI uses
+a 1040px pane threshold; the new details endpoint and conversation-route inventory
+bring the exclusion count to 326. Updated the existing layout assertion and
+regenerated `docs/mcp-catalog.json` and `docs/mcp.md` from the registry.
+
+The affected layout/catalog suite passes 8/8 locally, with scoped formatting
+and whitespace checks passing. These three files are owned CI corrections;
+no concurrent policy or skill edits are included. Final remote CI status belongs
+to the current PR head and is recorded by GitHub Checks.
