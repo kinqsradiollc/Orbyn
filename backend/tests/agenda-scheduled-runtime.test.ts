@@ -168,6 +168,35 @@ async function queue(f: Awaited<ReturnType<typeof fixture>>) {
   assert.ok(id);
   return id;
 }
+async function queueEnvelope(
+  f: Awaited<ReturnType<typeof fixture>>,
+  id: string,
+) {
+  const claimed = await claimScheduledAgenda(id);
+  assert.ok(claimed);
+  const { recordScheduledAgendaSources } =
+    await import("../src/modules/docs/agenda-summary-runs.js");
+  const { queueChatgptInference } =
+    await import("../src/modules/auth/chatgpt-inference.js");
+  const { agendaSummaryMessages } =
+    await import("../src/modules/ai/agenda-brief.js");
+  await recordScheduledAgendaSources(claimed.run, claimed.jobId);
+  const messages = agendaSummaryMessages(claimed.snapshot.facts);
+  const queued = await queueChatgptInference(
+    f.owner,
+    claimed.jobId,
+    { connection_id: f.connection, executor_id: f.executor },
+    {
+      instructions: messages[0].content,
+      input: [{ role: "user", content: messages[1].content }],
+      max_output_tokens: 512,
+    },
+    "fixture-model",
+    1,
+    claimed.run.operation_id,
+  );
+  return { claimed, queued };
+}
 async function start(id: string) {
   const work = await claimScheduledAgendaWork(app.log, id);
   assert.ok(work);
@@ -546,12 +575,34 @@ test("an expired worker lease after device claim never issues a second model ope
   const f = await fixture();
   await grant(f);
   const id = await queue(f);
-  const { work, run } = await start(id);
+  // A lost worker leaves the real envelope behind without a live polling loop.
+  await queueEnvelope(f, id);
   const a = await assignment(f);
   await pool.query(
     "UPDATE agenda_summary_runs SET lease_expires_at=now()-interval '1 second' WHERE id=$1",
     [id],
   );
+  const locked = await pool.connect();
+  try {
+    await locked.query("BEGIN");
+    await locked.query(
+      "SELECT id FROM agenda_summary_runs WHERE id=$1 FOR UPDATE",
+      [id],
+    );
+    // SKIP LOCKED is allowed to return null without completing recovery.
+    assert.equal(await claimScheduledAgenda(id), null);
+    assert.equal(
+      (
+        await pool.query("SELECT state FROM agenda_summary_runs WHERE id=$1", [
+          id,
+        ])
+      ).rows[0].state,
+      "running",
+    );
+  } finally {
+    await locked.query("ROLLBACK");
+    locked.release();
+  }
   assert.equal(await claimScheduledAgenda(id), null);
   const parent = (
     await pool.query(
@@ -571,8 +622,6 @@ test("an expired worker lease after device claim never issues a second model ope
     1,
   );
   await assert.rejects(publish(f, a), (e: any) => e.statusCode === 409);
-  work.stop();
-  await run;
   assert.equal(await claimScheduledAgenda(id), null);
 });
 
@@ -1123,29 +1172,7 @@ test("an undisclosed queued envelope resumes after worker loss with the same req
   const f = await fixture();
   await grant(f);
   const id = await queue(f);
-  const claimed = await claimScheduledAgenda(id);
-  assert.ok(claimed);
-  const { recordScheduledAgendaSources } =
-    await import("../src/modules/docs/agenda-summary-runs.js");
-  const { queueChatgptInference } =
-    await import("../src/modules/auth/chatgpt-inference.js");
-  const { agendaSummaryMessages } =
-    await import("../src/modules/ai/agenda-brief.js");
-  await recordScheduledAgendaSources(claimed.run, claimed.jobId);
-  const messages = agendaSummaryMessages(claimed.snapshot.facts);
-  const queued = await queueChatgptInference(
-    f.owner,
-    claimed.jobId,
-    { connection_id: f.connection, executor_id: f.executor },
-    {
-      instructions: messages[0].content,
-      input: [{ role: "user", content: messages[1].content }],
-      max_output_tokens: 512,
-    },
-    "fixture-model",
-    1,
-    claimed.run.operation_id,
-  );
+  const { claimed, queued } = await queueEnvelope(f, id);
   await pool.query(
     "UPDATE agenda_summary_runs SET lease_expires_at=now()-interval '1 second' WHERE id=$1",
     [id],
