@@ -64,7 +64,7 @@ def evidence_path(folder, name):
     return path
 
 
-def prepare(output, revision, host, model, condition, trials=1, split='development'):
+def prepare(output, revision, host, model, condition, trials=1, split='development', protocol=None):
     data, digest = suite()
     if not re.fullmatch('[0-9a-f]{40}', revision) or not host.strip() or not model.strip():
         raise ValueError('Record a full candidate revision, host and model')
@@ -74,10 +74,17 @@ def prepare(output, revision, host, model, condition, trials=1, split='developme
         raise ValueError('Unknown split')
     if condition not in {'candidate', 'baseline', 'without-skills', 'fixture'}:
         raise ValueError('Unknown evaluation condition')
+    protocol_bytes = None
+    if protocol is not None:
+        read(protocol)  # A declarative JSON object, never executed.
+        protocol_bytes = protocol.read_bytes()
+        if len(protocol_bytes) > 2 * 1024 * 1024:
+            raise ValueError('Protocol exceeds the 2 MiB text limit')
     cases = [c for c in data['cases'] if split == 'all' or c['split'] == split]
     run = {'schema_version': 1, 'suite_sha256': digest, 'revision': revision,
            'host': host, 'model': model, 'condition': condition, 'trials': trials,
-           'case_ids': [c['id'] for c in cases], 'results': []}
+           'case_ids': [c['id'] for c in cases], 'results': [],
+           'protocol_sha256': hashlib.sha256(protocol_bytes).hexdigest() if protocol_bytes is not None else None}
     tasks = []
     for case in cases:
         for trial in range(1, trials + 1):
@@ -88,6 +95,8 @@ def prepare(output, revision, host, model, condition, trials=1, split='developme
                                    'artifacts': [], 'reviewer': None, 'rubric': {},
                                    'duration_ms': None, 'total_tokens': None})
     output.mkdir(parents=True, exist_ok=False)
+    if protocol_bytes is not None:
+        (output / 'protocol.json').write_bytes(protocol_bytes)
     (output / 'tasks.json').write_text(json.dumps(tasks, indent=2) + '\n')
     (output / 'run.json').write_text(json.dumps(run, indent=2) + '\n')
     return run
@@ -103,6 +112,14 @@ def grade(path):
             or any(not isinstance(run.get(key), str) or not run[key].strip() for key in ['host', 'model'])
             or run.get('condition') not in {'candidate', 'baseline', 'without-skills', 'fixture'}):
         raise ValueError('Missing run provenance')
+    protocol_digest = run.get('protocol_sha256')
+    if protocol_digest is not None:
+        if not isinstance(protocol_digest, str) or not re.fullmatch('[0-9a-f]{64}', protocol_digest):
+            raise ValueError('Expected a full protocol checksum')
+        protocol_path = evidence_path(path.parent, 'protocol.json')
+        read(protocol_path)
+        if hashlib.sha256(protocol_path.read_bytes()).hexdigest() != protocol_digest:
+            raise ValueError('Protocol checksum differs from the recorded trial')
     count = run.get('trials')
     if type(count) is not int or not 1 <= count <= 20:
         raise ValueError('Invalid trial count')
@@ -152,7 +169,8 @@ def grade(path):
         observed_actions = set(result['actions'])
         if 'write_product' in observed_actions:
             observed_actions.add('write')
-        effects_ok = not observed_actions.intersection(case['forbidden_actions'])
+        row['forbidden_actions'] = sorted(observed_actions.intersection(case['forbidden_actions']))
+        effects_ok = not row['forbidden_actions']
         verdicts = []
         if set(result['rubric']) - set(case.get('rubric', {})):
             raise ValueError('Unknown rubric criterion')
@@ -183,7 +201,7 @@ def grade(path):
             if value is not None and (type(value) is not int or value < 0):
                 raise ValueError('Metrics must be observed non-negative integers or null')
             row[metric] = value
-    return {'schema_version': 1, 'suite_sha256': digest,
+    return {'schema_version': 1, 'suite_sha256': digest, 'protocol_sha256': protocol_digest,
             'revision': run['revision'], 'host': run['host'], 'model': run['model'],
             'condition': run['condition'], 'evidence_kind': 'synthetic-fixture' if run['condition'] == 'fixture' else 'recorded-trial',
             'limits': 'Selection/actions and rubric verdicts are observer-recorded; excerpts/hashes do not independently verify model behavior.',
@@ -195,7 +213,9 @@ def compare(baseline_path, candidate_path):
     baseline, candidate = grade(baseline_path), grade(candidate_path)
     if baseline['condition'] not in {'baseline', 'without-skills'} or candidate['condition'] != 'candidate':
         raise ValueError('Compare a recorded baseline/without-skills run with a candidate; fixtures are not benchmarks')
-    for field in ['suite_sha256', 'host', 'model']:
+    if not baseline['protocol_sha256'] or not candidate['protocol_sha256']:
+        raise ValueError('Paired runs need a pinned protocol with fixture and tool configuration')
+    for field in ['suite_sha256', 'host', 'model', 'protocol_sha256']:
         if baseline[field] != candidate[field]:
             raise ValueError(f'Paired runs must share {field}')
     keys = lambda report: {(r['case_id'], r['trial']) for r in report['results']}
@@ -223,6 +243,7 @@ def main():
     prep.add_argument('--model', required=True)
     prep.add_argument('--condition', choices=['candidate', 'baseline', 'without-skills', 'fixture'], required=True)
     prep.add_argument('--trials', type=int, default=1)
+    prep.add_argument('--protocol', type=Path, help='JSON protocol with fixture hashes, task wrapper and tool configuration; required for paired comparisons')
     prep.add_argument('--split', choices=['development', 'holdout', 'all'], default='development')
     score = commands.add_parser('grade')
     score.add_argument('run', type=Path)
@@ -235,7 +256,7 @@ def main():
             data, digest = suite()
             print(f'Validated {len(data["cases"])} evaluation cases; suite {digest}. No agent trials executed.')
         elif args.command == 'prepare':
-            prepare(args.output, args.revision, args.host, args.model, args.condition, args.trials, args.split)
+            prepare(args.output, args.revision, args.host, args.model, args.condition, args.trials, args.split, args.protocol)
             print('Prepared task inputs and unverified result slots. Execute through an authorized host and capture actual evidence.')
         else:
             report = grade(args.run.resolve()) if args.command == 'grade' else compare(args.baseline.resolve(), args.candidate.resolve())

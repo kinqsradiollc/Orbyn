@@ -87,6 +87,16 @@ structure; public-library CI tests its helpers with synthetic fixtures. Neither
 is evidence of improved Codex/Claude behavior. Missing host trials remain
 unverified and require supported, authorized execution to collect.
 
+The [23 October Codex evaluation](https://github.com/kinqsradio/orbyn-fullstack-skills/blob/96170e7266bdb954dd125e6680f5211fba35d54d/docs/evaluations/2026-10-23-codex.md)
+compares the previous library with the revised milestone: routing improved from
+16/17 to 17/17, while both versions passed 5/5 reviewed design/content cases.
+The corrected shared-schema route passed three candidate observations. The
+evaluated skill revision is `7503c67f625dd6385dd5fd5d5518d05d22c58bb6`; the lock
+pins `96170e7266bdb954dd125e6680f5211fba35d54d`, which adds the report and README
+without changing the managed skill distribution. Earlier failed/incomplete
+attempts are retained. These bounded synthetic trials do not qualify Orbyn app
+behavior or Claude runtime behavior; Claude was excluded at the user's request.
+
 This milestone is reviewed in [public-library PR #3](https://github.com/kinqsradio/orbyn-fullstack-skills/pull/3).
 Its consumer PR is stacked on [initial integration #224](https://github.com/kinqsradiollc/Orbyn/pull/224).
 The lock currently pins the public PR candidate, not a claimed release. Merge the
