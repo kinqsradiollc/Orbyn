@@ -59,6 +59,11 @@ def yaml_metadata(value, key):
     return value
 
 
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -66,21 +71,22 @@ def main():
     mode.add_argument('--write', action='store_true')
     args = parser.parse_args()
     data = json.loads(SOURCE.read_text())
-    assert data['schema_version'] == 1, 'Unsupported model registry version'
+    require(type(data['schema_version']) is int and data['schema_version'] == 1, 'Unsupported model registry version')
     agents, speed = data['agents'], data['processing']
-    assert set(agents) == {'orbyn-agent', 'orbyn-light'}, 'Expected standard and light agents'
-    assert speed == {
+    require(set(agents) == {'orbyn-agent', 'orbyn-light'}, 'Expected standard and light agents')
+    expected_speed = {
         'codex_service_tier': 'default', 'codex_fast_mode': False,
         'codex_ultrafast_mode': False, 'claude_fast_mode': False,
         'claude_disable_fast_mode': '1',
-    }, 'Only standard processing is authorized'
+    }
+    require(speed == expected_speed and all(type(speed.get(key)) is type(value) for key, value in expected_speed.items()), 'Only standard processing is authorized')
     for host in ['codex', 'claude']:
-        assert data['defaults'][host] in agents, f'Unknown default: {host}'
+        require(data['defaults'][host] in agents, f'Unknown default: {host}')
         for name, agent in agents.items():
             setting = agent[host]
-            assert setting['model'] and setting['effort'] in ['low', 'medium', 'high'], f'Invalid model/effort: {name}/{host}'
-            assert not any(x in setting['model'].lower() for x in ['astra', 'fable', 'fast', 'priority']), f'Manual-only or accelerated automatic model: {name}/{host}'
-            assert setting['model'] != data['human_only'][host]['model'], f'Human-only model in automatic tier: {name}'
+            require(isinstance(setting['model'], str) and bool(setting['model'].strip()) and setting['effort'] in ['low', 'medium', 'high'], f'Invalid model/effort: {name}/{host}')
+            require(not any(x in setting['model'].lower() for x in ['astra', 'fable', 'fast', 'priority']), f'Manual-only or accelerated automatic model: {name}/{host}')
+            require(setting['model'] != data['human_only'][host]['model'], f'Human-only model in automatic tier: {name}')
     owned = [ROOT / '.codex/config.toml', ROOT / '.claude/settings.json', ROOT / 'docs/agents/model-policy.md']
     for name in agents:
         owned.extend([ROOT / f'.codex/agents/{name}.toml', ROOT / f'.claude/agents/{name}.md'])
@@ -107,11 +113,11 @@ def main():
         outputs[path] = text
         path = ROOT / f'.claude/agents/{name}.md'
         text = originals[path]
-        assert text.startswith('---\n'), f'Missing frontmatter: {path}'
+        require(text.startswith('---\n'), f'Missing frontmatter: {path}')
         parts = text.split('---', 2)
         for key, value in [('name', name), ('description', agent['purpose']), ('model', agent['claude']['model']), ('effort', agent['claude']['effort'])]:
             pattern = rf'^{key}:.*$'
-            assert re.search(pattern, parts[1], re.M), f'Missing {key}: {path}'
+            require(re.search(pattern, parts[1], re.M), f'Missing {key}: {path}')
             encoded = yaml_metadata(value, key)
             parts[1] = re.sub(pattern, lambda _: f'{key}: {encoded}', parts[1], flags=re.M)
         outputs[path] = '---'.join(parts)
@@ -135,9 +141,9 @@ def main():
     table.extend(table_row(row) for row in rows[1:])
     table.extend(['', '<!-- agent-models:end -->'])
     pattern = r'<!-- agent-models:start -->.*?<!-- agent-models:end -->'
-    assert re.search(pattern, text, re.S), 'Missing generated routing table'
+    require(re.search(pattern, text, re.S), 'Missing generated routing table')
     outputs[path] = re.sub(pattern, lambda _: '\n'.join(table), text, flags=re.S)
-    assert all(path.read_text() == original for path, original in originals.items()), 'Configuration changed during sync; retry after coordinating the writer'
+    require(all(path.read_text() == original for path, original in originals.items()), 'Configuration changed during sync; retry after coordinating the writer')
     changed = [p for p, text in outputs.items() if originals[p] != text]
     if args.check and changed:
         for path in changed:

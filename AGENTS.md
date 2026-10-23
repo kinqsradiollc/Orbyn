@@ -33,18 +33,18 @@ This consumer-owned map is outside shared skill synchronization and adds no auth
 
 ## Choose the right guidance
 
-| Task                                    | Read                                                                                                                              |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Source changes, dependencies, commands  | [Development](docs/agents/development.md)                                                                                         |
-| Architecture or a complex migration     | [architect](skills/architect/SKILL.md), [figure-it-out](skills/figure-it-out/SKILL.md)                                            |
-| UI, responsive behavior or product copy | [UI/UX](docs/agents/ui-ux.md), [UI skill](skills/orbyn-ui-design/SKILL.md), [content skill](skills/orbyn-content-design/SKILL.md) |
-| Social posts, graphics or feed previews | [Social writing](skills/social-content/SKILL.md), [social previews](skills/social-preview/SKILL.md) |
-| API contracts, migrations or CI | [Backend design](skills/orbyn-backend-design/SKILL.md), [data migration](skills/orbyn-data-migration/SKILL.md), [CI design](skills/orbyn-ci-design/SKILL.md) |
-| Runtime, data, providers or deployment  | [Operations](docs/agents/operations.md)                                                                                           |
-| Verification and delivery               | [Delivery workflow](docs/agents/delivery.md)                                                                                      |
-| Assigned reviewers or parallel workers  | [Coordination](docs/agents/coordination.md), [review](docs/agents/review.md)                                                      |
-| Status or handoff                       | [Status guide](docs/agents/status.md)                                                                                             |
-| Available skills and upstream tools     | [Skill index](skills/README.md), [tooling](docs/agents/tooling.md)                                                                |
+| Task                                    | Read                                                                                                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Source changes, dependencies, commands  | [Development](docs/agents/development.md)                                                                                                                    |
+| Architecture or a complex migration     | [architect](skills/architect/SKILL.md), [figure-it-out](skills/figure-it-out/SKILL.md)                                                                       |
+| UI, responsive behavior or product copy | [UI/UX](docs/agents/ui-ux.md), [UI skill](skills/orbyn-ui-design/SKILL.md), [content skill](skills/orbyn-content-design/SKILL.md)                            |
+| Social posts, graphics or feed previews | [Social writing](skills/social-content/SKILL.md), [social previews](skills/social-preview/SKILL.md)                                                          |
+| API contracts, migrations or CI         | [Backend design](skills/orbyn-backend-design/SKILL.md), [data migration](skills/orbyn-data-migration/SKILL.md), [CI design](skills/orbyn-ci-design/SKILL.md) |
+| Runtime, data, providers or deployment  | [Operations](docs/agents/operations.md)                                                                                                                      |
+| Verification and delivery               | [Delivery workflow](docs/agents/delivery.md)                                                                                                                 |
+| Assigned reviewers or parallel workers  | [Coordination](docs/agents/coordination.md), [review](docs/agents/review.md)                                                                                 |
+| Status or handoff                       | [Status guide](docs/agents/status.md)                                                                                                                        |
+| Available skills and upstream tools     | [Skill index](skills/README.md), [tooling](docs/agents/tooling.md)                                                                                           |
 
 ## Stack, planning and skill maintenance
 
@@ -67,17 +67,17 @@ for examples and existing-branch handling.
 
 Use [coordination](docs/agents/coordination.md) for separately requested project
 sessions and their bounded subagents. Keep all new Orbyn work sessions in the
-Orbyn project; no recursive session creation. Use `orbyn-agent` (Sol/Opus) or
-`orbyn-light` (Luna/Sonnet) and
-[workflow role mapping](docs/agents/roles.md) for delegated work. Select the tier
-for task complexity: Sol/medium or Luna/high in Codex, Opus/medium or
-Sonnet/medium in Claude. Standard processing only; never use Fast, Priority,
-Ultrafast or speed-optimized model variants. Astra/Fable is the
-strongest tier and requires explicit human selection; never escalate to it
-automatically. Do not select xhigh, max or ultra automatically. Read
+Orbyn project; no recursive session creation. Use the named `orbyn-agent` or
+`orbyn-light` type and [workflow roles](docs/agents/roles.md) for delegated work.
+Select the tier for task complexity using the provider model and reasoning
+effort declared in [the shared registry](docs/agents/models.json). Model families
+and effort values are not redefined in this entry point. Standard processing
+only; never use Fast, Priority, Ultrafast or speed-optimized model variants.
+The registry's human-only tier requires explicit human selection; never escalate
+to it automatically. Do not select xhigh, max or ultra automatically. Read
 [model policy](docs/agents/model-policy.md) before selecting models or changing
-defaults. Edit [the shared model registry](docs/agents/models.json) for provider
-updates and sync both hosts under that policy. Load only relevant skill bodies.
+defaults; update the registry and sync both hosts under that policy. Load only
+relevant skill bodies.
 
 ## Security scope
 

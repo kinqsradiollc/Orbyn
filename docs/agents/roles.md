@@ -42,22 +42,22 @@ label never authorizes tests, publication or other external effects by itself.
 
 ## Model routing
 
-Roles describe responsibility; agent types select the model and effort. Use
-Sol/medium or Luna/high in Codex; Opus/medium or Sonnet/medium in Claude.
-Standard processing only, without Fast/Priority/Ultrafast modes or speed variants.
-Route by the actual assignment:
+Roles describe responsibility; agent types select the model and effort from
+[models.json](models.json) under [model policy](model-policy.md). Preserve standard
+processing, without Fast/Priority/Ultrafast modes or speed variants. Route by the
+actual assignment:
 
-| Assignment                                                                                                      | Agent type                   | OpenAI / Claude                     |
-| --------------------------------------------------------------------------------------------------------------- | ---------------------------- | ----------------------------------- |
-| Cross-cutting planning, architecture, complex implementation, difficult diagnosis, consequential review         | `orbyn-agent`                | GPT-6.1 Sol / medium; Opus / medium |
-| Bounded source lookup, clear small edits, routine authorized checks, documentation, focused evidence collection | `orbyn-light`                | GPT-6 Luna / high; Sonnet / medium  |
-| Strongest-model work explicitly selected by the human                                                           | Human-selected session/model | Astra / Fable                       |
+| Assignment                                                                                                      | Agent type                                                       |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Cross-cutting planning, architecture, complex implementation, difficult diagnosis, consequential review         | `orbyn-agent`                                                    |
+| Bounded source lookup, clear small edits, routine authorized checks, documentation, focused evidence collection | `orbyn-light`                                                    |
+| Strongest-model work explicitly selected by the human                                                           | Human-selected session/model from the registry's human-only tier |
 
-An Investigator may need Sol/Opus for an ambiguous subsystem; a Reviewer may use
-Luna/Sonnet for a small, clear diff. Do not force every role onto the same tier or
-create extra agents merely to use multiple models. The owner may move a bounded
-assignment from Luna/Sonnet to Sol/Opus when complexity warrants it, recording why.
-Never automatically select Astra/Fable. See [model policy](model-policy.md).
+An Investigator may need the standard tier for an ambiguous subsystem; a Reviewer
+may use the light tier for a small, clear diff. Do not force every role onto the
+same tier or create extra agents merely to use multiple models. The owner may
+move a bounded assignment from light to standard when complexity warrants it,
+recording why. Never automatically select the human-only tier.
 
 Host definitions: Codex [standard](../../.codex/agents/orbyn-agent.toml) and
 [light](../../.codex/agents/orbyn-light.toml); Claude Code

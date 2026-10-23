@@ -16,8 +16,8 @@ capability, latency, price or reasoning budget.
 
 <!-- agent-models:end -->
 
-The human manually selects Astra when stronger reasoning is needed. Treat the
-paired Fable tier the same way: never select it automatically, including through
+Only the human selects a provider model from the registry's human-only tier.
+Never select that tier automatically, including through
 parent-model inheritance or a fallback. A human-selected strongest-model parent
 does not implicitly authorize strongest-model children. Keep routine children on
 one of the two explicit agent definitions unless the human requests otherwise.
@@ -53,24 +53,24 @@ Never remove the model pin or use a generic fallback to conceal discovery failur
 
 ## Route the assignment
 
-Use Sol/Opus for cross-cutting plans, architecture and ownership decisions,
+Use `orbyn-agent` for cross-cutting plans, architecture and ownership decisions,
 complex implementation, ambiguous diagnosis and consequential reviews. Use
-Luna/Sonnet for bounded source discovery, clear small edits, documentation,
+`orbyn-light` for bounded source discovery, clear small edits, documentation,
 routine authorized verification and focused evidence collection. Roles do not
 have a single mandatory model: select by scope, ambiguity and consequences.
 See [roles](roles.md) for role responsibilities and examples.
 
-The owner may route a task from Luna/Sonnet to Sol/Opus when the bounded brief
-proves insufficient; record the concrete reason and pass the existing findings.
-Do not automatically escalate beyond Sol/Opus. Use one suitable model for each
-assignment; multiple available tiers do not require a panel, duplicate work or
+The owner may route a task from `orbyn-light` to `orbyn-agent` when the bounded
+brief proves insufficient; record the concrete reason and pass existing findings.
+Do not automatically escalate beyond the standard tier. Use one suitable model
+for each assignment; multiple available tiers do not require a panel, duplicate work or
 extra sessions. Keep prompts scoped, pass file references instead of whole
 transcripts and reuse a matching child.
 
-Use Sol/medium, Luna/high, Opus/medium and Sonnet/medium. Luna/high follows the
-Codex subagent starting recommendation; it is not a locally benchmarked optimum.
-Higher effort does not make Luna equivalent to Sol. A Sol/Opus high-effort
-assignment requires a recorded reason and supported definition/configuration.
+Use the model and effort in the generated table and named definition, sourced
+from the registry. The light and standard tiers are not measured equivalents;
+effort labels are model-specific. A non-default effort assignment requires a
+recorded reason and supported definition/configuration.
 Do not select xhigh, max, ultra or automatic deep-effort modes automatically. A human's
 explicit model/effort choice takes precedence. Optional cheaper families or low
 effort require an explicit human choice; they are not implicit fallbacks.
@@ -95,7 +95,7 @@ effects beyond the assignment.
 
 Never enable Fast, Priority or Ultrafast processing, `/fast`, automatic speed
 selection or a speed-optimized model variant, including on human-selected
-Astra/Fable sessions. Luna remains an allowed model family; the restriction is
+human-only sessions. The light tier remains allowed; the restriction is
 on accelerated processing modes and variants. If the host cannot preserve the
 required model, effort and standard speed, report the limitation and keep
 independent work in the current session instead of launching a mismatched child.
@@ -122,30 +122,32 @@ No global user settings, managed policy or provider configuration is modified.
 
 ## Host configuration
 
-Codex uses `.codex/config.toml` and `.codex/agents/*.toml`. The parent defaults to
-Sol/medium. `orbyn-agent` pins Sol/medium and `orbyn-light` pins Luna/high.
+Codex uses `.codex/config.toml` and `.codex/agents/*.toml`. Parent defaults and
+named-agent model/effort pins are synchronized from the registry.
 `agents.max_threads = 2` is the compatibility alias for the concurrent-child
 limit. Each registered type supplies a `config_file` and its standalone file
 contains its name, description and instructions. A trusted project is required.
 Permissions, provider and MCP configuration remain inherited.
 
 Custom Codex role-file model/effort takes precedence over spawn values. Select
-the appropriate named type rather than spawning the Sol definition with a Luna
-override. A requested different effort requires an applicable definition or a
-host-supported configuration change before launch; do not assume a spawn value
+the appropriate named type rather than overriding one tier with another. A
+requested different effort requires an applicable definition or a host-supported
+configuration change before launch; do not assume a spawn value
 wins. See [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
 and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 
-Claude Code uses `.claude/settings.json` (`opus`, `effortLevel: medium`) and
-`.claude/agents/*.md`. `orbyn-agent` pins Opus/medium and `orbyn-light` pins
-Sonnet/medium. `fastMode: false` and project environment
-`CLAUDE_CODE_DISABLE_FAST_MODE=1` disable Fast mode. Both deny `Agent` and legacy `Task` child delegation.
-The parent
-enforces the two-child limit; no invented Claude concurrency setting is used.
+Claude Code uses `.claude/settings.json` and `.claude/agents/*.md`, with parent
+defaults and named-agent model/effort pins synchronized from the registry.
+`fastMode: false` and project environment
+`CLAUDE_CODE_DISABLE_FAST_MODE=1` disable Fast mode. Both named definitions deny
+`Agent` and legacy `Task` child delegation. The parent enforces the two-child
+limit; no invented Claude concurrency setting is used.
 Check installed-version support before per-invocation model/effort overrides.
-Per-invocation effort requires Claude Code 2.1.292 or later. The installed
-2.1.150 CLI predates that control, so retain explicit definition-level effort.
-Current docs resolve a per-invocation model before frontmatter, but before
+The documentation reviewed on 2026-10-21 placed per-invocation effort in Claude
+Code 2.1.292 or later; the 2.1.150 CLI observed that day predates that control.
+Retain explicit definition-level effort and recheck installed-version support
+before using an override. That documentation resolved a per-invocation model
+before frontmatter, but before
 2.1.251 `CLAUDE_CODE_SUBAGENT_MODEL` took precedence over both. A forced model
 environment setting can collapse these tiers; check effective selection rather
 than assuming the definition wins.
@@ -160,6 +162,10 @@ delegation. Report conflicting overrides rather than claiming an unobserved
 model. No permission or MCP configuration is changed by this policy.
 
 ## Research and evidence (2026-10-21)
+
+The following records the documentation and local checks observed on that date.
+It does not establish current host support, delivery or runtime qualification.
+The registry and generated definitions above remain the active configuration.
 
 | Question                                        | Official source                                                                                                                                                                                                                           | Finding and implication                                                                                                                                                                                                                                                                                  |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -181,7 +187,7 @@ Read-only version checks returned **Codex CLI 0.133.0** and **Claude Code
 host's runtime version. Current online docs include newer features, so no claim
 of their installed support follows from those docs alone.
 
-For this update, `python3 scripts/check-agent-assets.py`,
+During that update, `python3 scripts/check-agent-assets.py`,
 `python3 scripts/sync-agent-skills.py --check` and `git diff --check` passed.
 `codex features list` loaded project configuration and reported `fast_mode=false`.
 That CLI did not list `ultrafast_mode`, so its configured false value is not

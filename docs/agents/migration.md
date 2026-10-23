@@ -1,6 +1,13 @@
-# Orbyn workflow migration
+# Orbyn workflow migration record (2026-10-21)
 
-## Current structure
+This is a dated migration record. Counts, branch names, checks and delivery
+statements below describe that migration snapshot, not current policy or current
+Git state. Follow [AGENTS.md](../../AGENTS.md), [model policy](model-policy.md)
+and [delivery](delivery.md) for live rules; verify delivery against current Git
+and pull-request evidence. Historical branch names do not authorize new branded
+branches.
+
+## Structure at migration
 
 - `AGENTS.md` owns the policy; `AGENT.md` and `CLAUDE.md` are host entrypoints.
 - `orbyn-agent` is the configured agent. [Orbyn roles](roles.md) define its bounded
@@ -40,9 +47,10 @@ The migration uses static documentation/configuration checks. No application
 builds/tests, paid model qualification or REA engine setup are implied. Earlier
 host diagnostic limitations remain in [model policy](model-policy.md).
 
-The migration is delivered through `codex/agent-workflows`. Git and the pull
-request record its delivery state. Unrelated application/config changes are
-preserved separately during checkout cleanup. No deployment is part of this work.
+The migration used `codex/agent-workflows`, an existing historical branch name.
+Git and the pull-request record establish its delivery state; this report does
+not establish that it is currently pushed or merged. Unrelated application/config
+changes were preserved separately during checkout cleanup. No deployment is part of this work.
 
 The new catalog synchronizer maintains both host links and the skill index.
 Planning and UI research is recorded under tooling; active workflows use Orbyn
