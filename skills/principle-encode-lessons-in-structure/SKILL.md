@@ -19,3 +19,7 @@ When that contract is a TypeScript schema, load
 [typescript-best-practices](../typescript-best-practices/SKILL.md) to carry the fix
 through runtime validation, shared types and callers. For other stacks, use the
 consuming project's schema owner; this principle does not choose a language.
+
+For another implementation language, use its [local language guide](../language-best-practices/SKILL.md)
+and the consuming project's contract owner. Preserve valid-state and runtime
+validation principles without requiring TypeScript syntax or schema libraries.

@@ -1,6 +1,6 @@
 ---
 name: orbyn-worktree
-description: "Manage local task branches, personal-fork delivery and Git worktree isolation; use sibling <repo>-wt directories, purpose-based names and preservation before cleanup."
+description: "Manage local task branches, private contribution storage when supported and Git worktree isolation; use sibling <repo>-wt directories, purpose-based names and preservation before cleanup."
 ---
 
 # Worktree ownership and lifecycle
@@ -73,17 +73,49 @@ policy, sanitized remote identities, upstream relationship, repository visibilit
 account permission and fork restrictions before choosing a push destination.
 A remote named `origin` is not evidence that it is a personal fork.
 
-For company upstreams, prefer one existing permitted personal contribution fork
+For company upstreams, prefer one existing permitted **private** personal contribution fork
 for the approved account. Create one only within authorized delivery/setup scope
 and when company/host policy allows it. Use a meaningful stable name such as
 `<Repository>-contributions`, retaining the upstream identity:
 
-| Identity | Example |
-| --- | --- |
-| Company upstream | `company/Orbyn` |
-| Reused personal fork | `approved-account/Orbyn-contributions` |
-| Task branch on that fork, when publication is needed | `feat/task-rescheduling` |
-| Local task checkout | `Documents/GitHub/orbyn-wt/task-rescheduling` |
+| Identity                                             | Example                                       |
+| ---------------------------------------------------- | --------------------------------------------- |
+| Company upstream                                     | `company/Orbyn`                               |
+| Reused personal fork                                 | `approved-account/Orbyn-contributions`        |
+| Task branch on that fork, when publication is needed | `feat/task-rescheduling`                      |
+| Local task checkout                                  | `Documents/GitHub/orbyn-wt/task-rescheduling` |
+
+### Privacy before publication
+
+Prefer private contribution storage whenever the host, upstream visibility and
+organization policy support it. Inspect the actual API/host result after creation;
+a requested flag or a private-sounding name is not visibility evidence. Verify
+upstream permissions and organization approval before copying restricted code
+into any personal account, including a private repository.
+
+On GitHub, native forks of a public repository are public and cannot independently
+be made private. Private upstream forks stay private where forking is permitted;
+internal-repository behavior also depends on account/enterprise policy. Do not
+attempt to bypass these rules or promise a private public-parent native fork.
+
+If the desired privacy is unavailable, keep task branches/commits local. Within
+explicit backup scope, a permitted private standalone repository can hold work,
+but it is a separate repository, not a native fork or an automatic upstream PR
+source. Verify its actual visibility, access and remotes before any push. Do not
+create it merely because an API token can. Never detach, delete or recreate an
+existing fork, rewrite its history or change upstream visibility to enforce a
+naming/privacy preference.
+
+When a public upstream PR is explicitly authorized, promote only its reviewed
+allowlisted changes through the required public contribution path. Keep unrelated
+branches, company-only material, reports and backups local/private. Explain the
+visibility boundary before a public push when privacy was requested; if public
+publication is not authorized, preserve the patch and report the specific limit.
+A private backup does not retract commits already published to a public network.
+
+Verified 24 October 2026 against [GitHub fork visibility and permissions](https://docs.github.com/en/pull-requests/reference/forks).
+Other providers require their own current policy check; do not generalize GitHub's
+constraints into a universal claim about forks.
 
 Verify that a candidate fork actually belongs to the intended upstream; matching
 names are insufficient. Preserve an established fork/name rather than renaming it
