@@ -126,6 +126,13 @@ Read REA's nested rules when modifying REA itself. No active workflow depends on
 Current source, the task brief and these guides define the work. See
 [documentation policy](docs/agents/documentation.md).
 
+For external code, skills and research freshness, use
+[upstream review](skills/orbyn-upstream-review/SKILL.md). Keep downloaded originals
+in ignored `orbyn-references/`; neither that folder nor `openSrc/` enters Git or
+public skill exports. Compare exact source revisions and selectively update the
+existing owner. Preserve intentionally vendored dependencies and required notices;
+do not edit installed plugin caches or confuse a review revision with an import.
+
 For worktree location/lifecycle and local task branch or personal-fork delivery,
 follow [orbyn-worktree](skills/orbyn-worktree/SKILL.md). Use the primary clone’s
 sibling `orbyn-wt/<purpose>/` root by default. Preserve active paths/output; keep

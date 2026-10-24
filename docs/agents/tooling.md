@@ -26,6 +26,20 @@ upstream Cursor model defaults, automatic ticket/chat writes and mandatory panel
 reviews do not apply globally. Scope REA development skills to REA itself.
 Do not reformat upstream snapshots or insert Orbyn product code into them.
 
+## Research and upstream reviews
+
+Use [upstream review](../../skills/orbyn-upstream-review/SKILL.md) for external
+code, dependencies, skills and research freshness. Downloaded references belong
+in ignored `orbyn-references/`, with exact source/revision/license/hash receipts.
+Keep existing `openSrc/` references local and preserve intentionally vendored
+dependencies. Only selected reviewed changes enter the owning source or skills.
+The shared source checker rejects tracked/staged research and unignored reference
+files; it runs through the existing asset/upstream CI checks.
+
+The [dated pstack assessment](../../tools/research/2026-10-24-pstack.md) compares
+the imported snapshot with a newer candidate and maps changes to existing owners.
+It does not advance the import pin, install upstream code or qualify live behavior.
+
 ## Use REA deliberately
 
 Use [reverse-engineer-anything](../../skills/reverse-engineer-anything/SKILL.md)

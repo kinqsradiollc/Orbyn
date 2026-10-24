@@ -25,6 +25,12 @@ recovery relevant to the decision. For UI, evaluate task flow, readability, focu
 responsive behavior and existing tokens; generic aesthetic claims are not evidence.
 Imported examples do not authorize new external services, telemetry or CDN assets.
 
+When downloading source or research references, use the ignored local
+`orbyn-references/` workspace and exclusion/provenance rules in
+[upstream review](../orbyn-upstream-review/SKILL.md). Use that owner for freshness
+comparisons and update decisions. Raw downloads stay outside public commits;
+retain only reviewed findings and licensed, deliberately selected support files.
+
 Feed findings into `orbyn-plan`, `architect`, `orbyn-ui-design` or the owning guide.
 Keep only decision-relevant findings in a durable record. If a runtime experiment
 is needed, describe its scope and use it only when authorized; do not call a source

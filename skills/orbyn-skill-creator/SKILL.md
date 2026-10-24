@@ -84,6 +84,12 @@ remaining behavior gaps, changed files and local/committed delivery state.
 
 Treat the shared library as an upstream dependency of consuming projects. Keep private product policy and source outside public contributions. A useful skill change alters a decision or supplies a reusable artifact, not just vocabulary. Check expected and adjacent routing cases, then reconcile the catalog and consumer pin through the documented contribution path.
 
+For external skill freshness and source comparisons, use
+[upstream review](../orbyn-upstream-review/SKILL.md). Keep downloaded research in
+ignored `orbyn-references/`, preserve existing local references and adopt selected
+improvements into the owning skill. Do not replace our adaptations with an
+upstream collection or advance an import pin after a review-only change.
+
 ## Evaluate a change
 
 Use the [evaluation guide](references/evaluations.md) and its versioned suite for

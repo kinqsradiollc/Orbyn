@@ -62,7 +62,8 @@
         "orbyn-setup",
         "orbyn-skill-creator",
         "orbyn-ci-design",
-        "reflect"
+        "reflect",
+        "orbyn-upstream-review"
       ]
     },
     "rea": {

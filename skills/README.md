@@ -23,6 +23,7 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 - [orbyn-research](orbyn-research/SKILL.md) — Resolve a specific architectural, dependency, platform or design uncertainty using local evidence and authoritative external sources before choosing an implementation.
 - [orbyn-setup](orbyn-setup/SKILL.md) — Set up Orbyn skills in an existing project, migrate company-owned skills and configure requested host roles/models for Codex or Claude Code.
 - [orbyn-skill-creator](orbyn-skill-creator/SKILL.md) — Create, refine, merge or retire Orbyn repository skills while keeping task routing, technology boundaries, host discovery and documentation consistent.
+- [orbyn-upstream-review](orbyn-upstream-review/SKILL.md) — Review freshness and changes in external skills, source code or research references; keep downloads in ignored orbyn-references, compare pinned revisions and selectively adapt existing owners.
 - [orbyn-workflow](orbyn-workflow/SKILL.md) — Route substantial Orbyn engineering work through evidence-led investigation, design, implementation and verification. Use for Orbyn workflow requests and multi-step changes.
 - [orbyn-worktree](orbyn-worktree/SKILL.md) — Manage local task branches, personal-fork delivery and Git worktree isolation; use sibling <repo>-wt directories, purpose-based names and preservation before cleanup.
 - [reflect](reflect/SKILL.md) — Review the current task for reusable lessons when requested, and update only the authorized workflow or skill scope.
