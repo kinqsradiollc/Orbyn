@@ -133,6 +133,13 @@ public skill exports. Compare exact source revisions and selectively update the
 existing owner. Preserve intentionally vendored dependencies and required notices;
 do not edit installed plugin caches or confuse a review revision with an import.
 
+For Orbyn engineering, use this repository's canonical maintained Orbyn skillset
+and its task routing. Downloaded upstream skills and unrelated global collections
+are research references, not alternative active project policy. User instructions
+and higher-priority host requirements still take precedence. The public fullstack
+library is portable for other projects; this Orbyn maintenance rule does not
+impose Orbyn's application stack or company policy on those consumers.
+
 For worktree location/lifecycle and local task branch or personal-fork delivery,
 follow [orbyn-worktree](skills/orbyn-worktree/SKILL.md). Use the primary clone’s
 sibling `orbyn-wt/<purpose>/` root by default. Preserve active paths/output; keep

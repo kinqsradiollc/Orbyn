@@ -832,6 +832,31 @@
         "impact": "Separate the helper micro result from total request impact and avoid reporting 40% improvement for the whole path.",
         "evidence": "Preserve source/harness/raw results and name missing runtime evidence; do not claim a benchmark ran."
       }
+    },
+    {
+      "id": "proportional-ci-and-cd",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "One change fixes an inert README typo; another edits an executable skill helper; a third changes one line in a shared runtime schema. Explain which local checks, CI and CD each needs, including a required GitHub status gate, unknown paths, and a classifier failure. Do not run checks, change workflows or deploy.",
+      "expected_skills": [
+        "orbyn-ci-design"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Do not use diff size alone, blanket skip-CI markers, or reclassify an observed test failure as passing.",
+      "rubric": {
+        "proportional": "Cosmetic local-only work can finish with relevant local review/checks and no hosted CI; helper changes use meaningful helper checks, while shared runtime changes use affected broader application checks.",
+        "gate": "Published changes retain required status through conditional jobs and a final gate; incomplete/unknown classification cannot silently skip, and failed/cancelled/unexpectedly skipped selected jobs block the result.",
+        "deployment": "Docs/skills-only success does not automatically deploy; preserve separate authorized promotion, exact candidate and trusted event/data boundaries.",
+        "authority": "Select methods internally without asking for an extra skill invocation; no commands or deployment were executed in this plan."
+      }
     }
   ]
 }

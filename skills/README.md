@@ -44,7 +44,7 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 ## Fullstack contracts and delivery
 
 - [orbyn-backend-design](orbyn-backend-design/SKILL.md) — Design and implement API/service behavior across validation, authorization, persistence, concurrency and client errors using the consuming project's stack. Use architect first for unsettled ownership; use orbyn-data-migration for stored-format changes.
-- [orbyn-ci-design](orbyn-ci-design/SKILL.md) — Design or repair CI checks, contribution automation and release promotion with scoped credentials, deterministic artifacts and clear evidence boundaries. Use for workflow changes; not permission to publish, merge or deploy.
+- [orbyn-ci-design](orbyn-ci-design/SKILL.md) — Design or repair CI checks, contribution automation and release promotion with scoped credentials, deterministic artifacts and clear evidence boundaries. Use for workflow changes and proportional checks for small edits; not permission to publish, merge or deploy.
 - [orbyn-data-migration](orbyn-data-migration/SKILL.md) — Plan and implement stored-data, schema and writer migrations with compatibility, cutover, retry and recovery evidence. Use for durable format changes; not a routine in-memory type refactor or permission to run production migrations.
 - [orbyn-security-audit](orbyn-security-audit/SKILL.md) — Perform an explicitly requested local or offline source security audit when a hosted scanner is unavailable or a portable audit is requested; preserve coverage, independent validation and structured findings.
 
