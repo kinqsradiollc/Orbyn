@@ -89,3 +89,7 @@ when its acceptance evidence supports it; do not claim the whole task complete.
 
 [Recovering a failed save](examples/failed-save.md) applies a consuming project's
 style and draft/conflict contract without claiming an unperformed visual check.
+
+## Async flow ownership
+
+For fetch/save/search or subscription changes, use [asynchronous state and recovery](references/async-state.md). Preserve request identity, stale-result handling, drafts, current scope and cleanup in the actual framework.

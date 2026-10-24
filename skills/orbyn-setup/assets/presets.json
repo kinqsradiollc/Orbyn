@@ -12,13 +12,12 @@
         "why",
         "architect",
         "interrogate",
-        "typescript-best-practices",
+        "language-best-practices",
         "orbyn-backend-design",
         "orbyn-ui-design",
         "orbyn-setup",
         "orbyn-skill-creator",
         "orbyn-worktree",
-        "language-best-practices",
         "orbyn-stack-selection"
       ]
     },
@@ -27,9 +26,8 @@
       "skills": [
         "orbyn-ui-design",
         "orbyn-content-design",
-        "typescript-best-practices",
-        "how",
-        "language-best-practices"
+        "language-best-practices",
+        "how"
       ]
     },
     "data": {
@@ -49,7 +47,6 @@
         "orbyn-ui-design",
         "orbyn-content-design",
         "orbyn-backend-design",
-        "typescript-best-practices",
         "language-best-practices"
       ]
     },
@@ -94,7 +91,6 @@
       "description": "Language-aware implementation with local guides for 12 languages and the existing TypeScript contract owner",
       "skills": [
         "language-best-practices",
-        "typescript-best-practices",
         "how"
       ]
     },

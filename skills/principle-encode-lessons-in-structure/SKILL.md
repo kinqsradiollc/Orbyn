@@ -16,7 +16,7 @@ Can the owning representation rule out the recurring error?
 If a conversation can show both “waiting” and “completed”, replace independent booleans with a lifecycle union at the shared contract. Update serializers and consumers together. A repeated warning in a prompt is weaker than a representation that cannot encode the contradictory state.
 
 When that contract is a TypeScript schema, load
-[typescript-best-practices](../typescript-best-practices/SKILL.md) to carry the fix
+[TypeScript guidance](../language-best-practices/references/typescript.md) to carry the fix
 through runtime validation, shared types and callers. For other stacks, use the
 consuming project's schema owner; this principle does not choose a language.
 

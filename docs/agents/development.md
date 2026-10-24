@@ -70,7 +70,7 @@ backend must not import app code. Shared schemas/types belong in core and API
 transport in api-client. Backend enforces authority; UI checks are hints.
 Read relevant [architecture](../architecture.md) and [setup](../setup.md) sections.
 
-Use [TypeScript guidance](../../skills/typescript-best-practices/SKILL.md).
+Use [TypeScript guidance](../../skills/language-best-practices/references/typescript.md).
 Validate untrusted input at boundaries, keep authority checks near effects, and
 preserve optimistic concurrency, transaction boundaries, cancellation and cleanup.
 Types do not replace runtime validation of persisted or external data.

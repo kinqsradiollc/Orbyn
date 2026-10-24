@@ -32,6 +32,10 @@ and must follow the coroutine library's cancellation contract.
 
 Use the configured Gradle tasks and target-specific authorized tests. A JVM unit test does not establish Android lifecycle, native interop or installed-device behavior.
 
+## Maintainability and checks
+
+Separate domain results from framework/UI lifecycle state. Keep coroutine scope and cancellation ownership visible through adapters; do not hide cancellation in generic result mapping. Use the configured coroutine/test facilities rather than adding a new global scope or framework to simplify one test.
+
 ## Primary references
 
 Reviewed 24 October 2026. These independently written instructions and synthetic

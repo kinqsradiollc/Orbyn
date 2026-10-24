@@ -30,6 +30,10 @@ safe or turn parsed strings into authorized task identifiers.
 
 Use the configured type checker and formatter, then authorized focused tests for malformed input, cleanup or cancellation. Do not claim a type checker validates runtime input.
 
+## Maintainability and checks
+
+Keep imports free of unrequested network/runtime setup. Make package boundaries and supported Python syntax explicit; avoid sys.path patches as a substitute for understanding packaging. Libraries can emit scoped logs while the application owns handlers and export policy. Use real parser/fixture boundaries and register cleanup during partial setup.
+
 ## Primary references
 
 Reviewed 24 October 2026. These independently written instructions and synthetic
@@ -37,3 +41,5 @@ examples are usable offline. The links identify semantics and update evidence;
 verify compatibility with the project's target before using newer APIs.
 
 [Python 3.13 asyncio](https://docs.python.org/3.13/library/asyncio-task.html), [Python 3.13 dataclasses](https://docs.python.org/3.13/library/dataclasses.html).
+
+[Python logging ownership](https://docs.python.org/3/library/logging.html).

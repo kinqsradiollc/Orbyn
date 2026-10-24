@@ -29,6 +29,10 @@ when the caller owns stable backing storage for the full use interval.
 
 Use the configured compiler/format/analyzer and authorized sanitizer or concurrency checks for the changed path. A clean build does not establish ABI compatibility or lifetime safety.
 
+## Maintainability and checks
+
+Keep ownership and exception guarantees visible in public interfaces. Avoid exposing implementation types solely to save a wrapper or using shared_ptr as a concurrency policy. Match supported standard/ABI and real caller needs; test observable behavior and lifetime boundaries rather than private class choreography.
+
 ## Primary references
 
 Reviewed 24 October 2026. These independently written instructions and synthetic

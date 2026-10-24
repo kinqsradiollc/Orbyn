@@ -1,15 +1,10 @@
----
-name: typescript-best-practices
-description: "Design or fix shared TypeScript schemas, illegal state combinations, lifecycle unions and unsafe casts. Own the runtime schema, derived types and affected callers together."
----
+# TypeScript: schemas, states and callers
 
-# Typescript best practices
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../../AGENTS.md) and [host/model guidance](../../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
-
-Use this as the implementation owner for TypeScript contract changes, including
+Use this guide through language-best-practices for TypeScript contract changes, including
 repeated illegal states. The type-system and structural-learning principles
-support the decision; this skill carries it through the schema and its callers.
+support the decision; the language owner carries it through the schema and its callers.
 
 Use discriminated unions for meaningful state variants and exhaustive handling
 where new variants must trigger review. Prefer `unknown` for untrusted input;
@@ -25,7 +20,7 @@ Preserve cancellation, cleanup and authority checks near effects. Internal stati
 types do not establish tenant access or freshness of stored data. Keep helpers
 and parameter objects where they clarify callers, not to satisfy arbitrary size
 rules. Match repository Prettier and dependency direction in
-[development](../../docs/agents/development.md).
+[development](../../../docs/agents/development.md).
 
 ## One contract across clients
 
@@ -34,12 +29,12 @@ When changing a run’s result shape, update the owning runtime schema, derived 
 ## Runtime and polyglot boundaries
 
 For JavaScript runtime, cancellation and resource-lifecycle effects, use only the
-[JavaScript reference](../language-best-practices/references/javascript.md) when
-relevant. Other languages route through [language guidance](../language-best-practices/SKILL.md).
-This skill remains the TypeScript schema/type owner; do not translate its specific
+[JavaScript reference](javascript.md) when
+relevant. Other languages route through [language guidance](../SKILL.md).
+This reference owns the TypeScript-specific schema/type guidance; do not translate its specific
 schema-library examples into a mandatory dependency for another language.
 
 ## Local contract example
 
-Use the [TypeScript contract guide](references/contracts.md) for an original
+Use the [TypeScript contract guide](typescript-contracts.md) for an original
 lifecycle example, unknown-input handling, runtime effects and caller migration.

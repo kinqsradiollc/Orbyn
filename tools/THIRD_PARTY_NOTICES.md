@@ -5,6 +5,11 @@
 Full tracked plugin source from [cursor/plugins](https://github.com/cursor/plugins),
 `pstack` subdirectory, revision `74dd2291e8e37b12fd6dc49b2acbd655c6bdaf12`.
 Copyright 2026 Lauren Tan. MIT license: [original license](pstack/LICENSE).
+The adapted TypeScript guidance now lives under
+[language-best-practices](../skills/language-best-practices/references/typescript.md),
+with its unchanged [portable MIT notice](../skills/language-best-practices/references/typescript-LICENSE.txt).
+The original source name remains in the adaptation map for provenance.
+
 Orbyn's pstack skill adaptations in `skills/` derive from this source; the original
 copyright and permission notice apply to those adaptations as well. The complete
 plugin, including all 34 skills, references, playbooks and helpers, is retained.
@@ -26,7 +31,6 @@ REA files, their hashes, executable bits and gitlink pins. Local adaptations are
 separate from those immutable snapshots. No upstream repository history, installed
 dependencies, generated outputs or local caches are included. Follow
 [tooling](../docs/agents/tooling.md) to update or use the source deliberately.
-
 
 ## Portable reference and record support files
 

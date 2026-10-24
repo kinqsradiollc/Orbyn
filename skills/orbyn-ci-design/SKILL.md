@@ -47,3 +47,7 @@ run for the exact candidate when available. Name branch-protection, secret or ho
 settings that remain unapplied. Deliver the workflow, commands and evidence; use
 [orbyn-workflow](../orbyn-workflow/SKILL.md) for the broader change and
 [security remediation](../orbyn-security-remediation/SKILL.md) only for existing findings.
+
+## Maintain the verification map
+
+For a requested verification inventory or stale recipes, use the [consumer-owned verification map](references/verification-map.md). Derive it from current source and existing commands; keep attempted and last-confirmed revisions separate.

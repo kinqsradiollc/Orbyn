@@ -28,6 +28,10 @@ policy. This is not a portable placeholder syntax or a full retry protocol.
 
 Use the actual engine in a guarded disposable database when tests are authorized. A SQLite fixture does not prove PostgreSQL locking, migration or query-plan behavior.
 
+## Maintainability and checks
+
+Keep schema/query ownership and tenant scope explicit. Choose indexes from actual access patterns, cardinality and representative plans; every added index also affects writes and maintenance. Preserve stable pagination ties, NULL semantics and transaction retry meaning. Inspect estimates separately from executed measurements in disposable authorized scope.
+
 ## Primary references
 
 Reviewed 24 October 2026. These independently written instructions and synthetic

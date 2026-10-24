@@ -82,3 +82,7 @@ encoding, ownership and failure contracts across polyglot boundaries.
 Use the [local operating method](references/operating-method.md) for the execution
 sequence, concrete failure case, expected result and stopping condition. It is
 Orbyn-authored guidance; historical source notices remain in provenance.
+
+## Maintainability and polyglot interfaces
+
+For caller complexity, dependency cycles or API longevity, use [maintainable modules](references/maintainable-modules.md). The [Python/Go/SQL example](examples/polyglot-contract.md) connects one contract across language boundaries without imposing a framework.

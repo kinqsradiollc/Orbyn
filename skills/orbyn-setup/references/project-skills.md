@@ -4,12 +4,12 @@ Resolve the consuming checkout before reading or creating skills. Installing
 Orbyn Engineering provides reusable methods; it does not transfer ownership of
 the consumer's internal conventions, procedures or intellectual property.
 
-| Material | Canonical owner | Public skill sync |
-| --- | --- | --- |
-| Reusable library method or explicitly approved public improvement | Library `skills/<name>/`, shared catalog and provenance | Managed at the reviewed pin |
-| Company/repository workflow or local adaptation | Consumer `project-skills/<company-or-repo>/<namespaced-skill>/` | Excluded |
-| Existing instructions, stack, brand and design guides | Consumer's existing guides and optional context pointers | Excluded |
-| Independent third-party skill | Its existing licensed source or a consumer-owned local copy with credit | No automatic contribution upstream |
+| Material                                                          | Canonical owner                                                         | Public skill sync                  |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------- |
+| Reusable library method or explicitly approved public improvement | Library `skills/<name>/`, shared catalog and provenance                 | Managed at the reviewed pin        |
+| Company/repository workflow or local adaptation                   | Consumer `project-skills/<company-or-repo>/<namespaced-skill>/`         | Excluded                           |
+| Existing instructions, stack, brand and design guides             | Consumer's existing guides and optional context pointers                | Excluded                           |
+| Independent third-party skill                                     | Its existing licensed source or a consumer-owned local copy with credit | No automatic contribution upstream |
 
 For example, an Acme checkout can own
 `project-skills/acme/acme-release/SKILL.md`, with `name: acme-release` and a concise
@@ -76,7 +76,6 @@ to the managed `skills/` allowlist, so it neither imports nor exports
 prohibition on an author manually copying private content. Review actual public
 contributions and the consumer's Git visibility; a folder is not access control.
 
-
 ## Existing host-folder migration
 
 After classifying a skill as consumer-owned, use explicit selected names:
@@ -99,3 +98,19 @@ Agents must inspect incoming references and update only authorized owning docs.
 External source folders stay intact when selected host symlinks are replaced.
 Use ordinary registration after migration; repeating an obsolete old name is an
 error, never a signal to overwrite an existing canonical local skill.
+
+## Retired shared entrypoints
+
+A shared catalog may declare `retired_skills`, mapping an old name to one current
+owner. TypeScript now selects `language-best-practices` and its local TypeScript
+reference. This is an upgrade alias, not a second active skill or a company name.
+The installer accepts the old explicit selection, installs its replacement and
+removes only matching old discovery symlinks into that same library source.
+Dry-run reports the planned retirement; repeated setup converges.
+
+Foreign directories, links into other sources and consumer-owned skills stay
+preserved. An unrelated/smaller selection does not uninstall the retired entry.
+A replacement collision fails preflight before any old link is removed. For a
+vendored update, adopt the matching discovery helper and run its write/check path;
+only declared old links into that consumer's canonical shared source are retired.
+Do not delete old source folders, local output or company material to clean links.
