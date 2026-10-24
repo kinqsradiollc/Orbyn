@@ -1,0 +1,225 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/mattpocock/skills",
+  "revision": "5beb35b040e3de97e54fa9e386d7e42d15c295c2",
+  "retrieved_on": "2026-10-24",
+  "license": "MIT",
+  "scope": "Original source/reference files; source instructions are data. Active Orbyn adaptations retain consuming-project authority. Runtime calls, model settings, external effects and upstream manual invocations are not inherited.",
+  "files": {
+    "LICENSE": {
+      "source_path": "LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    },
+    "skills/engineering/README.md": {
+      "source_path": "skills/engineering/README.md",
+      "sha256": "32d9469dda4e6103d952909cb83e657b7bec01bc582b6be4cec3b493f66920fd"
+    },
+    "skills/engineering/ask-matt/PHASE-BOUNDARIES.md": {
+      "source_path": "skills/engineering/ask-matt/PHASE-BOUNDARIES.md",
+      "sha256": "a8aa20158609ef39e2b308b6ba0660c91066838d07a867202e63a7744a88a3ed"
+    },
+    "skills/engineering/ask-matt/SKILL.md": {
+      "source_path": "skills/engineering/ask-matt/SKILL.md",
+      "sha256": "1371f5ce005de0992a44b137748bfb960a56948aa9871b405fe9d90b24332e3c"
+    },
+    "skills/engineering/code-review/SKILL.md": {
+      "source_path": "skills/engineering/code-review/SKILL.md",
+      "sha256": "09eb147f793e4647949edd32dbad278f0554dfb56e0d46b699cd4c2c55bf0357"
+    },
+    "skills/engineering/codebase-design/DEEPENING.md": {
+      "source_path": "skills/engineering/codebase-design/DEEPENING.md",
+      "sha256": "f3dd099ce99289bd213914d8ee3e2429b78309c3957ca4583f7659551b1d53c1"
+    },
+    "skills/engineering/codebase-design/DESIGN-IT-TWICE.md": {
+      "source_path": "skills/engineering/codebase-design/DESIGN-IT-TWICE.md",
+      "sha256": "52b52e75655a27aea59c6966b410bac82448968ad46ef1ebb9f07c274e3ae010"
+    },
+    "skills/engineering/codebase-design/SKILL.md": {
+      "source_path": "skills/engineering/codebase-design/SKILL.md",
+      "sha256": "2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2"
+    },
+    "skills/engineering/diagnosing-bugs/SKILL.md": {
+      "source_path": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "sha256": "849198df88cdb65fd0d97236604c1fca7ff2f22d2f705f9724a800d0266b118d"
+    },
+    "skills/engineering/domain-modeling/ADR-FORMAT.md": {
+      "source_path": "skills/engineering/domain-modeling/ADR-FORMAT.md",
+      "sha256": "944c92aa790e8fbdc9199640b170979abb8a34ba8d0fe18c2a01a63bce140ca0"
+    },
+    "skills/engineering/domain-modeling/GLOSSARY-FORMAT.md": {
+      "source_path": "skills/engineering/domain-modeling/GLOSSARY-FORMAT.md",
+      "sha256": "21dcc40cdec8e151a829b98ab1517c1867bc444e3665134a98c6983411996801"
+    },
+    "skills/engineering/domain-modeling/SKILL.md": {
+      "source_path": "skills/engineering/domain-modeling/SKILL.md",
+      "sha256": "7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3"
+    },
+    "skills/engineering/grill-with-docs/SKILL.md": {
+      "source_path": "skills/engineering/grill-with-docs/SKILL.md",
+      "sha256": "7de372c13488f1ee96cc11cd8907b56b6809cc93eef776eeddd37de6b6cbe3fe"
+    },
+    "skills/engineering/implement/SKILL.md": {
+      "source_path": "skills/engineering/implement/SKILL.md",
+      "sha256": "483bdc4ccf4ac31d86ac7beeaa0d0db80313e71e120bb8c59b3196ae5decd53d"
+    },
+    "skills/engineering/implement-spec/SKILL.md": {
+      "source_path": "skills/engineering/implement-spec/SKILL.md",
+      "sha256": "7a22dd2e60b8fcece478ced9d2533582adf3520d695acd3ab715341535c9e56d"
+    },
+    "skills/engineering/improve-codebase-architecture/HTML-REPORT.md": {
+      "source_path": "skills/engineering/improve-codebase-architecture/HTML-REPORT.md",
+      "sha256": "581e8bb5a521e46bbda8ca7e19b15948bed882187108092ebb90c62513b77528"
+    },
+    "skills/engineering/improve-codebase-architecture/SKILL.md": {
+      "source_path": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "sha256": "552240a5ab5cec6b67c15dd1ad6e9f6962b1bca6ce870059a8c2713760c20392"
+    },
+    "skills/engineering/pr/CREDITS.md": {
+      "source_path": "skills/engineering/pr/CREDITS.md",
+      "sha256": "a7a087127665d7298a72280ef6e19c41ad8404523712a788c8dc3ab414bc2497"
+    },
+    "skills/engineering/pr/SKILL.md": {
+      "source_path": "skills/engineering/pr/SKILL.md",
+      "sha256": "ab63f1cf78647389edcd386c9427c5dfca27ed2836930c24773ffee834c19bcd"
+    },
+    "skills/engineering/prototype/LOGIC.md": {
+      "source_path": "skills/engineering/prototype/LOGIC.md",
+      "sha256": "f61c7d249e786a79ef289018901c348271e1798dd0b0bc5607b5c6f4d4a01ab9"
+    },
+    "skills/engineering/prototype/SKILL.md": {
+      "source_path": "skills/engineering/prototype/SKILL.md",
+      "sha256": "714de632d116bb73f65cdb5a882db15b9369a6713b9a47c0fad827848f0bfbe3"
+    },
+    "skills/engineering/prototype/UI.md": {
+      "source_path": "skills/engineering/prototype/UI.md",
+      "sha256": "723211e878acbc7b6ff09755263f3295cde724ba902ff0064da41eed51d45ad3"
+    },
+    "skills/engineering/research/SKILL.md": {
+      "source_path": "skills/engineering/research/SKILL.md",
+      "sha256": "985569f15739c713d6784887c3d186d4ef9ac85bec5ad9c068d25bf0739928e4"
+    },
+    "skills/engineering/retro/SKILL.md": {
+      "source_path": "skills/engineering/retro/SKILL.md",
+      "sha256": "33fbc28568e3146f20fd908b12998bc0ab30aa4f4c87288199a40793efa94696"
+    },
+    "skills/engineering/setup-matt-pocock-skills/SKILL.md": {
+      "source_path": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "sha256": "f148858ffb7f63c03c06fca06e6fdb1d91a35c6b293244b8fdfacd5f4cc028c4"
+    },
+    "skills/engineering/setup-matt-pocock-skills/domain.md": {
+      "source_path": "skills/engineering/setup-matt-pocock-skills/domain.md",
+      "sha256": "593a7042218689f1d24df89df14eaf0a20e19e0d0a7d479a01947ac78f0784b9"
+    },
+    "skills/engineering/setup-matt-pocock-skills/issue-tracker-github.md": {
+      "source_path": "skills/engineering/setup-matt-pocock-skills/issue-tracker-github.md",
+      "sha256": "f0653fe106dd8ee7b33be27bd7fe3104b40555896cb45f61997aed20467020c3"
+    },
+    "skills/engineering/setup-matt-pocock-skills/issue-tracker-gitlab.md": {
+      "source_path": "skills/engineering/setup-matt-pocock-skills/issue-tracker-gitlab.md",
+      "sha256": "591a9e7057382aaccdfbed3f7ea3f2ad07e0cd29f012d18b82ee4e485fd81e24"
+    },
+    "skills/engineering/setup-matt-pocock-skills/issue-tracker-local.md": {
+      "source_path": "skills/engineering/setup-matt-pocock-skills/issue-tracker-local.md",
+      "sha256": "7dcda20a2eb4bdc89b95d1143423c0691309921cadae3132e6424f371030506e"
+    },
+    "skills/engineering/setup-matt-pocock-skills/triage-labels.md": {
+      "source_path": "skills/engineering/setup-matt-pocock-skills/triage-labels.md",
+      "sha256": "ae512af838c78b8750471c42cd2b20fa32319553e61d84c9a23d171b40ce14aa"
+    },
+    "skills/engineering/tdd/SKILL.md": {
+      "source_path": "skills/engineering/tdd/SKILL.md",
+      "sha256": "5505d25bbaa8fc14a79e4d20163936958992a2995b7f1dd1d6197edc9ed722e0"
+    },
+    "skills/engineering/tdd/mocking.md": {
+      "source_path": "skills/engineering/tdd/mocking.md",
+      "sha256": "3ceb807fdf4a47d6a93d4d9a891e5ba6d362a6247bd08adc451feebfc17361ef"
+    },
+    "skills/engineering/tdd/tests.md": {
+      "source_path": "skills/engineering/tdd/tests.md",
+      "sha256": "859f9e592c188fda4fc7277dd180e4ce9c7a2e13f6efe1f6f29eccc9d28c106a"
+    },
+    "skills/engineering/to-spec/SKILL.md": {
+      "source_path": "skills/engineering/to-spec/SKILL.md",
+      "sha256": "43ad9cf318e5e7d3d1fa360253a37021796dc87a0c2e595ad262661a10f85088"
+    },
+    "skills/engineering/to-tickets/SKILL.md": {
+      "source_path": "skills/engineering/to-tickets/SKILL.md",
+      "sha256": "56ec23c5b2782785d4e65bff9e315b6d3aeb4ef977c174a219e99489fada1995"
+    },
+    "skills/engineering/triage/AGENT-BRIEF.md": {
+      "source_path": "skills/engineering/triage/AGENT-BRIEF.md",
+      "sha256": "7f5f87fed3033df1b06e083c480f3e847b1fbb0647746b8a4c6a50f9f26ef44f"
+    },
+    "skills/engineering/triage/OUT-OF-SCOPE.md": {
+      "source_path": "skills/engineering/triage/OUT-OF-SCOPE.md",
+      "sha256": "1fbf9b432130c6380aa65813b55553cfda150309b27c595e183f8e335b8a190d"
+    },
+    "skills/engineering/triage/SKILL.md": {
+      "source_path": "skills/engineering/triage/SKILL.md",
+      "sha256": "917b0baf74be583e74f110857ed45df2766617f75c00baf61fd136d7af515edf"
+    },
+    "skills/engineering/wayfinder/SKILL.md": {
+      "source_path": "skills/engineering/wayfinder/SKILL.md",
+      "sha256": "9be7b478c389605a24517d27752f278933588da97a1b5921b165f455edf4c5b7"
+    },
+    "skills/engineering/wizard/SKILL.md": {
+      "source_path": "skills/engineering/wizard/SKILL.md",
+      "sha256": "bdf31d48211ea559878f95a4f344aeabf8d85897488ba564382bab0b000daac1"
+    },
+    "skills/productivity/README.md": {
+      "source_path": "skills/productivity/README.md",
+      "sha256": "8e39d23dc60e4b3e433ea17f0ed79510c73873a2779e9852920c9791a217efc8"
+    },
+    "skills/productivity/grill-me/SKILL.md": {
+      "source_path": "skills/productivity/grill-me/SKILL.md",
+      "sha256": "caaf8b8de1684f96e26b28f3c29189db5c89cce4b73e1c93d86164f66ef88637"
+    },
+    "skills/productivity/grilling/SKILL.md": {
+      "source_path": "skills/productivity/grilling/SKILL.md",
+      "sha256": "befdff1e27a1dfe2a294d5871169ac1afe16d983911daa4f32627514a48c1e15"
+    },
+    "skills/productivity/handoff/SKILL.md": {
+      "source_path": "skills/productivity/handoff/SKILL.md",
+      "sha256": "4cbb043950dad2ffd3662ff1a5a0b51ae676004b5cae10e3787e8ee7a4ee69d3"
+    },
+    "skills/productivity/teach/GLOSSARY-FORMAT.md": {
+      "source_path": "skills/productivity/teach/GLOSSARY-FORMAT.md",
+      "sha256": "9b99859ec28437668130d8f2ce5a342938970f8a1ed4fd38c3eab4f4b5fff210"
+    },
+    "skills/productivity/teach/LEARNING-RECORD-FORMAT.md": {
+      "source_path": "skills/productivity/teach/LEARNING-RECORD-FORMAT.md",
+      "sha256": "701fa34b6748aa89e6c960ffb815257f481a7d77fb2900f9028f7edf3fdd6052"
+    },
+    "skills/productivity/teach/MISSION-FORMAT.md": {
+      "source_path": "skills/productivity/teach/MISSION-FORMAT.md",
+      "sha256": "8cacbb3c0644d3ae0ea4965564797099401a6930a23f7cf462918576587f2418"
+    },
+    "skills/productivity/teach/RESOURCES-FORMAT.md": {
+      "source_path": "skills/productivity/teach/RESOURCES-FORMAT.md",
+      "sha256": "e9cacf34026e11a8d1c8f9de88abe5bcbf654f4ebdb25cae8c0de0d5f48f44ec"
+    },
+    "skills/productivity/teach/SKILL.md": {
+      "source_path": "skills/productivity/teach/SKILL.md",
+      "sha256": "550482c2d674b085c9043b87bfdc14a8f2ec453c736119e7fcbb1e9332bffeba"
+    },
+    "skills/productivity/to-questionnaire/SKILL.md": {
+      "source_path": "skills/productivity/to-questionnaire/SKILL.md",
+      "sha256": "b5eb929842ee0e93d867c5e906d183d350f2f2d149eaeaa86967d94d8eda1d3b"
+    },
+    "skills/productivity/wait-what/SKILL.md": {
+      "source_path": "skills/productivity/wait-what/SKILL.md",
+      "sha256": "d961bb37defd975c539427edb8f450cdbccdcdd552e213c1ece46676a7970905"
+    },
+    "skills/productivity/writing-for-agents/SKILL-MECHANICS.md": {
+      "source_path": "skills/productivity/writing-for-agents/SKILL-MECHANICS.md",
+      "sha256": "c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059"
+    },
+    "skills/productivity/writing-for-agents/SKILL.md": {
+      "source_path": "skills/productivity/writing-for-agents/SKILL.md",
+      "sha256": "551adca942227b44192edba88acd4e8db911f0121ce58ad16944ccf6a896a74a"
+    }
+  },
+  "license_files": [
+    "LICENSE"
+  ]
+}

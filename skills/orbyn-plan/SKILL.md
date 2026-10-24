@@ -32,6 +32,10 @@ there is a real trade-off; use `arena` when distinct sketches would settle it.
 Select relevant principles; do not load every principle or require model panels.
 
 Split work by coherent outcomes, dependencies and reversible boundaries. There
+are [slice and dependency examples](../orbyn-workflow/references/engineering-methods.md)
+for complete narrow outcomes and high-risk integration probes. Use these within
+the current plan; do not require separate setup/spec/ticket invocations or publish
+to a tracker without applicable authorization. There
 is no fixed file, function, test-case or phase-count limit. A shared-contract
 migration may need coordinated edits across many files in one unit. Separate
 risky state migrations from unrelated polish; describe compatibility and recovery.

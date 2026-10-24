@@ -7,6 +7,9 @@ description: "Create and inspect local social post previews, announcement graphi
 
 Create reviewable visuals from a post or brief. Support personal work as well as
 Orbyn announcements. Keep the editable source alongside requested exports.
+Use the [local pinned design reference](references/source-record.md) for optional
+background offline. Prefer installed fonts/tools and supplied captures; report
+missing export tools or current platform verification without inventing results.
 
 ## Choose the artifact
 

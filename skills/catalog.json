@@ -113,6 +113,16 @@
       ]
     },
     {
+      "name": "orbyn-security-audit",
+      "category": "Fullstack contracts and delivery",
+      "related": [
+        "how",
+        "orbyn-security-remediation",
+        "orbyn-backend-design",
+        "orbyn-ci-design"
+      ]
+    },
+    {
       "name": "orbyn-security-remediation",
       "category": "Engineering practice",
       "related": [

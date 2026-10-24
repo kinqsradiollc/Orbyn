@@ -29,3 +29,8 @@ unknowns. Avoid annotated dumps and unsupported historical explanations.
 ## Trace a request through its effect
 
 A useful source explanation can follow a screen action → client method → API handler → authorization → transaction → response → rendered state. Stop at the relevant boundary and return those anchors. For an asynchronous path, identify who persists the work and who owns its terminal result.
+
+For a difficult bug, the [diagnosis decision aid](../orbyn-workflow/references/engineering-methods.md)
+helps define an authorized repeatable symptom and distinguish observations from
+hypotheses. Missing runtime access limits the claim; continue relevant source
+tracing without pretending the defect was reproduced.

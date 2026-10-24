@@ -26,3 +26,17 @@ REA files, their hashes, executable bits and gitlink pins. Local adaptations are
 separate from those immutable snapshots. No upstream repository history, installed
 dependencies, generated outputs or local caches are included. Follow
 [tooling](../docs/agents/tooling.md) to update or use the source deliberately.
+
+
+## Portable offline reference additions
+
+The shared tree carries original pinned source text under its original license:
+Corey Haines social (MIT), Anthropic canvas-design text (Apache-2.0), Cloudflare
+security audit (MIT) and Matt Pocock engineering/productivity Markdown (MIT).
+See the local records in [social writing](../skills/social-content/references/source-record.md),
+[social preview](../skills/social-preview/references/source-record.md),
+[audit protocol](../skills/orbyn-security-audit/references/protocol.md) and
+[engineering methods](../skills/orbyn-workflow/references/engineering-methods.md).
+Hash-pinned snapshots are reference data under Orbyn policy. Existing full source
+snapshots above are unchanged. Complete additional research archives are retained
+in the public library; the consumer receives portable managed references.

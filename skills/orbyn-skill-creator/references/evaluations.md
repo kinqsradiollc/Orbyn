@@ -98,11 +98,10 @@ and available flags vary by version; this evaluator does not launch a host for y
 
 ## Suite evolution
 
-When adding development cases, keep existing holdout criteria unchanged and record
-the new suite hash. Prior reports remain tied to their recorded revision and suite
-bytes; grade or reproduce them from that revision rather than rewriting their
-results against an expanded suite. New cases require fresh observations before
-claiming coverage or comparing scores.
+Added development cases change the suite hash. Preserve existing holdout criteria
+and historical results; reproduce earlier runs from their recorded revision and
+suite bytes. New cases require fresh observations before claiming model quality
+or comparing scores.
 
 ## CI and contributions
 

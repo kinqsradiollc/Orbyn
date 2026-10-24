@@ -24,4 +24,9 @@ for guarded database and package prerequisites.
 
 ## Regression evidence across layers
 
+Use the [behavior and seam guidance](../orbyn-workflow/references/engineering-methods.md)
+to test public contracts through real effects/adapters rather than private helper
+choreography. Build and verify one contract at a time; avoid writing a whole batch
+of speculative tests before seeing whether the first signal catches the defect.
+
 For a stale update, place the regression at the API/version boundary and assert that the rejected write preserves the original record. A snapshot of the error string alone does not prove the invariant. Add a UI check only when the changed user flow needs separate evidence and that check is authorized.

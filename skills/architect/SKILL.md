@@ -33,6 +33,10 @@ Record a durable rationale only when future maintainers need the decision.
 
 ## Code organization and module boundaries
 
+Use the [module-contract decision aid](../orbyn-workflow/references/engineering-methods.md)
+when caller burden, shallow wrappers or test seams motivate the refactor. Check
+real callers and behavior; do not choose an abstraction from file counts alone.
+
 For questions about where code belongs, cross-feature imports or shared-code
 extraction, use [vertical code organization](references/vertical-codebase.md).
 Group code by the functionality it owns within existing stack boundaries. Use

@@ -103,3 +103,17 @@ it must not add another competing policy document for the same concern.
   and identify the missing export step; HTML generation is not PDF/PNG evidence.
 
 These examples are routing expectations, not claims of executed model trials.
+
+
+## Consumer-owned skills and offline setup
+
+A setup request selects [orbyn-setup](../../skills/orbyn-setup/SKILL.md); agents
+complete authorized discovery, classification, migration, registration and checks
+without asking the human to invoke each skill or command. Keep company-only
+skills in `project-skills/`, outside public sync; follow the
+[ownership guide](../../skills/orbyn-setup/references/project-skills.md).
+Use [offline guidance](../../skills/orbyn-setup/references/offline.md) and the
+[engineering methods](../../skills/orbyn-workflow/references/engineering-methods.md)
+from disk. Explicit portable audits use
+[orbyn-security-audit](../../skills/orbyn-security-audit/SKILL.md); skill authoring
+and installation never start an application or hosted security scan.
