@@ -99,3 +99,9 @@ Use the [project-context guide](references/project-context.md) to create or chec
 It points to existing instructions, stack, design, brand and verification guides.
 Read relevant pointers on demand; the map supplies neither new permissions nor
 commands. Keep it outside the shared skill export and preserve existing entries.
+
+The core preset includes language-aware implementation and stack-selection
+routing. Inspect the consumer's real manifests before selecting a guide; do not
+infer that it uses TypeScript from this library's examples. The additive
+`languages` and `architecture` presets support focused installations. This does
+not install runtimes, choose a new stack or change the consumer's model settings.

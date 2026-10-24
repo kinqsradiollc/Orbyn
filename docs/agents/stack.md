@@ -35,3 +35,26 @@ Keep product assets first-party and use existing accessible interaction patterns
 Current root commands and database isolation are documented in [development](development.md).
 Only execute the checks authorized for the task. A shared-type edit may affect
 several clients; a documentation edit does not imply a native build or full suite.
+
+## Language and technology decisions
+
+Use [language-best-practices](../../skills/language-best-practices/SKILL.md) for
+only the languages affected by a change. Orbyn's application is TypeScript;
+JavaScript owns supporting browser/Node scripts, Python owns services such as
+`ocr/server.py`, SQL owns `backend/migrations/`, and shell owns deployment helpers.
+Inspect actual paths, manifests and target versions before selecting a guide.
+TypeScript schema/state changes retain the existing
+[TypeScript owner](../../skills/typescript-best-practices/SKILL.md). Availability
+of guides for other languages does not add them to this product's stack.
+
+Use [orbyn-stack-selection](../../skills/orbyn-stack-selection/SKILL.md) only when
+choosing or reconsidering a technology. Start with this source-derived stack as
+the baseline. Compare the required workload, authority, data ownership, deployment,
+team operation and migration/exit cost; retain a simpler existing option when it
+meets those requirements. Verify version/support/security facts from current
+primary sources when they matter, and label offline freshness limits.
+
+The decision records delivery now, operation next and migration/exit later, with
+a fallback and revisit trigger. Hand the selected boundaries to `architect` and
+the authorized sequence to `orbyn-plan`. Research/review-only requests stop at the
+decision; no dependency, language or framework migration follows automatically.

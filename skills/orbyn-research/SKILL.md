@@ -40,3 +40,9 @@ one research result.
 ## Research that changes implementation
 
 For a retry or streaming API, record the supported version, cancellation/unknown-outcome behavior and the implication for the current adapter. Separate documented availability from this account’s observed access. The result should settle one decision, not become a general technology survey.
+
+For technology recommendations, feed current primary evidence and uncertainty to
+[stack selection](../orbyn-stack-selection/SKILL.md). For a language implementation
+question, consult the relevant [local guide](../language-best-practices/SKILL.md)
+first, then verify only the unresolved target-version behavior. Neither a source
+survey nor popularity alone settles project fit or authorizes implementation.

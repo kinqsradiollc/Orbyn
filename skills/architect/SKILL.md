@@ -67,3 +67,12 @@ reasoning shape with the consuming project's actual owners.
 [Organizing a task editor](examples/vertical-task-editor.md) demonstrates functional
 cohesion, a public interface and shared ownership without merging client/server
 or platform boundaries.
+
+## Technology choice versus interface design
+
+When language/framework/storage choice is unresolved, use
+[stack selection](../orbyn-stack-selection/SKILL.md) for constraint/evidence comparison,
+then own interfaces and lifecycle here. An established project's bounded feature
+usually retains its stack. Pair implementation with the relevant
+[language reference](../language-best-practices/SKILL.md), preserving FFI/transport
+encoding, ownership and failure contracts across polyglot boundaries.

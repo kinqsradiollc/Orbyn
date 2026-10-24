@@ -28,6 +28,8 @@ routes complex work to the standard tier and bounded work to the light tier in
 | UI flow/layout                     | `orbyn-ui-design` + `orbyn-content-design` | User task + actual tokens → coherent UI/copy                                                        |
 | Social posts and carousel copy     | `social-content`                           | Supplied facts + author voice → copy, claim notes and optional visual brief                         |
 | Social graphics and feed previews  | `social-preview`                           | Chosen copy + assets → editable visual source, rendered review and requested exports                |
+| Language implementation/review     | `language-best-practices`                  | Actual changed paths/runtime → relevant language guide and affected callers                         |
+| Technology/stack selection         | `orbyn-stack-selection`                    | Requirements + existing baseline + fresh evidence → bounded decision and revisit trigger            |
 | TypeScript contract                | `typescript-best-practices`                | Existing schema/callers → precise valid states                                                      |
 | Requested tests/TDD                | `tdd`                                      | Failure contract + allowed environment → focused regression and fix                                 |
 | Existing security findings         | `orbyn-security-remediation`               | Saved findings + current source → scoped fixes and authorized evidence; no new scan                 |
@@ -56,7 +58,7 @@ boundaries; they do not duplicate the architect or launch extra workflow stages.
 ## Keep the system coherent
 
 Shared skill changes follow the [public upstream contract](skill-upstream.md).
-The public library owns shared content; this private application keeps its own
+The public library owns shared content; this application keeps its own
 product policy and consumes a hash-pinned copy. Explicit skill-only export and
 review replace automatic publication of private changes.
 

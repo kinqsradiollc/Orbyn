@@ -165,3 +165,13 @@ from delegation or a playbook.
 Use [unslop](../unslop/SKILL.md) for concise factual output. Report the result,
 actual evidence and limits, without ceremonial principle citations. Source attribution and preserved dependencies are documented in
 [tooling](../../docs/agents/tooling.md). Orbyn owns this workflow and its defaults.
+
+## Language and technology decisions
+
+For an affected code path, select [language guidance](../language-best-practices/SKILL.md)
+from the actual files/manifests and load only its relevant local reference.
+TypeScript schemas retain their existing owner. Use
+[stack selection](../orbyn-stack-selection/SKILL.md) for a requested recommendation
+or demonstrated technology mismatch; it produces the decision for architect and
+the implementation owners, not an automatic rewrite. The human requests the
+outcome once; the agent chooses these handoffs internally.

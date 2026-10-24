@@ -7,9 +7,12 @@ remote branch without an explicit request.
 
 Follow [local branch and fork ownership](../../orbyn-worktree/SKILL.md) before
 publishing. Reuse the task branch; keep delegate branches local. For a company
-upstream, prefer an approved permitted personal contribution fork, with a stable
+upstream, prefer an approved permitted private personal contribution fork when supported, with a stable
 name such as `Orbyn-contributions`, rather than spawning company-remote branches.
-Verify account, upstream relationship, visibility and exact push destination.
+Verify account, upstream relationship, actual visibility and exact push destination.
+If a public-parent native fork cannot be private, keep work local/private until
+public PR publication is explicitly authorized; a private standalone backup is not
+a native upstream PR source. Follow the owning policy for that transition.
 If no permitted delivery path exists, preserve the local patch and report the
 blocker; never publish private company code into a public fork or silently push
 to the company remote instead.

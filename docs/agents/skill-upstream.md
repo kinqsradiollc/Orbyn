@@ -61,11 +61,29 @@ Updating the sync helper itself is an explicit tooling change; compare it with
 the public source and run its focused tests before replacing the local trusted copy.
 Neither the lock nor CI authorizes public publication, merges or production changes.
 
-## First quality milestone
+## Current distribution
 
-The shared tree includes additive presets, project customization guidance, five
-worked examples and a 22-case evaluation suite. Fresh external installs default
-to the 10-skill core; Orbyn retains all 50 existing discovery links. Preset
+The shared catalog and `skills/upstream-lock.json` define the installed skills,
+managed files and exact public revision. Presets are additive selections in
+`skills/orbyn-setup/assets/presets.json`; evaluation definitions live in
+`skills/orbyn-skill-creator/evals/cases.json`. Use those owners for current counts.
+Host discovery checks include the language and technology-selection owners without
+changing Orbyn's product stack or installing models/tools globally.
+
+A draft consumer PR may pin a reviewed public contribution commit for integration
+checks. That is a candidate, not a merged release: merge the public dependency
+first, repin to its actual merged revision, then verify the consumer before its
+separately authorized merge. Preserve company/repository guidance outside the
+managed allowlist.
+
+## First quality milestone (historical)
+
+The counts and revisions below describe the first public milestone, not the
+current lock or discovery configuration.
+
+That shared tree included additive presets, project customization guidance, five
+worked examples and a 22-case evaluation suite. At that milestone, fresh external installs defaulted
+to the 10-skill core and Orbyn retained its 50 discovery links. Preset
 selection does not change models or remove installed skills. Membership lives in
 `skills/orbyn-setup/assets/presets.json`; installation tooling belongs to the public
 library, while the vendored context and evaluation helpers work in this checkout.
@@ -91,8 +109,8 @@ The [23 October Codex evaluation](https://github.com/kinqsradio/orbyn-fullstack-
 compares the previous library with the revised milestone: routing improved from
 16/17 to 17/17, while both versions passed 5/5 reviewed design/content cases.
 The corrected shared-schema route passed three candidate observations. The
-evaluated skill revision is `7503c67f625dd6385dd5fd5d5518d05d22c58bb6`; the lock
-pins `49509d4b134d879923806feae10a849fc259fbc8`, the merged public revision with the same managed skill distribution. The public
+evaluated skill revision is `7503c67f625dd6385dd5fd5d5518d05d22c58bb6`; the milestone lock
+pinned `49509d4b134d879923806feae10a849fc259fbc8`, the merged public revision with the same managed skill distribution. The public
 squash merge changed commit identity without changing the reviewed file tree. Earlier failed/incomplete
 attempts are retained. These bounded synthetic trials do not qualify Orbyn app
 behavior or Claude runtime behavior; Claude was excluded at the user's request.

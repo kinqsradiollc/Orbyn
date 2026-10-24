@@ -19,3 +19,7 @@ Model state variants explicitly, derive from authoritative schemas and handle va
 Which invalid combination should fail before runtime?
 
 Represent a run as a discriminated union so a completed result cannot also require a pending answer. Parse external JSON into that type with the owning schema, then keep permission checks at the effect. An `as` assertion cannot validate a persisted payload or tenant access.
+
+For another implementation language, use its [local language guide](../language-best-practices/SKILL.md)
+and the consuming project's contract owner. Preserve valid-state and runtime
+validation principles without requiring TypeScript syntax or schema libraries.

@@ -30,3 +30,11 @@ rules. Match repository Prettier and dependency direction in
 ## One contract across clients
 
 When changing a run’s result shape, update the owning runtime schema, derived shared types, transport and web/mobile consumers together. Keep platform-only presentation state separate. Exhaustive handling should expose an unhandled lifecycle variant without forcing the domain layer to import application components.
+
+## Runtime and polyglot boundaries
+
+For JavaScript runtime, cancellation and resource-lifecycle effects, use only the
+[JavaScript reference](../language-best-practices/references/javascript.md) when
+relevant. Other languages route through [language guidance](../language-best-practices/SKILL.md).
+This skill remains the TypeScript schema/type owner; do not translate its specific
+schema-library examples into a mandatory dependency for another language.
