@@ -125,3 +125,8 @@ Read REA's nested rules when modifying REA itself. No active workflow depends on
 `openSrc/`. Retired ADRs and review reports are outside the active documentation tree.
 Current source, the task brief and these guides define the work. See
 [documentation policy](docs/agents/documentation.md).
+
+For worktree location/lifecycle and local task branch or personal-fork delivery,
+follow [orbyn-worktree](skills/orbyn-worktree/SKILL.md). Use the primary clone’s
+sibling `orbyn-wt/<purpose>/` root by default. Preserve active paths/output; keep
+branches local until authorized delivery and verify any contribution destination.

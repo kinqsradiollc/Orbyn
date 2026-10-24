@@ -55,6 +55,11 @@ independent setup. Do not silently guess ownership of a foreign installation.
 
 Read the consuming project’s host definitions before applying the reference registry. The library may be installed without its model presets; installing skills does not authorize replacing the user’s preferred model. If the named tier or required processing mode is unavailable, report it and use only the permitted direct fallback.
 
+Use [worktree policy](../orbyn-worktree/SKILL.md) when configuring repository
+isolation. Identify the primary clone and established sibling worktree root;
+record project-specific overrides in consumer-owned guidance. Do not relocate
+active worktrees or create one merely to install skills.
+
 ## Agent-owned setup result
 
 Within an authorized setup request, resolve the actual consumer root and library

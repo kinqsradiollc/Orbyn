@@ -23,6 +23,23 @@ or moving another chat's checkout, requires an explicit request; this policy
 alone does not authorize those operations. An existing branded branch is not a
 reason to recreate it for a new task.
 
+## Worktree locations and branch publication
+
+Follow [worktree ownership](../../skills/orbyn-worktree/SKILL.md). For the primary
+Orbyn clone, use sibling `orbyn-wt/<purpose>/` by default; resolve the primary from
+Git registration even when starting inside a linked checkout. Reuse suitable owned
+worktrees and neutral task branches, preserve active legacy paths and verify the
+base before editing. Check ignored outputs/configuration before any cleanup.
+
+Branches stay local until publishing is authorized. Prefer a permitted approved
+personal contribution fork with a meaningful stable name such as
+`Orbyn-contributions` when company policy allows it; reuse the fork across tasks.
+Verify account, visibility, actual upstream relationship and push destination.
+Do not create remote branches/forks for every delegate, publish restricted code
+into a public/unauthorized fork, or silently push a company branch when fork
+permission is unavailable. Existing explicit internal contribution instructions
+and already-owned delivery branches retain their scope.
+
 ## Understand, design, implement
 
 Use [how](../../skills/how/SKILL.md) to trace the affected path. For a substantive

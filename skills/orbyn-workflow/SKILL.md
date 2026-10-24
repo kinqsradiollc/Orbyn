@@ -26,6 +26,12 @@ a host lacks a Skill tool. Carry authorized work through its handoffs and checks
 do not hand executable setup commands back merely because another skill owns
 them. Keep consequential authority and missing human-only decisions explicit.
 
+When checkout isolation is needed or a worktree is requested, select
+[orbyn-worktree](../orbyn-worktree/SKILL.md). Resolve the primary clone and prefer
+its sibling `<repo>-wt/<purpose>/` root, reusing a suitable owned checkout first.
+Preserve active legacy layouts and local output; isolation does not require a new
+chat or imply separate databases/services.
+
 Start from the user's requested outcome, current source and
 [stack ownership](../../docs/agents/stack.md). Use the
 [skill system](../../docs/agents/skill-system.md) to select the relevant handoff. Choose one playbook

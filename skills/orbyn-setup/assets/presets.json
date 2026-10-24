@@ -16,7 +16,8 @@
         "orbyn-backend-design",
         "orbyn-ui-design",
         "orbyn-setup",
-        "orbyn-skill-creator"
+        "orbyn-skill-creator",
+        "orbyn-worktree"
       ]
     },
     "web": {

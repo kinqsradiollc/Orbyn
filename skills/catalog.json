@@ -135,7 +135,8 @@
       "name": "orbyn-setup",
       "category": "Workflow and planning",
       "related": [
-        "orbyn-skill-creator"
+        "orbyn-skill-creator",
+        "orbyn-worktree"
       ]
     },
     {
@@ -168,7 +169,17 @@
         "orbyn-skill-creator",
         "orbyn-backend-design",
         "orbyn-data-migration",
-        "orbyn-ci-design"
+        "orbyn-ci-design",
+        "orbyn-worktree"
+      ]
+    },
+    {
+      "name": "orbyn-worktree",
+      "category": "Workflow and planning",
+      "related": [
+        "orbyn-workflow",
+        "orbyn-setup",
+        "orbyn-plan"
       ]
     },
     {

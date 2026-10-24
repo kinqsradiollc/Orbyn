@@ -599,6 +599,100 @@
         "sequence": "Name prerequisites, blocking edges and an observable completion condition without artificial package-count limits.",
         "authority": "Keep plan-only scope and explicit unexecuted checks; no mandatory source setup, tracker publication or implementation."
       }
+    },
+    {
+      "kind": "outcome",
+      "split": "development",
+      "expected_skills": [
+        "orbyn-worktree"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "id": "worktree-primary-sibling",
+      "prompt": "Synthetic repository: primary clone Documents/GitHub/orbyn, current linked checkout Documents/GitHub/orbyn-wt/calendar-work owned by another active task, and unrelated dirty files in the primary clone. The user requests isolated work on task rescheduling. Propose the checkout location, neutral branch/name, source/ref checks and ownership rules in Markdown only. Do not create a checkout or move any files.",
+      "excluded": "Do not derive orbyn-wt-wt from the linked checkout, take another task\u2019s directory, copy dirty changes or assume current feature HEAD is the desired base.",
+      "rubric": {
+        "location": "Resolve the primary clone and propose sibling Documents/GitHub/orbyn-wt/task-rescheduling rather than a nested or doubled worktree root.",
+        "identity": "Use a neutral branch such as feat/task-rescheduling, inspect registrations/collisions and verify the intended base and final branch/HEAD.",
+        "ownership": "Preserve primary dirty work, the active task and existing layout; reuse only a suitable released/owned worktree and distinguish filesystem from database/service isolation.",
+        "authority": "Keep the requested design-only scope and let the owning agent perform authorized helper steps without requiring extra human skill invocations."
+      }
+    },
+    {
+      "kind": "outcome",
+      "split": "development",
+      "expected_skills": [
+        "orbyn-worktree"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "id": "worktree-ignored-output-cleanup",
+      "prompt": "A task PR was merged, but its local worktree has an ignored output/report.pdf, local environment configuration, unpushed commits and an active process. Another chat may still own it. Explain the safe cleanup decision and necessary evidence in Markdown. Do not delete or archive anything.",
+      "excluded": "A merged PR and clean tracked status do not authorize losing ignored output, configuration, commits or an active owner\u2019s checkout.",
+      "rubric": {
+        "preserve": "Check ignored artifacts/configuration, tracked/untracked work and commit reachability; preserve valuable data in a recoverable owned location before any cleanup.",
+        "owner": "Establish ownership and process inactivity before removal; keep the worktree intact when those are unresolved.",
+        "operation": "Use supported managed archival or exact Git worktree removal only within cleanup scope; avoid force removal, blanket deletion/reset/clean or incidental foreign branch pruning.",
+        "evidence": "Report actual retained state and next evidence needed without claiming removal, archived ignored files or completed preservation."
+      }
+    },
+    {
+      "id": "small-edit-no-worktree",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Correct the spelling in this supplied sentence only: The calender saves your tasks. No repository or checkout work is needed.",
+      "expected_skills": [],
+      "forbidden_skills": [
+        "orbyn-worktree"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "A supplied one-line copy edit does not need repository isolation or a worktree."
+    },
+    {
+      "id": "company-local-branch-and-fork",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "A synthetic company repo company/Orbyn has three AI agents working on one task. The human wants a PR eventually and prefers an approved personal fork named Orbyn-contributions instead of many company-remote branches. The repo is private; fork restrictions and the personal account permissions are not yet known. Explain the local branch/worktree plan, fork naming and publication decision in Markdown only. Do not create remotes, forks or PRs.",
+      "expected_skills": [
+        "orbyn-worktree"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "A task branch is local until an authorized push; private company code must not be copied into a public/unauthorized fork or silently published to the company remote.",
+      "rubric": {
+        "bounded": "Reuse one owning local task branch/worktree and create only bounded necessary local delegate branches; no branch/fork per agent or correction.",
+        "naming": "Retain upstream identity in a stable reusable approved-account/Orbyn-contributions fork; task branches use neutral purpose names and worktrees use the primary clone\u2019s sibling root.",
+        "authority": "Check visibility, upstream relationship, account permission and company fork policy before publishing; an API token alone is insufficient and no public copy is proposed.",
+        "fallback": "If no permitted publishing path exists, preserve reviewable local commits/patch and state the exact blocker; use an internal branch only when authorized and do not stop independent local work."
+      }
     }
   ]
 }
