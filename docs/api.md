@@ -204,14 +204,22 @@ Called by the mail server, guarded by `X-Inbound-Secret: <MAIL_INBOUND_SECRET>` 
 
 ### `GET /me/export` (auth)
 
-Downloads a JSON archive of your personal data — lists, tags, habits and items — for keeping or moving.
+Downloads a JSON archive of your personal data — lists, tags, habits, items and retained
+assistant conversations — for keeping or moving. `assistant_conversations` contains each
+active personal destination's identity, title and ordered entries, including history beyond
+the execution chat's 200-turn window. Current permission checks exclude inaccessible entries
+and team-derived content. Deleted/swept destinations are absent. This history is readable
+export data; importing planner data does not restore execution identities or resume work.
+The response is private and not cached. Personal API keys get `403`.
 
 ### `GET /me/export.zip` (auth, 10/min)
 
 Everything you own, pages included, as a `.zip` (`orbyn-export-YYYY-MM-DD.zip`): every personal
 page as Markdown in `pages/<folder>/` with front matter (title, kind, dates, folder, project, tags,
 the file it was imported from), agendas in `pages/Agendas/<date>.md`, pages in Trash in
-`pages/Trash/`, plus `planner.json` (the same archive as `/me/export`, importable),
+`pages/Trash/`, plus `planner.json` (the planner portion of `/me/export`, importable),
+`assistant-conversations/<destination-id>/<first-sequence>-<cursor>.json` (retained personal
+history in pages of at most 100 entries, filtered with current permissions),
 `projects.json`, `folders.json`, `attachments.json` (what was imported and which page it became;
 the files themselves are never kept) and `consent.json` (your terms and analytics decisions). Team
 pages stay with their team. Personal API keys get `403`, as for `/me/export`.
@@ -828,6 +836,111 @@ lists yours (newest 50), `GET /ai/chats/:id` reads one with its `turns` (`{ role
 `422` for a project kept out of the assistant; `404` for a chat or project that isn't yours),
 `DELETE /ai/chats/:id`. Pending changes are never saved. The sweeper removes chats a year after they
 were last used.
+
+For chats registered as unified conversation destinations, saved turns, history counts and
+text search use the currently authorized retained entries. Revoking one dependency hides its
+entries while independent entries remain available. Project/task container access and AI
+exclusions still apply. When legacy dependencies are inaccessible, the displayed title is
+`Conversation`; raw hidden text is not searchable. Unregistered legacy chats keep their
+existing whole-history permission boundary. Polling in a registered conversation withholds
+results with unknown provenance and rechecks the job's current dependencies.
+
+For a morning summary, `work.kind=night` identifies the delivery window, not
+necessarily an execution-night row. One owner/window can have one summary in each
+captured conversation. Explicit Overnight handoffs join that delivery window
+without creating an execution night or changing execution scheduling/budgets.
+
+Morning-summary update entries may include `night_runs`: at most 50 result
+excerpts, each `{ work, state, text }` with text bounded to 4,000 characters.
+These are captured summary content under the complete source/grant checks, not
+new job executions. Activity provides the remaining work details. Questions and
+actionable failures retain their own stable entry/reply identities and delivery
+timing. Legacy clients that do not use the conversation feed keep their existing
+execution-chat contract.
+
+New conversation clients pass `conversation_only=true` to `GET /ai/chats`.
+While unified delivery is enabled, this lists person-origin chats and explicitly
+registered conversation destinations, keeping automated execution chats in work
+views. Omitted/false values preserve legacy listing behavior. The filter does
+not change direct chat authorization or run-detail access; rollback ignores it.
+
+### Conversation excerpts and message details (session)
+
+`POST /ai/chat/start` accepts an optional `reply_excerpt` (1–2,000 characters)
+with `reply_to_entry_id`. The server matches the selected visible words against
+that currently authorized entry using the shared light-Markdown renderer and
+whitespace normalization, and pins its revision. It rechecks the entry revision
+and transitive source authority before provider requests and effects. Changed
+or invented excerpts are rejected; an excerpt without a target is invalid.
+The excerpt is separate from the person's message and never implicitly answers
+or resumes a waiting job. The explicit Answer endpoint below retains that role.
+
+A submission retry must keep the same turn ID, message, target and excerpt.
+The retained user turn preserves excerpt identity after a completed run clears
+its execution checkpoint. Changing any of those values under the same turn ID
+returns `409` rather than starting different work.
+
+`GET /me/assistant/conversations/:id/entries/:entryId/details` returns
+`{ destination_id, entry, sources }` while unified conversations are enabled.
+`entry` has the feed's current waiting/execution projection. `sources` contains
+currently authorized `{ kind: "doc" | "task" | "project", id, title }` rows,
+bounded to 500. Titles are resolved in a primary read-only repeatable-read
+transaction; internal provenance edges are not turned into display labels.
+The response is private and `no-store`, and an unavailable entry returns `404`.
+Reading details does not acknowledge a message, admit work or change permissions.
+These built-in assistant controls are excluded from connected-agent capabilities.
+
+### `POST /me/assistant/conversations/:id/entries/:entryId/answer` (session)
+
+With unified conversations enabled, accepts `{ answer, turn_id }` for the selected
+person question. `turn_id` is the client retry identity; reuse it with the same
+question and answer after a lost response. The exact waiting ID is taken from the
+authorized retained entry, never inferred from whichever job is currently active.
+The answer, queued transition and durable receipt commit together. Returns
+`{ accepted: true, job_id, turn_id, entry_id, destination_id, reply_to_entry_id }`.
+An exact retry returns the same receipt without resuming again. Conflicting reuse,
+closed/replaced questions and approval requests return `409`; unavailable or revoked
+targets return `404`. Approval continues through Review. Background replies do not
+create a foreground job. Question entries expose current `waiting_kind` and
+`actionable`; older published questions remain in history after closure. Unpublished
+questions that have already resolved are suppressed before delivery, and resolved
+question alerts cannot enter or retry through the notification outbox.
+The existing `/ai/chat/:id/answer` work-view endpoint also retains a sourced answer
+in its bound conversation and links a published question when one exists. A retired
+destination rejects the answer without queuing work or redirecting to a new home.
+
+### `GET/PATCH /me/assistant/work-controls` (session)
+
+Returns `{ background_paused, overnight_paused }`. PATCH accepts either or both
+booleans and preserves omitted values. These controls block new automation, page
+and night admissions in the selected lane. Existing queued/running/waiting work,
+foreground chat, history, grant authority and schedules remain intact. Foreground
+Memory/compaction checkpoints retain their separate maintenance authority; storing
+a completed chat answer does not require a new automation admission. Individual
+jobs use their existing Stop controls. These endpoints remain available when
+unified conversation delivery is disabled, allowing a paused lane to be resumed.
+The separate conversation preference `muted` changes update alerts only.
+
+Pausing a page-maintenance schedule prevents future occurrences while healthy
+admitted runs continue against their unchanged snapshot. Source edits, deletion,
+permission changes and instruction rebinding still invalidate affected runs.
+
+### `GET /me/assistant/conversations/:id/history` (session)
+
+Explicit read-only access to untracked messages still present in a registered
+chat's existing execution window (at most 200 turns). It does not import older
+history into the timeline, acknowledge entries, queue alerts or enable historical
+proposal actions. The normal unified provider context still uses authorized
+retained entries. Saved chat reads advertise `has_legacy_history` and
+`legacy_history_destination_id` only when the legacy history remains authorized.
+
+Optional `limit` is 1–50, default 25. The first response returns the latest page
+in chronological order, a snapshot `version`, and an earlier `before` cursor or
+null. Pass both `before` and `version` to read an earlier page. A changed window
+returns `409`; unavailable/retired destinations or revoked dependencies return
+`404`. Responses are private/no-store. The read endpoint remains available during
+rollout rollback. Older history already lost from the legacy window cannot be
+reconstructed, and this path does not promise a new archive of untracked messages.
 
 ### `PUT /projects/:id` (auth)
 

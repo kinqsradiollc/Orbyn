@@ -14,6 +14,10 @@ import { loadPrefs } from "../modules/planner/calendar.js";
 
 import { assistantJobSourcesVisible } from "../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../lib/assistant-visibility.js";
+import {
+  conversationNoticeUnseen,
+  deferConversationNotice,
+} from "../modules/assistant-workspace/conversation-notifications.js";
 
 const MAX_ATTEMPTS = 8;
 const RECEIPT_DELAY = "15 minutes";
@@ -131,6 +135,12 @@ export async function deliverOne(): Promise<boolean> {
       return true;
 
     try {
+      if (
+        n.kind === "assistant" &&
+        n.state === "pending" &&
+        (await deferConversationNotice(db, n))
+      )
+        return true;
       let state = "sent";
       let receipt: string | null = null;
       if (n.channel === "email") {
@@ -195,6 +205,13 @@ export async function assistantNoticeStale(
   db: Db,
   notice: { user_id: string; ref: string },
 ): Promise<boolean> {
+  if (notice.ref.startsWith("conversation:"))
+    return !(
+      await db.query(
+        `SELECT 1 FROM (SELECT $2::text AS ref) n WHERE ${conversationNoticeUnseen()}`,
+        [notice.user_id, notice.ref],
+      )
+    ).rowCount;
   return !(
     await db.query(
       `SELECT 1 FROM ai_chats c JOIN users u ON u.id = c.user_id

@@ -85,6 +85,70 @@ async function enableReflection(user: string, now: Date) {
   return prefs;
 }
 
+test("a reflection with a chat source can complete and publish without dropping its source boundary", async () => {
+  const { env } = await import("../src/config/env.js");
+  const { openPersonalConversation } =
+    await import("../src/modules/assistant-workspace/conversation-storage.js");
+  const { bindConversationWork, publishConversationIntent } =
+    await import("../src/modules/assistant-workspace/conversation-delivery.js");
+  const { conversationFeed } =
+    await import("../src/modules/assistant-workspace/conversation-feed.js");
+  const previous = env.ASSISTANT_CONVERSATION_ENABLED;
+  env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  try {
+    const user = await person(),
+      original = await source(user),
+      derived = await source(user);
+    await pool.query(
+      "INSERT INTO agent_settings(user_id,reminder_nudges) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET reminder_nudges=$2",
+      [user, { quiet_start: "00:00", quiet_end: "00:00" }],
+    );
+    const home = await transaction((db) => openPersonalConversation(db, user));
+    await pool.query("UPDATE ai_jobs SET state='queued' WHERE id=$1", [
+      derived.job,
+    ]);
+    await transaction((db) =>
+      bindConversationWork(db, {
+        ownerId: user,
+        work: { kind: "job", id: derived.job },
+        lane: "overnight",
+        timezone: "UTC",
+        destinationId: home.id,
+      }),
+    );
+    const evidence = (await reflectionEvidence(pool, user)).filter(
+      (entry) => entry.source.id === original.job,
+    );
+    assert.equal(evidence.length, 1);
+    await recordAssistantSources(derived.job, user, evidence);
+    await pool.query("UPDATE ai_jobs SET state='done',result=$2 WHERE id=$1", [
+      derived.job,
+      { answer: "A reflection on the completed work" },
+    ]);
+    const intent = (
+      await pool.query(
+        "SELECT i.id FROM assistant_delivery_intents i JOIN assistant_delivery_bindings b ON b.id=i.binding_id WHERE b.work_id=$1",
+        [derived.job],
+      )
+    ).rows[0].id;
+    assert.equal(
+      await transaction((db) => publishConversationIntent(db, intent)),
+      true,
+    );
+    assert.equal(
+      (await conversationFeed(pool, user, home.id, {})).entries.length,
+      1,
+    );
+    await pool.query("DELETE FROM ai_chats WHERE id=$1", [original.chat]);
+    assert.equal(
+      (await conversationFeed(pool, user, home.id, {})).entries.length,
+      0,
+    );
+  } finally {
+    env.ASSISTANT_CONVERSATION_ENABLED = previous;
+  }
+});
+
 test("reflection evidence is bounded, current and excludes another person's work", async () => {
   const user = await person();
   const other = await person();

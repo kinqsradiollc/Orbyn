@@ -9,6 +9,8 @@ loadEnv({
 });
 
 const schema = z.object({
+  /** Admission/publication rollout gate; disabling parks bound work, never replays legacy alerts. */
+  ASSISTANT_CONVERSATION_ENABLED: z.enum(["true", "false"]).default("false"),
   /** Private renderer configuration; the browser process has no database/provider credentials. */
   DOC_LATEX_URL: z.string().default(""),
   DOC_PDF_URL: z.string().default(""),

@@ -68,7 +68,8 @@ test("side panels use available chat width and share one open state", async () =
     "utf8",
   );
   assert.ok(view.includes("new ResizeObserver(measure)"));
-  assert.ok(view.includes("node.clientWidth < 1280"));
+  // Chats stays docked at the accepted 1040px pane width; narrower panes overlay.
+  assert.ok(view.includes("node.clientWidth < 1040"));
   assert.ok(view.includes("old === next ? null : next"));
   assert.ok(view.includes("inert={compactPanels && !!panel}"));
   assert.ok(view.includes("if (navigationOpen) setPanel(null)"));

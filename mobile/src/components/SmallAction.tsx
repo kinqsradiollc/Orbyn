@@ -10,11 +10,13 @@ export function SmallAction({
   disabled,
   destructive = false,
   accessibilityLiveRegion,
+  quiet = false,
 }: {
   label: string;
   onPress: () => void;
   disabled: boolean;
   destructive?: boolean;
+  quiet?: boolean;
   accessibilityLiveRegion?: TextProps["accessibilityLiveRegion"];
 }) {
   return (
@@ -25,6 +27,11 @@ export function SmallAction({
       onPress={onPress}
       style={({ pressed }) => [
         s.action,
+        quiet && {
+          borderWidth: 0,
+          backgroundColor: "transparent",
+          paddingHorizontal: 4,
+        },
         pressed && { backgroundColor: colors.surfaceMuted },
         disabled && { opacity: 0.45 },
       ]}

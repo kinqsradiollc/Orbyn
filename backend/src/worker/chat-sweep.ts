@@ -4,6 +4,7 @@ import { pool, transaction } from "../db/pool.js";
 import type { UserRow } from "../lib/auth.js";
 import { keptOutFor, type KeptOut } from "../lib/assistant-off.js";
 import { visibleProjects } from "../lib/visibility.js";
+import { assistantChatPendingDelivery } from "../lib/assistant-visibility.js";
 import { createDoc } from "../modules/docs/service.js";
 import {
   captureChatSweepJob,
@@ -165,6 +166,11 @@ function noteContent(summary: z.output<typeof summarySchema>, links: string[]) {
 const projectVisible = (alias: string) =>
   `(${alias}.id IS NULL OR ${visibleProjects(alias, { user: "c.user_id", ai: true })})`;
 
+/** Retained conversations have no silent age expiry, including during rollback. */
+const noRetainedConversation = (chatId: string) =>
+  `NOT EXISTS(SELECT 1 FROM assistant_conversation_streams retained_stream
+    WHERE retained_stream.chat_id=${chatId} AND retained_stream.retired_at IS NULL) AND NOT ${assistantChatPendingDelivery(chatId)}`;
+
 async function claimChats(limit: number, now: Date, skip: string[]) {
   return transaction(async (db) => {
     const rows = (
@@ -180,6 +186,7 @@ async function claimChats(limit: number, now: Date, skip: string[]) {
            LEFT JOIN items i ON c.scope_kind = 'task' AND i.id = c.scope_id
            LEFT JOIN projects tp ON tp.id = i.project_id
           WHERE c.pinned = false AND c.swept_at IS NULL
+            AND ${noRetainedConversation("c.id")}
             AND NOT EXISTS (SELECT 1 FROM ai_jobs j WHERE j.chat_id = c.id
               AND j.state IN ('queued', 'running', 'waiting'))
             AND c.sweep_attempts < $3
@@ -263,6 +270,7 @@ async function sweepChat(
         `UPDATE ai_chats SET swept_at = $2, turns = '[]'::jsonb, trace = '[]'::jsonb,
            sweep_claimed_at = NULL, sweep_last_error = NULL
          WHERE id = $1 AND user_id = $3 AND pinned = false AND swept_at IS NULL
+           AND ${noRetainedConversation("ai_chats.id")}
            AND NOT EXISTS (SELECT 1 FROM ai_jobs j WHERE j.chat_id = ai_chats.id
              AND j.state IN ('queued', 'running', 'waiting'))
            AND last_used_at < $2::timestamptz - make_interval(days => $4)`,
@@ -318,6 +326,7 @@ async function sweepChat(
             AND NOT EXISTS (SELECT 1 FROM ai_jobs j WHERE j.chat_id = ai_chats.id
               AND j.state IN ('queued', 'running', 'waiting'))
             AND pinned = false AND swept_at IS NULL AND sweep_claimed_at IS NOT NULL
+            AND ${noRetainedConversation("ai_chats.id")}
             AND last_used_at < $3::timestamptz - make_interval(days => $4) FOR UPDATE`,
           [chat.id, chat.user_id, now, CHAT_RETENTION_DAYS],
         )
@@ -362,7 +371,7 @@ async function sweepChat(
     // Human re-entry or pinning revokes compaction; it is not a provider failure.
     const resumed = await pool.query(
       `SELECT 1 FROM ai_chats c WHERE c.id=$1 AND c.user_id=$2
-        AND (c.pinned OR c.swept_at IS NOT NULL
+        AND (c.pinned OR c.swept_at IS NOT NULL OR NOT ${noRetainedConversation("c.id")}
           OR c.last_used_at >= $3::timestamptz - make_interval(days=>$4)
           OR EXISTS(SELECT 1 FROM ai_jobs j WHERE j.chat_id=c.id
             AND j.state IN ('queued','running','waiting')))`,

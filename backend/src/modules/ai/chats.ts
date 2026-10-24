@@ -1,6 +1,7 @@
 import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { env } from "../../config/env.js";
 import {
   chatTitle,
   chatTraceEntry,
@@ -26,19 +27,27 @@ import { createDoc } from "../docs/service.js";
 import { enqueueMemory } from "../memory/service.js";
 
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
+import { retainConversationTurn } from "../assistant-workspace/conversation-storage.js";
+import { untrackedHistoryTurn } from "../assistant-workspace/conversation-legacy.js";
+import { conversationExecutionChatVisible } from "../assistant-workspace/conversation-context.js";
+import { conversationEntryVisible } from "../assistant-workspace/conversation-feed.js";
+import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 
 const PER_PROJECT = 50;
 const MAX_TRACE = 4_000;
 const projectSeen = visibleProjects("p");
 // Assistant history is itself AI data: a project kept out of AI, and the
 // chats scoped to it, must stay invisible here as well.
-const PROJECT_VISIBLE = assistantChatVisible();
-const SUMMARY = `c.id, c.project_id, p.name AS project_name, c.title, c.pinned,
-  jsonb_array_length(c.turns)::int AS turn_count, c.created_at, c.last_used_at,
+const PROJECT_VISIBLE = conversationExecutionChatVisible();
+const HAS_CONVERSATION = `EXISTS(SELECT 1 FROM assistant_conversation_streams listed_stream WHERE listed_stream.chat_id=c.id AND listed_stream.owner_id=$1 AND listed_stream.retired_at IS NULL)`;
+const CHAT_TITLE = `CASE WHEN ${HAS_CONVERSATION} AND NOT ${assistantChatVisible()} THEN 'Conversation' ELSE c.title END`;
+const SUMMARY = `c.id, c.project_id, p.name AS project_name, ${CHAT_TITLE} AS title, c.pinned,
+  CASE WHEN ${HAS_CONVERSATION} THEN (SELECT count(*)::int FROM assistant_conversation_entries e JOIN assistant_conversation_streams listed_entries ON listed_entries.id=e.destination_id WHERE listed_entries.chat_id=c.id AND listed_entries.owner_id=$1 AND listed_entries.retired_at IS NULL AND e.kind='turn' AND ${conversationEntryVisible()}) ELSE jsonb_array_length(c.turns)::int END AS turn_count, c.created_at, c.last_used_at,
   c.summary_doc_id, c.swept_at,
   (SELECT CASE WHEN j.state = 'waiting' THEN 'needs_you' ELSE 'working' END
    FROM ai_jobs j WHERE j.chat_id = c.id AND j.user_id = c.user_id
    AND j.state IN ('queued', 'running', 'waiting')
+   AND (NOT ${HAS_CONVERSATION} OR ${assistantJobSourcesVisible("j", "$1", false)})
    ORDER BY j.created_at DESC, j.id DESC LIMIT 1) AS active,
   CASE WHEN c.scope_kind IS NULL THEN NULL
        ELSE jsonb_build_object('kind', c.scope_kind, 'id', c.scope_id) END AS scope`;
@@ -73,6 +82,10 @@ const listQuery = z.object({
   search: z.string().trim().max(200).default(""),
   project_id: z.uuid().optional(),
   kind: z.enum(["all", "chat", "work"]).optional(),
+  conversation_only: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
@@ -240,7 +253,10 @@ export async function beginChatTurn(
       role: turn.role,
       content: turn.history_text ?? turn.text,
     })) as ChatTurn[];
-    if (retried >= 0) return history;
+    if (retried >= 0) {
+      await retainConversationTurn(db, user.id, input.chatId, saved[retried]);
+      return history;
+    }
     const userTurn = {
       role: "user" as const,
       text: input.message.slice(0, 12_000),
@@ -287,6 +303,7 @@ export async function beginChatTurn(
         ],
       );
     }
+    await retainConversationTurn(db, user.id, input.chatId, userTurn);
     return history;
   };
   return sharedDb ? begin(sharedDb) : transaction(begin);
@@ -363,6 +380,7 @@ export async function finishChatTurn(
          last_used_at = now() WHERE id = $1 AND user_id = $2`,
       [chatId, userId, JSON.stringify(nextTurns), JSON.stringify(trace)],
     );
+    await retainConversationTurn(db, userId, chatId, assistantTurn);
     if (!result.failed) {
       const memoryTurns = nextTurns
         .filter((turn) => turn.turn_id === turnId)
@@ -375,6 +393,7 @@ export async function finishChatTurn(
         userId,
         turns: memoryTurns,
         sourceProjectId: row.project_id,
+        sourceTurnId: turnId,
       });
     }
   };
@@ -420,12 +439,14 @@ export async function listAiChats(
       `SELECT ${SUMMARY} FROM ai_chats c
         LEFT JOIN projects p ON p.id = c.project_id
        WHERE c.user_id = $1 AND ${PROJECT_VISIBLE} AND c.origin <> 'idea'
+         AND (NOT $6::boolean OR c.origin='person' OR ${HAS_CONVERSATION})
          AND ($2::uuid IS NULL OR c.project_id = $2)
          AND ($5 = 'all' OR ($5 = 'chat' AND c.project_id IS NULL)
            OR ($5 = 'work' AND c.project_id IS NOT NULL))
-         AND ($3 = '' OR c.title ILIKE '%' || $3 || '%'
-           OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.turns) t
-                       WHERE t->>'text' ILIKE '%' || $3 || '%'))
+         AND ($3 = '' OR (${CHAT_TITLE}) ILIKE '%' || $3 || '%'
+           OR (${HAS_CONVERSATION} AND EXISTS(SELECT 1 FROM assistant_conversation_entries e JOIN assistant_conversation_streams searched_stream ON searched_stream.id=e.destination_id WHERE searched_stream.chat_id=c.id AND searched_stream.owner_id=$1 AND searched_stream.retired_at IS NULL AND e.kind='turn' AND ${conversationEntryVisible()} AND e.payload->>'text' ILIKE '%' || $3 || '%'))
+           OR (NOT ${HAS_CONVERSATION} AND EXISTS (SELECT 1 FROM jsonb_array_elements(c.turns) t
+                       WHERE t->>'text' ILIKE '%' || $3 || '%')))
        ORDER BY c.pinned DESC, c.last_used_at DESC, c.id
        LIMIT $4`,
       [
@@ -434,6 +455,8 @@ export async function listAiChats(
         options.search,
         options.limit,
         options.kind ?? "all",
+        options.conversation_only === true &&
+          env.ASSISTANT_CONVERSATION_ENABLED === "true",
       ],
     )
   ).rows;
@@ -446,15 +469,39 @@ export async function readAiChat(
   id: string,
 ): Promise<AiChat> {
   const row = (
-    await db.query<ChatRow>(
-      `SELECT c.*, p.name AS project_name FROM ai_chats c
+    await db.query<
+      ChatRow & {
+        conversation_stream: string | null;
+        legacy_visible: boolean;
+        has_legacy_history: boolean;
+      }
+    >(
+      `SELECT c.*, p.name AS project_name,
+        EXISTS(SELECT 1 FROM assistant_conversation_streams legacy_stream,jsonb_array_elements(c.turns) legacy_turn
+          WHERE legacy_stream.chat_id=c.id AND legacy_stream.owner_id=$1 AND legacy_stream.retired_at IS NULL
+            AND ${untrackedHistoryTurn("legacy_turn", "legacy_stream.id")}) AS has_legacy_history,
+        ${assistantChatVisible("c", "$1")} AS legacy_visible,(SELECT s.id FROM assistant_conversation_streams s
+        WHERE s.chat_id=c.id AND s.owner_id=c.user_id AND s.retired_at IS NULL) AS conversation_stream FROM ai_chats c
         LEFT JOIN projects p ON p.id = c.project_id
-       WHERE c.id = $2 AND c.user_id = $1 AND ${PROJECT_VISIBLE}`,
+       WHERE c.id = $2 AND c.user_id = $1 AND ${conversationExecutionChatVisible("c", "$1")}`,
       [userId, id],
     )
   ).rows[0];
   if (!row) fail(404, "Chat not found");
-  const rawTurns = turnsOf(row.turns);
+  let rawTurns = turnsOf(row.turns);
+  if (row.conversation_stream) {
+    const retained = (
+      await db.query<{ payload: unknown }>(
+        `SELECT e.payload FROM assistant_conversation_entries e
+      WHERE e.destination_id=$2 AND e.kind='turn' AND ${conversationEntryVisible()} ORDER BY e.sequence DESC LIMIT 200`,
+        [userId, row.conversation_stream],
+      )
+    ).rows.reverse();
+    rawTurns = retained.flatMap((entry) => {
+      const parsed = savedChatTurn.safeParse(entry.payload);
+      return parsed.success ? [parsed.data] : [];
+    });
+  }
   const nudgeIds = rawTurns.flatMap((turn) =>
     turn.role === "assistant" && turn.nudge ? [turn.nudge.id] : [],
   );
@@ -478,17 +525,21 @@ export async function readAiChat(
     (
       await db.query<NonNullable<AiChat["active_job"]>>(
         `SELECT id, state, progress, run_state->'state'->'waiting' AS waiting
-     FROM ai_jobs WHERE chat_id = $1 AND user_id = $2
-     AND state IN ('queued', 'running', 'waiting')
-     ORDER BY created_at DESC, id DESC LIMIT 1`,
-        [id, userId],
+     FROM ai_jobs j WHERE j.chat_id = $1 AND j.user_id = $2
+     AND j.state IN ('queued', 'running', 'waiting')
+     AND (NOT $3::boolean OR ${assistantJobSourcesVisible("j", "$2", false)})
+     ORDER BY j.created_at DESC, j.id DESC LIMIT 1`,
+        [id, userId, !!row.conversation_stream],
       )
     ).rows[0] ?? null;
   return {
     id: row.id,
     project_id: row.project_id,
     project_name: row.project_name,
-    title: row.title,
+    title:
+      row.conversation_stream && !row.legacy_visible
+        ? "Conversation"
+        : row.title,
     pinned: row.pinned,
     turn_count: visibleTurns.length,
     created_at: row.created_at.toISOString(),
@@ -502,8 +553,13 @@ export async function readAiChat(
         : "working"
       : null,
     active_job: activeJob,
+    has_legacy_history: row.legacy_visible && row.has_legacy_history,
+    legacy_history_destination_id:
+      row.legacy_visible && row.has_legacy_history
+        ? row.conversation_stream
+        : null,
     turns: row.swept_at ? [] : visibleTurns,
-    trace: row.swept_at ? [] : traceOf(row.trace),
+    trace: row.swept_at || row.conversation_stream ? [] : traceOf(row.trace),
   };
 }
 
@@ -582,6 +638,12 @@ export async function updateChatInTransaction(
     `UPDATE ai_chats SET ${assignments.join(", ")} WHERE id = $1 AND user_id = $2`,
     values,
   );
+  if (patch.turn_id) {
+    const updated = turns.find(
+      (turn) => turn.role === "assistant" && turn.turn_id === patch.turn_id,
+    );
+    if (updated) await retainConversationTurn(db, userId, id, updated);
+  }
 }
 
 async function saveChatAsNote(user: UserRow, id: string) {

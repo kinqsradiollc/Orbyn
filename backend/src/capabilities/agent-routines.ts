@@ -214,6 +214,12 @@ export const manageAgentRoutines = defineCapability({
       userId,
       current?.id ?? null,
       after,
+      {
+        deliveryJobId:
+          ctx.principal.via === "assistant"
+            ? ctx.principal.assistant_job_id
+            : undefined,
+      },
     );
     return {
       structured: { status: "done" as const, routines: [], routine },

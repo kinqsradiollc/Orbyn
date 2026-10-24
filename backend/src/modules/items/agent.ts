@@ -1,3 +1,4 @@
+import { recordScheduleConversation } from "../assistant-workspace/conversation-schedules.js";
 import { fail, isClosed, MAX_AGENT_TASKS, type Item } from "@orbyn/core";
 import type { Db, Queryable } from "../../db/pool.js";
 import type { UserRow } from "../../lib/auth.js";
@@ -37,6 +38,7 @@ export async function handTaskToAgent(
   u: UserRow,
   id: string,
   when: "now" | "tonight" = "now",
+  deliveryJobId?: string,
 ): Promise<Item> {
   const item = await lockItem(db, id);
   await requireItemAccess(u, item, "items:write", db);
@@ -96,6 +98,8 @@ export async function handTaskToAgent(
         { entity_type: "task", entity_id: id },
       );
     }
+    if (deliveryJobId)
+      await recordScheduleConversation(db, u.id, "task", id, deliveryJobId);
     return loadItem(db, id);
   }
   if (item.agent_grant_id)
@@ -122,6 +126,7 @@ export async function handTaskToAgent(
      WHERE id = $1`,
     [id, grantId, when],
   );
+  await recordScheduleConversation(db, u.id, "task", id, deliveryJobId);
   await announceTo(
     db as never,
     { user_id: item.user_id, team_id: item.team_id },

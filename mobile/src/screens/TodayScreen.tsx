@@ -66,6 +66,7 @@ export function TodayScreen({
   onOpenCalendar,
   homeLayout,
   agentName,
+  conversationEnabled,
   onOpenLink,
   ...handlers
 }: ListHandlers & {
@@ -75,6 +76,7 @@ export function TodayScreen({
   homeLayout?: HomeLayout;
   /** The assistant's name, for Upcoming. */
   agentName: string;
+  conversationEnabled: boolean;
   /** Opens a project, page or saved view from a hub or the brief. */
   onOpenLink: (
     link:
@@ -195,6 +197,7 @@ export function TodayScreen({
         onPrefillUsed={onQuickAddPrefillUsed}
       />
       <HomeSection
+        conversationEnabled={conversationEnabled}
         canOpenAgentOutput={canOpenAgentOutput}
         onOpenAgentOutput={onOpenAgentOutput}
         layout={homeLayout}
