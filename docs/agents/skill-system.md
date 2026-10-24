@@ -113,7 +113,7 @@ without asking the human to invoke each skill or command. Keep company-only
 skills in `project-skills/`, outside public sync; follow the
 [ownership guide](../../skills/orbyn-setup/references/project-skills.md).
 Use [offline guidance](../../skills/orbyn-setup/references/offline.md) and the
-[engineering methods](../../skills/orbyn-workflow/references/engineering-methods.md)
-from disk. Explicit portable audits use
+existing owning skills from disk. Module contracts, delivery slices, diagnosis,
+TDD and review guidance are integrated directly into those owners. Explicit portable audits use
 [orbyn-security-audit](../../skills/orbyn-security-audit/SKILL.md); skill authoring
 and installation never start an application or hosted security scan.

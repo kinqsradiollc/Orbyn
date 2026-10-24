@@ -13,6 +13,8 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 errors = []
+if subprocess.check_output(['git', 'ls-files', '--', 'openSrc/'], cwd=ROOT, text=True).strip():
+    errors.append('openSrc is local research material and must not be tracked')
 
 def check(ok, message):
     if not ok:

@@ -33,9 +33,13 @@ Record a durable rationale only when future maintainers need the decision.
 
 ## Code organization and module boundaries
 
-Use the [module-contract decision aid](../orbyn-workflow/references/engineering-methods.md)
-when caller burden, shallow wrappers or test seams motivate the refactor. Check
-real callers and behavior; do not choose an abstraction from file counts alone.
+When caller burden or shallow wrappers motivate a refactor, list everything a
+caller must know: inputs, invariants, ordering, failures and lifecycle. Compare
+that burden with the behavior hidden by the module. Remove a pass-through when
+it adds no useful boundary; retain an owner whose removal would spread complexity
+across callers. Place seams around actual variation and effects, then verify
+behavior through that interface when authorized. Use the project's vocabulary;
+create a glossary or durable rationale only for a real recurring ambiguity.
 
 For questions about where code belongs, cross-feature imports or shared-code
 extraction, use [vertical code organization](references/vertical-codebase.md).

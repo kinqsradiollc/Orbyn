@@ -28,15 +28,15 @@ dependencies, generated outputs or local caches are included. Follow
 [tooling](../docs/agents/tooling.md) to update or use the source deliberately.
 
 
-## Portable offline reference additions
+## Portable reference and record support files
 
-The shared tree carries original pinned source text under its original license:
-Corey Haines social (MIT), Anthropic canvas-design text (Apache-2.0), Cloudflare
-security audit (MIT) and Matt Pocock engineering/productivity Markdown (MIT).
-See the local records in [social writing](../skills/social-content/references/source-record.md),
-[social preview](../skills/social-preview/references/source-record.md),
-[audit protocol](../skills/orbyn-security-audit/references/protocol.md) and
-[engineering methods](../skills/orbyn-workflow/references/engineering-methods.md).
-Hash-pinned snapshots are reference data under Orbyn policy. Existing full source
-snapshots above are unchanged. Complete additional research archives are retained
-in the public library; the consumer receives portable managed references.
+Pinned offline social references retain their original licenses and source
+metadata in the [writing record](../skills/social-content/references/source-record.md)
+and [preview record](../skills/social-preview/references/source-record.md).
+The audit record schema, validators and synthetic fixtures retain their
+[MIT license](../skills/orbyn-security-audit/references/upstream/audit-records/LICENSE)
+and [pinned source metadata](../skills/orbyn-security-audit/references/upstream/audit-records/snapshot.json).
+Active Orbyn guidance is maintained separately. No duplicate engineering skill
+collection or upstream audit workflow text is installed. Existing complete tooling
+snapshots above are unchanged. `openSrc/` is ignored local research material and
+must not be committed or used by active workflows/CI.

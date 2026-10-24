@@ -27,7 +27,7 @@ changes during a review-only task. Return a supported verdict and its limitation
 
 For an approval change, ask whether a revoked user or stale client can still apply it and whether a retry duplicates the effect. Return a concrete reproducing state and affected owner. Missing native evidence is an evidence gap; it is not automatically a source-code defect.
 
-When challenging a module refactor, use the [contract and caller criteria](../orbyn-workflow/references/engineering-methods.md):
-what callers must know, which complexity is hidden, whether the seam reflects
-real variation, and whether behavior checks survive an internal reorganization.
-Judge the concrete patch, not conformity to a new vocabulary.
+When challenging a module refactor, inspect what callers must know, which
+complexity is hidden, whether the seam reflects actual variation, and whether
+behavior checks survive the internal reorganization. Identify a concrete caller
+or failure scenario; a preferred vocabulary or file count is not a finding.
