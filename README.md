@@ -120,9 +120,13 @@ For mobile, see [docs/mobile.md](docs/mobile.md).
 
 [AGENTS.md](AGENTS.md) is the shared repository policy for Codex and Claude Code.
 Use [orbyn-workflow](skills/orbyn-workflow/SKILL.md) for substantial engineering
-work and [Orbyn roles](docs/agents/roles.md) for scoped assignments. Host settings
-use GPT-6.1 Sol/medium and Sonnet/medium; requested project sessions may use
-bounded subagents. See [coordination](docs/agents/coordination.md).
+work and [Orbyn roles](docs/agents/roles.md) for scoped assignments. The lead
+delegates substantial execution, reviews the actual artifacts and performs
+authorized verification. Host model/effort settings come from the shared
+[registry](docs/agents/models.json) under [model policy](docs/agents/model-policy.md).
+Native children and explicitly requested project chats follow
+[coordination](docs/agents/coordination.md); new branches follow
+[branch naming](docs/agents/development.md#branch-naming).
 
 ## Documentation
 

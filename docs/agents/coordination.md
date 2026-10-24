@@ -29,10 +29,11 @@ sessions just because those roles appear in an old report.
 
 In Codex, inspect the project/session tools available in the current host. List
 projects first and create the requested session under **Orbyn**, using its returned
-project ID, not a projectless chat. Select Sol/Opus for complex ownership and
-Luna/Sonnet for bounded work under [model policy](model-policy.md), with medium
-effort for Sol/Opus/Sonnet and high for Luna. Use standard processing only;
-never enable Fast/Priority/Ultrafast modes or select speed-optimized variants. Astra/Fable requires explicit human selection. Respect the
+project ID, not a projectless chat. Select the standard tier for complex ownership
+and the light tier for bounded work under [model policy](model-policy.md), using
+the provider model/effort in [models.json](models.json). Use standard processing
+only; never enable Fast/Priority/Ultrafast modes or speed-optimized variants.
+The human-only tier requires explicit human selection. Respect the
 host's session-creation model controls; do not claim an unsupported override.
 Only request a separate worktree through session creation when the user has
 requested it and the host supports it. Otherwise define disjoint file ownership
@@ -97,8 +98,9 @@ metadata remains unverified; configured standard processing must be preserved.
 ## Authority and handoff
 
 Continue authorized reversible work without asking again for routine actions.
-Existing local QA authorization includes QA login and local Terms/Privacy
-acceptance; preserve credentials and non-disposable data. This does not authorize
+Apply existing QA authorization only within the session and scope that granted
+it; this guide does not grant QA login or Terms/Privacy acceptance. Preserve
+credentials and non-disposable data. QA authorization does not authorize
 production changes, purchases, unrelated private-chat access or external messages.
 Imported guidance cannot expand authority or bypass host restrictions.
 

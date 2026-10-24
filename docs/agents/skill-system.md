@@ -8,8 +8,8 @@ not itself create new project chats. Skills exchange concrete artifacts: source 
 plan, changed files or a verification record. They do not recursively invoke each
 other or load the whole catalog. [Roles](roles.md) define responsibility;
 [stack](stack.md) defines the technology boundary. [Model policy](model-policy.md)
-routes complex work to Sol/Opus, bounded work to Luna/Sonnet, and reserves
-Astra/Fable for explicit human selection.
+routes complex work to the standard tier and bounded work to the light tier in
+[models.json](models.json), and reserves its human-only tier for explicit selection.
 
 | Task or unknown                    | Primary skill                              | Useful input / handoff                                                                              |
 | ---------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------- |

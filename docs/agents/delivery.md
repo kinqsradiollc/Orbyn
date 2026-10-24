@@ -39,7 +39,9 @@ Record exact checkout, branch, commit, scope/exclusions, fixtures, commands,
 terminal outcomes, reports, known gaps and the next owner. Preserve failed attempts.
 Retain older results only with relevant source/dependency equivalence.
 
-Maximum three full review rounds, with early approval allowed. Known-finding
+Maximum three full review rounds, with early approval allowed. This cap governs
+requested independent qualification, not ordinary implementation or lead
+correction loops. Known-finding
 closure may finish the current round. Do not relabel a new full review as closure
 or reset the counter. After the third round, report unresolved findings and seek
 user direction. A user-waived gate is excluded, not passed.
