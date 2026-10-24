@@ -35,7 +35,7 @@ readiness after rollout and alert on missing runtime heartbeats. Restarting one
 runtime leaves the other available; interrupted work resumes its persisted
 checkpoint within the same lane after its lease expires.
 
-### Unified conversation rollout (in development)
+### Unified conversation rollout (opt-in)
 
 `ASSISTANT_CONVERSATION_ENABLED` defaults to `false`. Migrations 269–289 add
 conversation destinations, retained timeline entries and transactional delivery
@@ -119,11 +119,14 @@ block foreground storage. Keep the work-controls API available during rollback;
 users can resume admissions without enabling unified alerts. The UI exposes these
 controls in Upcoming, with the alert mute row only when unified delivery is enabled.
 
-The implementation is not yet qualified for rollout. Server timing, alert
-outbox and scheduled-night summaries have focused verification; client UI and
-the full acceptance audit are still in progress. Keep the flag off until the acceptance
-ledger in [the implementation record](work/unified-assistant-implementation.md)
-is complete. No server deployment has been performed as part of this work.
+The conversation implementation and subsequent Assistant UI changes are merged
+in main (PRs #222 and #223). The implementation record now contains the completed
+local web/Expo-web acceptance ledger; its earlier in-progress notes are historical.
+This does not enable the feature on a server. Keep the default off until the target
+has the matching migrations, services and provider configuration, then qualify
+that deployment explicitly. Installed-native and live-provider qualification are
+separate from local web/Expo-web evidence. See [Assistant](assistant.md) and the
+[implementation record](work/unified-assistant-implementation.md).
 
 Disabling the flag stops new work bindings and publication. Already-bound pending
 intents stay parked; they must not be replayed through legacy notifications.
