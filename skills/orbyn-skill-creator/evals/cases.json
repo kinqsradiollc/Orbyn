@@ -807,6 +807,31 @@
         "message"
       ],
       "excluded": "Select the owner for the actual requested outcome without expanding scope."
+    },
+    {
+      "id": "performance-measurement-review",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "A synthetic report says a helper is 40% faster from one timed run, but the harness never awaits its work and does not count errors. Only 5% of the overall request used that helper. Explain the measurement gaps and a scoped comparison plan in Markdown; do not run benchmarks or change code.",
+      "expected_skills": [
+        "orbyn-workflow"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "A measurement plan is not a reproduced speedup or permission for experiments.",
+      "rubric": {
+        "work": "Reject the reported timing as evidence of completed equivalent work; inspect timed boundaries, awaited results and failure/retry counts.",
+        "comparison": "Match relevant configuration/data/versions and use repeated interleaved observations appropriate to the claim with units, statistic, count and variation; distinguish a noisy or preliminary result.",
+        "impact": "Separate the helper micro result from total request impact and avoid reporting 40% improvement for the whole path.",
+        "evidence": "Preserve source/harness/raw results and name missing runtime evidence; do not claim a benchmark ran."
+      }
     }
   ]
 }

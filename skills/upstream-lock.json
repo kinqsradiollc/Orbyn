@@ -56,7 +56,7 @@
     "skills/orbyn-setup/scripts/project_skills.py": "220fbcdff2c9c3347623124f9c0f3ece1e087de7ee5af712e914a55d198c76bd",
     "skills/orbyn-skill-creator/LICENSE": "b960a8c01d83aa48ed709780a5c9940f8e2861f2fdcdc8f931fbe3ece90a5e04",
     "skills/orbyn-skill-creator/SKILL.md": "3122e737e25b5e6d28d1863d051024730430c662d50c4432799683fb10f9a074",
-    "skills/orbyn-skill-creator/evals/cases.json": "a8f0ea1f638b1550bbdfe46ad998a6e279cadd633328395d0f2d007eb99a1c81",
+    "skills/orbyn-skill-creator/evals/cases.json": "652feb65f1ca76ea6da52e13a1e0f29c3a2d11abf214a68d4ca36909b26a3002",
     "skills/orbyn-skill-creator/references/evaluations.md": "09a99a8973ca3461784e19861c9c72c3a984e09b7baa300aa7476fc091f68886",
     "skills/orbyn-skill-creator/scripts/check_sources.py": "5af9fabbe53f077e01909b58acad0851934f1b4ab1d7d3ddddadab99db5d1038",
     "skills/orbyn-skill-creator/scripts/evaluate.py": "d3f26214c06cfe4016e07e0c8bb245700308eed1ec023a402c6085a4e7148015",
@@ -82,7 +82,7 @@
     "skills/orbyn-workflow/playbooks/multi-phase-plan.md": "e00eab68d951152cb3c0c24055600429ed93579961f2010ab74be34374ac8d5d",
     "skills/orbyn-workflow/playbooks/opening-a-pr.md": "395357c3f57d3a55b9b666dec47405191cb99ef0f1bd1f53173f9e0acfc7bcdf",
     "skills/orbyn-workflow/playbooks/pause-safely.md": "ba461783a1dc8a125af275548225994cb679f27774b03d50160b3086f1adc060",
-    "skills/orbyn-workflow/playbooks/perf-issue.md": "3e5699d3063c7857ca2fa922a0cd867873c506566c43ca4c1cfdca5803792980",
+    "skills/orbyn-workflow/playbooks/perf-issue.md": "2a3ff24f3ce1649f0a81e809fabecaeadd4e2186d617a869e5d08fd7269c603b",
     "skills/orbyn-workflow/playbooks/prototype.md": "c14c832d52f59fb9128d0b129612c4e825555af11bfe86b43fa984c781fa86b6",
     "skills/orbyn-workflow/playbooks/refactoring.md": "cb883f86295c504ad2a916fe2a1fae0dc8bdbea70c9038db72478577afba49d2",
     "skills/orbyn-workflow/playbooks/runtime-forensics.md": "47ccf9b0cc69a087a7412c4a9d43d7baf2e59b38e254931d8f7da844624ea42d",
@@ -185,6 +185,6 @@
     "skills/why/SKILL.md": "cd76384cfcb68f5927979c73adb30de657af9e96424816733dde43585ee43a10"
   },
   "repository": "https://github.com/kinqsradio/orbyn-fullstack-skills",
-  "revision": "0366ac19197f13cd0dfa00af615bad416bcc611b",
+  "revision": "e2fbaa583174c156d24906e49614d775790917e1",
   "schema_version": 1
 }
