@@ -32,9 +32,13 @@ worktrees and neutral task branches, preserve active legacy paths and verify the
 base before editing. Check ignored outputs/configuration before any cleanup.
 
 Branches stay local until publishing is authorized. Prefer a permitted approved
-personal contribution fork with a meaningful stable name such as
+private personal contribution fork when supported, with a meaningful stable name such as
 `Orbyn-contributions` when company policy allows it; reuse the fork across tasks.
-Verify account, visibility, actual upstream relationship and push destination.
+Verify account, actual visibility, upstream relationship and push destination.
+GitHub public-parent native forks stay public; preserve local work or an
+authorized private backup until reviewed public PR publication is authorized.
+The owning worktree policy distinguishes that backup from a native fork; do not
+recreate existing forks or change visibility to enforce a preference.
 Do not create remote branches/forks for every delegate, publish restricted code
 into a public/unauthorized fork, or silently push a company branch when fork
 permission is unavailable. Existing explicit internal contribution instructions
