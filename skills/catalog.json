@@ -380,22 +380,35 @@
     {
       "name": "rea-analysis-optimization",
       "category": "Artifact investigation and REA maintenance",
-      "related": []
+      "related": [
+        "how",
+        "rea-ci-tests-audit",
+        "reverse-engineer-anything"
+      ]
     },
     {
       "name": "rea-changelog-update",
       "category": "Artifact investigation and REA maintenance",
-      "related": []
+      "related": [
+        "orbyn-upstream-review",
+        "reverse-engineer-anything"
+      ]
     },
     {
       "name": "rea-ci-tests-audit",
       "category": "Artifact investigation and REA maintenance",
-      "related": []
+      "related": [
+        "orbyn-ci-design",
+        "reverse-engineer-anything"
+      ]
     },
     {
       "name": "rea-tool-design",
       "category": "Artifact investigation and REA maintenance",
-      "related": []
+      "related": [
+        "architect",
+        "reverse-engineer-anything"
+      ]
     },
     {
       "name": "reflect",
@@ -408,7 +421,10 @@
     {
       "name": "reverse-engineer-anything",
       "category": "Artifact investigation and REA maintenance",
-      "related": []
+      "related": [
+        "how",
+        "orbyn-upstream-review"
+      ]
     },
     {
       "name": "show-me-your-work",
