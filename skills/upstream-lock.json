@@ -57,7 +57,7 @@
     "skills/orbyn-skill-creator/LICENSE": "b960a8c01d83aa48ed709780a5c9940f8e2861f2fdcdc8f931fbe3ece90a5e04",
     "skills/orbyn-skill-creator/SKILL.md": "49029d3751e9b712637ca0c931101563ec9e61320f6b0954fe8a7c84b9ff895e",
     "skills/orbyn-skill-creator/evals/cases.json": "fdaab98fd494a3b9e8f3379928a9d80eac090bb475f4dc635f81eeab89717070",
-    "skills/orbyn-skill-creator/references/evaluations.md": "8d5be9327eb4e0f47b2f0d30869bbaf8dbda5169279dade99e7bfc9049997fab",
+    "skills/orbyn-skill-creator/references/evaluations.md": "09a99a8973ca3461784e19861c9c72c3a984e09b7baa300aa7476fc091f68886",
     "skills/orbyn-skill-creator/scripts/check_sources.py": "53b6a362b04afa514488f70f197aa9baac6a9fd7e83c2643cb202916f2f7af8e",
     "skills/orbyn-skill-creator/scripts/evaluate.py": "d3f26214c06cfe4016e07e0c8bb245700308eed1ec023a402c6085a4e7148015",
     "skills/orbyn-ui-design/LICENSE": "b960a8c01d83aa48ed709780a5c9940f8e2861f2fdcdc8f931fbe3ece90a5e04",
@@ -182,6 +182,6 @@
     "skills/why/SKILL.md": "cd76384cfcb68f5927979c73adb30de657af9e96424816733dde43585ee43a10"
   },
   "repository": "https://github.com/kinqsradio/orbyn-fullstack-skills",
-  "revision": "417068773386f1d1b4478c5e2644e473595f0b05",
+  "revision": "dc82744266cac8dc200b448e92768c1f0470cd91",
   "schema_version": 1
 }
