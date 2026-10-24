@@ -32,9 +32,13 @@ worktrees and neutral task branches, preserve active legacy paths and verify the
 base before editing. Check ignored outputs/configuration before any cleanup.
 
 Branches stay local until publishing is authorized. Prefer a permitted approved
-personal contribution fork with a meaningful stable name such as
+private personal contribution fork when supported, with a meaningful stable name such as
 `Orbyn-contributions` when company policy allows it; reuse the fork across tasks.
-Verify account, visibility, actual upstream relationship and push destination.
+Verify account, actual visibility, upstream relationship and push destination.
+GitHub public-parent native forks stay public; preserve local work or an
+authorized private backup until reviewed public PR publication is authorized.
+The owning worktree policy distinguishes that backup from a native fork; do not
+recreate existing forks or change visibility to enforce a preference.
 Do not create remote branches/forks for every delegate, publish restricted code
 into a public/unauthorized fork, or silently push a company branch when fork
 permission is unavailable. Existing explicit internal contribution instructions
@@ -107,6 +111,37 @@ and `orbyn.environment='test'`. Never substitute production. The default backend
 suite does not establish that every separate integration lane ran. Inspect the
 owning test scripts and record exact commands, terminal results and missing lanes.
 Mock providers for deterministic tests; mock evidence is not live-provider proof.
+
+## Select checks by impact
+
+Use [proportional CI policy](../../skills/orbyn-ci-design/references/change-scope.md).
+An inert local typo/comment needs relevant diff, formatting or link review, not
+an application build or hosted run. Skill instructions need their metadata,
+source and routing checks; executable helpers need meaningful helper tests.
+Runtime, shared contracts, dependencies and uncertain changes need affected
+application checks. A small diff is not evidence of small impact.
+
+The published workflow uses [.github/ci-scope.json](../../.github/ci-scope.json).
+Known product docs, license text and skills take the lightweight lane; the shared
+skills/source check still runs. Unknown paths, runtime inputs, CI definitions and
+the classifier itself run all five application jobs. This initial path policy
+does not attempt to prove that a runtime-code edit contains only comments.
+Use manual `CI` dispatch for a full run regardless of paths.
+
+`Select CI scope` and `CI result` run for every published candidate. The result
+rejects classification failures, missing decisions and failed/cancelled or
+unexpectedly skipped selected jobs. Configure `CI result` as a required status in
+repository rules when promoting this workflow; editing YAML does not configure
+branch protection. Never call intentional skips passed application tests or use
+a new filter to hide an observed failure.
+
+CD is separate: docs/skills-only success does not auto-deploy. With the existing
+`AUTO_DEPLOY` setting enabled, automatic promotion needs a successful canonical
+main push and its exact runtime-change artifact. Manual deployment remains an
+explicit operator action. The SSH preflight refuses stale revisions, dirty or
+diverged server work and foreign branches; it fast-forwards only to the selected
+candidate and invokes deployment with `--no-pull`. No reset/clean or production
+operation is authorized merely by this policy.
 
 For migrations and services, read [operations](operations.md). For UI/copy, read
 [UI/UX](ui-ux.md). Do not run the vendored REA test suite for an Orbyn change.

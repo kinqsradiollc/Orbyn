@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "docs_files": [
+    "README.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md",
+    "LICENSE",
+    "LICENSE.md",
+    "LICENSE.txt"
+  ],
+  "docs_prefixes": ["docs/"],
+  "skills_files": [
+    "AGENTS.md",
+    "AGENT.md",
+    "CLAUDE.md",
+    "tools/THIRD_PARTY_NOTICES.md",
+    "scripts/install.py",
+    "scripts/check-agent-assets.py",
+    "scripts/sync-agent-skills.py",
+    "scripts/sync-agent-models.py",
+    "scripts/sync-public-skills.py"
+  ],
+  "skills_prefixes": [
+    "skills/",
+    ".agents/skills/",
+    ".claude/skills/",
+    "project-skills/",
+    "docs/agents/",
+    "tools/research/"
+  ],
+  "deployment_files": [
+    "package.json",
+    "package-lock.json",
+    "compose.yaml",
+    "scripts/deploy.sh",
+    "scripts/build-mermaid.mjs",
+    "scripts/build-pdf-preview.mjs",
+    "scripts/build-latex-html.mjs"
+  ],
+  "deployment_prefixes": [
+    "backend/",
+    "desktop/",
+    "packages/",
+    "deploy/",
+    "pgbouncer/",
+    "mail/"
+  ],
+  "application_jobs": [
+    "backend-and-web",
+    "embedding",
+    "mobile",
+    "docker",
+    "mail"
+  ]
+}

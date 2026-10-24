@@ -5,11 +5,56 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  changes:
+    name: Select CI scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_app: ${{ steps.scope.outputs.run_app }}
+      scope: ${{ steps.scope.outputs.scope }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Verify scope and safe candidate preflight with disposable Git fixtures
+        run: python3 -m unittest discover -s .github/tests -v
+      - name: Classify the complete candidate diff
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          args=()
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then args+=(--force-full); fi
+          python3 skills/orbyn-ci-design/scripts/ci_scope.py select \
+            --config .github/ci-scope.json --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --event "$EVENT_NAME" --repository "$GITHUB_REPOSITORY" \
+            --record ci-scope.json --github-output "$GITHUB_OUTPUT" "${args[@]}"
+      - name: Preserve the exact revision's scope decision
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-scope
+          path: ci-scope.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
   backend-and-web:
+    needs: changes
+    if: needs.changes.outputs.run_app == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -41,6 +86,8 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://orbyn:orbyn-test@localhost:5432/orbyn_test
   embedding:
+    needs: changes
+    if: needs.changes.outputs.run_app == 'true'
     runs-on: ubuntu-latest
     env:
       TEST_DATABASE_URL: postgres://orbyn:orbyn-test@localhost:5432/orbyn_embedding_test
@@ -80,6 +127,8 @@ jobs:
           backend/tests/embedding-vectors.unit.test.ts
           backend/tests/embedding-controls.unit.test.ts
   mobile:
+    needs: changes
+    if: needs.changes.outputs.run_app == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,6 +143,8 @@ jobs:
         run: npx expo export --platform ios --platform android --output-dir /tmp/orbyn-export
         working-directory: mobile
   docker:
+    needs: changes
+    if: needs.changes.outputs.run_app == 'true'
     runs-on: ubuntu-latest
     env:
       COMPOSE_PROJECT_NAME: orbyn
@@ -188,6 +239,8 @@ jobs:
         run: docker compose down --volumes
 
   mail:
+    needs: changes
+    if: needs.changes.outputs.run_app == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -201,3 +254,23 @@ jobs:
       - name: Stop test mail stack
         if: always()
         run: docker compose -f mail/compose.local.yaml down --volumes
+
+  result:
+    name: CI result
+    if: ${{ always() }}
+    needs: [changes, backend-and-web, embedding, mobile, docker, mail]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Require the selected checks and reject classification failures
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: >-
+          python3 skills/orbyn-ci-design/scripts/ci_scope.py gate
+          --config .github/ci-scope.json --needs-json "$NEEDS_JSON"
