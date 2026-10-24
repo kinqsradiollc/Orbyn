@@ -12,8 +12,11 @@ Docs, Agenda and the other workspace tools. Tapping the tab you are already on s
 to its top and refreshes, as in Instagram and Facebook; on Assistant it jumps to the newest
 message instead.
 
-- Assistant replies use the content column's full width. The composer has a full-width text
-  field and a separate action row, and stays above the software keyboard.
+- Assistant uses Chats for personal/project, pinned and recent conversations, and
+  Activity for Background, Overnight and Upcoming. Message options supports Copy,
+  Details and excerpt selection into the existing composer. The keyboard-aware
+  composer preserves typed text; selecting an excerpt does not send it. Unified
+  timeline behavior depends on the server rollout flag. See [Assistant](assistant.md).
 - Documents opens on a collection, with Browse library revealing Pages, Notes, Favorites and
   expandable folders. Folder children open directly; View folder narrows the collection.
   New documents and notes inherit the selected folder. Sort switches between last edited

@@ -114,22 +114,18 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Services started:
-
-| Service    | Purpose                                                                |
-| ---------- | ---------------------------------------------------------------------- |
-| `postgres` | PostgreSQL 17 with a persistent `postgres_data` volume.                |
-| `migrate`  | One-shot container that applies `backend/migrations/*.sql` then exits. |
-| `api`      | The HTTP API. Waits for migrations to finish. Has a health check.      |
-| `worker`   | Schedules and delivers reminders (in-app, email, push).                |
-| `desktop`  | internal `desktop:8080`                                                | Web app files; served through the gateway's web port |
-| `mailpit`  | Local SMTP sink with a web inbox at <http://localhost:8025>.           |
+The default stack includes PostgreSQL/PgBouncer, migrations, API, AI, realtime,
+MCP, status, notifier, Background and Overnight workers, file storage/conversion,
+private PDF and LaTeX services, the web app, gateway and Mailpit. Services behind
+profiles (plugin, semantic indexing, OCR, formula, replica, tunnel and mail) start
+only when those profiles are selected. The table below identifies service names
+and ports; `worker` is an npm script alias, not a Compose service.
 
 Useful commands:
 
 ```bash
-docker compose logs -f api worker      # follow logs
-docker compose up -d --build api worker # rebuild after backend changes
+docker compose logs -f api notifier      # follow logs
+docker compose up -d --build api ai notifier assistant-background assistant-overnight # rebuild after backend changes
 docker compose down                     # stop, keep data
 docker compose down -v                  # stop and delete the database volume
 ```
@@ -138,22 +134,30 @@ docker compose down -v                  # stop and delete the database volume
 
 `docker compose up -d --build` starts the backend as separate services behind a gateway:
 
-| Service            | Reached at                                          | Notes                                                                    |
-| ------------------ | --------------------------------------------------- | ------------------------------------------------------------------------ |
-| `desktop`          | <http://localhost:8080>                             | Web app; `/api` goes to the gateway                                      |
-| `gateway`          | <http://localhost:8080> and <http://localhost:8008> | The only service with host ports: the web app (with `/api`) and the API  |
-| `api`              | internal `api:8000`                                 | Planner API                                                              |
-| `ai`               | internal `ai:8000`                                  | Assistant and AI provider settings                                       |
-| `status`           | internal `status:8000`                              | Status probes; public report at `/status`                                |
-| `notifier`         | no port                                             | Reminder delivery                                                        |
-| `files`            | internal `files:8000`                               | File store for imports; uploads arrive through the gateway's `/files/u/` |
-| `converter`        | no port                                             | Turns imported PDFs, Word files and photos into pages                    |
-| `formula`          | internal `formula:8000`                             | Equations on scanned pages (`formula` profile; optional)                 |
-| `ocr`              | internal `ocr:8000`                                 | Heavy OCR model (`ocr` profile; off by default, big servers only)        |
-| `postgres`         | `localhost:5433`                                    | Database                                                                 |
-| `pgbouncer`        | internal `pgbouncer:6432`                           | Connection pooler every service connects through                         |
-| `postgres-replica` | `localhost:5434`                                    | Streaming read replica (`replica` profile, optional)                     |
-| `mailpit`          | <http://localhost:8025>                             | Local email inbox                                                        |
+| Service                | Reached at                                          | Notes                                                                    |
+| ---------------------- | --------------------------------------------------- | ------------------------------------------------------------------------ |
+| `desktop`              | <http://localhost:8080>                             | Web app; `/api` goes to the gateway                                      |
+| `gateway`              | <http://localhost:8080> and <http://localhost:8008> | Public web/API entry; database and Mailpit bindings are separate         |
+| `api`                  | internal `api:8000`                                 | Planner API                                                              |
+| `ai`                   | internal `ai:8000`                                  | Assistant and AI provider settings                                       |
+| `status`               | internal `status:8000`                              | Status probes; public report at `/status`                                |
+| `notifier`             | no port                                             | Reminder delivery                                                        |
+| `assistant-background` | private readiness port                              | Durable Background jobs                                                  |
+| `assistant-overnight`  | private readiness port                              | Durable Overnight jobs                                                   |
+| `realtime`             | internal `realtime:8000`                            | Event and document streams                                               |
+| `mcp`                  | internal `mcp:8000`                                 | Scoped outside-agent connector                                           |
+| `pdf`                  | internal `pdf:8000`                                 | Explicit document PDF export                                             |
+| `latex`                | internal `latex:8000`                               | Private standalone TeX compilation                                       |
+| `plugin`               | internal `plugin:8000`                              | Separate plugin recipient (`plugin` profile)                             |
+| `measure`              | no public port                                      | Semantic indexing (`semantic` profile)                                   |
+| `files`                | internal `files:8000`                               | File store for imports; uploads arrive through the gateway's `/files/u/` |
+| `converter`            | no port                                             | Turns imported PDFs, Word files and photos into pages                    |
+| `formula`              | internal `formula:8000`                             | Equations on scanned pages (`formula` profile; optional)                 |
+| `ocr`                  | internal `ocr:8000`                                 | Heavy OCR model (`ocr` profile; off by default, big servers only)        |
+| `postgres`             | `localhost:5433`                                    | Database                                                                 |
+| `pgbouncer`            | internal `pgbouncer:6432`                           | Connection pooler every service connects through                         |
+| `postgres-replica`     | `localhost:5434`                                    | Streaming read replica (`replica` profile, optional)                     |
+| `mailpit`              | <http://localhost:8025>                             | Local email inbox                                                        |
 
 To spread services across machines, add a read replica, or run on Kubernetes, see
 [scalability.md](scalability.md) and [deploy/k8s](../deploy/k8s/README.md).
@@ -182,8 +186,8 @@ npm run migrate
 `npm run build:packages` after cloning and whenever you edit them (or keep `npm run dev:packages`
 running to rebuild on change).
 
-Run the API with hot reload and the web app. `dev:api` runs every backend module in one process,
-which is simplest for development; `npm run dev:api -w backend`, `dev:ai -w backend`,
+Run the API with hot reload and the web app. Root `dev:api` combines HTTP modules
+and the status prober, which is simplest for development; `npm run dev:api -w backend`, `dev:ai -w backend`,
 `dev:status -w backend`, and `dev:notifier -w backend` run the services one by one:
 
 ```bash
@@ -226,6 +230,22 @@ node scripts/ocr-standin.mjs
 ```bash
 OCR_URL=http://127.0.0.1:8098 npm run dev:converter -w backend
 ```
+
+### Assistant automation during local development
+
+`npm run dev:api` starts the combined HTTP server. It does not start Background
+or Overnight workers, the notifier, converter or private renderers. After building
+the backend, run each required worker separately, or use the Compose stack:
+
+```sh
+npm run start:notifier -w backend
+npm run start:assistant-background -w backend
+npm run start:assistant-overnight -w backend
+```
+
+Use separate terminals. Keep API, AI and automation workers on the same schema,
+provider configuration and conversation rollout flag. See [Assistant](assistant.md)
+and [deployment](deployment.md#assistant-runtime-processes).
 
 ### Electron desktop shell
 
@@ -278,8 +298,9 @@ that holds real data. CI runs its own throwaway PostgreSQL and marks it the same
   `backend/src/app.ts`.
 - Web features are folders under `desktop/src/features/<name>/`; mobile screens live in
   `mobile/src/screens/`. Reusable UI goes in each app's `components/`.
-- `npm install` at the root installs every workspace, including mobile. npm 11.4.0 creates broken
-  scoped workspace symlinks; use npm 10.x or 11.5+ (see the README).
+- `npm ci` at the root installs the committed lockfile across all workspaces,
+  including mobile. Use the Node/npm engine range from `package.json`; build
+  shared packages before running clients or services.
 
 ## 6. Admins
 
@@ -499,7 +520,7 @@ run this automatically. No CDN, new client environment variable or new service i
 needed. The actual renderer is qualified by `latex-html-runtime.unit.test.ts`;
 iframe lifetime and explicit-export guards have separate mounted tests.
 
-PDF export is an explicit action. The existing compiler API limit remains20
+PDF export is an explicit action. The existing compiler API limit remains 20
 requests/minute; there is no automatic request loop. Configure the private compiler
 below only for export, not for HTML preview. Export errors leave the workspace and
 draft visible.

@@ -1,77 +1,63 @@
 # Orbyn
 
-**From orbit.** Your tasks, deadlines, events, and life revolve around one intelligent system.
+Plan your day. Keep work moving.
 
-Orbyn is a planner with a web/desktop app, a native mobile app, and a separate backend. An AI
-assistant (any OpenAI-compatible provider) can summarize your planner and propose creates,
-updates, and deletes that you approve before they are saved. A background worker sends in-app,
-email, and mobile push reminders as deadlines approach.
+Orbyn brings tasks, calendars, projects, documents and an AI assistant into one
+workspace, with a web app, an Electron desktop client and an Expo mobile app.
 
-## Roles and teams
+## What you can do
 
-Accounts are either **admins** or **members**. The first account, and any email in `ADMIN_EMAILS`,
-is an admin. Admins get an admin console in the web and mobile apps to see usage, manage accounts
-and roles, disable or delete users, manage any team, and read the audit log. They never see the
-contents of other people's items.
+- **Plan work:** manage tasks, deadlines, recurring work, calendar events and
+  focus sessions. Organize projects, share team work and review your day.
+- **Write and study:** keep pages and notes, import PDFs, Word documents and
+  photos, and make study cards. Docs provides Note, Markdown and LaTeX editing,
+  local previews and explicit PDF export.
+- **Work with Orbyn:** use personal and project chats, delegate Background work
+  or opt into Overnight work. Orbyn's own orchestration runs durable jobs with
+  checkpoints, questions, budgets and review controls. See [Assistant](docs/assistant.md).
+- **Connect other assistants:** give MCP clients scoped access to your planner
+  through OAuth or agent keys. Permissions and team access are checked on each
+  operation. See [MCP](docs/mcp.md).
+- **Publish updates:** admins can prepare release notes and images, request AI
+  copy suggestions and approve posts for a LinkedIn company Page. LinkedIn
+  requires its own connection and permissions. See [Admin Publishing](docs/admin-publishing.md).
 
-Anyone can create a **team** and share tasks and events with it. Team roles are owner, admin,
-member, and viewer. Every team member gets the reminders for team items. See
-[architecture](docs/architecture.md#access-control) for the full permission matrix.
+AI providers and models are configured in **Admin → AI**. Managed provider keys
+are encrypted at rest. Assistant actions follow the person's granted access and
+review rules; unattended deletion, outside messages and publishing require Review.
+The unified conversation timeline is implemented behind
+`ASSISTANT_CONVERSATION_ENABLED=false` by default. Enable it explicitly across
+services after the deployment checks; the source tree alone does not establish
+that a hosted instance has it enabled.
 
-## Services and status
+## Accounts and teams
 
-The backend runs as separate services (API, AI assistant, reminders, status, and a file store
-and converter that turn imported PDFs and Word files into pages) behind an nginx gateway. A public status page shows uptime for each part of Orbyn. Admins connect AI providers
-such as OpenAI, Anthropic, Gemini, Azure OpenAI, OpenRouter, Groq, LM Studio, or Ollama from the
-admin console; keys are stored encrypted. See [architecture](docs/architecture.md#services).
-
-Every service is stateless and can run as many instances as needed, on one host or many machines,
-behind a load balancer. PgBouncer pools database connections, and lag-tolerant reads can go to
-read replicas. See [scalability](docs/scalability.md) for the topology, measured load test results
-and a capacity plan for a million users.
+Accounts are admins or members. The first account and addresses in `ADMIN_EMAILS`
+receive admin access. Admins manage accounts, providers, usage, storage and audit
+records. Team roles are owner, admin, member and viewer; team permissions also
+bound connected agents. See [access control](docs/architecture.md#access-control).
 
 ## Repository layout
 
-Orbyn is an npm workspaces monorepo. Shared code lives in `packages/`, and each deployable app
-lives in its own top-level folder.
+Orbyn is a TypeScript npm workspaces monorepo.
 
-| Path                   | Package             | What it is                                                                                  |
-| ---------------------- | ------------------- | ------------------------------------------------------------------------------------------- |
-| `packages/core/`       | `@orbyn/core`       | Shared domain layer: zod schemas, TypeScript types, date and planner helpers, `HttpError`.  |
-| `packages/api-client/` | `@orbyn/api-client` | Typed fetch client for the API, used by both the web/desktop and mobile apps.               |
-| `backend/`             | `@orbyn/backend`    | Fastify + PostgreSQL API, reminder worker, migrations, Dockerfile. Organised by `modules/`. |
-| `desktop/`             | `@orbyn/desktop`    | React + Vite web app, also packaged as an Electron desktop app. Organised by `features/`.   |
-| `mobile/`              | `@orbyn/mobile`     | Expo (React Native) app for iOS and Android. Organised by `screens/`.                       |
-| `docs/`                |                     | Current product references and engineering workflow guides.                                 |
-| `gateway/`             |                     | nginx gateway template, rendered from environment settings at start.                        |
-| `pgbouncer/`           |                     | Connection pooler image with primary and read-replica routes.                               |
-| `ocr/`                 |                     | OCR service for imported scans (Unlimited-OCR on CPU); Compose profile `ocr`.               |
-| `deploy/`              |                     | Kubernetes manifests (`deploy/k8s`) and Postgres replication scripts.                       |
+| Path                      | Owner                                                                     |
+| ------------------------- | ------------------------------------------------------------------------- |
+| `packages/core/`          | Shared Zod schemas, domain types and planner helpers                      |
+| `packages/api-client/`    | Typed API client used by web/desktop and mobile                           |
+| `backend/`                | Fastify API, PostgreSQL migrations, provider adapters and service workers |
+| `desktop/`                | React/Vite web app and Electron packaging                                 |
+| `mobile/`                 | Expo/React Native client for iOS and Android                              |
+| `gateway/`, `pgbouncer/`  | nginx routing and database connection pooling                             |
+| `deploy/`, `compose.yaml` | Service definitions, isolation profiles and deployment tooling            |
+| `docs/`                   | Product, setup, architecture and operational references                   |
+| `skills/`                 | Pinned shared engineering skills; product policy stays in this repository |
 
-```
-orbyn/
-├── packages/
-│   ├── core/            schemas, types, dates, planner helpers   (no runtime deps besides zod)
-│   └── api-client/      OrbynClient                               (depends on core)
-├── backend/
-│   └── src/
-│       ├── config/      env loading and validation
-│       ├── db/          pool, transactions, migration runner
-│       ├── lib/         auth helpers, route params
-│       ├── modules/     auth, users, items, devices, notifications, ai  (routes + services)
-│       ├── worker/      scheduler, delivery, channels/email, channels/push
-│       ├── app.ts       composes modules into the Fastify app
-│       ├── server.ts    API entry
-│       ├── worker.ts    worker entry
-│       └── migrate.ts   migration entry
-├── desktop/src/         app/, features/, components/, hooks/, lib/, styles/
-├── mobile/src/          app/, screens/, components/, hooks/, lib/, theme/
-├── compose.yaml         postgres, migrate, api, worker, web, mailpit
-└── .env.example
-```
-
-Dependency direction is strictly one way: apps depend on `@orbyn/api-client` and `@orbyn/core`;
-`@orbyn/api-client` depends on `@orbyn/core`; `@orbyn/core` depends on nothing in the repo.
+Clients use `@orbyn/api-client` and `@orbyn/core`; the API client depends on core.
+Shared packages do not import application code. Backend services share an image
+but have separate entry points for HTTP, reminders, Background, Overnight, file
+conversion and document rendering. See [architecture](docs/architecture.md) and
+[scaling constraints](docs/scalability.md).
 
 ## Quick start (Docker)
 
@@ -93,7 +79,8 @@ Create an account in the web app, add a task with a due date, and a reminder lan
 and in the in-app notification tray when the reminder window opens.
 
 To enable the AI assistant, sign in as an admin and open **Admin → AI** to add a provider and
-choose its model. Nothing AI-related goes in `.env`; see [setup](docs/setup.md#ai-providers).
+choose its model. Provider credentials are managed there; service URLs, encryption keys and
+rollout flags still belong in the server environment. See [setup](docs/setup.md#ai-providers).
 
 ## Quick start (local development)
 
@@ -108,12 +95,22 @@ PORT=8008 npm run dev:api     # API on http://localhost:8008
 npm run dev:web               # web app on http://localhost:5173 (proxies /api to the backend)
 ```
 
-For the reminder worker in development:
+The local API combines HTTP modules. Run the notifier separately for reminders:
 
 ```bash
-npm run build -w backend && npm run worker -w backend
+npm run build -w backend
+npm run start:notifier -w backend
 ```
 
+Background and Overnight need their own processes even in local development:
+
+```bash
+npm run start:assistant-background -w backend
+npm run start:assistant-overnight -w backend
+```
+
+Run each process in its own terminal. Import conversion and the private PDF/LaTeX
+renderers also need their services; the full Compose stack supplies them.
 For mobile, see [docs/mobile.md](docs/mobile.md).
 
 ## Development workflow
@@ -133,12 +130,12 @@ Native children and explicitly requested project chats follow
 Start at the [documentation index](docs/README.md) for current guides and their
 owning source. The old ADR queue and checkpoint reports have been retired.
 
-- [Setup guide](docs/setup.md) - every environment variable, Docker and local workflows
-- [Architecture](docs/architecture.md) - services, data model, reminder pipeline, AI proposal flow
-- [API reference](docs/api.md) - all HTTP endpoints
+- [Setup guide](docs/setup.md) - environment configuration, Docker and local workflows
+- [Architecture](docs/architecture.md) - services, permissions, documents and durable assistant execution
+- [API reference](docs/api.md) - HTTP contracts and links to owning routes
 - [Mobile guide](docs/mobile.md) - running on a device, push notifications, EAS builds
 - [Deployment](docs/deployment.md) - go-live checklist, DNS records, Cloudflare tunnel, your own mail server, updating without downtime
-- [Scalability](docs/scalability.md) - multi-host topology, load balancer, replicas, capacity plan
+- [Scalability](docs/scalability.md) - multi-host topology, shared-storage requirements and historical load evidence
 - [Kubernetes](deploy/k8s/README.md) - manifests with autoscaling, ingress and network policies
 
 ## Scripts
@@ -159,13 +156,14 @@ All commands run from the repository root.
 | `npm run format`              | Format the authored paths selected by the root script                                    |
 | `npm run desktop -w desktop`  | Launch the Electron shell against the built web app                                      |
 | `npm run package -w desktop`  | Produce installers (dmg, nsis, AppImage)                                                 |
-| `./scripts/deploy.sh`         | Install or update a server without downtime: pull, back up, build, migrate, roll out     |
+| `./scripts/deploy.sh`         | Install/update a server: preflight, back up, build, migrate and roll out                 |
 | `./scripts/deploy.sh --check` | Show what a deploy would do and check `.env`, changing nothing                           |
 | `./scripts/mail-local.sh`     | Start, test and stop a local stack for the self-hosted mail server                       |
 
-> **npm note.** npm 11.4.0 has a bug that creates broken symlinks for scoped workspace packages
-> (`node_modules/@orbyn/*`). Use npm 10.x (bundled with Node 22) or npm 11.5+. If
-> `@orbyn/core` cannot be resolved after `npm install`, run `rm -rf node_modules/@orbyn && npx npm@latest install`.
+Use the Node/npm versions required by `package.json` (Node 22+ and npm 10+).
+`npm ci` installs the committed workspace lockfile. If a shared package cannot be
+resolved, check workspace installation and run `npm run build:packages` before
+starting a client or service.
 
 ## Tests
 

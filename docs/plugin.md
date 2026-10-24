@@ -29,7 +29,7 @@ rejected. UI selection requires the existing UI opt-in and current tool scope.
 The independently authenticated plugin recipient returns an `Import progress`
 resource link with a successful `start_import` tool result. Read the
 `orbyn://plugin-job/<job-id>` address with `resources/read` to receive JSON status,
-at most100 events, a reconnect cursor and a current document link when ready.
+at most 100 events, a reconnect cursor and a current document link when ready.
 For continuation use `orbyn://plugin-job/<job-id>?cursor=<encoded-cursor>`.
 
 Each read rechecks the current grant, account and source visibility; a resource
@@ -38,96 +38,62 @@ must send the SDK-required `Mcp-Name` resource URI matching `params.uri`, along
 with their normal protocol/client metadata. Legacy clients retain their normal
 resource-read envelope. No arbitrary URL fetch or host identity override occurs.
 
-### Remaining managed-provider execution contract
+## Managed inference
 
-Launch context does not grant inference permission. Before adding a provider-call
-endpoint, implement the following retained P1 boundary:
+The source includes owner consent, durable storage, HTTP admission/results and a
+separate inference worker. Earlier implementation-stage notes describing these
+as unmounted foundations have been replaced by the current contract below.
+This source description does not certify a deployed host or a live provider.
 
-1. A signed-in owner explicitly enables AI for an existing plugin OAuth grant.
-   Bind that permission to a database provider ID, configuration revision and
-   model, with a per-call output limit and daily work allowance. Default is off.
-   Show provider, model and possible workspace/API charges in both clients.
-   Permission changes use an expected version; MCP credentials, plugin tokens,
-   assistant sessions and host launch hints cannot enable or raise it.
-2. Persist a grant-owned operation UUID and captured permission/provider revision
-   before dispatch. Reserve the allowance atomically. Duplicate requests return
-   the same receipt; a dispatched request with an unknown outcome is not replayed
-   or refunded as though no call occurred.
-3. Resolve only the captured administrator-configured managed/BYO connection.
-   Reject missing, disabled or changed providers and every personal-plan text
-   transport. Neither the request nor host metadata may select an endpoint,
-   credential, user, tenant, callback or alternate provider. No paid fallback.
-4. Recheck current connector audience, owner, grant/client status, permission and
-   source visibility before dispatch and result acceptance. Read referenced
-   Orbyn documents through the shared capability policy with retained revisions;
-   host-provided text remains untrusted data, never additional authority.
-5. Return bounded private asynchronous status/results through grant-bound receipt
-   and cursor schemas, with no-store responses and existing rate/concurrency
-   controls. Do not expose prompts, credentials or provider errors in discovery,
-   launch metadata, logs or another grant's events.
-6. Exercise 401/403/400/429, recipient/account isolation, CAS conflicts, disabled
-   and changed providers, permission revocation, duplicate operations, unknown
-   completion, allowance exhaustion and actual bounded managed transport. Verify
-   permission controls on web/desktop and mobile before declaring P1 complete.
+### Consent and limits
 
-This is the implementation contract, not a shipped inference feature. The launch
-checkpoint has no provider-call endpoint and portable MCP remains unchanged.
+A signed-in owner enables a default-off permission for an existing OAuth grant,
+with an exact administrator-configured managed/BYO provider, configuration
+revision, model, per-call output limit and daily allowance. Connected agents
+exposes provider/model review and revocation on web/desktop and mobile.
+Updates use expected versions; launch context, MCP credentials and a read/write
+grant alone cannot enable inference or raise its allowance. Personal ChatGPT
+plan credentials and paid fallback are excluded from this broker.
 
-#### Managed transport foundation — candidate
+### Admission and results
 
-`provider-policy.ts` now defines strict host text/operation input and a separate
-server-owned permission record. It admits only a matching known database
-provider/revision/model and plugin owner/grant/client, rejecting personal-plan
-transports and first-party authority hooks. The transport uses a captured output
-limit, a 30-second deadline, pre/post current-authority callbacks, a bounded
-result and generic upstream failure text. It does not retry or select fallback.
-Nine isolated regressions and backend typecheck pass.
+`POST /plugin/inference` accepts a recent UUIDv7 operation ID and bounded text.
+New IDs must be no more than one day old or one minute ahead. Existing receipts
+are looked up before applying new-ID age rules. A grant/operation-unique receipt
+captures permission and provider identity before dispatch; changing or disabling
+the provider/permission invalidates queued authority.
 
-This module is not mounted as an endpoint. Persisted owner consent, atomic daily
-reservation, durable operation deduplication/unknown outcomes, worker recovery,
-HTTP shields and both permission UIs remain required before enabling execution.
+`GET /plugin/inference/:id/events` returns private ordered events with a
+receipt/grant/resource/revision-bound reconnect cursor. Text is returned only
+after accepted completion. Both routes require the plugin OAuth audience and
+fresh authority, with bounded responses and no-store headers. Prompts, credentials
+and upstream provider errors are not exposed through discovery or another grant.
 
-#### Consent and durable storage — candidate
+### Worker and recovery
 
-Migration240 adds default-off provider-bound permissions and grant/operation-
-unique execution receipts. Owner-only review and CAS update endpoints pin the
-current workspace provider revision/model and invalidate queued work when consent
-changes. Disabled or changed providers make consent inactive. The API client
-validates both the input and sanitized response; plugin grants are identified
-separately in Connected agents metadata. No provider-call endpoint is mounted yet.
+`backend/src/services/plugin.ts` starts the dedicated worker. It reserves the
+grant's UTC daily allowance and claims receipts with separate persisted capacity
+of two. It checks owner, client, grant, token, team access, consent and provider
+revision before dispatch and acceptance, preserving grant-before-job locking.
+Transport uses the captured output cap, a 30-second deadline and no fallback.
 
-New operation IDs must be UUIDv7 with a timestamp no more than one day old or one
-minute ahead. A broker must look up an existing receipt before checking the age of
-a new operation. Receipts expire after thirty days through the hourly sweeper;
-old IDs cannot become dispatchable again after cleanup. The worker, atomic daily
-allowance reservation, response reads, owner controls and runtime qualification
-remain unfinished. HTTP security/CAS/provider-change tests are added but have not
-run locally because test PostgreSQL remains unavailable and user-controlled.
+Unknown or interrupted outbound calls retain their reservation and are not
+replayed. Known-undispatched queued revocations can release allowance. Receipts
+expire after thirty days through the sweeper; expired IDs cannot become new work.
+The canonical MCP workspace-AI tool uses shared broker contracts under its own
+recipient checks and separate feature flag; it does not transfer legacy grants.
 
-#### Durable managed inference and owner controls — candidate
+## Configuration, verification and owners
 
-`POST /plugin/inference` accepts only a recent UUIDv7 operation ID and bounded
-text. `GET /plugin/inference/:id/events` returns private ordered state events,
-a grant/resource/revision-bound reconnect cursor, and text only after accepted
-completion. Both endpoints use the plugin OAuth audience and fresh authority;
-read/write grants alone do not permit a provider call.
+The canonical outside-agent connection is MCP. Keep legacy plugin recipients
+available only as required by existing grants. See [environment](environment.md#one-mcp-connection-legacy-plugin-compatibility),
+[MCP](mcp.md) and the [production qualification procedure](plugin-production-test.md).
+The plugin service runs under the Compose `plugin` profile. Provider execution
+still requires explicit owner consent and a configured managed provider.
 
-The dedicated plugin service worker reserves a grant's UTC daily allowance and
-claims a receipt before outbound transport. Its separate persisted capacity is
-two; first-party runtime slots and personal ChatGPT tokens are excluded. Unknown
-or interrupted calls retain their reservation and are never replayed. Queued
-revocation is known undispatched and may release allowance. Current owner,
-client, token, team authority, consent and provider revision are checked before
-dispatch and acceptance. Grant-before-job locking is preserved during recovery.
-
-Connected agents exposes explicit provider/model review, output limits, daily
-allowance and revocation on web/desktop and mobile, only for plugin grants. This
-is candidate implementation: 26 isolated policy/consent/launch/cursor regressions
-pass; workspace typechecks pass. Eleven database integration cases are added but
-await exact-head CI. Web inspection remains rejected by the saved Browser Use
-permission; native visual acceptance is outstanding. P1 is not complete.
-
-The newest integration fixture also sends through the production managed HTTP
-adapter to a local mock upstream, checking the wire model/output cap, private
-completion and absence of repeat dispatch. This is added coverage awaiting CI,
-not a successful live external-provider or host acceptance claim.
+Owning source is `backend/src/modules/plugin/` (`routes.ts`,
+`inference-contract.ts`, `inference-broker.ts`, `inference-worker.ts`,
+`provider-policy.ts`) and the shared schemas in `packages/core/src/plugin-ai.ts`.
+Focused fixtures and CI establish only the cases they execute. Live external
+provider renewal, actual host integration and installed-native consent UI require
+separate qualification; this guide is not an acceptance receipt.

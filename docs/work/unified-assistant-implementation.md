@@ -1,5 +1,14 @@
 # Unified assistant conversation implementation
 
+## Delivery update — 24 October 2026
+
+The implementation was merged through [PR #222](https://github.com/kinqsradiollc/Orbyn/pull/222).
+The historical sequence below retains its original local/PR status and evidence;
+statements about work being uncommitted or PRs being open describe that earlier
+stage. Current behavior is in [Assistant](../assistant.md), with rollout still
+opt-in. Main CI at `28b0c227` passed; this does not establish deployment or
+installed-native/live-provider qualification.
+
 Owner: this implementation chat. Base: `db4eb64956cf7cbdeebc468d459c1deae2856440`.
 Scope: all eleven acceptance cases in [the accepted ADR](adr-unified-assistant-conversation.md).
 Status: implemented and locally qualified within the authorized web/Expo-web scope.

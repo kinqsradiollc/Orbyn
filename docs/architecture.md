@@ -35,7 +35,9 @@ live on different machines; see [scalability.md](scalability.md).
 | `pdf`                  | `services/pdf.ts`                  | Private bounded document renderer                                                                                                                                               |
 | `measure`              | `services/measure.ts`              | Optional semantic indexing worker; `semantic` Compose profile                                                                                                                   |
 
-`server.ts` runs every module in one process for local development and tests.
+`server.ts` combines the HTTP modules and status prober for local development.
+It does not replace the notifier, Background/Overnight, conversion or plugin
+inference workers. Compose and production launch their owning service entry points.
 `services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
 with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 
@@ -43,6 +45,20 @@ MCP workspace-AI requests validate the shared, provider-free
 `modules/plugin/inference-contract.ts` contract and enqueue broker work. Provider
 execution remains in the inference worker through `provider-policy.ts`; request
 handlers do not import the provider adapters merely to validate input.
+
+## Assistant conversations and execution
+
+The Assistant has personal and project chats, retained timeline entries and
+separate durable execution jobs. Background and Overnight results can publish
+back to their captured conversation when the opt-in conversation flag is enabled;
+they do not become new user-facing chats for every execution. Publication, alerts
+and model execution have separate ownership and current-access checks.
+
+[Assistant](assistant.md) describes the current client flow and rollout boundary.
+The [API guide](api.md#retained-assistant-conversations) covers feed, details,
+reply/excerpt, read-state and work-control contracts. Source lives in
+`modules/assistant-workspace/`, `modules/ai/` and
+`packages/core/src/assistant-conversation.ts`.
 
 ## Workspace and document ownership
 
