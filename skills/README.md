@@ -23,8 +23,9 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 - [orbyn-research](orbyn-research/SKILL.md) — Resolve a specific architectural, dependency, platform or design uncertainty using local evidence and authoritative external sources before choosing an implementation.
 - [orbyn-setup](orbyn-setup/SKILL.md) — Set up Orbyn skills in an existing project, migrate company-owned skills and configure requested host roles/models for Codex or Claude Code.
 - [orbyn-skill-creator](orbyn-skill-creator/SKILL.md) — Create, refine, merge or retire Orbyn repository skills while keeping task routing, technology boundaries, host discovery and documentation consistent.
+- [orbyn-upstream-review](orbyn-upstream-review/SKILL.md) — Review freshness and changes in external skills, source code or research references; keep downloads in ignored orbyn-references, compare pinned revisions and selectively adapt existing owners.
 - [orbyn-workflow](orbyn-workflow/SKILL.md) — Route substantial Orbyn engineering work through evidence-led investigation, design, implementation and verification. Use for Orbyn workflow requests and multi-step changes.
-- [orbyn-worktree](orbyn-worktree/SKILL.md) — Manage local task branches, personal-fork delivery and Git worktree isolation; use sibling <repo>-wt directories, purpose-based names and preservation before cleanup.
+- [orbyn-worktree](orbyn-worktree/SKILL.md) — Manage local task branches, private contribution storage when supported and Git worktree isolation; use sibling <repo>-wt directories, purpose-based names and preservation before cleanup.
 - [reflect](reflect/SKILL.md) — Review the current task for reusable lessons when requested, and update only the authorized workflow or skill scope.
 - [show-me-your-work](show-me-your-work/SKILL.md) — Keep a compact decision and evidence trail for substantial migrations or unattended work that the user will review later.
 
@@ -34,7 +35,9 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 - [arena](arena/SKILL.md) — Compare competing design or implementation sketches when a consequential choice cannot be resolved cheaply from existing evidence.
 - [how](how/SKILL.md) — Trace source behavior, data flow, ownership and module boundaries before explaining or changing an unfamiliar subsystem.
 - [interrogate](interrogate/SKILL.md) — Challenge a specified design, patch or claim for concrete correctness, ownership and evidence gaps. Use for adversarial review, not every routine edit.
+- [language-best-practices](language-best-practices/SKILL.md) — Implement or review JavaScript, Python, Go, Rust, Java, Kotlin, C#, Swift, C, C++, SQL or shell code using its actual runtime, ownership and error contracts. Select only the affected language guide; TypeScript schemas stay with typescript-best-practices.
 - [orbyn-security-remediation](orbyn-security-remediation/SKILL.md) — Investigate and resolve existing Orbyn security findings, record evidence and add preventive checks without starting a security scan.
+- [orbyn-stack-selection](orbyn-stack-selection/SKILL.md) — Choose or reassess a language, framework, database, runtime, hosting or build-versus-buy option from project constraints and current primary evidence. Produce a decision with operating and migration costs; ordinary implementation keeps the established stack.
 - [tdd](tdd/SKILL.md) — Write a focused failing-before regression and fix when the user requests TDD or testing and the affected behavior has a practical test boundary.
 - [typescript-best-practices](typescript-best-practices/SKILL.md) — Design or fix shared TypeScript schemas, illegal state combinations, lifecycle unions and unsafe casts. Own the runtime schema, derived types and affected callers together.
 - [unslop](unslop/SKILL.md) — Edit agent prose and documentation for clear factual communication while preserving the requested voice and evidence.
@@ -43,7 +46,7 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 ## Fullstack contracts and delivery
 
 - [orbyn-backend-design](orbyn-backend-design/SKILL.md) — Design and implement API/service behavior across validation, authorization, persistence, concurrency and client errors using the consuming project's stack. Use architect first for unsettled ownership; use orbyn-data-migration for stored-format changes.
-- [orbyn-ci-design](orbyn-ci-design/SKILL.md) — Design or repair CI checks, contribution automation and release promotion with scoped credentials, deterministic artifacts and clear evidence boundaries. Use for workflow changes; not permission to publish, merge or deploy.
+- [orbyn-ci-design](orbyn-ci-design/SKILL.md) — Design or repair CI checks, contribution automation and release promotion with scoped credentials, deterministic artifacts and clear evidence boundaries. Use for workflow changes and proportional checks for small edits; not permission to publish, merge or deploy.
 - [orbyn-data-migration](orbyn-data-migration/SKILL.md) — Plan and implement stored-data, schema and writer migrations with compatibility, cutover, retry and recovery evidence. Use for durable format changes; not a routine in-memory type refactor or permission to run production migrations.
 - [orbyn-security-audit](orbyn-security-audit/SKILL.md) — Perform an explicitly requested local or offline source security audit when a hosted scanner is unavailable or a portable audit is requested; preserve coverage, independent validation and structured findings.
 

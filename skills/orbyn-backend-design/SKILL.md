@@ -42,3 +42,9 @@ changes to [data migration](../orbyn-data-migration/SKILL.md), visible flows to
 
 [Retrying an external effect](examples/retry-safe-effect.md) separates request
 identity, durable state and an unknown provider outcome in a synthetic task.
+
+Pair the effect contract with [language guidance](../language-best-practices/SKILL.md)
+for the actual service/runtime. Database syntax and isolation need the engine's
+SQL reference; language types alone do not prove transaction or authorization
+behavior. Choosing a replacement stack belongs to stack selection and architect,
+not an incidental service implementation.

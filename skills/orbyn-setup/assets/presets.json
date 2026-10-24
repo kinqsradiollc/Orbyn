@@ -17,16 +17,19 @@
         "orbyn-ui-design",
         "orbyn-setup",
         "orbyn-skill-creator",
-        "orbyn-worktree"
+        "orbyn-worktree",
+        "language-best-practices",
+        "orbyn-stack-selection"
       ]
     },
     "web": {
-      "description": "Web UI, content and TypeScript; combine with core when useful",
+      "description": "Web UI, content and project-aware JavaScript/TypeScript guidance",
       "skills": [
         "orbyn-ui-design",
         "orbyn-content-design",
         "typescript-best-practices",
-        "how"
+        "how",
+        "language-best-practices"
       ]
     },
     "data": {
@@ -36,7 +39,8 @@
         "orbyn-backend-design",
         "orbyn-data-migration",
         "orbyn-ci-design",
-        "how"
+        "how",
+        "language-best-practices"
       ]
     },
     "mobile": {
@@ -45,7 +49,8 @@
         "orbyn-ui-design",
         "orbyn-content-design",
         "orbyn-backend-design",
-        "typescript-best-practices"
+        "typescript-best-practices",
+        "language-best-practices"
       ]
     },
     "creator": {
@@ -62,7 +67,8 @@
         "orbyn-setup",
         "orbyn-skill-creator",
         "orbyn-ci-design",
-        "reflect"
+        "reflect",
+        "orbyn-upstream-review"
       ]
     },
     "rea": {
@@ -81,6 +87,24 @@
         "orbyn-security-audit",
         "orbyn-security-remediation",
         "orbyn-ci-design",
+        "how"
+      ]
+    },
+    "languages": {
+      "description": "Language-aware implementation with local guides for 12 languages and the existing TypeScript contract owner",
+      "skills": [
+        "language-best-practices",
+        "typescript-best-practices",
+        "how"
+      ]
+    },
+    "architecture": {
+      "description": "Evidence-led stack selection and interface design, without automatic implementation",
+      "skills": [
+        "orbyn-stack-selection",
+        "architect",
+        "orbyn-research",
+        "orbyn-plan",
         "how"
       ]
     }

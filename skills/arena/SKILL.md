@@ -30,3 +30,9 @@ candidate agreement is not correctness evidence. Stop when the decision is made.
 ## Compare the same user outcome
 
 For a live-update decision, give both sketches the same reconnect, ordering and resource constraints. Compare a concrete failure trace and maintenance consequence, not only the happy-path demo. Return one selected contract to architecture; this skill does not own an ongoing implementation tournament.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

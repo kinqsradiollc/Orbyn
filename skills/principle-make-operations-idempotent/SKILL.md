@@ -14,3 +14,13 @@ Define operation identity and the state transitions before effects. Use idempote
 What does a repeated request mean after an unknown outcome?
 
 Persist an operation key before an external effect and record the returned receipt. A timeout is an unknown result, not proof nothing happened. Reconcile with the provider before issuing a second effect; a database transaction alone cannot make a remote action exactly once.
+
+## Apply and hand off
+
+Define operation identity before the external effect and record accepted, known-complete and unknown outcomes separately. Specify which receipt or reconciliation makes retry safe.
+
+Concrete check: A timeout after remote acceptance must not generate a new operation key on retry. Reconcile the existing key and preserve the possibility that the first request completed.
+
+Return the changed invariant, its owning location and the observation or evidence
+gap. Carry execution through [orbyn-backend-design](../orbyn-backend-design/SKILL.md) when relevant. This
+principle refines that task; it does not create another mandatory phase.

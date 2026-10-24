@@ -20,13 +20,18 @@
         "orbyn-plan",
         "orbyn-backend-design",
         "orbyn-data-migration",
-        "principle-minimize-reader-load"
+        "principle-minimize-reader-load",
+        "orbyn-stack-selection",
+        "language-best-practices"
       ]
     },
     {
       "name": "arena",
       "category": "Engineering practice",
-      "related": []
+      "related": [
+        "architect",
+        "interrogate"
+      ]
     },
     {
       "name": "automate-me",
@@ -46,13 +51,29 @@
     {
       "name": "how",
       "category": "Engineering practice",
-      "related": []
+      "related": [
+        "why",
+        "orbyn-workflow"
+      ]
     },
     {
       "name": "interrogate",
       "category": "Engineering practice",
       "related": [
         "how"
+      ]
+    },
+    {
+      "name": "language-best-practices",
+      "category": "Engineering practice",
+      "related": [
+        "how",
+        "typescript-best-practices",
+        "architect",
+        "orbyn-backend-design",
+        "orbyn-data-migration",
+        "orbyn-ci-design",
+        "orbyn-stack-selection"
       ]
     },
     {
@@ -63,7 +84,8 @@
         "how",
         "typescript-best-practices",
         "orbyn-data-migration",
-        "orbyn-ui-design"
+        "orbyn-ui-design",
+        "language-best-practices"
       ]
     },
     {
@@ -109,7 +131,9 @@
         "how",
         "orbyn-plan",
         "architect",
-        "orbyn-ui-design"
+        "orbyn-ui-design",
+        "orbyn-upstream-review",
+        "orbyn-stack-selection"
       ]
     },
     {
@@ -136,7 +160,9 @@
       "category": "Workflow and planning",
       "related": [
         "orbyn-skill-creator",
-        "orbyn-worktree"
+        "orbyn-worktree",
+        "language-best-practices",
+        "orbyn-stack-selection"
       ]
     },
     {
@@ -146,6 +172,20 @@
         "orbyn-research",
         "orbyn-setup",
         "reflect",
+        "orbyn-ci-design",
+        "orbyn-upstream-review"
+      ]
+    },
+    {
+      "name": "orbyn-stack-selection",
+      "category": "Engineering practice",
+      "related": [
+        "how",
+        "orbyn-research",
+        "orbyn-upstream-review",
+        "architect",
+        "orbyn-plan",
+        "language-best-practices",
         "orbyn-ci-design"
       ]
     },
@@ -156,6 +196,17 @@
         "orbyn-content-design",
         "orbyn-research",
         "social-preview"
+      ]
+    },
+    {
+      "name": "orbyn-upstream-review",
+      "category": "Workflow and planning",
+      "related": [
+        "orbyn-research",
+        "orbyn-skill-creator",
+        "orbyn-worktree",
+        "how",
+        "reflect"
       ]
     },
     {
@@ -170,7 +221,10 @@
         "orbyn-backend-design",
         "orbyn-data-migration",
         "orbyn-ci-design",
-        "orbyn-worktree"
+        "orbyn-worktree",
+        "orbyn-upstream-review",
+        "language-best-practices",
+        "orbyn-stack-selection"
       ]
     },
     {
@@ -185,105 +239,144 @@
     {
       "name": "principle-boundary-discipline",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "orbyn-backend-design"
+      ]
     },
     {
       "name": "principle-build-the-lever",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "figure-it-out"
+      ]
     },
     {
       "name": "principle-encode-lessons-in-structure",
       "category": "Engineering principles",
       "related": [
-        "typescript-best-practices"
+        "typescript-best-practices",
+        "language-best-practices",
+        "architect"
       ]
     },
     {
       "name": "principle-exhaust-the-design-space",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "arena"
+      ]
     },
     {
       "name": "principle-experience-first",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "orbyn-ui-design"
+      ]
     },
     {
       "name": "principle-fix-root-causes",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "how"
+      ]
     },
     {
       "name": "principle-foundational-thinking",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "architect"
+      ]
     },
     {
       "name": "principle-guard-the-context-window",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "how"
+      ]
     },
     {
       "name": "principle-laziness-protocol",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "architect"
+      ]
     },
     {
       "name": "principle-make-operations-idempotent",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "orbyn-backend-design"
+      ]
     },
     {
       "name": "principle-migrate-callers-then-delete-legacy-apis",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "orbyn-data-migration"
+      ]
     },
     {
       "name": "principle-minimize-reader-load",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "architect"
+      ]
     },
     {
       "name": "principle-never-block-on-the-human",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "orbyn-plan"
+      ]
     },
     {
       "name": "principle-outcome-oriented-execution",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "figure-it-out"
+      ]
     },
     {
       "name": "principle-prove-it-works",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "orbyn-ci-design"
+      ]
     },
     {
       "name": "principle-redesign-from-first-principles",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "architect"
+      ]
     },
     {
       "name": "principle-separate-before-serializing-shared-state",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "orbyn-worktree"
+      ]
     },
     {
       "name": "principle-sequence-verifiable-units",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "orbyn-plan"
+      ]
     },
     {
       "name": "principle-subtract-before-you-add",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "architect"
+      ]
     },
     {
       "name": "principle-type-system-discipline",
       "category": "Engineering principles",
       "related": [
-        "typescript-best-practices"
+        "typescript-best-practices",
+        "language-best-practices"
       ]
     },
     {
@@ -310,7 +403,8 @@
       "name": "reflect",
       "category": "Workflow and planning",
       "related": [
-        "orbyn-skill-creator"
+        "orbyn-skill-creator",
+        "orbyn-upstream-review"
       ]
     },
     {
@@ -321,7 +415,10 @@
     {
       "name": "show-me-your-work",
       "category": "Workflow and planning",
-      "related": []
+      "related": [
+        "figure-it-out",
+        "orbyn-plan"
+      ]
     },
     {
       "name": "social-content",
@@ -353,7 +450,8 @@
       "category": "Engineering practice",
       "related": [
         "principle-type-system-discipline",
-        "principle-encode-lessons-in-structure"
+        "principle-encode-lessons-in-structure",
+        "language-best-practices"
       ]
     },
     {
@@ -368,7 +466,10 @@
     {
       "name": "why",
       "category": "Engineering practice",
-      "related": []
+      "related": [
+        "how",
+        "architect"
+      ]
     }
   ]
 }

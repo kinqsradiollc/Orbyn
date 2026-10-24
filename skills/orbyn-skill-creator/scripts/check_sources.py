@@ -5,11 +5,37 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
+def check_research_boundary(root):
+    """Keep local research out of a checkout's index without following a parent repo."""
+    probe = subprocess.run(['git', '-C', str(root), 'rev-parse', '--show-toplevel'],
+                           capture_output=True, text=True)
+    if probe.returncode or Path(probe.stdout.strip()).resolve() != root.resolve():
+        return  # Non-Git snapshots can still validate their bundled offline bytes.
+    for name in ['openSrc', 'orbyn-references']:
+        tracked = subprocess.check_output(['git', '-C', str(root), 'ls-files', '-z', '--', name+'/'])
+        if tracked:
+            raise ValueError(f'{name} is local research material and must not be tracked or staged')
+        directory = root/name
+        if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+            raise ValueError(f'Local research root must be a real directory: {name}')
+        if directory.exists():
+            ignored = subprocess.run(['git', '-C', str(root), 'check-ignore', '--no-index', '-q',
+                                      '--', name+'/.orbyn-reference-probe'], capture_output=True)
+            if ignored.returncode:
+                raise ValueError(f'Exclude /{name}/ before storing local research')
+            exposed = subprocess.check_output(['git', '-C', str(root), 'ls-files', '--others',
+                                               '--exclude-standard', '-z', '--', name+'/'])
+            if exposed:
+                raise ValueError(f'Unignored files inside local research root: {name}')
+
+
 def check(root):
+    check_research_boundary(root)
     declared = set()
     for manifest in sorted((root/'skills').glob('*/references/upstream/*/snapshot.json')):
         data = json.loads(manifest.read_text())
@@ -25,6 +51,8 @@ def check(root):
             path = PurePosixPath(name)
             if path.is_absolute() or '..' in path.parts or '\\' in name or not path.parts:
                 raise ValueError('Unsafe offline snapshot path')
+            if path.name == 'SKILL.md':
+                raise ValueError('Offline source must use SOURCE.md, not an active SKILL.md entrypoint')
             target = manifest.parent/name
             current = target
             while current != root:

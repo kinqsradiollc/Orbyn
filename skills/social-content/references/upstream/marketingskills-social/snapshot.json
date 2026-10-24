@@ -4,15 +4,11 @@
   "revision": "e85f3cbc2e4a79bf33b2a12e9bdd9087d414735b",
   "retrieved_on": "2026-10-24",
   "license": "MIT",
-  "scope": "Unmodified skill text, Markdown references and license/notice text; binary assets and optional external runtimes are excluded. Source material only; portable Orbyn instructions retain authority.",
+  "scope": "Unmodified skill text, Markdown references and license/notice text; binary assets and optional external runtimes are excluded. Source material only; portable Orbyn instructions retain authority. The upstream entrypoint is stored as SOURCE.md to prevent active skill discovery; source_path and source bytes are unchanged.",
   "files": {
     "LICENSE": {
       "source_path": "LICENSE",
       "sha256": "b70d71e24e40fce5da8f4b6f9cd862096a048e433db7f3c8cac5e348e6d34591"
-    },
-    "SKILL.md": {
-      "source_path": "skills/social/SKILL.md",
-      "sha256": "dd4c01d0925f571562d4e8dea4af6b60bd9d491149187d94927e65280fad1bee"
     },
     "references/carousel-frameworks.md": {
       "source_path": "skills/social/references/carousel-frameworks.md",
@@ -49,6 +45,10 @@
     "references/x-algorithm.md": {
       "source_path": "skills/social/references/x-algorithm.md",
       "sha256": "943b2c5a819aad53ebf62a1652adc47956d6fdf738e18cd98eeb609819a66180"
+    },
+    "SOURCE.md": {
+      "source_path": "skills/social/SKILL.md",
+      "sha256": "dd4c01d0925f571562d4e8dea4af6b60bd9d491149187d94927e65280fad1bee"
     }
   },
   "license_files": [

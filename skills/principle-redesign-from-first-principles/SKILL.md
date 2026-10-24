@@ -14,3 +14,13 @@ Reconsider the owning data model and constraints as if the requirement had exist
 Would the current owner still make sense with this requirement included?
 
 When one task gains several work sessions, model sessions as owned records with their own identity instead of adding numbered start/end fields. Migrate the API and calendar consumers coherently. Keep an isolated label fix isolated; it does not require a domain redesign.
+
+## Apply and hand off
+
+Restate the new requirement in the owning model and compare the current design against it. Keep compatible contracts and migrate only the affected scope.
+
+Concrete check: Multiple sessions for one task require explicit session identity and readers/writers. A typo in a session label does not justify redesigning that model.
+
+Return the changed invariant, its owning location and the observation or evidence
+gap. Carry execution through [architect](../architect/SKILL.md) when relevant. This
+principle refines that task; it does not create another mandatory phase.

@@ -1,6 +1,6 @@
 ---
 name: orbyn-ci-design
-description: "Design or repair CI checks, contribution automation and release promotion with scoped credentials, deterministic artifacts and clear evidence boundaries. Use for workflow changes; not permission to publish, merge or deploy."
+description: "Design or repair CI checks, contribution automation and release promotion with scoped credentials, deterministic artifacts and clear evidence boundaries. Use for workflow changes and proportional checks for small edits; not permission to publish, merge or deploy."
 ---
 
 # CI that checks the artifact it will promote
@@ -16,6 +16,15 @@ executable helpers need meaningful behavior checks; application changes need the
 affected contract's checks. Keep fixtures disposable and preserve source/runtime
 separation. Do not invoke a paid model or live provider merely to validate skill
 frontmatter. Report live skill selection and model behavior separately.
+
+For small changes and selective execution, follow
+[proportional verification](references/change-scope.md). Cosmetic local work can
+finish with relevant local checks and no hosted CI/CD. Published changes retain
+their required merge status; use a known docs/skills fast path, broader checks for
+uncertain/runtime changes and a final gate that cannot hide classifier or selected
+job failures. Deployment is separate from green CI and must respect scope and
+existing authority. Do not add a new skill or ask the human to invoke one merely
+to decide the appropriate checks.
 
 For fork contributions, use unprivileged PR execution, read-only tokens, no secrets
 and no persisted checkout credentials. Do not execute a contributor's code in a

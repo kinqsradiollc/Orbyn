@@ -68,6 +68,12 @@ Backend effect design belongs to [orbyn-backend-design](../orbyn-backend-design/
 stored-format transitions to [orbyn-data-migration](../orbyn-data-migration/SKILL.md),
 and trusted automation to [orbyn-ci-design](../orbyn-ci-design/SKILL.md).
 
+For external code/skill freshness, downloaded research or selective upstream
+updates, use [orbyn-upstream-review](../orbyn-upstream-review/SKILL.md). Keep raw
+references in ignored `orbyn-references/`; adapt the existing owner and preserve
+source/consumer pins separately. Available-source review does not require binary
+reverse engineering or automatic installation of new upstream workflows.
+
 For an explicitly requested portable/offline source audit, use
 [orbyn-security-audit](../orbyn-security-audit/SKILL.md); existing findings remain
 with remediation and a hosted security scan retains its own workflow.
@@ -159,3 +165,19 @@ from delegation or a playbook.
 Use [unslop](../unslop/SKILL.md) for concise factual output. Report the result,
 actual evidence and limits, without ceremonial principle citations. Source attribution and preserved dependencies are documented in
 [tooling](../../docs/agents/tooling.md). Orbyn owns this workflow and its defaults.
+
+## Language and technology decisions
+
+For an affected code path, select [language guidance](../language-best-practices/SKILL.md)
+from the actual files/manifests and load only its relevant local reference.
+TypeScript schemas retain their existing owner. Use
+[stack selection](../orbyn-stack-selection/SKILL.md) for a requested recommendation
+or demonstrated technology mismatch; it produces the decision for architect and
+the implementation owners, not an automatic rewrite. The human requests the
+outcome once; the agent chooses these handoffs internally.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.
