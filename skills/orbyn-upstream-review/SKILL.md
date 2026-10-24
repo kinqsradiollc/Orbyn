@@ -135,7 +135,8 @@ retain their prior confirmed revision. Structural checks do not prove live model
 runtime, formal-property or product behavior.
 
 For public-library delivery, merge only when authorized. After the public change
-merges, update consumers to its actual merged commit and file hashes; a feature
+merges, update only explicitly authorized consumers to its actual merged commit
+and file hashes; leave held consumers pinned to their approved release. A feature
 branch SHA is not the eventual squash SHA. Keep consumer/company context and raw
 research out of export. Recheck CI at the requested final revision.
 

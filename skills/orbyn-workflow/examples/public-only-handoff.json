@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "goal": "Prepare a reviewed public skill update; leave the product pin held.",
+  "excluded": ["Consumer pin updates", "REA changes", "Merge or deployment"],
+  "allowed_actions": ["Edit public library", "Run local helper checks", "Update the existing public PR"],
+  "checkout": {
+    "path": "/workspace/engineering-skills",
+    "revision": "0123456789abcdef0123456789abcdef01234567",
+    "diff_sha256": null
+  },
+  "owner": "Public library maintainer",
+  "owned_files": ["skills/orbyn-plan/", "docs/agents/skill-system.md"],
+  "status": "in_progress",
+  "completed": [
+    {"result": "Documented the public-only scope", "evidence": ["task.md: Scope section"]}
+  ],
+  "verification": [
+    {"check": "Local library validation", "required": true, "state": "unverified", "evidence": []}
+  ],
+  "decisions": [],
+  "next_action": "Run the authorized library checks against the recorded candidate and inspect their results.",
+  "delivery": {"state": "local", "evidence": []}
+}

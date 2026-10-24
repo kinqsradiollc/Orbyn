@@ -26,7 +26,7 @@ def fingerprint(source):
     return files
 
 
-def plan(project, selected, namespace, reserved):
+def plan(project, selected, namespace, reserved, hosts=('.agents', '.claude')):
     if not selected:
         if namespace:
             raise ValueError('--namespace requires explicit --migrate-skill names')
@@ -46,7 +46,10 @@ def plan(project, selected, namespace, reserved):
         for parent in [project/'project-skills', target.parent]:
             if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
                 raise ValueError(f'Unsafe migration destination: {parent}')
-        legacy = [project/host/'skills'/old for host in ['.agents', '.claude']]
+        cursor = project/'.cursor/skills'/old
+        if '.cursor' not in hosts and (cursor.exists() or cursor.is_symlink()):
+            raise ValueError('Selected skill also exists in Cursor; reconcile with --host all')
+        legacy = [project/host/'skills'/old for host in hosts]
         legacy = [path for path in legacy if path.exists() or path.is_symlink()]
         if not legacy:
             raise ValueError(f'No existing host skill to migrate: {old}')

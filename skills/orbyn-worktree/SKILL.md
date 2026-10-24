@@ -30,6 +30,13 @@ or move existing worktrees merely to enforce this convention.
 
 ## Sibling location and names
 
+An optional library-root `repo/` workspace keeps contribution clones and
+worktrees together; follow the [nested repository contract](../orbyn-setup/references/repository-workspaces.md).
+For `orbyn-fullstack-skills/repo/widget`, use sibling `repo/widget-wt/<purpose>/`.
+Target instructions and skills apply to its work; the outer library owns its
+ignore/export boundary. Do not put targets inside canonical `skills/`, infer
+target cleanliness from library status, or relocate existing work for this layout.
+
 For a primary clone `<parent>/<repo>`, the default root is its sibling
 `<parent>/<repo-slug>-wt/`. Use a stable lowercase hyphenated repo slug; reuse an
 existing established sibling root rather than creating a case-only alternative.

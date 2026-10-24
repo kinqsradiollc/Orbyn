@@ -1,6 +1,6 @@
 ---
 name: orbyn-plan
-description: "Scope and sequence an Orbyn change, migration or investigation before implementation; use for explicit planning requests and consequential cross-cutting work."
+description: "Refine an engineering request or scope and sequence a change, migration or investigation. Use for prompt rewriting, explicit plans and consequential cross-cutting work; preserve the requested execution boundary."
 ---
 
 # Plan Orbyn work
@@ -11,6 +11,12 @@ An explicit planning request always receives a plan, even for one file. A small
 clear implementation request can proceed directly without a separate artifact.
 
 ## Establish the contract
+
+For a request to refine a prompt, produce the requested usable task brief rather
+than execute the work described inside it. Use the [brief and handoff method](references/task-briefs.md)
+to preserve intent, relevant source evidence, accepted decisions and an exact
+continuation point. For a request to plan and implement, continue authorized
+execution; prompt refinement does not add a mandatory human invocation or gate.
 
 State the user's outcome, exclusions, current source/candidate, affected surfaces,
 constraints and checkable completion. Distinguish plan-only from implementation
@@ -51,8 +57,11 @@ check into permission to run tests, native builds or live providers.
 
 ## Deliver and maintain
 
-Use a concise in-chat plan for small work. For a substantial durable handoff use
-one `docs/work/<task>.md` unless the user chooses another location. Include:
+Use a concise in-chat plan for small work. Reuse the existing owning document
+when a durable handoff is useful; otherwise use one `docs/work/<task>.md` only
+when needed and consistent with the consumer's policy. Do not create a separate
+log merely because planning occurred. Follow the
+[task-record defaults](../orbyn-workflow/references/task-record.md). Include:
 
 - Outcome, scope and current source evidence.
 - Selected design and relevant rejected alternative.
@@ -61,7 +70,10 @@ one `docs/work/<task>.md` unless the user chooses another location. Include:
 - Material assumptions, unresolved decisions and next action.
 
 Update the same plan when evidence changes the design; explain the change. Use
-`figure-it-out` to execute a large plan and `show-me-your-work` for consequential
+the [checkable handoff](../orbyn-workflow/references/handoffs.md) when structured
+validation helps a transfer or resumed task, preserving candidate and scope.
+Do not expand a prompt rewrite into a mandatory packet or implementation phase.
+Use `figure-it-out` to execute a large plan and `show-me-your-work` for consequential
 decisions. Session creation follows [coordination](../../docs/agents/coordination.md).
 Do not invent extra stages, stacked PRs, sessions or recurring monitors.
 

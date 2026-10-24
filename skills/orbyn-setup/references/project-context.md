@@ -1,5 +1,10 @@
 # Project-owned context
 
+For the optional library-root `repo/` layout, follow the
+[workspace contract](repository-workspaces.md). Each target and linked worktree
+resolves its own root and instructions; the outer library's context map is not
+the target project's configuration.
+
 Resolve the **consuming repository root** from the task and its instructions, not
 from the skill's symlink target. Read `.agents/orbyn-context.json` there when it
 exists. The pointer file helps locate existing guides; it does not replace root

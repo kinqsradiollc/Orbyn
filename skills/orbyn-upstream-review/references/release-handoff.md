@@ -14,6 +14,14 @@ against old `main`, describe an unmerged candidate as released, or resolve drift
 by overwriting either checkout. Compare changes against the lock's baseline;
 preserve and reconcile both owners' edits when the same managed file changed.
 
+Public-library maintenance and consumer promotion have separate scope. A public
+commit, PR or merge does not authorize importing it into any consumer, updating
+that consumer's pin, messaging its owner or merging its integration. Record an
+explicit hold and leave the consumer at its last approved release. Stage its
+actual merged revision only when that consumer update is authorized. The release
+steps below apply only to the repositories included in the user's instruction;
+otherwise report the library result and held consumer status without advancing it.
+
 For an authorized release, the owning agent completes this handoff:
 
 1. Verify the public candidate and checks, merge prerequisites in dependency

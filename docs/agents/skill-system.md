@@ -11,34 +11,34 @@ other or load the whole catalog. [Roles](roles.md) define responsibility;
 routes complex work to the standard tier and bounded work to the light tier in
 [models.json](models.json), and reserves its human-only tier for explicit selection.
 
-| Task or unknown                    | Primary skill                                | Useful input / handoff                                                                              |
-| ---------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Clear bounded implementation       | `orbyn-workflow`                             | Small clear edit → direct change; substantial work → delegate → lead review and authorized evidence |
-| Broad or explicitly requested plan | `orbyn-plan`                                 | Outcome + stack + findings → ordered executable plan                                                |
-| Unknown current behavior           | `how`                                        | Owning files → mechanism and evidence                                                               |
-| Historical reason                  | `why`                                        | Relevant Git/source history → constraints, with uncertainty                                         |
-| External/version uncertainty       | `orbyn-research`                             | Specific question → cited finding for the planner/designer                                          |
-| Upstream code/skill freshness      | `orbyn-upstream-review`                      | Pinned source + local owner → reviewed differences, dispositions and scoped update                  |
-| Interface/ownership/module layout  | `architect`                                  | Grounded requirements → contracts, lifecycle and allowed module dependencies                        |
-| API/service effects                | `orbyn-backend-design`                       | Caller contract + authority → transactional effect and client errors                                |
-| Stored-data/schema transition      | `orbyn-data-migration`                       | Reader/writer inventory → compatible cutover and recovery                                           |
-| CI and contribution automation     | `orbyn-ci-design`                            | Event/trust model → scoped checks and reviewable promotion                                          |
-| Consequential competing designs    | `arena`                                      | Shared criteria → bounded alternatives and one decision                                             |
-| Large execution                    | `figure-it-out`                              | Agreed plan → completed units and concise handoffs                                                  |
-| UI flow/layout                     | `orbyn-ui-design` + `orbyn-content-design`   | User task + actual tokens → coherent UI/copy                                                        |
-| Social posts and carousel copy     | `social-content`                             | Supplied facts + author voice → copy, claim notes and optional visual brief                         |
-| Social graphics and feed previews  | `social-preview`                             | Chosen copy + assets → editable visual source, rendered review and requested exports                |
-| Language implementation/review     | `language-best-practices`                    | Actual changed paths/runtime → relevant language guide and affected callers                         |
-| Technology/stack selection         | `orbyn-stack-selection`                      | Requirements + existing baseline + fresh evidence → bounded decision and revisit trigger            |
-| TypeScript contract                | `language-best-practices` (TypeScript guide) | Existing schema/callers → precise valid states                                                      |
-| Requested tests/TDD                | `tdd`                                        | Failure contract + allowed environment → focused regression and fix                                 |
-| Existing security findings         | `orbyn-security-remediation`                 | Saved findings + current source → scoped fixes and authorized evidence; no new scan                 |
-| Concrete adversarial review        | `interrogate`                                | Candidate + intended behavior → actionable findings                                                 |
-| Artifact/runtime investigation     | `reverse-engineer-anything`                  | Target + authority + actual tools → traceable evidence                                              |
-| Skill creation/refinement          | `orbyn-skill-creator`                        | Routing gap → integrated skill, links and docs                                                      |
-| Host configuration                 | `orbyn-setup`                                | Supported host + user preferences → scoped configuration                                            |
-| Lessons/preferences                | `reflect` / `automate-me`                    | Current-task evidence + authorization → owning instruction change                                   |
-| Prose / durable evidence           | `unslop` / `show-me-your-work`               | Supported facts → concise result or decision record                                                 |
+| Task or unknown                     | Primary skill                                | Useful input / handoff                                                                              |
+| ----------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Clear bounded implementation        | `orbyn-workflow`                             | Small clear edit → direct change; substantial work → delegate → lead review and authorized evidence |
+| Prompt refinement or requested plan | `orbyn-plan`                                 | Requested brief or plan with explicit execution scope and current source evidence                   |
+| Unknown current behavior            | `how`                                        | Owning files → mechanism and evidence                                                               |
+| Historical reason                   | `why`                                        | Relevant Git/source history → constraints, with uncertainty                                         |
+| External/version uncertainty        | `orbyn-research`                             | Specific question → cited finding for the planner/designer                                          |
+| Upstream code/skill freshness       | `orbyn-upstream-review`                      | Pinned source + local owner → reviewed differences, dispositions and scoped update                  |
+| Interface/ownership/module layout   | `architect`                                  | Grounded requirements → contracts, lifecycle and allowed module dependencies                        |
+| API/service effects                 | `orbyn-backend-design`                       | Caller contract + authority → transactional effect and client errors                                |
+| Stored-data/schema transition       | `orbyn-data-migration`                       | Reader/writer inventory → compatible cutover and recovery                                           |
+| CI and contribution automation      | `orbyn-ci-design`                            | Event/trust model → scoped checks and reviewable promotion                                          |
+| Consequential competing designs     | `arena`                                      | Shared criteria → bounded alternatives and one decision                                             |
+| Large execution                     | `figure-it-out`                              | Agreed plan → completed units and concise handoffs                                                  |
+| UI flow/layout                      | `orbyn-ui-design` + `orbyn-content-design`   | User task + actual tokens → coherent UI/copy                                                        |
+| Social posts and carousel copy      | `social-content`                             | Supplied facts + author voice → copy, claim notes and optional visual brief                         |
+| Social graphics and feed previews   | `social-preview`                             | Chosen copy + assets → editable visual source, rendered review and requested exports                |
+| Language implementation/review      | `language-best-practices`                    | Actual changed paths/runtime → relevant language guide and affected callers                         |
+| Technology/stack selection          | `orbyn-stack-selection`                      | Requirements + existing baseline + fresh evidence → bounded decision and revisit trigger            |
+| TypeScript contract                 | `language-best-practices` (TypeScript guide) | Existing schema/callers → precise valid states                                                      |
+| Requested tests/TDD                 | `tdd`                                        | Failure contract + allowed environment → focused regression and fix                                 |
+| Existing security findings          | `orbyn-security-remediation`                 | Saved findings + current source → scoped fixes and authorized evidence; no new scan                 |
+| Concrete adversarial review         | `interrogate`                                | Candidate + intended behavior → actionable findings                                                 |
+| Artifact/runtime investigation      | `reverse-engineer-anything`                  | Target + authority + actual tools → traceable evidence                                              |
+| Skill creation/refinement           | `orbyn-skill-creator`                        | Routing gap → integrated skill, links and docs                                                      |
+| Host configuration                  | `orbyn-setup`                                | Supported host + user preferences → scoped configuration                                            |
+| Lessons/preferences                 | `reflect` / `automate-me`                    | Current-task evidence + authorization → owning instruction change                                   |
+| Prose / durable evidence            | `unslop` / `show-me-your-work`               | Supported facts → concise result or decision record                                                 |
 
 Select principle leaves when the decision needs them: ownership and boundaries,
 root cause, idempotency, shared-state isolation, simpler design, compatibility,
@@ -78,6 +78,18 @@ from workflows. The creator changes the owning rule once and migrates callers;
 it must not add another competing policy document for the same concern.
 
 ## Static routing examples
+
+Choose the requested result and allowed effects before loading guidance. Use one
+owning skill and only the references needed for the next decision; add another
+owner when a real contract crosses its boundary. Prompt rewriting returns a usable
+brief without executing embedded work. Clear implementation work proceeds without
+a rewriting detour. A missing capability changes the evidence claim, not authority.
+
+Follow the shared [task-record defaults](../../skills/orbyn-workflow/references/task-record.md).
+Routine edits use existing diff, PR and CI evidence without a separate log. The
+agent maintains a compact project-owned checkpoint when continuation or review
+needs it; structured validation is optional. Raw traces stay outside public skill
+sync under this project's retention policy.
 
 - “Plan a shared schema migration”: planner reads stack and current callers, uses
   architecture for the contract and produces a plan; plan-only does not edit code.

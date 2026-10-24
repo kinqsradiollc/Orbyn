@@ -16,6 +16,11 @@ when creating, adapting or relocating them; keep them outside public skill sync.
 For work that needs a durable handoff, use the optional
 [task record](references/task-record.md) without duplicating an existing tracker.
 
+For a target inside the library's optional `repo/` workspace, resolve that
+repository and follow its [workspace contract](../orbyn-setup/references/repository-workspaces.md).
+Read existing upstream instructions and skills in place; an ordinary contribution
+does not authorize migrating their guidance or publishing local setup additions.
+
 Use [local resources first](../orbyn-setup/references/offline.md). External citations
 identify origins; fetch only when current information is required and network
 access is available and authorized. Report stale or unavailable evidence.
@@ -95,6 +100,10 @@ for a nested worker.
 
 Before dispatch, establish the requested end state, exclusions, current checkout
 and candidate, owning data/contracts, failure behavior and authorized evidence.
+For continuation, choose the minimum [task record](references/task-record.md)
+that preserves the next action; use a [structured handoff](references/handoffs.md)
+only when validation helps. Reconcile stale revisions before acting. Routine work
+can rely on its existing diff, PR and CI without another log.
 Resolve blocking facts first. Use the selected playbook to shape the work rather
 than repeating every workflow phase.
 

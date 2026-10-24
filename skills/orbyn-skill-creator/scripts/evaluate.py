@@ -64,7 +64,7 @@ def evidence_path(folder, name):
     return path
 
 
-def prepare(output, revision, host, model, condition, trials=1, split='development', protocol=None):
+def prepare(output, revision, host, model, condition, trials=1, split='development', protocol=None, case_ids=()):
     data, digest = suite()
     if not re.fullmatch('[0-9a-f]{40}', revision) or not host.strip() or not model.strip():
         raise ValueError('Record a full candidate revision, host and model')
@@ -81,6 +81,10 @@ def prepare(output, revision, host, model, condition, trials=1, split='developme
         if len(protocol_bytes) > 2 * 1024 * 1024:
             raise ValueError('Protocol exceeds the 2 MiB text limit')
     cases = [c for c in data['cases'] if split == 'all' or c['split'] == split]
+    if case_ids:
+        if len(case_ids) != len(set(case_ids)) or set(case_ids) - {c['id'] for c in cases}:
+            raise ValueError('Selected cases must be unique and belong to the requested split')
+        cases = [c for c in cases if c['id'] in case_ids]
     run = {'schema_version': 1, 'suite_sha256': digest, 'revision': revision,
            'host': host, 'model': model, 'condition': condition, 'trials': trials,
            'case_ids': [c['id'] for c in cases], 'results': [],
@@ -245,6 +249,7 @@ def main():
     prep.add_argument('--trials', type=int, default=1)
     prep.add_argument('--protocol', type=Path, help='JSON protocol with fixture hashes, task wrapper and tool configuration; required for paired comparisons')
     prep.add_argument('--split', choices=['development', 'holdout', 'all'], default='development')
+    prep.add_argument('--case', action='append', default=[], help='explicit bounded subset in this split; repeat for more cases')
     score = commands.add_parser('grade')
     score.add_argument('run', type=Path)
     pair = commands.add_parser('compare')
@@ -256,7 +261,7 @@ def main():
             data, digest = suite()
             print(f'Validated {len(data["cases"])} evaluation cases; suite {digest}. No agent trials executed.')
         elif args.command == 'prepare':
-            prepare(args.output, args.revision, args.host, args.model, args.condition, args.trials, args.split, args.protocol)
+            prepare(args.output, args.revision, args.host, args.model, args.condition, args.trials, args.split, args.protocol, args.case)
             print('Prepared task inputs and unverified result slots. Execute through an authorized host and capture actual evidence.')
         else:
             report = grade(args.run.resolve()) if args.command == 'grade' else compare(args.baseline.resolve(), args.candidate.resolve())

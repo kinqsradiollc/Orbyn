@@ -23,7 +23,21 @@ folder. Discovery shares host directories, not content ownership. Neither a
 namespaced skill nor its internal assets belongs in `skills/catalog.json`, the
 public distribution manifest or `skills/upstream-lock.json`.
 
+Cursor can read `.agents/skills` too. For explicit Cursor-native registration,
+use `--host cursor`; `--host all` adds the three host directories. Preserve its
+existing rules and inspect compatible locations for name collisions. The local
+helper's `link` and `check` commands accept these same host selectors. The shared
+vendor synchronizer still maintains its established Codex/Claude pair; check
+optional Cursor registrations with the local helper or installer separately.
+
 ## Instructions for the agent
+
+An open-source target's checked-in instructions and skills are upstream project
+files. Preserve their established paths during ordinary contributions; do not
+treat them as company-local material that must migrate. Follow the
+[workspace contract](repository-workspaces.md) for compatible method selection,
+name collisions and local-only setup. Explicit upstream adoption or authorized
+local migration is a separate task.
 
 Before creating or adapting a skill, classify its audience and owner. A request
 such as “teach the agent our company release process” belongs to that company's
@@ -87,8 +101,11 @@ python3 /path/to/library/scripts/install.py --project /path/to/company-repo --na
 
 The default shared preset is also installed. Choose `--skill` / `--preset` when
 needed. Migration stages originals, retains licenses/assets, normalizes the local
-frontmatter name, and registers both hosts. Divergent copies, unsafe symlinks,
-managed-tree ownership or references needing rebasing stop before writes. Backups
+frontmatter name, and registers both hosts. Divergent copies, unsafe symlinks
+or an unselected Cursor copy stop before writes; use `--host all` to reconcile
+the selected skill across all three hosts. Differences in any copy need an
+explicit reconciliation rather than choosing whichever source appears first.
+Managed-tree ownership or references needing rebasing also stop before writes. Backups
 and a JSON receipt stay in a private sibling directory outside the checkout.
 Ordinary write exceptions roll back owned changes; an interrupted process or
 failed recovery requires inspecting that receipt. Keep backups until reviewed.
@@ -107,8 +124,9 @@ reference. This is an upgrade alias, not a second active skill or a company name
 The installer accepts the old explicit selection, installs its replacement and
 removes only matching old discovery symlinks into that same library source,
 after replacement links have been created successfully. If link creation fails,
-keep the old links and any successfully created replacements; inspect the error
-and retry the idempotent registration. This is not an atomic filesystem transaction.
+the helper rolls back only replacement links created by that batch and keeps the
+old links. Inspect the error and retry the idempotent registration. Retirement
+and link registration are separate phases, not an atomic filesystem transaction.
 Dry-run reports the planned retirement; repeated setup converges.
 
 Foreign directories, links into other sources and consumer-owned skills stay
