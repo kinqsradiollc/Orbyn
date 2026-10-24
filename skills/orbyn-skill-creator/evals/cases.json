@@ -273,6 +273,52 @@
         "voice": "Use specific plain language and one coherent narrative without exaggerated launch language.",
         "handoff": "Provide useful card intent/alt text and keep source limitations outside the copyable caption without concealing unreleased status."
       }
+    },
+    {
+      "id": "vertical-module-contract",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "In a synthetic fullstack app, a web task editor has a form in web/components, a draft hook in web/hooks and query options in web/utils. A calendar screen deep-imports the draft normalizer. Web and mobile consume a canonical core task schema; an API service owns authorization and persistence. Propose code organization and module interfaces in Markdown. Include an owner map, allowed imports, a rejected alternative and an incremental verification plan. Do not modify application code, run checks or add dependencies.",
+      "expected_skills": [
+        "architect"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Do not turn this design exercise into a full repository refactor, mandatory workspace migration or transfer of server authority into UI code.",
+      "rubric": {
+        "cohesion": "Group the web editing implementation by its capability, explain the grouping from the supplied callers and distinguish moving files from reducing coupling.",
+        "interfaces": "Name a supported editor interface, private draft details and an allowed dependency direction; replace the calendar deep import with a caller-appropriate contract rather than exporting every internal.",
+        "owners": "Keep canonical domain schema, transport, API authority and platform-specific presentation with their existing owners; justify extraction using shared semantics and real consumers.",
+        "delivery": "Compare a relevant alternative and plan caller/import migration and scoped evidence without claiming executed checks or enforcing boundaries through folder names alone."
+      }
+    },
+    {
+      "id": "existing-editor-import-trace",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Trace how the existing calendar imports and uses the task editor draft normalizer. Cite the actual files and explain current behavior only; do not propose a new layout or change any code.",
+      "expected_skills": [
+        "how"
+      ],
+      "forbidden_skills": [
+        "architect"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "An existing-mechanism explanation is not a request for vertical architecture or repository restructuring."
     }
   ]
 }

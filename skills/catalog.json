@@ -19,7 +19,8 @@
         "arena",
         "orbyn-plan",
         "orbyn-backend-design",
-        "orbyn-data-migration"
+        "orbyn-data-migration",
+        "principle-minimize-reader-load"
       ]
     },
     {

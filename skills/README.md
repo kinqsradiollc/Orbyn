@@ -25,7 +25,7 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 
 ## Engineering practice
 
-- [architect](architect/SKILL.md) — Design data shapes, interfaces and ownership for substantive features or refactors before implementation.
+- [architect](architect/SKILL.md) — Design data shapes, interfaces, ownership and module boundaries for substantive features or refactors; use for code organization, vertical modules and shared-code extraction.
 - [arena](arena/SKILL.md) — Compare competing design or implementation sketches when a consequential choice cannot be resolved cheaply from existing evidence.
 - [how](how/SKILL.md) — Trace source behavior, data flow, ownership and module boundaries before explaining or changing an unfamiliar subsystem.
 - [interrogate](interrogate/SKILL.md) — Challenge a specified design, patch or claim for concrete correctness, ownership and evidence gaps. Use for adversarial review, not every routine edit.

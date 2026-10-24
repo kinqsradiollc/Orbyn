@@ -18,7 +18,7 @@ routes complex work to the standard tier and bounded work to the light tier in
 | Unknown current behavior           | `how`                                      | Owning files → mechanism and evidence                                                               |
 | Historical reason                  | `why`                                      | Relevant Git/source history → constraints, with uncertainty                                         |
 | External/version uncertainty       | `orbyn-research`                           | Specific question → cited finding for the planner/designer                                          |
-| Interface/ownership decision       | `architect`                                | Grounded requirements → chosen contracts and lifecycle                                              |
+| Interface/ownership/module layout  | `architect`                                | Grounded requirements → contracts, lifecycle and allowed module dependencies                                              |
 | API/service effects                | `orbyn-backend-design`                     | Caller contract + authority → transactional effect and client errors                                |
 | Stored-data/schema transition      | `orbyn-data-migration`                     | Reader/writer inventory → compatible cutover and recovery                                           |
 | CI and contribution automation     | `orbyn-ci-design`                          | Event/trust model → scoped checks and reviewable promotion                                          |

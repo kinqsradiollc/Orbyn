@@ -1,14 +1,16 @@
 {
   "files": {
-    "skills/README.md": "c0869b0410c5d8d3824f3c18ba5692be305085afb9b3c8da18a0bad98bda931c",
+    "skills/README.md": "ba108e4f0446078e33b8acec94ba8e258e68a8ddcebac795332905722a3c2eca",
     "skills/architect/LICENSE": "9c31ea886ff0fdc36aab948579bbb74a2e44bcb5a9c8a165cabc1b38e24175d4",
-    "skills/architect/SKILL.md": "b4e7d913f2ea9754f79e175efc9faeb67015a22e95954557e3b82fb15a2547ff",
+    "skills/architect/SKILL.md": "0ca40e4e2b6f32a977edfc90f571d820a6e36cf32c95270f35bf07c43f9c7156",
     "skills/architect/examples/proposal-approval.md": "4701d3dbbc2c0ea2b12470033165a59719b8594463d5314f5149ba5def42e149",
+    "skills/architect/examples/vertical-task-editor.md": "7f6255a3b517f48182b1d58048a308ea4ddfa4d1617e5f42df7fdda37b87ca14",
+    "skills/architect/references/vertical-codebase.md": "25a6b9a8291e7875d95728bb6f1a9b354d3c630acc97881feb44121f8cd23cdd",
     "skills/arena/LICENSE": "9c31ea886ff0fdc36aab948579bbb74a2e44bcb5a9c8a165cabc1b38e24175d4",
     "skills/arena/SKILL.md": "c0dc32e09ab5c2f70191a6dbdeee3e5cc727cfd4606110453543ab28a2a28f2a",
     "skills/automate-me/LICENSE": "9c31ea886ff0fdc36aab948579bbb74a2e44bcb5a9c8a165cabc1b38e24175d4",
     "skills/automate-me/SKILL.md": "558fa7b2916d028b35f983bdceb85a65944a18510986ebcdbf7402f8749abfc9",
-    "skills/catalog.json": "d77df659751942caddbd3f785f1dcfc97eda0424a1298135dc1ce3f2a9580bbc",
+    "skills/catalog.json": "f227c90534af807de783008ff66da8e740a5f9b99031859c6927c3e9e56c0ec3",
     "skills/figure-it-out/LICENSE": "9c31ea886ff0fdc36aab948579bbb74a2e44bcb5a9c8a165cabc1b38e24175d4",
     "skills/figure-it-out/SKILL.md": "7e967dbb4f5b4ab7cfcf64dacf974548cb87854928fc5e2d365731ea7e489642",
     "skills/how/LICENSE": "9c31ea886ff0fdc36aab948579bbb74a2e44bcb5a9c8a165cabc1b38e24175d4",
@@ -38,8 +40,8 @@
     "skills/orbyn-setup/scripts/project_context.py": "81a5afb8b2a6a991e420c747733bc3d8dfa9f65e105f4682a5eb2eaeccf6d4b2",
     "skills/orbyn-skill-creator/LICENSE": "b960a8c01d83aa48ed709780a5c9940f8e2861f2fdcdc8f931fbe3ece90a5e04",
     "skills/orbyn-skill-creator/SKILL.md": "a3217a44f1be2584c809c9fdb47383e2d752103d68ace7566b4a46ec2de8037f",
-    "skills/orbyn-skill-creator/evals/cases.json": "fd2b41ca668782fe7232f30b37cf4b9b8f5554358ee6daf8130cf018ea857822",
-    "skills/orbyn-skill-creator/references/evaluations.md": "15671e552c496d6da6b6bd537f00e628f67e3bc38d779fde9d8cf401e6d8debd",
+    "skills/orbyn-skill-creator/evals/cases.json": "eb1234280f258b6a2c175679f754476e6f6b5dcf3bf96ec4429db5b176cbe2f8",
+    "skills/orbyn-skill-creator/references/evaluations.md": "09a99a8973ca3461784e19861c9c72c3a984e09b7baa300aa7476fc091f68886",
     "skills/orbyn-skill-creator/scripts/evaluate.py": "d3f26214c06cfe4016e07e0c8bb245700308eed1ec023a402c6085a4e7148015",
     "skills/orbyn-ui-design/LICENSE": "b960a8c01d83aa48ed709780a5c9940f8e2861f2fdcdc8f931fbe3ece90a5e04",
     "skills/orbyn-ui-design/SKILL.md": "6926b1b4a7c1b6e8bdcc11c28e02146ddf8cb5f634d9a92b60b1b329f3b3825c",
@@ -144,6 +146,6 @@
     "skills/why/SKILL.md": "cd76384cfcb68f5927979c73adb30de657af9e96424816733dde43585ee43a10"
   },
   "repository": "https://github.com/kinqsradio/orbyn-fullstack-skills",
-  "revision": "49509d4b134d879923806feae10a849fc259fbc8",
+  "revision": "ceb9b03b516d2d52a7f39f771eec8f8ee4b1d2b1",
   "schema_version": 1
 }
