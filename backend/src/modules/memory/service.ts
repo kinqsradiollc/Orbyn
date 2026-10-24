@@ -1,8 +1,10 @@
 import {
   blockText,
+  fail,
   newBlockId,
   parseDoc,
   plainText,
+  savedChatTurn,
   sourcesIn,
   type DocBlock,
   type MemorySourceInput,
@@ -10,16 +12,11 @@ import {
 } from "@orbyn/core";
 import type { Db, Queryable } from "../../db/pool.js";
 
-import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
-import { assistantChatVisible } from "../../lib/assistant-visibility.js";
+import { assistantMemorySourcesVisible } from "../../lib/assistant-source-visibility.js";
+import { conversationEntryVisible } from "../assistant-workspace/conversation-feed.js";
 
-const memorySourcesVisible = (doc = "d", user = "$1") => `NOT EXISTS (
-  WITH RECURSIVE dependencies(kind,id) AS (
-    SELECT source_type,source_id FROM memory_sources WHERE doc_id=${doc}.id AND source_id IS NOT NULL AND source_type IN ('task','doc','project','chat')
-    UNION SELECT s.source_type,s.source_id FROM memory_sources s JOIN dependencies parent ON parent.kind='doc' AND s.doc_id=parent.id WHERE s.source_id IS NOT NULL AND s.source_type IN ('task','doc','project','chat')
-  ) SELECT 1 FROM dependencies source WHERE NOT (
-    CASE WHEN source.kind='chat' THEN EXISTS(SELECT 1 FROM ai_chats source_chat WHERE source_chat.id=source.id AND ${assistantChatVisible("source_chat", user)} AND (source_chat.origin='person' OR EXISTS(SELECT 1 FROM assistant_chat_sources recorded WHERE recorded.chat_id=source_chat.id)))
-    ELSE ${assistantSourceVisible("source.kind", "source.id", user, false)} END))`;
+const memorySourcesVisible = (doc = "d", user = "$1") =>
+  assistantMemorySourcesVisible(`${doc}.id`, user);
 
 const MAX_MEMORY_CHARS = 60_000;
 
@@ -253,12 +250,31 @@ export async function rememberMemory(
   topic: string,
   incoming: string[],
   sources: MemorySourceInput[],
+  retainedSource?: { chatId: string; entryIds: string[] },
 ): Promise<{ entry: MemoryEntry; created: boolean; changed: boolean }> {
   const title = topic.trim().slice(0, 120);
   if (!title) throw new Error("Memory topic is required.");
   await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
     `memory:${userId}`,
   ]);
+  if (retainedSource) {
+    const ids = [...new Set(retainedSource.entryIds)];
+    if (
+      !ids.length ||
+      ids.length > 2 ||
+      ids.length !== retainedSource.entryIds.length
+    )
+      fail(409, "The retained Memory source is unverified.");
+    const valid = await db.query(
+      `SELECT e.id FROM assistant_conversation_entries e JOIN assistant_conversation_streams s ON s.id=e.destination_id
+       JOIN users source_owner ON source_owner.id=s.owner_id
+       WHERE e.id=ANY($2::uuid[]) AND s.chat_id=$3 AND s.owner_id=$1 AND s.retired_at IS NULL
+       AND NOT source_owner.disabled AND e.kind='turn' AND ${conversationEntryVisible()}`,
+      [userId, ids, retainedSource.chatId],
+    );
+    if (valid.rowCount !== ids.length)
+      fail(409, "The retained Memory source is no longer available.");
+  }
   const current = (
     await db.query<MemoryDocRow>(
       `SELECT id, user_id, title, content, version, created_at, updated_at
@@ -351,8 +367,8 @@ export async function rememberMemory(
   }
   for (const source of sources) {
     const saved = await db.query(
-      `INSERT INTO memory_sources (doc_id, source_type, source_id, label, quote)
-       SELECT $1, $2, $3, $4, $5
+      `INSERT INTO memory_sources (doc_id, source_type, source_id, label, quote,retained_entries)
+       SELECT $1, $2, $3, $4, $5,$6
         WHERE NOT EXISTS (
           SELECT 1 FROM memory_sources
            WHERE doc_id = $1 AND source_type = $2
@@ -361,10 +377,35 @@ export async function rememberMemory(
        ON CONFLICT (doc_id, source_type, source_id) WHERE source_id IS NOT NULL
        DO NOTHING
        RETURNING id`,
-      [doc.id, source.type, source.id, safeLabel(source.label), source.quote],
+      [
+        doc.id,
+        source.type,
+        source.id,
+        safeLabel(source.label),
+        source.quote,
+        source.type === "chat" &&
+          source.id === retainedSource?.chatId &&
+          !!retainedSource.entryIds.length,
+      ],
     );
     if (saved.rowCount) changed = true;
+    // A legacy/untracked write cannot inherit a prior retained-only exemption.
+    if (
+      !saved.rowCount &&
+      source.type === "chat" &&
+      (!retainedSource || source.id !== retainedSource.chatId)
+    )
+      await db.query(
+        "UPDATE memory_sources SET retained_entries=false WHERE doc_id=$1 AND source_type='chat' AND source_id=$2",
+        [doc.id, source.id],
+      );
   }
+  if (retainedSource?.entryIds.length)
+    await db.query(
+      `INSERT INTO memory_entry_sources(doc_id,source_entry_id)
+      SELECT $1,unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
+      [doc.id, retainedSource.entryIds],
+    );
   return { entry: entryOf(doc), created, changed };
 }
 
@@ -379,17 +420,50 @@ export async function enqueueMemory(
     chatId: string;
     turns: unknown[];
     sourceProjectId: string | null;
+    sourceTurnId?: string;
   },
 ) {
+  let turns = input.turns;
+  let entryIds: string[] | null = null;
+  const retained = (
+    await db.query(
+      "SELECT 1 FROM assistant_conversation_streams WHERE chat_id=$1 AND owner_id=$2 AND retired_at IS NULL",
+      [input.chatId, input.userId],
+    )
+  ).rowCount;
+  if (retained) {
+    // Unknown legacy queue input must never be reclassified as a retained turn.
+    if (!input.sourceTurnId) return;
+    const entries = (
+      await db.query<{ id: string; payload: unknown }>(
+        `SELECT e.id,e.payload FROM assistant_conversation_entries e JOIN assistant_conversation_streams s ON s.id=e.destination_id
+       WHERE s.chat_id=$2 AND s.owner_id=$1 AND s.retired_at IS NULL AND e.turn_id=$3 AND e.kind='turn'
+       AND ${conversationEntryVisible()} ORDER BY e.sequence`,
+        [input.userId, input.chatId, input.sourceTurnId],
+      )
+    ).rows;
+    if (
+      !entries.some(
+        (entry) => savedChatTurn.parse(entry.payload).role === "assistant",
+      )
+    )
+      return;
+    entryIds = entries.map((entry) => entry.id);
+    turns = entries.map((entry) => {
+      const turn = savedChatTurn.parse(entry.payload);
+      return { role: turn.role, content: turn.history_text ?? turn.text };
+    });
+  }
   await db.query(
-    `INSERT INTO memory_queue (chat_id, user_id, turns, source_project_id)
-     SELECT $1, $2, $3::jsonb, $4
+    `INSERT INTO memory_queue (chat_id, user_id, turns, source_project_id,source_entry_ids)
+     SELECT $1, $2, $3::jsonb, $4,$5::uuid[]
      FROM ai_chats WHERE id = $1 AND user_id = $2 AND origin = 'person'`,
     [
       input.chatId,
       input.userId,
-      JSON.stringify(input.turns),
+      JSON.stringify(turns),
       input.sourceProjectId,
+      entryIds,
     ],
   );
 }

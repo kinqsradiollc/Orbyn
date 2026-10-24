@@ -42,6 +42,7 @@ type QueuedTurn = {
   turns: { role: "user" | "assistant"; content: string }[];
   source_project_id: string | null;
   maintenance_job_id: string | null;
+  source_entry_ids: string[] | null;
 };
 
 export type MemoryCompleter = (
@@ -74,7 +75,7 @@ export async function drainMemoryQueue(
     ]);
     const rows = (
       await db.query<QueuedTurn>(
-        `SELECT id, chat_id, user_id, turns, source_project_id, maintenance_job_id
+        `SELECT id, chat_id, user_id, turns, source_project_id, maintenance_job_id,source_entry_ids
            FROM memory_queue
           WHERE claimed_at IS NULL OR claimed_at < now() -
             make_interval(mins => least(60, greatest(5, attempts * 5)))
@@ -191,6 +192,9 @@ export async function drainMemoryQueue(
             topic.topic,
             topic.facts,
             sources,
+            job.source_entry_ids?.length
+              ? { chatId: job.chat_id, entryIds: job.source_entry_ids }
+              : undefined,
           );
         await db.query("DELETE FROM memory_queue WHERE id = $1", [job.id]);
       });

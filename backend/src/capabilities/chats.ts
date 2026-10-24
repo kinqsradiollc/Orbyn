@@ -1,4 +1,13 @@
 import { z } from "zod";
+import {
+  assistantChatVisible,
+  conversationExecutionChatVisible,
+} from "../lib/assistant-visibility.js";
+import {
+  assistantRetainedEntryVisible,
+  assistantChatEvidenceKnown,
+} from "../lib/assistant-source-visibility.js";
+import { deliveryBindingVisible } from "../lib/assistant-binding-visibility.js";
 import { docPlainText, type DocBlock } from "@orbyn/core";
 import {
   Params,
@@ -88,6 +97,8 @@ type Row = {
   swept_at: Date | null;
   scope_kind: "project" | "task" | null;
   scope_id: string | null;
+  legacy_visible: boolean;
+  source_entry_ids: string[];
 };
 
 /** Read the person's saved assistant conversations without calling a model. */
@@ -128,17 +139,32 @@ export const getChats = defineCapability({
     const visible = `(c.project_id IS NULL OR EXISTS (
       SELECT 1 FROM projects p WHERE p.id = c.project_id
         AND ${visibleProjects("p", scope)}))`;
+    const legacyVisible = assistantChatVisible("c", user, scope);
+    const safeTitle = `CASE WHEN active_stream.id IS NOT NULL AND NOT ${legacyVisible} THEN 'Conversation' ELSE c.title END`;
+    const history = `CASE WHEN active_stream.id IS NULL THEN c.turns ELSE projected.turns END`;
     const rows = (
       await ctx.db.query<Row>(
-        `SELECT c.id, c.project_id, p.name AS project_name, c.title, c.pinned,
-                c.turns, c.trace, c.created_at, c.last_used_at,
-                c.summary_doc_id, c.swept_at, c.scope_kind, c.scope_id
+        `SELECT c.id, c.project_id, p.name AS project_name, ${safeTitle} AS title, c.pinned,
+                ${history} AS turns, CASE WHEN active_stream.id IS NULL THEN c.trace ELSE '[]'::jsonb END AS trace,
+                c.created_at, c.last_used_at,c.summary_doc_id, c.swept_at, c.scope_kind, c.scope_id,
+                ${legacyVisible} AS legacy_visible,coalesce(projected.source_entry_ids,'{}'::uuid[]) AS source_entry_ids
            FROM ai_chats c LEFT JOIN projects p ON p.id = c.project_id
-          WHERE c.user_id = ${user} AND ${visible}
+           LEFT JOIN assistant_conversation_streams active_stream ON active_stream.chat_id=c.id AND active_stream.retired_at IS NULL
+           LEFT JOIN LATERAL (
+             SELECT coalesce(jsonb_agg(saved.payload ORDER BY saved.sequence),'[]'::jsonb) AS turns,
+               array_agg(saved.id ORDER BY saved.sequence) AS source_entry_ids
+             FROM (SELECT e.id,e.payload,e.sequence FROM assistant_conversation_entries e
+               WHERE e.destination_id=active_stream.id AND e.kind='turn' AND ${assistantRetainedEntryVisible("e.id", user, scope)}
+               ORDER BY e.sequence DESC LIMIT 200) saved
+           ) projected ON active_stream.id IS NOT NULL
+          WHERE c.user_id = ${user} AND ${visible} AND ${conversationExecutionChatVisible("c", user, scope)} AND (active_stream.id IS NOT NULL OR ${assistantChatEvidenceKnown("c", user)})
+            AND (active_stream.id IS NOT NULL OR NOT EXISTS(
+              SELECT 1 FROM assistant_delivery_bindings b JOIN assistant_delivery_intents i ON i.binding_id=b.id
+              WHERE b.owner_id=${user} AND i.payload->>'execution_chat_id'=c.id::text AND NOT ${deliveryBindingVisible("b", user)}))
             AND (${chatId ? `c.id = ${chatId}` : "c.origin <> 'idea'"})
             AND (${projectId ? `c.project_id = ${projectId}` : "true"})
-            AND (${search} = '' OR c.title ILIKE '%' || ${search} || '%'
-              OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.turns) t
+            AND (${search} = '' OR ${safeTitle} ILIKE '%' || ${search} || '%'
+              OR EXISTS (SELECT 1 FROM jsonb_array_elements(${history}) t
                            WHERE t->>'text' ILIKE '%' || ${search} || '%'))
           ORDER BY c.pinned DESC, c.last_used_at DESC, c.id
           LIMIT ${limit}`,
@@ -241,6 +267,18 @@ export const getChats = defineCapability({
           })
           .join("\n\n")
       : "No assistant chats matched.";
-    return { structured: { chats }, markdown };
+    return {
+      structured: { chats },
+      markdown,
+      targets: rows.flatMap((row) => [
+        ...(row.legacy_visible ? [`chat:${row.id}`] : []),
+        ...(args.chat_id
+          ? row.source_entry_ids.map((id) => `entry:${id}`)
+          : []),
+        ...(row.swept_at && row.summary_doc_id && notes.has(row.summary_doc_id)
+          ? [`doc:${row.summary_doc_id}`]
+          : []),
+      ]),
+    };
   },
 });

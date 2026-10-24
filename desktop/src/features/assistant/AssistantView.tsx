@@ -1,11 +1,11 @@
-import { AssistantProfileStore } from "@orbyn/api-client";
 import { session, onSessionChange } from "../../lib/session";
 import { providerDetailLines } from "@orbyn/core";
 import {
+  Fragment,
   useEffect,
+  useLayoutEffect,
   useId,
   useMemo,
-  useSyncExternalStore,
   useRef,
   useState,
   type FormEvent,
@@ -34,7 +34,11 @@ import {
 } from "lucide-react";
 import {
   assistantSuggestions as SUGGESTIONS,
+  groupAssistantChats,
+  assistantDateLabel,
+  assistantExcerptMatches,
   type AssistantSource,
+  type AssistantConversationEntry,
   type Item,
   type Plan,
   type AiChatSummary,
@@ -56,9 +60,13 @@ import { TurnChanges } from "./TurnChanges";
 import { ReminderNudge } from "./ReminderNudge";
 import { ProposalReview } from "../../components/ProposalReview";
 import { AssistantUpcoming } from "./AssistantUpcoming";
+import { SavedConversationHistory } from "./SavedConversationHistory";
 import { client } from "../../lib/api";
 import type { Assistant } from "../../hooks/useAssistant";
 import "./assistant.css";
+import { CopyMessage, UserMessage } from "./ConversationMessage";
+import { ConversationDetails } from "./ConversationDetails";
+import { ConversationUpdate } from "./ConversationUpdate";
 
 /** One icon per suggestion, in the shared list's order. */
 const SUGGESTION_ICONS: LucideIcon[] = [CalendarDays, Flag, Sunrise, PenLine];
@@ -101,35 +109,16 @@ export function AssistantView({
   onOpenSidePanel,
   agentWorkspace,
 }: Props) {
-  const profileStore = useMemo(
-    () => new AssistantProfileStore(client, session.get),
-    [],
-  );
-  const profiles = useSyncExternalStore(
-    profileStore.subscribe,
-    profileStore.getSnapshot,
-  );
-  useEffect(() => {
-    void profileStore.refresh();
-    const stop = onSessionChange(() => {
-      profileStore.reset();
-      setAgentLane(null);
-      void profileStore.refresh();
-    });
-    const refresh = () => {
-      if (!document.hidden) void profileStore.refresh();
-    };
-    const timer = window.setInterval(refresh, 15000);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      stop();
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", refresh);
-      profileStore.reset();
-    };
-  }, [profileStore]);
   const [agentLane, setAgentLane] = useState<"background" | "overnight" | null>(
     null,
+  );
+  useEffect(
+    () =>
+      onSessionChange(() => {
+        setAgentLane(null);
+        setPanel(null);
+      }),
+    [],
   );
   const {
     message,
@@ -166,11 +155,12 @@ export function AssistantView({
   const toast = useToast();
   const workMode =
     assistant.historyKind === "work" || scope?.kind === "project";
+  const needsProject = workMode && scope?.kind !== "project";
   const [workProjects, setWorkProjects] = useState<Project[] | null>(null);
   const [workProjectError, setWorkProjectError] = useState(false);
   const [projectAttempt, setProjectAttempt] = useState(0);
   useEffect(() => {
-    if (!workMode) return;
+    if (!workMode || scope?.kind === "project") return;
     let active = true;
     const token = session.get();
     setWorkProjects(null);
@@ -186,20 +176,12 @@ export function AssistantView({
     return () => {
       active = false;
     };
-  }, [workMode, projectAttempt]);
+  }, [workMode, projectAttempt, scope?.kind]);
   const chooseProject = (id: string) => {
     const project = workProjects?.find((row) => row.id === id);
     if (!project || project.assistant_off || locked) return;
     const draft = message;
     setScope({ kind: "project", id: project.id, name: project.name });
-    setMessage(draft);
-  };
-  const switchMode = (kind: "chat" | "work") => {
-    if (locked || kind === (workMode ? "work" : "chat")) return;
-    const draft = message;
-    reset();
-    assistant.setHistoryKind(kind);
-    if (kind === "chat" || scope?.kind === "task") setScope(null);
     setMessage(draft);
   };
   const suggestions = scope
@@ -228,20 +210,191 @@ export function AssistantView({
     : SUGGESTIONS;
   const upcomingId = useId();
   const threadRef = useRef<HTMLDivElement>(null);
+  const followingConversation = useRef(true);
+  const readingAnchor = useRef<{ sequence: string; offset: number } | null>(
+    null,
+  );
+  const previousConversation = useRef<string | null>(null);
+  const previousTail = useRef<string | null>(null);
+  const previousSubmission = useRef<string | null>(null);
+  const [newConversationContent, setNewConversationContent] = useState(false);
+  const rememberReadingPosition = () => {
+    const thread = threadRef.current;
+    if (!thread) return;
+    followingConversation.current =
+      thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
+    if (followingConversation.current) setNewConversationContent(false);
+    const top = thread.getBoundingClientRect().top;
+    const row = [
+      ...thread.querySelectorAll<HTMLElement>("[data-conversation-sequence]"),
+    ].find((row) => row.getBoundingClientRect().bottom > top);
+    readingAnchor.current = row
+      ? {
+          sequence: row.dataset.conversationSequence!,
+          offset: row.getBoundingClientRect().top - top,
+        }
+      : null;
+  };
+  const showLatestConversation = () => {
+    followingConversation.current = true;
+    readingAnchor.current = null;
+    setNewConversationContent(false);
+    const thread = threadRef.current;
+    if (thread) thread.scrollTo({ top: thread.scrollHeight, behavior: "auto" });
+  };
+  const earlierConversation = () => {
+    rememberReadingPosition();
+    followingConversation.current = false;
+    void assistant.loadEarlierConversation();
+  };
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [quickMenu, setQuickMenu] = useState<DOMRect | null>(null);
+  const [activityAnchor, setActivityAnchor] = useState<DOMRect | null>(null);
   const chatRef = useRef<HTMLElement>(null);
   const [compactPanels, setCompactPanels] = useState(true);
-  const [panel, setPanel] = useState<"history" | "upcoming" | null>(
-    openUpcoming > 0 ? "upcoming" : null,
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  const [panel, setPanel] = useState<
+    "history" | "upcoming" | "legacy" | "details" | null
+  >(openUpcoming > 0 ? "upcoming" : null);
+
+  const initializedHome = useRef(false);
+  useEffect(() => {
+    if (!assistant.conversationEnabled) {
+      initializedHome.current = false;
+      return;
+    }
+    if (initializedHome.current) return;
+    initializedHome.current = true;
+    if (!activeChatId && !scope) void assistant.openPersonalConversation();
+  }, [assistant.conversationEnabled]);
+  useEffect(() => {
+    const thread = threadRef.current;
+    if (
+      !thread ||
+      agentLane ||
+      panel ||
+      document.hidden ||
+      !assistant.conversation.destination
+    )
+      return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (document.hidden || !document.hasFocus()) return;
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .map((entry) =>
+            entry.target.getAttribute("data-conversation-sequence"),
+          )
+          .filter((value): value is string => !!value);
+        if (visible.length)
+          void assistant.acknowledgeConversation(
+            visible.reduce((a, b) => (BigInt(a) > BigInt(b) ? a : b)),
+          );
+      },
+      { root: thread, threshold: 0.5 },
+    );
+    const observe = () => {
+      observer.disconnect();
+      thread
+        .querySelectorAll("[data-conversation-sequence]")
+        .forEach((node) => observer.observe(node));
+    };
+    observe();
+    window.addEventListener("focus", observe);
+    document.addEventListener("visibilitychange", observe);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("focus", observe);
+      document.removeEventListener("visibilitychange", observe);
+    };
+  }, [assistant.conversation.entries, agentLane, panel]);
+
+  useEffect(() => {
+    const sequence = assistant.focusedConversationSequence;
+    if (!sequence) return;
+    followingConversation.current = false;
+    const frame = requestAnimationFrame(() => {
+      threadRef.current
+        ?.querySelector<HTMLElement>(
+          `[data-conversation-sequence="${sequence}"]`,
+        )
+        ?.scrollIntoView({ block: "center" });
+      rememberReadingPosition();
+      assistant.clearConversationFocus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [assistant.focusedConversationSequence]);
+
+  const [detailsEntryId, setDetailsEntryId] = useState<string | null>(null);
+  const detailsEntry = assistant.conversation.entries.find(
+    (entry) => entry.id === detailsEntryId,
   );
+  useEffect(() => {
+    if (
+      panel === "details" &&
+      (!detailsEntry || !assistant.conversation.destination)
+    )
+      setPanel(null);
+  }, [panel, detailsEntry, assistant.conversation.destination]);
+  const [selectedText, setSelectedText] = useState<{
+    entry: AssistantConversationEntry;
+    text: string;
+    anchor: DOMRect;
+  } | null>(null);
+  const selectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectingText = useRef(false);
+  const settleSelection = () => {
+    if (selectionTimer.current) clearTimeout(selectionTimer.current);
+    selectionTimer.current = setTimeout(() => {
+      if (selectingText.current) return;
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount !== 1) {
+        setSelectedText(null);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const start = range.startContainer.parentElement?.closest<HTMLElement>(
+        "[data-conversation-sequence]",
+      );
+      const end = range.endContainer.parentElement?.closest<HTMLElement>(
+        "[data-conversation-sequence]",
+      );
+      const text = selection.toString().trim();
+      const entry = assistant.conversation.entries.find(
+        (value) => value.sequence === start?.dataset.conversationSequence,
+      );
+      if (
+        !start ||
+        start !== end ||
+        !threadRef.current?.contains(start) ||
+        !entry ||
+        !text ||
+        text.length > 2000
+      ) {
+        setSelectedText(null);
+        return;
+      }
+      const source = entry.kind === "turn" ? entry.turn.text : entry.text;
+      if (!assistantExcerptMatches(source, text)) {
+        setSelectedText(null);
+        return;
+      }
+      setSelectedText({ entry, text, anchor: range.getBoundingClientRect() });
+    }, 180);
+  };
+  useEffect(() => {
+    setSelectedText(null);
+    return () => {
+      if (selectionTimer.current) clearTimeout(selectionTimer.current);
+    };
+  }, [activeChatId, panel]);
   const historyOpen = panel === "history";
   const upcomingOpen = panel === "upcoming";
   const navigationOpenRef = useRef(navigationOpen);
   navigationOpenRef.current = navigationOpen;
   const panelOrigin = useRef<HTMLElement | null>(null);
   const closePanels = () => setPanel(null);
-  const togglePanel = (next: "history" | "upcoming") => {
+  const togglePanel = (next: "history" | "upcoming" | "legacy" | "details") => {
     if (!panel)
       panelOrigin.current = document.activeElement as HTMLElement | null;
     onOpenSidePanel?.();
@@ -249,7 +402,7 @@ export function AssistantView({
   };
   useEffect(() => {
     const node = chatRef.current!;
-    const measure = () => setCompactPanels(node.clientWidth < 1280);
+    const measure = () => setCompactPanels(node.clientWidth < 1040);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(node);
@@ -322,7 +475,15 @@ export function AssistantView({
     }
   }, [openUpcoming]);
   const [approveMenu, setApproveMenu] = useState<DOMRect | null>(null);
+  const chatGroups = groupAssistantChats(
+    savedChats ?? [],
+    assistant.personalChatId,
+  );
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
+  const conversationTitle =
+    activeChatId && activeChatId === assistant.personalChatId
+      ? agentName
+      : (activeChat?.title ?? "New chat");
   /** Runs a chat menu action, closing the menu or showing why it failed. */
   const chatAction = (run: () => Promise<unknown>, failed: string) => {
     if (chatActionPending) return;
@@ -334,9 +495,14 @@ export function AssistantView({
       .finally(() => setChatActionPending(false));
   };
   const waiting = runProgress?.state === "waiting" ? runProgress.waiting : null;
-  const locked = busy || thinking || !!waiting;
+  const locked =
+    busy ||
+    thinking ||
+    !!waiting ||
+    !assistant.conversationReady ||
+    !!assistant.replyStatus;
   useEffect(() => setPersonAnswer(""), [runProgress?.waiting?.question]);
-  const empty = turns.length === 0 && !thinking;
+  const empty = assistant.conversationItems.length === 0 && !thinking;
   // Quick replies only make sense on the newest assistant reply.
   const latestReplyId = [...turns]
     .reverse()
@@ -359,18 +525,55 @@ export function AssistantView({
     };
   }, []);
 
-  // Keep the newest message in view by scrolling the conversation itself,
-  // never the page, so the composer stays where it is. Once per message,
-  // not on every render.
-  useEffect(() => {
-    const el = threadRef.current;
-    if (!el || (turns.length === 0 && !thinking && !runProgress)) return;
-    const reduce = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+  // Preserve a reader's visible row; follow new content only while near the end.
+  useLayoutEffect(() => {
+    const thread = threadRef.current;
+    if (!thread) return;
+    if (previousConversation.current !== activeChatId) {
+      previousConversation.current = activeChatId;
+      followingConversation.current = true;
+      readingAnchor.current = null;
+      setNewConversationContent(false);
+      previousTail.current = null;
+    }
+    const submitted =
+      turns
+        .filter((turn) => turn.role === "user" && turn.id.startsWith("turn-"))
+        .at(-1)?.id ?? null;
+    if (submitted && submitted !== previousSubmission.current) {
+      followingConversation.current = true;
+      readingAnchor.current = null;
+    }
+    previousSubmission.current = submitted;
+    const tail = assistant.conversationItems.at(-1)?.id ?? null;
+    if (assistant.focusedConversationSequence) {
+      followingConversation.current = false;
+      return;
+    }
+    if (followingConversation.current) thread.scrollTop = thread.scrollHeight;
+    else {
+      const anchor = readingAnchor.current;
+      const row =
+        anchor &&
+        thread.querySelector<HTMLElement>(
+          `[data-conversation-sequence="${anchor.sequence}"]`,
+        );
+      if (row)
+        thread.scrollTop +=
+          row.getBoundingClientRect().top -
+          thread.getBoundingClientRect().top -
+          anchor!.offset;
+      if (previousTail.current && tail !== previousTail.current)
+        setNewConversationContent(true);
+    }
+    previousTail.current = tail;
+    rememberReadingPosition();
   }, [
-    agentLane,
+    panel,
+    historyCollapsed,
+    compactPanels,
+    activeChatId,
+    assistant.conversation.entries,
     turns.length,
     thinking,
     runProgress?.state,
@@ -408,8 +611,7 @@ export function AssistantView({
   }, [message, agentLane]);
 
   const send = () => {
-    if (!locked && (!workMode || scope?.kind === "project") && message.trim())
-      void ask();
+    if (!locked && !needsProject && message.trim()) void ask();
   };
 
   const suggest = (text: string) => {
@@ -430,6 +632,7 @@ export function AssistantView({
         (workMode ? " is-work" : "") +
         (empty && !agentLane ? " is-empty" : "") +
         (compactPanels ? " is-compact" : "") +
+        (historyCollapsed && !compactPanels ? " is-history-hidden" : "") +
         (compactPanels && panel ? " has-panel" : "")
       }
     >
@@ -452,6 +655,17 @@ export function AssistantView({
           <div className="ai-history-title">
             <History size={16} aria-hidden="true" />
             <h2>Chats</h2>
+            {!compactPanels && !historyCollapsed && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Close chats"
+                title="Focus conversation"
+                onClick={() => setHistoryCollapsed(true)}
+              >
+                <ChevronRight size={16} />
+              </button>
+            )}
             {compactPanels && (
               <button
                 type="button"
@@ -486,122 +700,137 @@ export function AssistantView({
           />
         </div>
         <div className="ai-history-list">
-          {(["background", "overnight"] as const)
-            .filter((lane) => {
-              const profile = profiles.data?.profiles.find(
-                (item) => item.lane === lane,
-              );
-              return `${profile?.identity?.name ?? ""} ${lane}`
-                .toLowerCase()
-                .includes(chatSearch.trim().toLowerCase());
-            })
-            .map((lane) => (
-              <div
-                className={
-                  "ai-history-row" + (agentLane === lane ? " is-active" : "")
-                }
-                key={lane}
+          {assistant.legacyHistoryAvailable &&
+            assistant.legacyHistoryTarget && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => togglePanel("legacy")}
               >
-                <button
-                  type="button"
-                  className="ai-history-open"
-                  aria-current={agentLane === lane ? "page" : undefined}
-                  disabled={locked}
-                  onClick={() => {
-                    closeChatMenu();
-                    closePanels();
-                    setAgentLane(lane);
-                  }}
-                >
-                  <span className="ai-history-chat-title">
-                    <Sparkles size={16} aria-hidden="true" />
-                    <span>
-                      {profiles.data?.profiles.find(
-                        (item) => item.lane === lane,
-                      )?.identity?.name ??
-                        (lane === "background" ? "Background" : "Overnight")}
-                    </span>
-                  </span>
-                  <small>
-                    {lane === "background" ? "Background" : "Overnight"}
-                    {(() => {
-                      const profile = profiles.data?.profiles.find(
-                        (item) => item.lane === lane,
-                      );
-                      if (!profile)
-                        return profiles.error ? " · Status unavailable" : "";
-                      const state = {
-                        idle: "Idle",
-                        queued: "Queued",
-                        working: "Working",
-                        waiting: "Needs you",
-                        scheduled: "Scheduled",
-                      }[profile.state];
-                      return ` · ${state}`;
-                    })()}
-                  </small>
-                </button>
-              </div>
-            ))}
-          {savedChats?.map((chat) => (
-            <div
-              key={chat.id}
-              className={
-                "ai-history-row" +
-                (!agentLane && chat.id === activeChatId ? " is-active" : "")
+                Previous saved history
+              </button>
+            )}
+          {assistant.conversationEnabled && (
+            <button
+              type="button"
+              className="ai-primary-chat"
+              disabled={locked}
+              aria-current={
+                !agentLane && activeChatId === assistant.personalChatId
+                  ? "page"
+                  : undefined
               }
+              onClick={() => {
+                setAgentLane(null);
+                closePanels();
+                void assistant.openPersonalConversation();
+              }}
             >
-              <button
-                type="button"
-                className="ai-history-open"
-                aria-current={
-                  !agentLane && chat.id === activeChatId ? "page" : undefined
-                }
-                disabled={locked}
-                onClick={() => {
-                  closeChatMenu();
-                  closePanels();
-                  setAgentLane(null);
-                  void openChat(chat.id).catch(() => undefined);
-                }}
-                title={chat.title}
+              <Sparkles size={16} aria-hidden="true" /> {agentName}
+            </button>
+          )}
+          <button
+            type="button"
+            className="text-button ai-project-start"
+            disabled={locked}
+            onClick={() => {
+              const draft = message;
+              reset();
+              assistant.setHistoryKind("work");
+              setMessage(draft);
+              setAgentLane(null);
+              closePanels();
+            }}
+          >
+            New project chat
+          </button>
+          {!!chatGroups.projects.length && (
+            <h3 className="ai-history-section">Projects</h3>
+          )}
+          {[
+            ...chatGroups.projects.map((project) => ({
+              key: project.id,
+              title: project.name,
+              chats: project.chats,
+            })),
+            { key: "pinned", title: "Pinned", chats: chatGroups.pinned },
+            { key: "recent", title: "Recent", chats: chatGroups.recent },
+          ]
+            .filter((group) => group.chats.length > 0)
+            .map((group) => (
+              <section
+                className="ai-chat-group"
+                key={group.key}
+                aria-label={group.title}
               >
-                <span className="ai-history-chat-title">
-                  {chat.pinned && <Pin size={12} aria-label="Pinned" />}
-                  <span>{chat.title}</span>
-                  {chat.active && (
-                    <small className="ai-op ai-op-update" role="status">
-                      {chat.active === "needs_you" ? "Needs you" : "Working"}
-                    </small>
-                  )}
-                </span>
-                <small>
-                  {chat.swept_at
-                    ? "Summary saved"
-                    : (chat.project_name ??
-                      new Date(chat.last_used_at).toLocaleDateString([], {
-                        day: "numeric",
-                        month: "short",
-                      }))}
-                </small>
-              </button>
-              <button
-                type="button"
-                className="icon-button ai-history-options"
-                aria-label={`Options for ${chat.title}`}
-                title="Chat options"
-                disabled={locked}
-                onClick={(event) =>
-                  setChatMenu({
-                    chat,
-                    anchor: event.currentTarget.getBoundingClientRect(),
-                  })
-                }
-              >
-                <MoreHorizontal size={16} aria-hidden="true" />
-              </button>
-            </div>
-          ))}
+                <h3>{group.title}</h3>
+                {group.chats.map((chat) => (
+                  <div
+                    key={chat.id}
+                    className={
+                      "ai-history-row" +
+                      (!agentLane && chat.id === activeChatId
+                        ? " is-active"
+                        : "")
+                    }
+                  >
+                    <button
+                      type="button"
+                      className="ai-history-open"
+                      aria-current={
+                        !agentLane && chat.id === activeChatId
+                          ? "page"
+                          : undefined
+                      }
+                      disabled={locked}
+                      onClick={() => {
+                        closeChatMenu();
+                        closePanels();
+                        setAgentLane(null);
+                        void openChat(chat.id).catch(() => undefined);
+                      }}
+                      title={chat.title}
+                    >
+                      <span className="ai-history-chat-title">
+                        {chat.pinned && <Pin size={12} aria-label="Pinned" />}
+                        <span>{chat.title}</span>
+                        {chat.active && (
+                          <small className="ai-op ai-op-update" role="status">
+                            {chat.active === "needs_you"
+                              ? "Needs you"
+                              : "Working"}
+                          </small>
+                        )}
+                      </span>
+                      <small>
+                        {chat.swept_at
+                          ? "Summary saved"
+                          : (chat.project_name ??
+                            new Date(chat.last_used_at).toLocaleDateString([], {
+                              day: "numeric",
+                              month: "short",
+                            }))}
+                      </small>
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button ai-history-options"
+                      aria-label={`Options for ${chat.title}`}
+                      title="Chat options"
+                      disabled={locked}
+                      onClick={(event) =>
+                        setChatMenu({
+                          chat,
+                          anchor: event.currentTarget.getBoundingClientRect(),
+                        })
+                      }
+                    >
+                      <MoreHorizontal size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </section>
+            ))}
           {savedChats?.length === 0 && (
             <p className="ai-history-empty">
               {chatSearch.trim() ? "No chats match" : "No chats yet"}
@@ -624,7 +853,11 @@ export function AssistantView({
             <button
               type="button"
               className="secondary"
-              onClick={() => togglePanel("history")}
+              onClick={() =>
+                compactPanels
+                  ? togglePanel("history")
+                  : setHistoryCollapsed(false)
+              }
             >
               Chats
             </button>
@@ -639,55 +872,24 @@ export function AssistantView({
       ) : (
         <div className="ai-main" inert={compactPanels && !!panel}>
           <div className="ai-chat-head">
-            <div className="ai-mode-switch" aria-label="Workspace mode">
-              <button
-                type="button"
-                aria-pressed={!workMode}
-                disabled={locked}
-                onClick={() => switchMode("chat")}
-              >
-                Chat
-              </button>
-              <button
-                type="button"
-                aria-pressed={workMode}
-                disabled={locked}
-                onClick={() => switchMode("work")}
-              >
-                Work
-              </button>
-            </div>
-            <span
-              className="ai-chat-label"
-              title={activeChat?.title ?? "New chat"}
-            >
-              {activeChat?.title ?? "New chat"}
-            </span>
-            {/* History and New chat live in the Chats panel; on a phone the
-              panel is hidden, so these two open it or start afresh. */}
             <button
               type="button"
-              className="icon-button ai-narrow-only"
-              aria-label={historyOpen ? "Close chat history" : "Chat history"}
+              className={
+                "icon-button" + (!historyCollapsed ? " ai-narrow-only" : "")
+              }
+              aria-label={historyOpen ? "Close chats" : "Open chats"}
               aria-expanded={historyOpen}
-              title={historyOpen ? "Close chat history" : "Chat history"}
-              onClick={() => togglePanel("history")}
+              onClick={() =>
+                compactPanels
+                  ? togglePanel("history")
+                  : setHistoryCollapsed(false)
+              }
             >
               <History size={18} aria-hidden="true" />
             </button>
-            <button
-              type="button"
-              className="icon-button ai-narrow-only"
-              onClick={() => {
-                closePanels();
-                reset();
-              }}
-              disabled={locked}
-              aria-label="New chat"
-              title="New chat"
-            >
-              <SquarePen size={18} aria-hidden="true" />
-            </button>
+            <span className="ai-chat-label" title={conversationTitle}>
+              {conversationTitle}
+            </span>
             {scope && (
               <button
                 type="button"
@@ -701,18 +903,65 @@ export function AssistantView({
             )}
             <button
               type="button"
-              className="secondary ai-upcoming-trigger"
-              aria-expanded={upcomingOpen}
-              aria-controls={upcomingId}
-              onClick={() => togglePanel("upcoming")}
+              className="text-button ai-activity-menu"
+              aria-expanded={!!activityAnchor}
+              onClick={(event) =>
+                setActivityAnchor(event.currentTarget.getBoundingClientRect())
+              }
             >
-              <CalendarClock size={15} aria-hidden="true" />
-              Upcoming
+              Activity
             </button>
           </div>
 
-          <div className="ai-thread" aria-live="polite" ref={threadRef}>
+          <div
+            className="ai-thread"
+            ref={threadRef}
+            onPointerDown={() => {
+              selectingText.current = true;
+              setSelectedText(null);
+            }}
+            onPointerUp={() => {
+              selectingText.current = false;
+              settleSelection();
+            }}
+            onPointerCancel={() => {
+              selectingText.current = false;
+              setSelectedText(null);
+            }}
+            onKeyUp={settleSelection}
+            onScroll={rememberReadingPosition}
+          >
+            {!!assistant.conversationIssue && (
+              <p role="status">{assistant.conversationIssue}</p>
+            )}
             {restoringChat && <p role="status">{restoringChat}</p>}
+            {assistant.conversation.destination && (
+              <div className="ai-conversation-status">
+                {assistant.conversation.hasEarlier && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={assistant.conversation.loading}
+                    onClick={earlierConversation}
+                  >
+                    Earlier messages
+                  </button>
+                )}
+                {assistant.conversation.error && (
+                  <>
+                    <span role="alert">Couldn’t load updates.</span>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => void assistant.refreshConversation()}
+                    >
+                      Retry
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             {empty && !restoringChat && (
               <>
                 <div className="ai-intro">
@@ -740,65 +989,129 @@ export function AssistantView({
               </div>
             )}
 
-            {turns.map((turn) =>
-              turn.role === "user" ? (
-                <div key={turn.id} className="ai-row ai-row-user">
-                  <div className="ai-bubble ai-bubble-user">{turn.text}</div>
-                </div>
-              ) : (
-                <div key={turn.id} className="ai-row">
-                  <div className="ai-reply">
-                    <ProposalReview
-                      proposal={turn.proposal}
-                      items={items}
-                      before={turn.before}
-                      busy={locked}
-                      state={turn.nudge ? "info" : turn.state}
-                      onApply={(giveTasksDeadlines) =>
-                        void apply(turn.id, giveTasksDeadlines)
-                      }
-                      onDismiss={() => dismiss(turn.id)}
-                      onApplyPlan={onApplyPlan}
-                      onOpenPlan={onOpenPlan}
-                      onShowOnCalendar={onShowOnCalendar}
-                      onOpenSource={onOpenSource}
-                      onKeptNote={onKeptNote}
-                      onFollowUp={
-                        turn.id === latestReplyId
-                          ? (text) => void ask(text)
-                          : undefined
-                      }
-                    />
-                    {turn.nudge && (
-                      <ReminderNudge
-                        card={turn.nudge}
-                        busy={locked}
-                        chatId={activeChatId}
-                        turnId={turn.turnId}
-                        skipped={turn.state === "discarded"}
-                      />
-                    )}
-                    {turn.changesJob && (
-                      <TurnChanges
-                        job={turn.changesJob}
-                        load={turnChanges}
-                        undo={undoTurnChanges}
-                      />
-                    )}
-                    {providerDetailLines(turn.trace).map((label) => (
-                      <small
-                        key={label}
-                        className="muted"
-                        style={{ display: "block", overflowWrap: "anywhere" }}
-                      >
-                        {label}
-                      </small>
-                    ))}
-                    <TurnSteps entries={turn.trace} />
+            {assistant.conversationItems.map((item, index) => {
+              const retained = assistant.conversation.entries.find(
+                (entry) => entry.id === item.id,
+              );
+              const previous = assistant.conversation.entries.find(
+                (entry) =>
+                  entry.id === assistant.conversationItems[index - 1]?.id,
+              );
+              const date = retained
+                ? assistantDateLabel(
+                    retained.created_at,
+                    previous?.created_at,
+                    Intl.DateTimeFormat().resolvedOptions().timeZone,
+                  )
+                : null;
+              const grouped = (content: ReactNode) => (
+                <Fragment key={item.id}>
+                  {date && <div className="ai-date-group">{date}</div>}
+                  {content}
+                </Fragment>
+              );
+              if (item.kind === "update")
+                return grouped(
+                  <ConversationUpdate
+                    key={item.id}
+                    entry={item.entry}
+                    onReply={() => {
+                      assistant.selectReply(item.entry);
+                      inputRef.current?.focus();
+                    }}
+                    onWork={(id) => void openChat(id)}
+                    onActivity={setAgentLane}
+                    onDetails={() => {
+                      setDetailsEntryId(item.entry.id);
+                      togglePanel("details");
+                    }}
+                  />,
+                );
+              const turn = item.turn;
+              return grouped(
+                turn.role === "user" ? (
+                  <div
+                    key={item.id}
+                    data-conversation-sequence={item.sequence ?? undefined}
+                    className="ai-row ai-row-user"
+                  >
+                    <UserMessage text={turn.text} />
                   </div>
-                </div>
-              ),
-            )}
+                ) : (
+                  <div
+                    key={item.id}
+                    data-conversation-sequence={item.sequence ?? undefined}
+                    className="ai-row"
+                  >
+                    <div className="ai-reply">
+                      <ProposalReview
+                        hideSourceDetails={!!retained}
+                        proposal={turn.proposal}
+                        items={items}
+                        before={turn.before}
+                        busy={locked}
+                        state={turn.nudge ? "info" : turn.state}
+                        onApply={(giveTasksDeadlines) =>
+                          void apply(turn.id, giveTasksDeadlines)
+                        }
+                        onDismiss={() => dismiss(turn.id)}
+                        onApplyPlan={onApplyPlan}
+                        onOpenPlan={onOpenPlan}
+                        onShowOnCalendar={onShowOnCalendar}
+                        onOpenSource={onOpenSource}
+                        onKeptNote={onKeptNote}
+                        onFollowUp={
+                          turn.id === latestReplyId
+                            ? (text) => void ask(text)
+                            : undefined
+                        }
+                      />
+                      {turn.nudge && (
+                        <ReminderNudge
+                          card={turn.nudge}
+                          busy={locked}
+                          chatId={activeChatId}
+                          turnId={turn.turnId}
+                          skipped={turn.state === "discarded"}
+                        />
+                      )}
+                      {turn.changesJob && (
+                        <TurnChanges
+                          job={turn.changesJob}
+                          load={turnChanges}
+                          undo={undoTurnChanges}
+                        />
+                      )}
+                      {providerDetailLines(turn.trace).map((label) => (
+                        <small
+                          key={label}
+                          className="muted"
+                          style={{ display: "block", overflowWrap: "anywhere" }}
+                        >
+                          {label}
+                        </small>
+                      ))}
+                      <TurnSteps entries={turn.trace} />
+                      <div className="ai-message-actions">
+                        <CopyMessage text={turn.proposal.summary} />
+                        {retained && (
+                          <button
+                            type="button"
+                            className="text-button"
+                            onClick={() => {
+                              setDetailsEntryId(retained.id);
+                              togglePanel("details");
+                            }}
+                          >
+                            Details
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ),
+              );
+            })}
 
             {waiting && (
               <div className="ai-row">
@@ -995,11 +1308,11 @@ export function AssistantView({
           </div>
 
           <div className="ai-dock">
-            {workMode && (
+            {needsProject && (
               <div className="ai-work-context">
                 <Select
                   aria-label="Work project"
-                  value={scope?.kind === "project" ? scope.id : ""}
+                  value=""
                   disabled={locked || workProjects === null}
                   onChange={(event) => chooseProject(event.target.value)}
                 >
@@ -1053,6 +1366,54 @@ export function AssistantView({
                 })}
               </div>
             )}
+            {newConversationContent && (
+              <button
+                type="button"
+                className="text-button ai-latest"
+                onClick={showLatestConversation}
+              >
+                Latest <ChevronDown size={14} aria-hidden="true" />
+              </button>
+            )}
+            {!!assistant.replyStatus && (
+              <div className="ai-reply-target" role="status">
+                <span>
+                  {assistant.replyStatus === "loading"
+                    ? "Restoring reply…"
+                    : "This update is no longer available."}
+                </span>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy || thinking}
+                  onClick={assistant.clearReply}
+                >
+                  Cancel reply
+                </button>
+              </div>
+            )}
+            {assistant.replyTarget && (
+              <div className="ai-reply-target">
+                <span>
+                  Replying to{" "}
+                  {assistant.replyTarget.excerpt
+                    ? `“${assistant.replyTarget.excerpt}”`
+                    : assistant.replyTarget.kind === "turn"
+                      ? "message"
+                      : assistant.replyTarget.lane === "overnight"
+                        ? "Overnight"
+                        : "Background"}
+                </span>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Cancel reply"
+                  onClick={assistant.clearReply}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
             <form
               className="ai-composer"
               onSubmit={(e) => {
@@ -1104,11 +1465,7 @@ export function AssistantView({
               <button
                 className="ai-send"
                 aria-label="Send"
-                disabled={
-                  locked ||
-                  !message.trim() ||
-                  (workMode && scope?.kind !== "project")
-                }
+                disabled={locked || !message.trim() || needsProject}
               >
                 <ArrowUp size={18} />
               </button>
@@ -1293,12 +1650,108 @@ export function AssistantView({
           )}
         </div>
       )}
+      {activityAnchor && (
+        <Popover
+          anchor={activityAnchor}
+          label="Activity"
+          width={220}
+          onClose={() => setActivityAnchor(null)}
+        >
+          <div className="popover-actions">
+            {(["background", "overnight"] as const).map((lane) => (
+              <button
+                key={lane}
+                type="button"
+                onClick={() => {
+                  setActivityAnchor(null);
+                  setAgentLane(lane);
+                }}
+              >
+                {lane === "background" ? "Background" : "Overnight"}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setActivityAnchor(null);
+                togglePanel("upcoming");
+              }}
+            >
+              Upcoming
+            </button>
+          </div>
+        </Popover>
+      )}
+      {selectedText && !panel && (
+        <Popover
+          anchor={selectedText.anchor}
+          label="Selected text"
+          takeFocus={false}
+          width={160}
+          onClose={() => setSelectedText(null)}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                assistant.selectExcerpt(selectedText.entry, selectedText.text)
+              ) {
+                setSelectedText(null);
+                inputRef.current?.focus();
+              }
+            }}
+          >
+            Ask Orbyn
+          </button>
+        </Popover>
+      )}
+      {panel === "details" &&
+        detailsEntry &&
+        assistant.conversation.destination && (
+          <ConversationDetails
+            key={`${assistant.conversation.destination.id}:${detailsEntry.id}`}
+            destinationId={assistant.conversation.destination.id}
+            entryId={detailsEntry.id}
+            onRefresh={() => void assistant.refreshConversation()}
+            revision={JSON.stringify([
+              detailsEntry.revision,
+              detailsEntry.kind === "update"
+                ? [
+                    detailsEntry.actionable,
+                    detailsEntry.waiting_kind,
+                    detailsEntry.execution_chat_id,
+                  ]
+                : null,
+            ])}
+            modal={compactPanels}
+            onClose={closePanels}
+            onSource={onOpenSource}
+            onWork={(id) => {
+              closePanels();
+              void openChat(id);
+            }}
+            onActivity={(lane) => {
+              closePanels();
+              setAgentLane(lane);
+            }}
+          />
+        )}
       {upcomingOpen && (
         <AssistantUpcoming
+          conversationEnabled={assistant.conversationEnabled}
           id={upcomingId}
           agentName={agentName}
           modal={compactPanels}
           onClose={() => closePanels()}
+        />
+      )}
+      {panel === "legacy" && assistant.legacyHistoryTarget && (
+        <SavedConversationHistory
+          key={assistant.legacyHistoryTarget.destinationId}
+          destinationId={assistant.legacyHistoryTarget.destinationId}
+          chatId={assistant.legacyHistoryTarget.chatId}
+          modal={compactPanels}
+          onClose={closePanels}
         />
       )}
     </section>

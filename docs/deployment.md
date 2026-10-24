@@ -35,6 +35,102 @@ readiness after rollout and alert on missing runtime heartbeats. Restarting one
 runtime leaves the other available; interrupted work resumes its persisted
 checkpoint within the same lane after its lease expires.
 
+### Unified conversation rollout (in development)
+
+`ASSISTANT_CONVERSATION_ENABLED` defaults to `false`. Migrations 269–289 add
+conversation destinations, retained timeline entries and transactional delivery
+intents, plus content-free schedule destination/scope snapshots, without moving
+legacy jobs or their execution chats. The API, AI service and both automation workers must use the same rollout setting. Compose passes
+the setting through the shared backend environment.
+
+Task handovers, goals, routines and maintained-page schedules capture destination identity and personal-source
+scope in their owning transaction. Assistant-created or approved work uses only
+server-recorded job/guard metadata for its origin. Ordinary settings edits preserve
+the snapshot. Existing schedules capture it at their first new admission; a child
+of an already admitted night inherits that night's destination. Retired or absent
+destinations never turn into a replacement home during retries. A new explicit
+assistant request can update a schedule's routing under current permission checks.
+
+Registered conversation history has no automatic age expiry, even if unpinned or
+the rollout flag is disabled. The weekly legacy chat compactor excludes it and
+rechecks registration before committing a summary. Explicit deletion/sweeping
+still retires a destination and prevents delivery into its replacement generation.
+Delivery windows group scheduled nights and explicit Overnight handoffs by owner
+and absolute window end, with one summary per captured destination. They are
+separate from execution nights: grouping never creates an execution night or
+changes a job's schedule, budget or permission. A scheduled night's default route
+is captured independently from explicitly routed work. Each summary retains every
+contributing binding's grant and source checks; late results revise the existing
+entry and logical alert identity. Retired destinations remain unavailable.
+
+Configured Slack and Teams night channels retain their existing durable outboxes;
+unified delivery replaces only the legacy Orbyn in-app/push alert owner.
+
+Derived replies retain source entry identities, including their current delivery
+grants and destination generations. Newly queued Memory for registered conversations
+uses those exact retained turns instead of the disposable execution window.
+Source identities survive source deletion, so deletion invalidates derived content.
+Older Memory keeps its conservative whole-chat boundary; existing facts are never
+silently promoted to complete per-entry provenance. Mixed legacy writes restore
+that conservative boundary.
+
+Migration 280 installs the cached `assistant_source_graph_visible` authority
+function. Its SQL is generated from `assistantSourceGraphSql` in
+`backend/src/lib/assistant-source-visibility.ts`; the provenance test compares the
+source, current function migration (289) and installed function. Future changes to this SQL require a
+new migration and an updated parity receipt, preserving already-applied migrations.
+
+Published history retains its authorization references independently of disposable
+execution rows. Normal job retention can remove finished executions after publication;
+the retained update still requires its current grant, source permissions and active
+destination generation. Missing work cannot create a new update. Pending or deferred
+publication protects the execution job and chat from automatic cleanup, including
+during quiet hours or rollback. Explicit retirement erases the retired owner's
+outgoing references; incoming references remain invalid rather than disappearing.
+Proposed or accepted handoffs also protect both execution rows and their contexts
+until dispatch and acknowledgement settle. This does not extend completed work's
+ordinary retention after its handoff is resolved.
+
+Explicit automation inherits resource and entry dependencies from its exact
+server-recorded origin turn. Handoffs carry those entry references from both the
+producer turn and its retained binding. Schedule writes snapshot entry provenance
+in the same transaction as their destination; it survives producing-job cleanup.
+Routine/task/goal and maintained-page admissions recheck inherited authority before
+provider work or effects. Delivery rollback still enforces these source checks;
+it neither substitutes a latest turn nor creates a replacement destination.
+
+Reflection copies exact checked job resources and retained entry ancestry rather
+than treating a job's companion chat ID as a read of every turn. MCP chat reads
+use the currently authorized retained projection; raw execution traces and hidden
+turns are not returned or searched. Publication snapshots entry ancestry, including
+for a night summary whose counts stay unchanged while its contributing sources
+change. Navigation links are bounded to 500; authorization retains every dependency.
+Morning summaries include at most 50 per-run result excerpts (4,000 characters
+each); Overnight activity retains the complete work view. Each contributing
+binding's current grant remains part of summary authority. An atomic summary
+publication records a content-free retention receipt on each child binding, so
+execution cleanup does not erase a previously published result or its current
+permission checks. Questions and actionable failures keep individual timeline
+identities and normal timing checks; they are not reduced to summary counts.
+
+Admission pauses are independent `agent_settings` values with database insertion
+guards, plus scanner/admission checks. They do not suspend the assistant grant or
+block foreground storage. Keep the work-controls API available during rollback;
+users can resume admissions without enabling unified alerts. The UI exposes these
+controls in Upcoming, with the alert mute row only when unified delivery is enabled.
+
+The implementation is not yet qualified for rollout. Server timing, alert
+outbox and scheduled-night summaries have focused verification; client UI and
+the full acceptance audit are still in progress. Keep the flag off until the acceptance
+ledger in [the implementation record](work/unified-assistant-implementation.md)
+is complete. No server deployment has been performed as part of this work.
+
+Disabling the flag stops new work bindings and publication. Already-bound pending
+intents stay parked; they must not be replayed through legacy notifications.
+Re-enabling reuses their event identities. Existing jobs, apply receipts and
+published history are preserved. Workers never create a missing personal
+destination; only the signed-in person's explicit open can create a generation.
+
 ## Going live on your domain
 
 The shortest path from a fresh server to a working site, with the details in the sections below.

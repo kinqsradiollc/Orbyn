@@ -218,7 +218,16 @@ export const manageGoals = defineCapability({
           pending: answer.structured.pending,
         },
       }));
-    const goal = await saveGoal(db, userId, current?.id ?? null, after, true);
+    const goal = await saveGoal(
+      db,
+      userId,
+      current?.id ?? null,
+      after,
+      true,
+      ctx.principal.via === "assistant"
+        ? ctx.principal.assistant_job_id
+        : undefined,
+    );
     return {
       structured: { status: "done" as const, goals: [], goal, checkins: [] },
       markdown: `${isCreate ? "Created" : "Updated"} the goal ${goal.title}.`,

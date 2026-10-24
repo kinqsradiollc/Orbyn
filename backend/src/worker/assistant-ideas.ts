@@ -58,6 +58,7 @@ export async function scanAssistantIdeas(
         WHERE g.kind = 'assistant' AND g.revoked_at IS NULL
           AND ${assistantProviderAdmissionSql("g.user_id", options.ai)}
           AND g.suspended_at IS NULL
+          AND NOT EXISTS(SELECT 1 FROM agent_settings a WHERE a.user_id=g.user_id AND a.background_paused)
           AND ${recentlyActive("g.user_id", "$3")}
           AND EXISTS (
             SELECT 1 FROM generate_series(1, ${SLOTS}) AS slot(n)

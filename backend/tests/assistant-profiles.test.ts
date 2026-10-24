@@ -82,6 +82,47 @@ test("profile runtime availability follows worker heartbeats without inventing a
     "DELETE FROM service_heartbeats WHERE service IN ('assistant-background','assistant-overnight')",
   );
 });
+test("heartbeat comparisons retain PostgreSQL precision at the observation instant", async () => {
+  const user = await person();
+  const db = await pool.connect();
+  try {
+    // Pin the observation and heartbeat to one transaction instant. Ensure its
+    // sub-millisecond part is nonzero so a Date round-trip cannot hide the bug.
+    let precise = false;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await db.query("BEGIN");
+      precise = (
+        await db.query<{ precise: boolean }>(
+          "SELECT current_timestamp > date_trunc('milliseconds',current_timestamp) AS precise",
+        )
+      ).rows[0].precise;
+      if (precise) break;
+      await db.query("ROLLBACK");
+    }
+    assert.ok(
+      precise,
+      "fixture must exercise a sub-millisecond database instant",
+    );
+    await db.query(
+      "DELETE FROM service_heartbeats WHERE service IN ('assistant-background','assistant-overnight')",
+    );
+    await db.query(
+      "INSERT INTO service_heartbeats(service,last_seen_at) VALUES('assistant-background',current_timestamp),('assistant-overnight',current_timestamp + interval '1 second')",
+    );
+    const page = await readAssistantProfiles(db, user.id);
+    assert.deepEqual(
+      page.profiles.map((profile) => profile.runtime.reporting),
+      [true, false],
+      "a heartbeat at the observation instant is fresh; a future heartbeat is not",
+    );
+    assert.ok(
+      page.profiles.every((profile) => profile.last_activity_at === null),
+    );
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
+});
 test("working requires an unexpired lease; recovery is queued and lanes stay separate", async () => {
   const user = await person();
   const background = await job(user.id, "background");

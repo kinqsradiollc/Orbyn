@@ -37,6 +37,7 @@ import {
   visibleRecords,
 } from "../lib/visibility.js";
 import { queueOvernightNotices } from "./overnight-notices.js";
+import { bindConversationWork } from "../modules/assistant-workspace/conversation-delivery.js";
 
 type Candidate = {
   kind: string;
@@ -590,7 +591,7 @@ export async function scanNightShift(
       night_shift: unknown;
     }>(
       `SELECT u.id, u.name, u.role, a.night_shift FROM users u JOIN agent_settings a ON a.user_id = u.id
-     WHERE NOT u.disabled AND a.night_shift->>'enabled' = 'true'
+     WHERE NOT u.disabled AND a.night_shift->>'enabled' = 'true' AND NOT a.overnight_paused
           AND ${assistantProviderAdmissionSql("u.id", options.ai)}
        AND ($1::uuid[] IS NULL OR u.id = ANY($1::uuid[]))
        AND ($2::uuid IS NULL OR u.id > $2::uuid) ORDER BY u.id LIMIT 200`,
@@ -621,14 +622,15 @@ export async function scanNightShift(
           `SELECT 1 FROM users u JOIN agent_settings a ON a.user_id = u.id
         JOIN agent_grants g ON g.user_id = u.id AND g.kind = 'assistant'
         WHERE u.id = $1 AND NOT u.disabled AND a.night_shift->>'enabled' = 'true'
+          AND NOT a.overnight_paused
           AND g.suspended_at IS NULL AND g.revoked_at IS NULL
           AND NOT EXISTS(SELECT 1 FROM presence p WHERE p.user_id = u.id AND p.active AND p.seen_at > $2::timestamptz - interval '15 minutes')
           AND NOT EXISTS(SELECT 1 FROM sessions s WHERE s.user_id = u.id AND s.last_seen_at > $2::timestamptz - interval '15 minutes')`,
           [person.id, now],
         );
         if (!eligible.rowCount) return 0;
-        await db.query(
-          "INSERT INTO assistant_nights(user_id, local_day) VALUES($1, $2::date) ON CONFLICT DO NOTHING",
+        const createdNight = await db.query(
+          "INSERT INTO assistant_nights(user_id, local_day) VALUES($1, $2::date) ON CONFLICT DO NOTHING RETURNING id",
           [person.id, window.localDay],
         );
         const night = (
@@ -643,6 +645,15 @@ export async function scanNightShift(
             [person.id, window.localDay],
           )
         ).rows[0];
+        if (createdNight.rowCount)
+          await bindConversationWork(db, {
+            ownerId: person.id,
+            work: { kind: "night", id: night.id },
+            lane: "overnight",
+            timezone: prefs.timezone,
+            sourcesChecked: true,
+            notBefore: window.end,
+          });
         if (night.status !== "running") return 0;
         const plan: NightPlan = night.summary.candidates
           ? (night.summary as NightPlan)

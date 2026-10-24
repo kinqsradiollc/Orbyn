@@ -94,6 +94,7 @@ export async function userRoutes(app: FastifyInstance) {
   app.get("/me/export", async (r, reply) => {
     const u = await authenticate(r);
     const data = await exportData(pool, u.id);
+    reply.header("cache-control", "private, no-store");
     reply.header(
       "content-disposition",
       `attachment; filename="orbyn-export-${new Date().toISOString().slice(0, 10)}.json"`,

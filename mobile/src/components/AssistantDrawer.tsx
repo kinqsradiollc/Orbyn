@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { AiChatSummary } from "@orbyn/core";
+import { groupAssistantChats, type AiChatSummary } from "@orbyn/core";
 import { Icon, type IconName } from "./Icon";
 import { ActionSheet, type MoreAction } from "./MoreMenu";
 import { ToastHost } from "./Toast";
@@ -40,6 +40,7 @@ export function AssistantDrawer({
   onClose,
   afterClose,
   agentName,
+  primaryConversation,
   chats,
   activeChatId,
   search,
@@ -49,13 +50,13 @@ export function AssistantDrawer({
   onOpenChat,
   onNewChat,
   shortcuts,
-  agents,
   onSettings,
 }: {
   visible: boolean;
   onClose: () => void;
   afterClose?: () => void;
   agentName: string;
+  primaryConversation?: { id: string | null; onOpen: () => void };
   /** null while loading. */
   chats: AiChatSummary[] | null;
   activeChatId: string | null;
@@ -65,7 +66,6 @@ export function AssistantDrawer({
   chatActions: (chat: AiChatSummary) => MoreAction[];
   onOpenChat: (chat: AiChatSummary) => void;
   onNewChat: () => void;
-  agents: { label: string; kind: string; onPress: () => void }[];
   shortcuts: { icon: IconName; label: string; onPress: () => void }[];
   onSettings?: () => void;
 }) {
@@ -139,8 +139,11 @@ export function AssistantDrawer({
     [offset],
   );
 
-  const pinned = chats?.filter((c) => c.pinned) ?? [];
-  const recents = chats?.filter((c) => !c.pinned) ?? [];
+  const {
+    projects,
+    pinned,
+    recent: recents,
+  } = groupAssistantChats(chats ?? [], primaryConversation?.id ?? null);
   const menuChat = chats?.find((chat) => chat.id === menuFor?.id) ?? null;
   const backdrop = offset.interpolate({
     inputRange: [-panel, 0],
@@ -230,7 +233,7 @@ export function AssistantDrawer({
         >
           <View style={s.head}>
             <Text style={s.name} accessibilityRole="header">
-              {agentName}
+              {primaryConversation ? "Chats" : agentName}
             </Text>
             <Pressable
               accessibilityRole="button"
@@ -255,15 +258,34 @@ export function AssistantDrawer({
             <Pressable
               accessibilityRole="button"
               disabled={locked}
-              onPress={onNewChat}
+              onPress={primaryConversation?.onOpen ?? onNewChat}
+              accessibilityLabel={
+                primaryConversation ? `Open ${agentName}` : "New chat"
+              }
+              accessibilityState={{
+                selected:
+                  !!primaryConversation?.id &&
+                  primaryConversation.id === activeChatId,
+                disabled: locked,
+              }}
               style={({ pressed }) => [
                 s.newChat,
+                primaryConversation &&
+                  primaryConversation.id !== activeChatId && {
+                    backgroundColor: "transparent",
+                  },
                 pressed && { backgroundColor: colors.border },
                 locked && { opacity: 0.5 },
               ]}
             >
-              <Icon name="squarePen" size={18} color={colors.text} />
-              <Text style={s.newChatText}>New chat</Text>
+              <Icon
+                name={primaryConversation ? "sparkles" : "squarePen"}
+                size={18}
+                color={colors.text}
+              />
+              <Text style={s.newChatText}>
+                {primaryConversation ? agentName : "New chat"}
+              </Text>
             </Pressable>
           </View>
           {searching && (
@@ -283,34 +305,6 @@ export function AssistantDrawer({
             contentContainerStyle={s.list}
             keyboardShouldPersistTaps="handled"
           >
-            {agents
-              .filter((agent) =>
-                `${agent.label} ${agent.kind}`
-                  .toLowerCase()
-                  .includes(search.trim().toLowerCase()),
-              )
-              .map((agent) => (
-                <Pressable
-                  key={agent.kind}
-                  accessibilityRole="button"
-                  disabled={locked}
-                  accessibilityLabel={`Open ${agent.label}, ${agent.kind} agent`}
-                  onPress={agent.onPress}
-                  style={({ pressed }) => [
-                    s.chat,
-                    pressed && { backgroundColor: colors.surfaceMuted },
-                    locked && { opacity: 0.5 },
-                  ]}
-                >
-                  <Icon name="sparkles" size={18} color={colors.textSoft} />
-                  <View style={s.chatMain}>
-                    <Text style={s.chatTitle}>{agent.label}</Text>
-                    {agent.label !== agent.kind && (
-                      <Text style={s.activeJob}>{agent.kind}</Text>
-                    )}
-                  </View>
-                </Pressable>
-              ))}
             {!searching &&
               shortcuts.map((item) => (
                 <Pressable
@@ -327,6 +321,21 @@ export function AssistantDrawer({
                   <Text style={s.shortcutText}>{item.label}</Text>
                 </Pressable>
               ))}
+            {projects.length > 0 && (
+              <>
+                <Text style={s.section} accessibilityRole="header">
+                  Projects
+                </Text>
+                {projects.map((project) => (
+                  <View key={project.id}>
+                    <Text style={s.section} accessibilityRole="header">
+                      {project.name}
+                    </Text>
+                    {project.chats.map((chat) => row(chat, false))}
+                  </View>
+                ))}
+              </>
+            )}
             {pinned.length > 0 && (
               <>
                 <Text style={s.section} accessibilityRole="header">
@@ -338,7 +347,7 @@ export function AssistantDrawer({
             {recents.length > 0 && (
               <>
                 <Text style={s.section} accessibilityRole="header">
-                  Recents
+                  Recent
                 </Text>
                 {recents.map((chat) => row(chat, false))}
               </>
@@ -351,6 +360,21 @@ export function AssistantDrawer({
             )}
           </ScrollView>
           <View style={s.foot}>
+            {primaryConversation && (
+              <Pressable
+                accessibilityRole="button"
+                disabled={locked}
+                onPress={onNewChat}
+                style={({ pressed }) => [
+                  s.newChat,
+                  pressed && { backgroundColor: colors.border },
+                  locked && { opacity: 0.5 },
+                ]}
+              >
+                <Icon name="squarePen" size={18} color={colors.text} />
+                <Text style={s.newChatText}>New chat</Text>
+              </Pressable>
+            )}
             {onSettings && (
               <Pressable
                 accessibilityRole="button"

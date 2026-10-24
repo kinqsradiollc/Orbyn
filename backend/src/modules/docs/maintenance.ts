@@ -1,4 +1,5 @@
 import { announceDocChange } from "./live.js";
+import { recordScheduleConversation } from "../assistant-workspace/conversation-schedules.js";
 import {
   captureMaintainedPage,
   applyMaintainedPagePatch,
@@ -216,6 +217,13 @@ export async function createMaintainedPageBinding(
       ],
     )
   ).rows[0];
+  await recordScheduleConversation(
+    db,
+    user.id,
+    "page_binding",
+    row.id,
+    principal.assistant_job_id,
+  );
   return publicBinding(row);
 }
 
@@ -348,11 +356,26 @@ export async function updateMaintainedPageBinding(
         [bindingId, control.data.paused],
       )
     ).rows[0];
+    await recordScheduleConversation(
+      db,
+      user.id,
+      "page_binding",
+      row.id,
+      principal.assistant_job_id,
+    );
     await db.query(
       `UPDATE assistant_page_runs SET state='cancelled',lease_token=NULL,lease_expires_at=NULL,
       waiting_id=NULL,proposal=NULL,error_message='The page binding changed.',updated_at=now()
-      WHERE binding_id=$1 AND state IN ('queued','running','waiting')`,
-      [bindingId],
+      WHERE binding_id=$1 AND state IN ('queued','running','waiting')
+        AND (binding_revision<>$2 OR doc_version<>$3)`,
+      [bindingId, existing.revision, doc.version],
+    );
+    // Pausing admission does not change a healthy run's captured source.
+    await db.query(
+      `UPDATE assistant_page_runs SET binding_revision=$3,updated_at=now()
+       WHERE binding_id=$1 AND binding_revision=$2 AND doc_version=$4
+         AND state IN ('queued','running','waiting')`,
+      [bindingId, existing.revision, row.revision, doc.version],
     );
     return publicBinding(row);
   }
@@ -412,6 +435,13 @@ export async function updateMaintainedPageBinding(
       ],
     )
   ).rows[0];
+  await recordScheduleConversation(
+    db,
+    user.id,
+    "page_binding",
+    row.id,
+    principal.assistant_job_id,
+  );
   await db.query(
     `UPDATE assistant_page_runs SET state='cancelled',lease_token=NULL,lease_expires_at=NULL,
       waiting_id=NULL,proposal=NULL,error_message='The page binding changed.',updated_at=now()

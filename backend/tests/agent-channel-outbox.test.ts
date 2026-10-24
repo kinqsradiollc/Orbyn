@@ -667,3 +667,75 @@ test("the sweeper uses declared fixed retention instead of zero and retains fres
   assert.ok(await runSweep());
   assert.equal(await count(), 0);
 });
+
+test("unified night delivery preserves the configured channel without a duplicate app alert", async () => {
+  const f = await fixture("night");
+  const { env } = await import("../src/config/env.js");
+  const { transaction } = await import("../src/db/pool.js");
+  const { openPersonalConversation } =
+    await import("../src/modules/assistant-workspace/conversation-storage.js");
+  const { bindConversationWork } =
+    await import("../src/modules/assistant-workspace/conversation-delivery.js");
+  const { queueOvernightNotices } =
+    await import("../src/worker/overnight-notices.js");
+  const previous = env.ASSISTANT_CONVERSATION_ENABLED;
+  env.ASSISTANT_CONVERSATION_ENABLED = "true";
+  const night = randomUUID(),
+    now = new Date(),
+    end = new Date(Date.now() - 60000);
+  try {
+    await pool.query(
+      "INSERT INTO agent_settings(user_id) VALUES($1) ON CONFLICT DO NOTHING",
+      [f.owner],
+    );
+    await pool.query(
+      "INSERT INTO assistant_nights(id,user_id,local_day,summary) VALUES($1,$2,current_date,$3)",
+      [night, f.owner, { end_at: end.toISOString() }],
+    );
+    await pool.query(
+      "INSERT INTO assistant_night_runs(night_id,job_id,kind,summary) VALUES($1,$2,'handed','Prepared work')",
+      [night, f.job],
+    );
+    await transaction(async (db) => {
+      await openPersonalConversation(db, f.owner);
+      await bindConversationWork(db, {
+        ownerId: f.owner,
+        work: { kind: "night", id: night },
+        lane: "overnight",
+        timezone: "UTC",
+        sourcesChecked: true,
+        notBefore: end,
+      });
+    });
+    await queueOvernightNotices(now, [f.owner]);
+    await queueOvernightNotices(now, [f.owner]);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT 1 FROM agent_channel_outbox WHERE user_id=$1 AND source_kind='night' AND source_id=$2",
+          [f.owner, night],
+        )
+      ).rowCount,
+      1,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT 1 FROM notifications WHERE user_id=$1 AND ref=$2",
+          [f.owner, `overnight:${night}`],
+        )
+      ).rowCount,
+      0,
+    );
+    assert.ok(
+      (
+        await pool.query(
+          "SELECT notified_at FROM assistant_nights WHERE id=$1",
+          [night],
+        )
+      ).rows[0].notified_at,
+    );
+  } finally {
+    env.ASSISTANT_CONVERSATION_ENABLED = previous;
+  }
+});

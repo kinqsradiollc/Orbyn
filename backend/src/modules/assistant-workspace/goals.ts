@@ -1,3 +1,4 @@
+import { recordScheduleConversation } from "./conversation-schedules.js";
 import {
   addDays,
   fail,
@@ -145,6 +146,7 @@ export async function saveGoal(
   id: string | null,
   raw: unknown,
   assistantVisible = false,
+  deliveryJobId?: string,
 ): Promise<Goal> {
   const current = id
     ? (
@@ -225,6 +227,14 @@ export async function saveGoal(
         )
       ).rows[0]?.id;
   if (!savedId) fail(404, "Goal not found.");
+  if (!current || deliveryJobId)
+    await recordScheduleConversation(
+      db,
+      userId,
+      "goal",
+      savedId,
+      deliveryJobId,
+    );
   const saved = await readGoal(db, userId, savedId, assistantVisible);
   if (!saved) fail(404, "Goal not found.");
   return saved;

@@ -226,6 +226,7 @@ export function InboxScreen({
   reviewPending = 0,
   onOpenReview,
   onOpenAgents,
+  onOpenConversation,
   onOpenChat,
   onOpenOvernight,
 }: {
@@ -263,6 +264,11 @@ export function InboxScreen({
    */
   onOpenAgents?: (notice: Notice) => void;
   /** Reopen the saved assistant chat behind a notice. */
+  onOpenConversation?: (
+    notice: Notice,
+    destinationId: string,
+    entryId: string,
+  ) => void;
   onOpenChat?: (notice: Notice, chatId: string) => void;
   onOpenOvernight?: (notice: Notice) => void;
 }) {
@@ -332,46 +338,59 @@ export function InboxScreen({
             !!onOpenAgents;
           const action =
             n.kind === "assistant" &&
-            n.ref?.startsWith("overnight:") &&
-            onOpenOvernight
-              ? { label: "Review Overnight", run: onOpenOvernight }
-              : (n.kind === "assistant" || n.kind === "reminder_nudge") &&
-                  n.ref?.startsWith("chat:") &&
-                  onOpenChat
-                ? {
-                    label: "Open chat",
-                    run: (x: Notice) => onOpenChat(x, x.ref!.split(":")[1]),
-                  }
-                : n.kind === "session" && n.ref && n.item_id && onStartSession
-                  ? { label: "Start", run: onStartSession }
-                  : proposal && onOpenReview
-                    ? {
-                        label: "Review",
-                        run: (x: Notice) => onOpenReview(proposal, x),
-                      }
-                    : n.kind === "conflict" && n.ref
-                      ? { label: "Reschedule", run: onReschedule }
-                      : n.kind === "rollforward"
-                        ? { label: "Roll forward", run: onRollForward }
-                        : n.kind === "at_risk" || n.kind === "deadline"
-                          ? { label: "Plan it", run: onPlanIt }
-                          : n.kind === "rsvp" && n.item_id
-                            ? { label: "Open event", run: onOpenItem }
-                            : n.kind === "template" && n.ref && onOpenTemplate
-                              ? { label: "Review", run: onOpenTemplate }
-                              : n.kind === "project" && n.ref && onOpenProject
-                                ? { label: "Open project", run: onOpenProject }
-                                : docId && onOpenDoc
+            n.ref?.startsWith("conversation:") &&
+            onOpenConversation
+              ? {
+                  label: "Open conversation",
+                  run: (notice: Notice) => {
+                    const [, destinationId, entryId] = notice.ref!.split(":");
+                    onOpenConversation(notice, destinationId, entryId);
+                  },
+                }
+              : n.kind === "assistant" &&
+                  n.ref?.startsWith("overnight:") &&
+                  onOpenOvernight
+                ? { label: "Review Overnight", run: onOpenOvernight }
+                : (n.kind === "assistant" || n.kind === "reminder_nudge") &&
+                    n.ref?.startsWith("chat:") &&
+                    onOpenChat
+                  ? {
+                      label: "Open chat",
+                      run: (x: Notice) => onOpenChat(x, x.ref!.split(":")[1]),
+                    }
+                  : n.kind === "session" && n.ref && n.item_id && onStartSession
+                    ? { label: "Start", run: onStartSession }
+                    : proposal && onOpenReview
+                      ? {
+                          label: "Review",
+                          run: (x: Notice) => onOpenReview(proposal, x),
+                        }
+                      : n.kind === "conflict" && n.ref
+                        ? { label: "Reschedule", run: onReschedule }
+                        : n.kind === "rollforward"
+                          ? { label: "Roll forward", run: onRollForward }
+                          : n.kind === "at_risk" || n.kind === "deadline"
+                            ? { label: "Plan it", run: onPlanIt }
+                            : n.kind === "rsvp" && n.item_id
+                              ? { label: "Open event", run: onOpenItem }
+                              : n.kind === "template" && n.ref && onOpenTemplate
+                                ? { label: "Review", run: onOpenTemplate }
+                                : n.kind === "project" && n.ref && onOpenProject
                                   ? {
-                                      label: "Open page",
-                                      run: (x: Notice) => onOpenDoc(x, docId),
+                                      label: "Open project",
+                                      run: onOpenProject,
                                     }
-                                  : grant && onOpenAgents
+                                  : docId && onOpenDoc
                                     ? {
-                                        label: "Open Connected agents",
-                                        run: onOpenAgents,
+                                        label: "Open page",
+                                        run: (x: Notice) => onOpenDoc(x, docId),
                                       }
-                                    : null;
+                                    : grant && onOpenAgents
+                                      ? {
+                                          label: "Open Connected agents",
+                                          run: onOpenAgents,
+                                        }
+                                      : null;
           return (
             <View key={n.id} style={[i > 0 && s.divider]}>
               <Pressable

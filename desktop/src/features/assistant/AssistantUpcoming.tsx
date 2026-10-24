@@ -27,6 +27,7 @@ import {
 import { DateField } from "../../components/DateField";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
+import { AssistantControls } from "./AssistantControls";
 import { Popover } from "../../components/Popover";
 import { SettingsEditor } from "../settings/SettingsEditor";
 import { session } from "../../lib/session";
@@ -71,11 +72,13 @@ function UpcomingBody({
   agentName,
   onClose,
   modal = false,
+  conversationEnabled = false,
 }: {
   id?: string;
   agentName: string;
   onClose: () => void;
   modal?: boolean;
+  conversationEnabled?: boolean;
 }) {
   const { ask } = useConfirm();
   const owner = session.get();
@@ -614,6 +617,7 @@ function UpcomingBody({
         </button>
       </div>
       <div className="ai-upcoming-body">
+        <AssistantControls deliveryEnabled={conversationEnabled} />
         <p className="muted ai-upcoming-lead">
           {agentName} · {timezone}
         </p>

@@ -23,6 +23,7 @@ import { assistantGoalRoutes } from "./modules/assistant-workspace/goals.js";
 import { assistantRoutineRoutes } from "./modules/assistant-workspace/routines.js";
 import { overnightRoutes } from "./modules/assistant-workspace/overnight.js";
 import { assistantActivityRoutes } from "./modules/assistant-workspace/activity.js";
+import { assistantConversationRoutes } from "./modules/assistant-workspace/conversation-routes.js";
 import { assistantProfileRoutes } from "./modules/assistant-workspace/profiles.js";
 import { assistantBudgetRoutes } from "./modules/assistant-workspace/budgets.js";
 import { assistantHandoffRoutes } from "./modules/assistant-workspace/handoffs.js";
@@ -132,6 +133,7 @@ export const serviceModules: Record<
     assistantRoutineRoutes,
     overnightRoutes,
     assistantActivityRoutes,
+    assistantConversationRoutes,
     assistantProfileRoutes,
     assistantBudgetRoutes,
     assistantHandoffRoutes,
