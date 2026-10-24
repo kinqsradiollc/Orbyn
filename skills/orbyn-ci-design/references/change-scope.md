@@ -54,6 +54,12 @@ mixed, unknown and missing-base cases, plus classifier failure and every selecte
 job's failed/cancelled/skipped result. Run the real proposed workflow as well;
 fixture decisions do not establish hosted execution or branch protection.
 
+A path classifier cannot prove that an edit inside runtime code is only an inert
+comment. Keep that file on its conservative lane until a separately reviewed
+semantic mechanism exists; do not trust a PR label or the author's line count as
+a substitute. The local policy can still avoid unnecessary experiments for a
+reviewed cosmetic edit without pretending hosted checks were executed.
+
 ## Keep CD separate
 
 A documentation/skill-only success must not automatically redeploy the product.

@@ -22,8 +22,8 @@
     "skills/orbyn-backend-design/examples/retry-safe-effect.md": "302b46bb873e5c8a056cfb37d3ab5fe09ffd34c71197bdd962aa5ecb49427b07",
     "skills/orbyn-ci-design/LICENSE": "b960a8c01d83aa48ed709780a5c9940f8e2861f2fdcdc8f931fbe3ece90a5e04",
     "skills/orbyn-ci-design/SKILL.md": "e6bdac2070c32623c17f437d770e0c75a2bb12bcd3eb7273469232d45edae7cf",
-    "skills/orbyn-ci-design/references/change-scope.md": "a479756da8e7fac9505813ceae90df5e2585c14492b0edf527aef042fa184041",
-    "skills/orbyn-ci-design/scripts/ci_scope.py": "21c7ba1fe7e5f653813fbb0a6ebaf413b67e5d25440c6492e15bec6aa3243c20",
+    "skills/orbyn-ci-design/references/change-scope.md": "8978f16b381f4f36fb1d3f564f29a74ccf103da5f33b65014bba2fb77be44432",
+    "skills/orbyn-ci-design/scripts/ci_scope.py": "7384bbc3edadb1d5a2164b225b5aa18d514a500a07dc97bb03ad7e62340af64e",
     "skills/orbyn-content-design/LICENSE": "b960a8c01d83aa48ed709780a5c9940f8e2861f2fdcdc8f931fbe3ece90a5e04",
     "skills/orbyn-content-design/SKILL.md": "0046053d7eafec40f7479df8ddc458392665e7005e3311482bea70a59aa1000a",
     "skills/orbyn-data-migration/LICENSE": "b960a8c01d83aa48ed709780a5c9940f8e2861f2fdcdc8f931fbe3ece90a5e04",
@@ -187,6 +187,6 @@
     "skills/why/SKILL.md": "cd76384cfcb68f5927979c73adb30de657af9e96424816733dde43585ee43a10"
   },
   "repository": "https://github.com/kinqsradio/orbyn-fullstack-skills",
-  "revision": "bbb9ce3a0036da5b66a938e28579130ecb8c91ee",
+  "revision": "93ebcb6e183d7ebb9587d40a0aa27696492d017a",
   "schema_version": 1
 }

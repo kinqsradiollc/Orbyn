@@ -55,7 +55,9 @@ def classify(paths, policy, complete=True):
             kinds.append('full')
         elif matches(path, policy, 'skills'):
             kinds.append('skills')
-        elif matches(path, policy, 'docs') and PurePosixPath(path).suffix.lower() in {'.md', '.rst', '.txt'}:
+        elif (path in policy['docs_files'] or
+              (any(path.startswith(p) for p in policy['docs_prefixes'])
+               and PurePosixPath(path).suffix.lower() in {'.md', '.rst', '.txt'})):
             kinds.append('docs')
         else:
             kinds.append('full')
