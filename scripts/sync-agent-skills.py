@@ -2,6 +2,7 @@
 """Maintain Orbyn's skill index and per-host links; default is a read-only check."""
 import argparse
 import json
+import runpy
 from pathlib import Path
 import sys
 
@@ -26,20 +27,23 @@ for entry in entries:
             errors.append(f"Unknown related skill: {entry['name']} -> {dependency}")
     if entry['category'] not in catalog['categories']:
         errors.append(f"Unknown category: {entry['category']}")
-# Preflight every path before writing. Never replace noncanonical links or files.
-for host in ['.agents', '.claude']:
-    base = ROOT / host / 'skills'
-    if base.exists():
-        for link in base.iterdir():
-            if link.name not in actual:
-                errors.append(f'Stale/unmanaged discovery entry: {link.relative_to(ROOT)}')
-    for name in sorted(actual):
-        link = base / name
-        if link.exists() or link.is_symlink():
-            if not link.is_symlink() or link.resolve() != (ROOT / 'skills' / name).resolve():
-                errors.append(f'Refusing to replace discovery path: {link.relative_to(ROOT)}')
-        elif not args.write:
-            errors.append(f'Missing discovery link: {link.relative_to(ROOT)}')
+# Shared catalog and consumer-owned skills have separate sources and one host namespace.
+project_tools = runpy.run_path(str(ROOT / 'skills/orbyn-setup/scripts/project_skills.py'))
+local = {}
+pending = []
+try:
+    local = project_tools['inventory'](ROOT, actual)
+    sources = {name: ROOT / 'skills' / name for name in actual}
+    sources.update(local)
+    pending = project_tools['plan_links'](ROOT, sources, ['.agents', '.claude'], not args.write)
+    for host in ['.agents', '.claude']:
+        base = ROOT / host / 'skills'
+        if base.exists():
+            for link in base.iterdir():
+                if link.name not in sources:
+                    errors.append(f'Unmanaged discovery entry; classify ownership before moving: {link.relative_to(ROOT)}')
+except (OSError, ValueError) as error:
+    errors.append(str(error))
 if errors:
     print('\n'.join(errors), file=sys.stderr)
     sys.exit(1)
@@ -51,7 +55,11 @@ Start with [orbyn-workflow](orbyn-workflow/SKILL.md) and the
 [orbyn-plan](orbyn-plan/SKILL.md) for planning and
 [orbyn-setup](orbyn-setup/SKILL.md) for host configuration.
 
-Canonical folders are linked into Codex and Claude Code. Load only the relevant
+Shared folders are linked into Codex and Claude Code. Consumer-owned skills live
+separately under `project-skills/<company-or-repo>/<namespaced-skill>/`; follow the
+[ownership guide](orbyn-setup/references/project-skills.md). They are discovered
+by both hosts but excluded from this shared catalog and public sync.
+Load only the relevant
 skill body and references. Roles, stack boundaries and model/session policy live
 in `docs/agents/`. This index is generated from `catalog.json` and frontmatter by
 `python3 scripts/sync-agent-skills.py --write`.
@@ -78,17 +86,11 @@ Old standalone skill files have been retired; use the canonical folders above.
 '''
 index = ROOT / 'skills/README.md'
 if args.write:
-    for host in ['.agents', '.claude']:
-        base = ROOT / host / 'skills'
-        base.mkdir(parents=True, exist_ok=True)
-        for name in sorted(actual):
-            link = base / name
-            if not link.is_symlink():
-                link.symlink_to('../../skills/' + name)
+    project_tools['write_links'](pending)
     index.write_text(text)
-    print(f'Updated index and discovery links for {len(actual)} skills.')
+    print(f'Updated shared index and discovery links: {len(actual)} shared, {len(local)} project skills.')
 else:
     if not index.exists() or index.read_text() != text:
         print('Skill index is stale; run sync-agent-skills.py --write', file=sys.stderr)
         sys.exit(1)
-    print(f'OK: catalog, related-skill targets, index and both hosts match {len(actual)} skills.')
+    print(f'OK: shared catalog/index and both hosts match {len(actual)} shared + {len(local)} project skills.')

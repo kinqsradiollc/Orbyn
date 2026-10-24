@@ -10,6 +10,25 @@ Read [AGENTS.md](../../AGENTS.md), [skill system](../../docs/agents/skill-system
 Inspect nearby skills before editing. Prefer improving the existing owner over
 creating a second skill that attracts the same requests.
 
+Route from the user’s natural-language request. Complete authorized ownership,
+authoring, migration, registration and validation steps without asking the user
+to invoke separate skills. Helper flags are an execution contract for the agent;
+they are not mandatory manual homework for the user.
+
+## Choose the owner before authoring
+
+Classify the request using the [company/repository skill boundary](../orbyn-setup/references/project-skills.md).
+Consumer conventions and local adaptations belong in that consuming checkout's
+`project-skills/<company-or-repo>/<namespaced-skill>/`, with discovery links for
+both hosts. Inspect existing local skills, preserve credits/assets and repair
+references when migrating them within authorized scope. Keep these skills out of
+the shared catalog, public manifest and upstream lock. A library improvement must
+be explicitly in public contribution scope; never infer permission from generic
+wording or copy company material into the shared skill tree.
+
+The shared authoring steps below apply to library-owned skills. For local skills,
+use the ownership guide's registration/check path and the consumer's policy.
+
 ## Define a useful contract
 
 Write the trigger, expected input, result and boundaries. Identify the applicable
@@ -22,6 +41,12 @@ in linked references. Do not duplicate model/session/permission policy in every
 skill. Name Orbyn-specific entrypoints `orbyn-*`; descriptive generic principles
 can retain meaningful names. Keep third-party attribution in source/provenance
 records, never as an inherited active agent identity.
+
+Keep essential instructions and required references usable from disk under the
+[offline contract](../orbyn-setup/references/offline.md). Bundle licensed, pinned
+source text when it is needed; keep attribution/update URLs and source hashes.
+For sources without redistribution permission, author the needed explanation
+independently and label the remaining evidence limits.
 
 ## Author and integrate
 

@@ -24,4 +24,10 @@ for guarded database and package prerequisites.
 
 ## Regression evidence across layers
 
+Test observable contracts at real effect/adaptor boundaries. Keep mocks focused
+on unavailable effects rather than private helper choreography. Build and verify
+one failing contract at a time, then extend from observed behavior; do not write
+a speculative batch before confirming that the first signal catches the defect.
+An internal reorganization should preserve useful behavior tests.
+
 For a stale update, place the regression at the API/version boundary and assert that the rejected write preserves the original record. A snapshot of the error string alone does not prove the invariant. Add a UI check only when the changed user flow needs separate evidence and that check is authorized.

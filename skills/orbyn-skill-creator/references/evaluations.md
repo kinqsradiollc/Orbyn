@@ -96,6 +96,14 @@ and [skill discovery guide](https://developers.openai.com/codex/skills). Isolate
 global skills and previous context using supported per-run controls. Host behavior
 and available flags vary by version; this evaluator does not launch a host for you.
 
+## Suite evolution
+
+When adding development cases, keep existing holdout criteria unchanged and record
+the new suite hash. Prior reports remain tied to their recorded revision and suite
+bytes; grade or reproduce them from that revision rather than rewriting their
+results against an expanded suite. New cases require fresh observations before
+claiming coverage or comparing scores.
+
 ## CI and contributions
 
 Ordinary PR CI runs static case validation and fixture tests without model calls or

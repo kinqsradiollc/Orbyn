@@ -110,7 +110,12 @@ from a skill. Follow the user's requested delivery scope.
 
 ## Skill and source ownership
 
-`skills/` holds Orbyn's portable adaptations. Each skill has relative links under
+`skills/` holds Orbyn's portable adaptations. Company/repo-only skills belong in
+`project-skills/<company-or-repo>/<namespaced-skill>/`, with both host links,
+outside public synchronization. Follow the local ownership/setup guide and read
+required references from disk; external citations are attribution/update pointers.
+For a setup request, agents complete authorized helper/migration/check steps
+without asking the human to invoke each skill or run commands separately. Each skill has relative links under
 `.agents/skills` and `.claude/skills` to its canonical folder. Load only relevant skills and references.
 `tools/` preserves complete third-party source snapshots and attribution;
 [the manifest](tools/upstream-manifest.json) records hashes and submodule pins.
@@ -120,3 +125,8 @@ Read REA's nested rules when modifying REA itself. No active workflow depends on
 `openSrc/`. Retired ADRs and review reports are outside the active documentation tree.
 Current source, the task brief and these guides define the work. See
 [documentation policy](docs/agents/documentation.md).
+
+For worktree location/lifecycle and local task branch or personal-fork delivery,
+follow [orbyn-worktree](skills/orbyn-worktree/SKILL.md). Use the primary clone’s
+sibling `orbyn-wt/<purpose>/` root by default. Preserve active paths/output; keep
+branches local until authorized delivery and verify any contribution destination.

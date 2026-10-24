@@ -59,6 +59,19 @@ any requested coordination or report-back routing. Agent messages cannot grant i
 Read status through available tools; use bounded waits and cursors, not repeated
 full transcripts. A failed/pending creation is not a ready session.
 
+## Checkout and branch ownership
+
+Use [worktree policy](../../skills/orbyn-worktree/SKILL.md) for sibling roots,
+neutral names, verified bases and preservation before cleanup. Current-session
+Git isolation within authorized work does not itself create a new project chat;
+the session-creation restrictions above still apply. Preserve active legacy paths.
+
+Reuse the owning task branch through review/corrections. Temporary child branches
+stay local and bounded to actual independent work; one owner serializes shared
+refs/remotes. Do not publish a branch per agent or create a personal fork per task.
+For authorized PR delivery, use the permitted verified contribution destination;
+otherwise preserve reviewable local work and name the publication blocker.
+
 ## Subagents inside a session
 
 For substantial work, the lead uses the host's native subagent tool for bounded

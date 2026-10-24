@@ -18,7 +18,7 @@ routes complex work to the standard tier and bounded work to the light tier in
 | Unknown current behavior           | `how`                                      | Owning files → mechanism and evidence                                                               |
 | Historical reason                  | `why`                                      | Relevant Git/source history → constraints, with uncertainty                                         |
 | External/version uncertainty       | `orbyn-research`                           | Specific question → cited finding for the planner/designer                                          |
-| Interface/ownership decision       | `architect`                                | Grounded requirements → chosen contracts and lifecycle                                              |
+| Interface/ownership/module layout  | `architect`                                | Grounded requirements → contracts, lifecycle and allowed module dependencies                        |
 | API/service effects                | `orbyn-backend-design`                     | Caller contract + authority → transactional effect and client errors                                |
 | Stored-data/schema transition      | `orbyn-data-migration`                     | Reader/writer inventory → compatible cutover and recovery                                           |
 | CI and contribution automation     | `orbyn-ci-design`                          | Event/trust model → scoped checks and reviewable promotion                                          |
@@ -103,3 +103,20 @@ it must not add another competing policy document for the same concern.
   and identify the missing export step; HTML generation is not PDF/PNG evidence.
 
 These examples are routing expectations, not claims of executed model trials.
+
+## Consumer-owned skills and offline setup
+
+A setup request selects [orbyn-setup](../../skills/orbyn-setup/SKILL.md); agents
+complete authorized discovery, classification, migration, registration and checks
+without asking the human to invoke each skill or command. Keep company-only
+skills in `project-skills/`, outside public sync; follow the
+[ownership guide](../../skills/orbyn-setup/references/project-skills.md).
+Use [offline guidance](../../skills/orbyn-setup/references/offline.md) and the
+existing owning skills from disk. Module contracts, delivery slices, diagnosis,
+TDD and review guidance are integrated directly into those owners. Explicit portable audits use
+[orbyn-security-audit](../../skills/orbyn-security-audit/SKILL.md); skill authoring
+and installation never start an application or hosted security scan.
+
+[orbyn-worktree](../../skills/orbyn-worktree/SKILL.md) owns primary-clone sibling
+paths, naming, branch/fork publication, reuse and cleanup. The main workflow
+selects it from isolation needs; the human need not invoke it separately.

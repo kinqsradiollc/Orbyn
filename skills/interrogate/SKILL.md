@@ -26,3 +26,8 @@ changes during a review-only task. Return a supported verdict and its limitation
 ## Review the failure that matters
 
 For an approval change, ask whether a revoked user or stale client can still apply it and whether a retry duplicates the effect. Return a concrete reproducing state and affected owner. Missing native evidence is an evidence gap; it is not automatically a source-code defect.
+
+When challenging a module refactor, inspect what callers must know, which
+complexity is hidden, whether the seam reflects actual variation, and whether
+behavior checks survive the internal reorganization. Identify a concrete caller
+or failure scenario; a preferred vocabulary or file count is not a finding.

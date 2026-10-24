@@ -65,3 +65,9 @@ untested/blocked requirements, and actual local/committed/pushed/merged/deployed
 state. Keep durable task records under `docs/work/` only when needed, following
 [documentation policy](documentation.md). Never claim
 completion while a required part of the agreed scope remains unresolved.
+
+Worktree cleanup and company/personal contribution destinations follow
+[worktree ownership](../../skills/orbyn-worktree/SKILL.md). Local branch creation
+does not authorize a remote push; verify account, visibility, company policy and
+upstream relationship before publishing. Reuse a permitted contribution fork and
+task branch; preserve commits, configuration and ignored output before cleanup.

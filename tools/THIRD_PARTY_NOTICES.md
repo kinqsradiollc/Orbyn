@@ -26,3 +26,17 @@ REA files, their hashes, executable bits and gitlink pins. Local adaptations are
 separate from those immutable snapshots. No upstream repository history, installed
 dependencies, generated outputs or local caches are included. Follow
 [tooling](../docs/agents/tooling.md) to update or use the source deliberately.
+
+
+## Portable reference and record support files
+
+Pinned offline social references retain their original licenses and source
+metadata in the [writing record](../skills/social-content/references/source-record.md)
+and [preview record](../skills/social-preview/references/source-record.md).
+The audit record schema, validators and synthetic fixtures retain their
+[MIT license](../skills/orbyn-security-audit/references/upstream/audit-records/LICENSE)
+and [pinned source metadata](../skills/orbyn-security-audit/references/upstream/audit-records/snapshot.json).
+Active Orbyn guidance is maintained separately. No duplicate engineering skill
+collection or upstream audit workflow text is installed. Existing complete tooling
+snapshots above are unchanged. `openSrc/` is ignored local research material and
+must not be committed or used by active workflows/CI.

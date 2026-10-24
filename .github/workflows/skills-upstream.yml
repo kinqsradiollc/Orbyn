@@ -26,6 +26,10 @@ jobs:
         run: |
           python3 skills/orbyn-setup/scripts/project_context.py check --project .
           python3 skills/orbyn-skill-creator/scripts/evaluate.py validate
+      - name: Validate company skills and offline sources
+        run: |
+          python3 skills/orbyn-setup/scripts/project_skills.py check --project .
+          python3 skills/orbyn-skill-creator/scripts/check_sources.py
       - name: Read the locked public revision
         id: pin
         run: |

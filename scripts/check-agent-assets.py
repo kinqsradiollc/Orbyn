@@ -6,12 +6,15 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import subprocess
 import sys
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 errors = []
+if subprocess.check_output(['git', 'ls-files', '--', 'openSrc/'], cwd=ROOT, text=True).strip():
+    errors.append('openSrc is local research material and must not be tracked')
 
 def check(ok, message):
     if not ok:
@@ -59,6 +62,12 @@ for source in manifest['imports']:
         check(modules.get(section, 'url', fallback='') == module['repository'], f'Wrong module URL: {path}')
         pins += 1
 
+snapshot_tools = runpy.run_path(str(ROOT/'skills/orbyn-skill-creator/scripts/check_sources.py'))
+snapshots = snapshot_tools['check'](ROOT)
+project_tools = runpy.run_path(str(ROOT/'skills/orbyn-setup/scripts/project_skills.py'))
+local_skills = project_tools['inventory'](ROOT)
+project_tools['plan_links'](ROOT, local_skills, ['.agents', '.claude'], True)
+
 skills = sorted((ROOT / 'skills').glob('*/SKILL.md'))
 for skill in skills:
     name = skill.parent.name
@@ -79,7 +88,7 @@ for group, directory in [('engineering', 'tools/pstack/skills'), ('rea', 'tools/
         check((ROOT / 'skills' / local_name / 'SKILL.md').exists(), f'Missing skill: {local_name}')
 for host in ['.agents', '.claude']:
     discovered = {p.name for p in (ROOT / host / 'skills').iterdir()}
-    check(discovered == {p.parent.name for p in skills}, f'Stale/extra discovery entries: {host}')
+    check(discovered == ({p.parent.name for p in skills} | set(local_skills)), f'Stale/extra discovery entries: {host}')
 
 # Check authored Markdown links only, not historical upstream references.
 docs = [ROOT / p for p in ['AGENTS.md', 'AGENT.md', 'CLAUDE.md', 'README.md',
@@ -88,6 +97,8 @@ docs += list((ROOT / 'docs').rglob('*.md'))
 docs += list((ROOT / 'tools/research').glob('*.md'))
 docs += list((ROOT / 'skills').rglob('*.md'))
 for doc in docs:
+    if doc in snapshots:
+        continue  # Immutable upstream references are checked by source hashes.
     body = re.sub(r'```.*?```', '', doc.read_text(), flags=re.S)
     for target in re.findall(r'\[[^\]]*\]\(([^)]+)\)', body):
         target = target.split('#', 1)[0].strip('<>')
@@ -105,6 +116,8 @@ active += list((ROOT / 'skills').rglob('*.md'))
 active += [p for p in (ROOT / 'docs/agents').glob('*.md') if p.name != 'tooling.md']
 active += list((ROOT / '.codex').rglob('*.toml')) + list((ROOT / '.claude/agents').glob('*.md'))
 for path in active:
+    if path in snapshots:
+        continue  # Source credits/identities are data, not active agent roles.
     check(not re.search(r'poteto|pstack', path.read_text(), re.I), f'Inherited active branding: {relative(path)}')
 
 model_check = subprocess.run([sys.executable, str(ROOT / 'scripts/sync-agent-models.py'), '--check'], cwd=ROOT, capture_output=True, text=True)

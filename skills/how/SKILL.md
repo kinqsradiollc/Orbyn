@@ -29,3 +29,9 @@ unknowns. Avoid annotated dumps and unsupported historical explanations.
 ## Trace a request through its effect
 
 A useful source explanation can follow a screen action → client method → API handler → authorization → transaction → response → rendered state. Stop at the relevant boundary and return those anchors. For an asynchronous path, identify who persists the work and who owns its terminal result.
+
+For a difficult bug, seek the smallest authorized repeatable signal for the
+user's exact symptom. Pin material inputs, source and timing where practical;
+vary one consequential factor and retain failed attempts. Separate observations
+from hypotheses. If runtime access is unavailable, continue bounded source
+tracing and name the missing check without claiming a reproduction.
