@@ -4,6 +4,8 @@ Plan your day. Keep work moving.
 
 Orbyn brings tasks, calendars, projects, documents and an AI assistant into one
 workspace, with a web app, an Electron desktop client and an Expo mobile app.
+It is developed in public by **Anh Dang**, a University of Melbourne student.
+See [creator and contact](#creator-and-contact) and [contributing](#contributing).
 
 ## What you can do
 
@@ -113,17 +115,43 @@ Run each process in its own terminal. Import conversion and the private PDF/LaTe
 renderers also need their services; the full Compose stack supplies them.
 For mobile, see [docs/mobile.md](docs/mobile.md).
 
-## Development workflow
+## Contributing
 
-[AGENTS.md](AGENTS.md) is the shared repository policy for Codex and Claude Code.
-Use [orbyn-workflow](skills/orbyn-workflow/SKILL.md) for substantial engineering
-work and [Orbyn roles](docs/agents/roles.md) for scoped assignments. The lead
-delegates substantial execution, reviews the actual artifacts and performs
-authorized verification. Host model/effort settings come from the shared
-[registry](docs/agents/models.json) under [model policy](docs/agents/model-policy.md).
-Native children and explicitly requested project chats follow
-[coordination](docs/agents/coordination.md); new branches follow
-[branch naming](docs/agents/development.md#branch-naming).
+Start with the [setup guide](docs/setup.md) and the shared [repository policy](AGENTS.md).
+Use Orbyn's maintained repository skillset when maintaining this application:
+[orbyn-workflow](skills/orbyn-workflow/SKILL.md) routes substantial engineering
+work, with [roles](docs/agents/roles.md), [coordination](docs/agents/coordination.md)
+and [development guidance](docs/agents/development.md) defining ownership and delivery.
+Downloaded upstream references and global skill collections do not replace this
+repository's active policy. Preserve unrelated local work and follow the current
+verification scope before preparing a contribution.
+
+The separate [Orbyn Fullstack Engineering Skills](https://github.com/kinqsradio/orbyn-fullstack-skills)
+library is portable and can be used in other projects. This application consumes
+a reviewed revision; [upstream synchronization](docs/agents/skill-upstream.md)
+explains how shared changes are contributed and pinned. Product-specific policy
+and configuration remain owned here.
+
+Host model/effort settings come from the shared [registry](docs/agents/models.json)
+under [model policy](docs/agents/model-policy.md). Follow the applicable
+[branch and worktree guidance](docs/agents/development.md#branch-naming) and keep
+contributions scoped to the requested change.
+
+## License status
+
+The repository is public and does not yet include an application-level license. License and attribution files under `skills/` and `tools/` cover their
+respective components; the public skills library's license does not define the
+application's terms. This section will be updated with the selected product license.
+
+## Creator and contact
+
+Orbyn is created by **Anh Dang**, a **University of Melbourne student**.
+
+- [LinkedIn — Anh Dang](https://www.linkedin.com/in/tran-duc-anh-dang-392b7a231/)
+- Personal: [anhdang.contact@gmail.com](mailto:anhdang.contact@gmail.com)
+- Orbyn: [anhdang@orbyn.dev](mailto:anhdang@orbyn.dev)
+
+Follow the project or get in touch about Orbyn, its engineering or collaboration.
 
 ## Documentation
 

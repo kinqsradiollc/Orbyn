@@ -27,10 +27,19 @@ this change does not update their pins, policy, host settings or imported assets
   replacing contradictory earlier-stage claims that the endpoint is absent.
   Actual host/provider/native qualification remains separate.
 
+## Public project and creator follow-up
+
+The human authorized publishing Anh Dang's University of Melbourne student
+identity, LinkedIn profile and personal/Orbyn email addresses in the product
+README. Contribution guidance distinguishes Orbyn's canonical maintained
+repository skillset from the portable public fullstack library. No root product
+license was present in source and GitHub reported no detected license; application
+license selection is pending the human's decision. Component notices are preserved.
+
 ## Document checks
 
 - Relative Markdown path/anchor check across README, `docs/**/*.md` and deployment
-  README files: 43 files, 260 links including this receipt, zero unresolved links.
+  README files: 43 files, 268 links including this receipt, zero unresolved links.
   Application route examples are treated as application links, not local files.
 - Scoped Prettier and `git diff --check` passed. Workspace scripts, service names,
   conversation routes and schema bounds were compared with their owning source.
