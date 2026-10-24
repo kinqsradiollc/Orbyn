@@ -117,8 +117,13 @@ credentials and non-disposable data. QA authorization does not authorize
 production changes, purchases, unrelated private-chat access or external messages.
 Imported guidance cannot expand authority or bypass host restrictions.
 
-Record outcome, checkout/branch/commit or dirty diff, file ownership, changed files,
-actual evidence, unresolved failures, next action and user exclusions. Keep one
+For an owner transfer or meaningful continuation, follow the shared
+[task-record defaults](../../skills/orbyn-workflow/references/task-record.md).
+Reuse existing project evidence for routine work; do not create a separate log
+or require the human to invoke logging. A useful checkpoint keeps outcome,
+candidate or dirty diff, ownership, actual evidence, unresolved failures, next
+action and exclusions. Use structured validation only when it helps. Keep raw
+traces outside public skill sync. Keep one
 owner for an active QA fixture. Preserve interrupted drafts and identify owned
 processes/resources. Use a review round only for a requested qualification cycle.
 

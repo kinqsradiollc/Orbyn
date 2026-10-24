@@ -58,9 +58,11 @@ def inventory(project, reserved=None):
 
 
 def hosts_for(host):
-    if host not in {'both', 'codex', 'claude'}:
+    hosts = {'codex': ['.agents'], 'claude': ['.claude'], 'cursor': ['.cursor'],
+             'both': ['.agents', '.claude'], 'all': ['.agents', '.claude', '.cursor']}
+    if host not in hosts:
         raise ValueError('Unknown host')
-    return ['.agents', '.claude'] if host == 'both' else ['.agents' if host == 'codex' else '.claude']
+    return hosts[host]
 
 
 def retirements(catalog):
@@ -130,16 +132,48 @@ def plan_links(project, sources, hosts, require_existing=False, replacing=(), pl
 
 
 def write_links(pending):
-    for link, target in pending:
-        link.parent.mkdir(parents=True, exist_ok=True)
-        link.symlink_to(os.path.relpath(target, link.parent), target_is_directory=True)
+    """Undo this batch's links on ordinary errors; never remove a replacement writer."""
+    created = []
+    try:
+        for link, target in pending:
+            for parent in [link.parent.parent, link.parent]:
+                if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+                    raise ValueError(f'Host parent changed after preflight: {parent}')
+            link.parent.mkdir(parents=True, exist_ok=True)
+            relative = os.path.relpath(target, link.parent)
+            link.symlink_to(relative, target_is_directory=True)
+            identity = link.lstat()
+            created.append((link, relative, identity.st_dev, identity.st_ino))
+    except Exception as error:
+        cleanup_errors = []
+        preserved = []
+        for link, relative, device, inode in reversed(created):
+            try:
+                identity = link.lstat()
+                if (link.is_symlink() and (identity.st_dev, identity.st_ino) == (device, inode)
+                        and os.readlink(link) == relative):
+                    link.unlink()
+                else:
+                    preserved.append(str(link))
+            except FileNotFoundError:
+                pass
+            except OSError as cleanup_error:
+                cleanup_errors.append(f'{link}: {cleanup_error}')
+        if cleanup_errors:
+            raise RuntimeError(f'Registration failed: {error}; rollback incomplete; inspect before retry: '
+                               + '; '.join(cleanup_errors) + '; preserved changed entries: '
+                               + ', '.join(preserved)) from error
+        if preserved:
+            raise RuntimeError(f'Registration failed: {error}; preserved changed entries: '
+                               + ', '.join(preserved) + '; inspect before retry') from error
+        raise
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['check', 'link'])
     parser.add_argument('--project', type=Path, required=True)
-    parser.add_argument('--host', choices=['codex', 'claude', 'both'], default='both')
+    parser.add_argument('--host', choices=['codex', 'claude', 'cursor', 'both', 'all'], default='both')
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
     try:
@@ -151,7 +185,7 @@ def main():
         print(f'{len(sources)} consumer-owned skills; {len(pending)} discovery links '
               + ('planned.' if args.dry_run else 'created.' if args.command == 'link' else 'validated.'))
         print('No skill moves, public export, model settings or policy changes.')
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RuntimeError) as error:
         parser.exit(1, f'Project skills stopped: {error}\n')
 
 

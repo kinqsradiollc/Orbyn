@@ -1,6 +1,6 @@
 ---
 name: orbyn-setup
-description: "Set up Orbyn skills in an existing project, migrate company-owned skills and configure requested host roles/models for Codex or Claude Code."
+description: "Set up Orbyn skills in an existing project for Codex, Claude Code or Cursor; preserve target guidance and migrate explicitly owned company skills. Model/role configuration requires separate scope and host support."
 ---
 
 # Orbyn agent setup
@@ -53,6 +53,12 @@ independent setup. Do not silently guess ownership of a foreign installation.
 
 ## Consumer-aware setup
 
+For targets inside a library-root `repo/`, follow the
+[workspace contract](references/repository-workspaces.md). Resolve the target's
+Git root and preserve upstream-owned instructions and skills in place. Local
+contribution assistance differs from proposing adoption of this library. Setup,
+local migration and model changes retain their separate scope.
+
 Read the consuming project’s host definitions before applying the reference registry. The library may be installed without its model presets; installing skills does not authorize replacing the user’s preferred model. If the named tier or required processing mode is unavailable, report it and use only the permitted direct fallback.
 
 Use [worktree policy](../orbyn-worktree/SKILL.md) when configuring repository
@@ -93,6 +99,21 @@ Use the [preset catalog](assets/presets.json) with the library installer. New
 installations default to `core`; `--all` is explicit. Presets are additive skill
 selections, separate from model presets. Inspect with `--list-presets` and preview
 with `--dry-run`; never remove an existing selection as a side effect.
+
+Choose the actual host: `--host cursor` creates project `.cursor/skills` links;
+`--host both` retains Codex/Claude behavior; `--host all` explicitly registers all
+three. Cursor can also discover existing `.agents/skills` links, so do not add
+duplicate links merely to claim support. Inventory all host discovery paths for
+same-name target skills before setup; never assume which copy wins. Preserve
+Cursor rules/settings and require `--host all` to reconcile selected Cursor copies
+during a migration. These are skill paths, not portable model/role settings.
+
+For an installation failure, report the original error, changes still owned by
+the attempt, preserved concurrent replacements, cleanup failures and any backup
+receipt. State the recovery boundary explicitly: ordinary exception rollback
+does not provide crash or power-loss atomicity. Process interruption, a failed
+cleanup or another writer requires inspecting actual paths before retrying.
+Preserving a replacement is correct recovery behavior, not a successful install.
 
 Use the [project-context guide](references/project-context.md) to create or check
 `.agents/orbyn-context.json` in the **consuming checkout**, when setup is requested.

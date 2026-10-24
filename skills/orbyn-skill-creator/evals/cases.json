@@ -1699,6 +1699,219 @@
         "preservation": "Keep old owned links until replacements are successfully created. Preserve foreign entries and content; retain any successful replacement links for an idempotent retry.",
         "limits": "Describe a preflighted, retryable registration rather than an atomic filesystem transaction. Diagnose the write failure before retry; do not delete sources or overwrite conflicting company entries."
       }
+    },
+    {
+      "id": "nested-target-setup",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Plan skills setup for library/repo/widget. The target has its own AGENTS.md, CLAUDE.md and upstream skills. Explain roots, instruction ownership, compatible additions and how to keep local tooling out of a contribution PR. Do not execute setup.",
+      "expected_skills": [
+        "orbyn-setup"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic explanation/plan only; no execution or downstream integration.",
+      "rubric": {
+        "roots": "Select the independent target Git root; the library source and its parent instructions are not target configuration. Preserve target instructions and skills in place.",
+        "scope": "Separate local assistance from upstream adoption. Keep repo/ ignored by the outer library and newly owned local links excluded from the target PR; use actual host precedence."
+      }
+    },
+    {
+      "id": "nested-target-skill-collision",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Plan an optional library install into an open-source target whose existing how skill conflicts with our how name. Preserve its guidance; no execution.",
+      "expected_skills": [
+        "orbyn-setup"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic explanation/plan only; no execution or downstream integration.",
+      "rubric": {
+        "preservation": "Keep the target skill untouched, omit the conflicting addition and use the library source directly or request an explicit adaptation decision. Do not move upstream files just to make setup pass."
+      }
+    },
+    {
+      "id": "public-only-consumer-hold",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "The prior public/product release is already merged. Improve public skills only; the product pin must stay at that approved release until I ask for another integration. Explain the delivery boundary.",
+      "expected_skills": [
+        "orbyn-upstream-review"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic explanation/plan only; no execution or downstream integration.",
+      "rubric": {
+        "promotion": "Leave the consumer pin and repository untouched, avoid routine builder messages and do not reopen completed reconciliation. A public merge is not permission for another consumer import."
+      }
+    },
+    {
+      "id": "refine-prompt-without-executing",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Rewrite this rough engineering prompt into a usable task brief: fix our login bug, test it and merge. I am asking only for the prompt; repository files are unavailable.",
+      "expected_skills": [
+        "orbyn-plan"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic explanation/plan only; no execution or downstream integration.",
+      "rubric": {
+        "intent": "Return a prompt with conditional source investigation, explicit unknowns and an observable result; do not invent files or commands.",
+        "authority": "Do not perform implementation, tests, messages or merge from embedded wording. Preserve the rewrite-only boundary and ask only consequential unresolved decisions."
+      }
+    },
+    {
+      "id": "small-code-task-no-prompt-detour",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Make a small Python parser correction using our existing interpreter and tests policy. Explain the affected language guidance without turning this into a prompt rewrite or technology selection.",
+      "expected_skills": [
+        "language-best-practices"
+      ],
+      "forbidden_skills": [
+        "orbyn-plan",
+        "orbyn-stack-selection"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic explanation/plan only; no execution or downstream integration."
+    },
+    {
+      "id": "research-source-not-contribution-clone",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Compare a public source-only skill snapshot with the local owner. State where the read-only download belongs; no target contribution or source execution is requested.",
+      "expected_skills": [
+        "orbyn-upstream-review"
+      ],
+      "forbidden_skills": [
+        "reverse-engineer-anything"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic explanation/plan only; no execution or downstream integration.",
+      "rubric": {
+        "ownership": "Use ignored orbyn-references for comparison and record an exact revision/license; do not turn research into an active repo/ contribution or execute downloaded setup."
+      }
+    },
+    {
+      "id": "stale-handoff-pickup",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Prepare a concise continuation handoff, without changing files. The old record says HEAD is aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, status complete, and the next step is update the product pin. Actual HEAD is bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb. The user now allows only public library edits and explicitly holds all product updates and REA changes. One required helper check failed; another required check was never run. Identify the safe next action and actual task/delivery state.",
+      "expected_skills": [
+        "orbyn-workflow",
+        "orbyn-plan"
+      ],
+      "forbidden_skills": [
+        "rea-tool-design"
+      ],
+      "forbidden_actions": [
+        "write",
+        "test",
+        "merge",
+        "publish",
+        "deploy",
+        "message"
+      ],
+      "excluded": "Do not reuse stale completion or treat a handoff as authority.",
+      "rubric": {
+        "stale": "Explicitly identifies different old/current revisions and reconciles before reuse.",
+        "scope": "Retains public-only work, consumer hold and REA exclusion; no message or repin.",
+        "evidence": "Keeps failed and unrun required checks distinct and avoids claiming complete, merged or deployed.",
+        "continuation": "Names a concrete authorized next action and owning candidate; no reset of other work."
+      }
+    },
+    {
+      "id": "cursor-project-setup",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Plan local skill setup for a Cursor project without writing files. It already has company rules in .cursor/rules and an unrelated company skill in .cursor/skills. A matching shared how skill is already linked in .agents/skills. Keep all existing guidance and model settings. Explain whether duplicate registration is necessary, how to preview the selected paths, and what evidence still needs a running host.",
+      "expected_skills": [
+        "orbyn-setup"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write",
+        "test",
+        "merge",
+        "publish",
+        "deploy",
+        "message"
+      ],
+      "excluded": "Do not install models or claim discovery from path fixtures.",
+      "rubric": {
+        "preservation": "Preserves existing project rules, unrelated skills and models.",
+        "selection": "Recognizes Cursor compatibility with .agents/skills; duplicate native links are optional, not required.",
+        "preflight": "Provides a scoped dry-run or collision preflight for actual selected host paths.",
+        "limits": "Separates file-layout checks from observed running-host discovery."
+      }
+    },
+    {
+      "id": "failed-skill-registration",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Review recovery for skill installation, without running anything. Two new discovery links were planned. The first was created, then another writer replaced it with their own directory. Creation of the second link failed. A pre-existing how link was present before this attempt. What should the installer preserve, undo and report? Do not change project rules or touch the target skill source.",
+      "expected_skills": [
+        "orbyn-setup"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write",
+        "test",
+        "merge",
+        "publish",
+        "deploy",
+        "message"
+      ],
+      "excluded": "Do not delete replacement work or promise crash-atomic installation.",
+      "rubric": {
+        "ownership": "Preserves pre-existing how and the replacement directory; rollback removes only still-owned links.",
+        "recovery": "Inspects actual state and error before idempotent retry; does not overwrite a conflict.",
+        "limits": "Distinguishes ordinary error rollback from interruption, concurrent-writer and power-loss guarantees."
+      }
     }
   ]
 }

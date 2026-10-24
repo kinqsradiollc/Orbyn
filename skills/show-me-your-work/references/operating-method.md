@@ -1,6 +1,11 @@
 # Leave an evidence trail another maintainer can follow
 
-Use the existing task record, or a separate single-writer TSV per worker. Record decisions that change ownership, compatibility, verification or delivery; omit routine tool chatter. Keep payloads and credentials out of evidence logs.
+Use the [task-record defaults](../../orbyn-workflow/references/task-record.md).
+Do not create a separate log for routine work already explained by Git, PR and CI.
+When continuation or a consequential decision needs a record, reuse the existing
+project-owned document, or a single-writer TSV when useful. Record changes to
+ownership, compatibility, verification or delivery; omit routine tool chatter.
+Keep payloads and credentials out of records, and raw traces outside public sync.
 
 A useful checkpoint names candidate revision, decision, reason, artifact/receipt and actual outcome. Distinguish prepared, attempted, failed, observed and externally delivered. When a conclusion changes, add a superseding record instead of deleting the failed attempt.
 

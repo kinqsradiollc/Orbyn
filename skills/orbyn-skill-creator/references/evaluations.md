@@ -112,6 +112,15 @@ retain their evidence outside the shared distribution unless it is synthetic or
 reviewed for publication. Add only the public task, rubric and a concise result
 summary to a contribution. Never give untrusted PR code a model key merely to grade it.
 
+By default, commit the concise result report and a reproducible declarative
+protocol with synthetic fixtures, exact revisions and grading criteria. Keep full
+answers, visible tool captures, run records and debug traces in ignored local
+output or explicitly approved CI artifacts. Preserve failed attempts there, and
+retain their verdicts and limitations in the summary. Do not add per-run captures
+to the template merely because they were useful during development. Checkpoint
+and evidence retention belongs to the consuming project; setup must not create
+log folders or export that project's records automatically.
+
 Choose code-based checks for executable behavior, and calibrated human or model
 review for subjective outcomes. Do not grade only output keywords, require a single
 wording, or accept a task's own success assertion as proof. Extend helpers with an
@@ -123,6 +132,13 @@ This workflow is independently authored. Design references are
 and [SkillsBench](https://arxiv.org/abs/2602.12670v4). No evaluator code was imported.
 
 ## Consolidating a skill owner
+
+For a bounded development question, `prepare --case <id>` can select an explicit
+subset; repeat it for each case in the chosen `--split`. Pin the same subset,
+rubrics, fixtures, tool configuration and trial count for both conditions before
+observing output. Report the subset denominator, not the full suite count. The
+helper rejects duplicates, unknown IDs and cases outside that split. No model
+is invoked by preparation. A focused trial does not qualify unrun cases or hosts.
 
 Keep observed historical trials tied to their original suite and revision. The
 released 61-case suite before TypeScript consolidation is retained verbatim in

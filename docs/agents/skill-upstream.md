@@ -70,6 +70,21 @@ managed files and exact public revision. Presets are additive selections in
 Host discovery checks include the language and technology-selection owners without
 changing Orbyn's product stack or installing models/tools globally.
 
+The matching vendored installer also supports explicit Cursor project discovery
+and `--host all`; `both` retains Codex/Claude behavior. Existing Orbyn discovery
+remains on that established pair. Selected legacy skills migrate with backups,
+and same-name Cursor copies require all-host reconciliation. Preserve this
+consumer's model settings and company guidance; template installation creates
+no logging directories. Routine work needs no separate log, while useful
+checkpoints stay project-owned under the
+[task-record defaults](../../skills/orbyn-workflow/references/task-record.md).
+
+The optional ignored `repo/` contribution workspace belongs to a library checkout,
+not an automatic relocation of Orbyn or its worktrees. Target repositories retain
+their own instructions and skills. Public-library delivery and consumer promotion
+keep separate authority under the shared
+[release handoff](../../skills/orbyn-upstream-review/references/release-handoff.md).
+
 A draft consumer PR may pin a reviewed public contribution commit for integration
 checks. That is a candidate, not a merged release: merge the public dependency
 first, repin to its actual merged revision, then verify the consumer before its
