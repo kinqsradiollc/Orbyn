@@ -4,7 +4,7 @@ Plan your day. Keep work moving.
 
 Orbyn brings tasks, calendars, projects, documents and an AI assistant into one
 workspace, with a web app, an Electron desktop client and an Expo mobile app.
-It is developed in public by **Anh Dang**, a University of Melbourne student.
+It is an open-source project created by **Anh Dang**, a University of Melbourne student.
 See [creator and contact](#creator-and-contact) and [contributing](#contributing).
 
 ## What you can do
@@ -137,11 +137,12 @@ under [model policy](docs/agents/model-policy.md). Follow the applicable
 [branch and worktree guidance](docs/agents/development.md#branch-naming) and keep
 contributions scoped to the requested change.
 
-## License status
+## License
 
-The repository is public and does not yet include an application-level license. License and attribution files under `skills/` and `tools/` cover their
-respective components; the public skills library's license does not define the
-application's terms. This section will be updated with the selected product license.
+Orbyn's original application code is available under the [MIT License](LICENSE).
+Copyright © 2026 Anh Dang. Third-party dependencies, imported tools and adapted
+skills retain their own license and attribution notices; see the component
+licenses under `skills/` and `tools/`. Those notices remain part of the repository.
 
 ## Creator and contact
 

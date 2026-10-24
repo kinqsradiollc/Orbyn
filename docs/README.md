@@ -3,7 +3,7 @@
 Orbyn is developed in public by Anh Dang, a University of Melbourne student.
 See the [creator/contact details](../README.md#creator-and-contact),
 [contribution workflow](../README.md#contributing) and
-[application license status](../README.md#license-status).
+[MIT application license](../LICENSE).
 
 Start with the guide for the task. Current implementation and configuration define
 the contract; check the owning source when a guide and code disagree. Old ADR
