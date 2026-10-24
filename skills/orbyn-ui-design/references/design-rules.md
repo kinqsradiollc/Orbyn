@@ -1,52 +1,32 @@
-# Orbyn UI design rules
+# Portable UI design rules
 
 These are implementation and review rules, not a claim that the current app
 already meets them. Standards and research behind them are in [research](research.md).
 
-## Typography and density
+## Project style and accessibility
 
-Use the shared scale by role at normal text settings:
+Resolve the consuming project's design guide through its optional
+[context map](../../orbyn-setup/references/project-context.md), then inspect its
+shared tokens and controls. Keep palette, typography, density, motion, navigation
+and branded patterns in that guide. Example values from another product are not
+defaults for this one. These rules describe interaction and evidence boundaries.
 
-| Role    | Current base size | Use                                                         |
-| ------- | ----------------- | ----------------------------------------------------------- |
-| Caption | 11                | Brief metadata/counts; essential instructions use body text |
-| Small   | 13                | Secondary labels and compact chrome                         |
-| Body    | 15                | Content, rows, descriptions                                 |
-| Title   | 18                | Card/section title                                          |
-| Heading | 24                | Screen heading                                              |
-| Display | 36                | Public landing hero or a deliberate summary number          |
-
-- Mobile work screens normally use an 18px title; 24px remains available for
-  document titles and deliberate page headings. Web phone input text uses its
-  separate 16px control role.
-- Use weight, spacing, and placement before adding another large heading. Reserve
-  display text for the main marketing message; avoid it in settings and toolbars.
-- Web fields use `--control-fs` and height tokens; coarse/narrow web field
-  text is 16px to avoid iOS focus zoom. Do not enlarge every label/body paragraph to that field size.
-  Do not reduce fields below the existing token to compensate for poor layout.
-- Native uses `typeScale` and `fonts.*`; preserve system font scaling. Do not
-  disable scaling or impose a blanket font-size cap to conceal overflow.
-- Prefer flexible heights and wrapping. Enlarge the container or change layout
-  when accessibility text grows. Never shrink text until a failing row fits.
-- Keep contrast readable in both themes; low-emphasis text still needs contrast.
-  The scale is a product convention, not proof of WCAG compliance.
-
-## Motion and appearance
-
-- Use neutral light/dark surfaces and the agreed restrained blue accent. Keep
-  status colors semantic and user-selected calendar/tag colors intact.
-- Routine screen/list content appears immediately. No ornamental stagger, hover
-  lift or press shrink. Keep useful loading/progress and brief state feedback.
-- Group settings as compact rows with separators; avoid raised cards inside cards.
-- Disclosure headings keep a neutral background on hover. A subtle icon change
-  can indicate the pointer; reserve filled states for actual selection and keep
-  a clear keyboard focus outline. Hover must not resemble an expanded or selected section.
+- Use the project's text roles and font scaling. Prefer flexible heights and
+  wrapping; change the layout when text grows instead of shrinking it to fit.
+- Use weight, spacing and placement to establish hierarchy. Preserve readable
+  contrast in supported themes and visible keyboard focus. A chosen type scale
+  is not proof of accessibility compliance.
+- Retain semantic status and user-selected colors. Keep selection, expansion,
+  hover and focus visually distinct under the project's theme.
+- Apply the product's motion policy and reduced-motion behavior. Preserve useful
+  progress and state feedback; added animation needs a task purpose.
+- Reuse shared field and button tokens. Check platform text-input behavior at
+  the actual font size; do not change every body label to solve an input issue.
 
 ## Layout, panels, and overlays
 
-- Check density as well as fit. At normal 320×740 settings, the header, search,
-  category selector, and section chrome must leave useful room for the setting
-  being changed. Fitting an oversized control is not sufficient acceptance.
+- Check density as well as fit. At the agreed narrow task width, navigation
+  and section chrome must leave useful room for the setting being changed. Fitting an oversized control is not sufficient acceptance.
 - Use compact single-line section headers and existing control heights. Reduce
   redundant card wrappers, accumulated gaps, and decorative padding before
   reducing readable text or touch targets. Never scale the entire desktop layout
@@ -64,8 +44,7 @@ Use the shared scale by role at normal text settings:
 - Keep ordinary content within the pane. Confine necessary two-dimensional
   scrolling to code, tables, boards, calendars, or diagrams with meaningful axes;
   their surrounding toolbar, labels, and prose still reflow.
-- Settings remains a modal on web/desktop, using compact category navigation on
-  narrow widths. Native uses the existing sheet/navigation conventions. Preserve
+- Keep the consuming product's settings route, modal or sheet conventions. Preserve
   unsaved-change guards, deep links, and return-to-previous-screen behavior.
 - Bound dialogs/dropdowns to the visible viewport; content scrolls within a
   bounded region. Keep header, Close, and necessary actions reachable at short
@@ -79,13 +58,13 @@ Use the shared scale by role at normal text settings:
 - Preserve visible keyboard focus without drawing two competing borders around
   the same search field. A sticky header, footer, or composer must not obscure
   the focused control. Test the actual focus ring instead of removing outlines.
-- Reuse theme/radius tokens, `Select`, `DateField`, shared buttons, menus, and
-  native controls. Avoid local palette literals and unrelated CSS overrides.
+- Reuse theme/radius tokens and the project's shared fields, buttons, menus and
+  platform controls. Avoid local palette literals and unrelated CSS overrides.
   Check final styles with shared CSS loaded; a local rule can lose to a later
   generic rule. Source-only checks must not substitute for computed styles/pixels.
 - Keep adequate pointer/touch targets without inflating text or entire cards.
-  Native `controls.tap` is 44pt. Reserve the target in layout, with a smaller
-  visual mark inside when appropriate. Use hit expansion only where surrounding
+  Use the project's platform target standard. Reserve the target in layout,
+  with a smaller visual mark inside when appropriate. Use hit expansion only where surrounding
   space prevents collisions; compact chips and adjacent actions must remain
   separately reachable.
 
@@ -112,29 +91,21 @@ Use the shared scale by role at normal text settings:
 - Loading, empty, disabled, offline, error, and success are distinct states.
   Preserve drafts/selections on retries; avoid layout jumps and fake progress.
 
-## AI interactions in Orbyn
+## AI interactions
 
-- Assistant is the conversational workspace. Character configuration belongs to
-  Background/Overnight agents, following the current product contract; it must not block ordinary chat.
-- Background and Overnight have distinct identities, runs, activity, and outputs.
-  Show actual Idle/Queued/Running/Waiting/Stopped/Failed states and last activity;
-  animate only supported active states. Describe collaboration without implying
-  they share a runtime or work continuously while idle.
-- Label AI suggestions and give a brief source/context reason when known. Keep
-  edit, dismiss, and review available. Do not fabricate personalized quotes,
-  pattern explanations, citations, confidence numbers, or completed work.
-- Separate a suggestion, approval, and applied change. Review binds to the exact
-  current request; stale cards cannot authorize a later action. Styling must
-  preserve backend authority and cancellation/recovery behavior.
-- Connect ChatGPT has a clear entry action and visible pending/success/error
-  states. Capability and platform limitations must reflect implementation; never
-  advertise unsupported hosted OAuth or manufacture a successful connection.
-- Distinguish personal ChatGPT, workspace/BYO providers, embeddings, and MCP.
-  Show selected recipient/model and explicit fallback where it affects choices.
-  Keep material document-sharing consent visible before enabling embeddings.
-- Display verified plan/usage only when supported. Unknown usage is unavailable,
-  not zero. Token observations are not billing, remaining quota, or entitlement.
-  Put essential scope/consent near the action; place technical detail in disclosure.
+- Represent the implementation's actual states and work ownership. Conversation,
+  durable jobs and background agents may have separate lifecycles; idle is not
+  evidence of continuous work. Keep outputs and last activity attributable.
+- Label suggestions and provide a source/context reason when known. Keep edit,
+  dismiss and review available. Never fabricate personalized explanations,
+  citations, confidence numbers, capabilities or completed work.
+- Separate a suggestion, approval and applied change. Bind approval to the
+  current request/version and preserve authority, cancellation and recovery.
+- Show supported connection/provider states and material consent at the decision
+  point. A pending connection must not appear successful. Disclose recipients
+  and fallback where they affect the user's choice.
+- Treat unavailable usage as unknown, not zero. Observed tokens are not billing
+  or entitlement. Put technical detail in a disclosure unless needed to decide.
 
 ## Acceptance for a changed feature
 
@@ -175,26 +146,11 @@ breakpoints; passing a few fixed screenshots does not prove every size works.
 
 ## Conversation workspace
 
-- Center the empty Chat/Work composer in the remaining pane. After a conversation
-  starts, dock it to that pane's bottom and scroll the transcript independently.
-- Keep Chat and Work at the same compact initial input height. Allow only a little
-  growth (currently four text lines), then scroll the input internally. Keep the
-  attachment, model and send controls outside that scrolling text region. Respect
-  text scaling and short-window constraints; do not expand the composer over replies.
-- Work selects a project inside the conversation workspace. Preserve saved session
-  history, project visibility, pinning and the existing sweep/pinned exemptions.
-- Paired panes have independent drafts, selection and scrolling. Keyboard commands
-  operate in the focused pane; dialogs and pickers temporarily own those commands.
-  At narrow widths, switch visible panes while preserving their mounted work.
-- Connections use compact identity/status rows. Open account and permission detail
-  in a focused surface; retain essential scope and consent at the decision point.
-
-Reference: the bounded 13 October inspection in
-`docs/reviews/chatgpt-reference-2026-10-13.md`, now retained in Git history.
-Its desktop observations inform these
-choices but do not prove Orbyn usability or long-list/mobile/split-pane behavior.
-The four-line input cap is the owner's Orbyn preference; the observed ChatGPT Work
-composer allowed more growth.
+Follow the project's composer placement and growth policy. Keep attachment and
+action controls reachable while the transcript and long input scroll. Preserve
+independent drafts, selections and history across panes; keyboard commands belong
+to the focused pane or its active dialog. On narrow widths, switch panes without
+losing work. Connection rows should expose relevant identity, status and consent.
 
 ## Working pane ownership
 
@@ -227,13 +183,10 @@ recovery buttons and source toolbars as well as the main page toolbar. A class
 name or source inventory is not rendered acceptance: inspect the affected actions
 in both themes and at the narrow task width in the agreed visual batch.
 
-Routine web actions use `--button-h`, `--button-fs` and `--button-line-h`:
-32px/13px/20px for desktop,44px/15px/20px for phone/coarse-pointer controls.
-Keep primary, secondary, text and icon actions aligned; segmented groups include
-border/padding in their outer height. Use the token for per-feature minimums,
-not unconditional44px overrides. Long labels can wrap; hero/presentation controls
-may be deliberately larger. Verify density as well as color before calling an
-action group consistent.
+Apply the project's action sizes and text roles consistently across button
+variants, including segmented controls and recovery actions. Let long labels
+wrap and preserve separate hit areas. Check density and readable content as well
+as color before calling an action group consistent.
 
 ### Document workspaces
 

@@ -1,11 +1,15 @@
 ---
 name: typescript-best-practices
-description: "Design and edit TypeScript data models and boundaries using precise types, existing schemas and explicit lifecycle handling."
+description: "Design or fix shared TypeScript schemas, illegal state combinations, lifecycle unions and unsafe casts. Own the runtime schema, derived types and affected callers together."
 ---
 
 # Typescript best practices
 
 Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+
+Use this as the implementation owner for TypeScript contract changes, including
+repeated illegal states. The type-system and structural-learning principles
+support the decision; this skill carries it through the schema and its callers.
 
 Use discriminated unions for meaningful state variants and exhaustive handling
 where new variants must trigger review. Prefer `unknown` for untrusted input;

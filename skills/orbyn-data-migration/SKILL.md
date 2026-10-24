@@ -36,3 +36,8 @@ Deliver the migration and caller changes, phase/order, actual evidence and remai
 operator steps. Use [backend design](../orbyn-backend-design/SKILL.md) for effect
 boundaries and [CI design](../orbyn-ci-design/SKILL.md) for a repeatable qualification
 lane. Keep the owning product guide current rather than creating a second backlog.
+
+## Worked example
+
+[Cutting over session writers](examples/session-cutover.md) shows why a backfill
+is insufficient while a legacy writer remains active, with staged recovery.

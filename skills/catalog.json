@@ -173,7 +173,9 @@
     {
       "name": "principle-encode-lessons-in-structure",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "typescript-best-practices"
+      ]
     },
     {
       "name": "principle-exhaust-the-design-space",
@@ -258,7 +260,9 @@
     {
       "name": "principle-type-system-discipline",
       "category": "Engineering principles",
-      "related": []
+      "related": [
+        "typescript-best-practices"
+      ]
     },
     {
       "name": "rea-analysis-optimization",
@@ -325,7 +329,10 @@
     {
       "name": "typescript-best-practices",
       "category": "Engineering practice",
-      "related": []
+      "related": [
+        "principle-type-system-discipline",
+        "principle-encode-lessons-in-structure"
+      ]
     },
     {
       "name": "unslop",

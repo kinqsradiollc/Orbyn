@@ -12,7 +12,9 @@ personal update should use Orbyn's product voice.
 ## Establish the message
 
 Use the supplied notes, draft, screenshots, links or named source files. Read
-existing voice/brand guidance in the requested project when available. Determine
+existing voice/brand guidance in the requested project when available, including
+relevant pointers in its optional [project context](../orbyn-setup/references/project-context.md).
+The context map's project name is not a learned personal voice. Determine
 the platform, intended reader, purpose and one useful point. Ask only when a
 missing fact would change the message; otherwise state a reasonable assumption
 and draft. Do not inspect unrelated accounts or private material for inspiration.
@@ -67,3 +69,8 @@ limits, format support or other changing rules. Do not present posting frequency
 algorithm tricks or a preview's truncation as established platform behavior.
 Research context and source distinctions live in the
 [source record](../../tools/research/social-content.md).
+
+## Worked example
+
+[An engineering update](examples/engineering-update.md) turns synthetic local
+checks and an open PR into a post and carousel outline with precise claim limits.

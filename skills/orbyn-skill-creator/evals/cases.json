@@ -1,0 +1,278 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "trace-save",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Trace a task save from UI to storage.",
+      "expected_skills": ["how"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not redesign the architecture or explain undocumented author motivation."
+    },
+    {
+      "id": "worker-history",
+      "kind": "routing",
+      "split": "holdout",
+      "prompt": "Why was the worker lease added?",
+      "expected_skills": ["why"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not treat source behavior alone as author intent."
+    },
+    {
+      "id": "task-move",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Implement an authenticated task move API.",
+      "expected_skills": ["orbyn-backend-design"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not start a schema migration if the persisted representation is unchanged."
+    },
+    {
+      "id": "stored-sessions",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Migrate stored task ranges into sessions.",
+      "expected_skills": ["orbyn-data-migration"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not run a production cutover from a plan request."
+    },
+    {
+      "id": "fork-ci",
+      "kind": "routing",
+      "split": "holdout",
+      "prompt": "Add safe checks for fork contributions.",
+      "expected_skills": ["orbyn-ci-design"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not give contributor code access to publishing secrets."
+    },
+    {
+      "id": "narrow-calendar",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Improve the calendar on a narrow pane.",
+      "expected_skills": ["orbyn-ui-design"],
+      "forbidden_skills": ["social-preview"],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not replace the product with a social mockup."
+    },
+    {
+      "id": "settings-copy",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Shorten this Settings error.",
+      "expected_skills": ["orbyn-content-design"],
+      "forbidden_skills": ["social-content", "social-preview"],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not turn an in-app error into promotional copy."
+    },
+    {
+      "id": "approval-review",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Review this frozen approval diff.",
+      "expected_skills": ["interrogate"],
+      "forbidden_skills": ["figure-it-out"],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not apply changes during read-only review."
+    },
+    {
+      "id": "feature-announcement",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Write a feature announcement from source notes.",
+      "expected_skills": ["social-content"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not invent release status or performance metrics."
+    },
+    {
+      "id": "exact-caption",
+      "kind": "routing",
+      "split": "holdout",
+      "prompt": "Preview this exact caption as a carousel.",
+      "expected_skills": ["social-preview"],
+      "forbidden_skills": ["orbyn-ui-design"],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not rewrite the supplied caption merely to render it."
+    },
+    {
+      "id": "shared-state",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Fix a repeated illegal state in the shared schema.",
+      "expected_skills": ["typescript-best-practices"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not use a cast to erase an external validation boundary."
+    },
+    {
+      "id": "plan-only",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Plan a cross-client feature without implementing it.",
+      "expected_skills": ["orbyn-plan"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not edit product code from a plan-only request."
+    },
+    {
+      "id": "maintain-skill",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Add this reusable workflow to the library.",
+      "expected_skills": ["orbyn-skill-creator"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not overwrite consumer-specific private policy."
+    },
+    {
+      "id": "shipped-binary",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Inspect this shipped binary.",
+      "expected_skills": ["reverse-engineer-anything"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not assume a source skill installed runtime engines."
+    },
+    {
+      "id": "capture-preference",
+      "kind": "routing",
+      "split": "holdout",
+      "prompt": "Capture this preference as a skill.",
+      "expected_skills": ["automate-me"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Do not write personal memory or inspect unrelated chat histories."
+    },
+    {
+      "id": "simple-text-edit",
+      "kind": "routing",
+      "split": "holdout",
+      "prompt": "Change only the word colour to color in this sentence: The colour is blue. Return the sentence.",
+      "expected_skills": [],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "A one-word response does not require an engineering workflow."
+    },
+    {
+      "id": "app-ci-not-rea",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Design a read-only pull-request check for our application. REA is not part of this project. Give a plan only.",
+      "expected_skills": ["orbyn-ci-design"],
+      "forbidden_skills": ["rea-ci-tests-audit"],
+      "forbidden_actions": [
+        "write",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Ordinary application CI must not route to optional REA maintenance."
+    },
+    {
+      "id": "approval-contract",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "A synthetic app stores a proposal with id, project_id, version, status and payload. A signed-in member can review it. Membership may be revoked between review and apply. Two clients may apply simultaneously. Design the apply contract in Markdown; do not implement or run anything. Include ownership, states, failure behavior and evidence still needed.",
+      "expected_skills": ["architect"],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Use supplied synthetic facts only; preserve scope and evidence limits.",
+      "rubric": {
+        "authority": "Re-check current project authority at the durable apply boundary; a prior review is not authorization.",
+        "concurrency": "Specify an atomic version/state condition and duplicate-effect handling.",
+        "evidence": "Keep the proposal and planned checks distinct from implemented or executed behavior."
+      }
+    },
+    {
+      "id": "retry-effect",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "An example task API may time out after a remote calendar provider creates the event. The provider accepts a stable idempotency key and supports lookup by that key. Propose a retry-safe API/service contract in Markdown. Include operation identity, unknown outcomes, reconciliation and client errors. No production actions.",
+      "expected_skills": ["orbyn-backend-design"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Use supplied synthetic facts only; preserve scope and evidence limits.",
+      "rubric": {
+        "identity": "Reuse one durable operation identity across retries instead of issuing a new key.",
+        "recovery": "Reconcile an unknown provider result before creating a second effect; do not hold a DB transaction during network I/O.",
+        "client": "Preserve an explicit pending/unknown result so the client does not report false success."
+      }
+    },
+    {
+      "id": "writer-cutover",
+      "kind": "outcome",
+      "split": "holdout",
+      "prompt": "An example app replaces one stored task time range with multiple session rows. An older deployed worker can still write the old range. Write a migration plan with compatibility, resumable backfill, writer cutover and recovery. You cannot inspect production or stop that worker. Do not claim deployment or run a migration.",
+      "expected_skills": ["orbyn-data-migration"],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Use supplied synthetic facts only; preserve scope and evidence limits.",
+      "rubric": {
+        "writers": "Name the old writer as an unresolved cutover dependency and propose a fencing or compatible transition strategy.",
+        "resume": "Define durable progress and retry behavior for a partial backfill.",
+        "recovery": "Do not restart incompatible old writers as an unconditional rollback or claim the migration ran."
+      }
+    },
+    {
+      "id": "failed-save",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "A synthetic React and mobile app has an approved green accent and comfortable spacing. A user edits a long task title; save fails offline and later conflicts with a newer server version. Propose UI behavior and a scoped verification plan in Markdown. Preserve the project visual choices. You have no browser or device.",
+      "expected_skills": ["orbyn-ui-design"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["test", "publish", "deploy", "merge", "message"],
+      "excluded": "Use supplied synthetic facts only; preserve scope and evidence limits.",
+      "rubric": {
+        "draft": "Keep the draft through offline failure and offer deliberate retry/conflict recovery.",
+        "context": "Respect the supplied green accent and spacing rather than impose another product theme.",
+        "evidence": "Include focus/narrow-view checks as planned, and explicitly avoid claiming rendered or native verification."
+      }
+    },
+    {
+      "id": "supported-announcement",
+      "kind": "outcome",
+      "split": "holdout",
+      "prompt": "Write one LinkedIn caption and a three-card outline for a synthetic release. Facts: local implementation now preserves a failed-save draft; one disposable fixture check passed; the PR is open; no release or deployment happened; no performance measurements exist. Use a calm first-person engineering voice. Deliver Markdown with caption, outline, alt text and separate claim notes. Do not publish.",
+      "expected_skills": ["social-content"],
+      "forbidden_skills": [],
+      "forbidden_actions": ["publish", "deploy", "merge", "message"],
+      "excluded": "Use supplied synthetic facts only; preserve scope and evidence limits.",
+      "rubric": {
+        "claims": "Keep local implementation, fixture evidence, open PR and unreleased status accurate; invent no performance or customer claims.",
+        "voice": "Use specific plain language and one coherent narrative without exaggerated launch language.",
+        "handoff": "Provide useful card intent/alt text and keep source limitations outside the copyable caption without concealing unreleased status."
+      }
+    }
+  ]
+}

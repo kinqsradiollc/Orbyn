@@ -37,3 +37,8 @@ contract, affected callers, evidence and recovery limits. Hand persisted-format
 changes to [data migration](../orbyn-data-migration/SKILL.md), visible flows to
 [UI design](../orbyn-ui-design/SKILL.md), and coordinated work to
 [orbyn-workflow](../orbyn-workflow/SKILL.md).
+
+## Worked example
+
+[Retrying an external effect](examples/retry-safe-effect.md) separates request
+identity, durable state and an unknown provider outcome in a synthetic task.

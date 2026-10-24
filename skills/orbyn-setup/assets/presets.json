@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "default": "core",
+  "presets": {
+    "core": {
+      "description": "Everyday investigation, design, implementation and review",
+      "skills": [
+        "orbyn-workflow",
+        "orbyn-plan",
+        "orbyn-research",
+        "how",
+        "why",
+        "architect",
+        "interrogate",
+        "typescript-best-practices",
+        "orbyn-backend-design",
+        "orbyn-ui-design"
+      ]
+    },
+    "web": {
+      "description": "Web UI, content and TypeScript; combine with core when useful",
+      "skills": [
+        "orbyn-ui-design",
+        "orbyn-content-design",
+        "typescript-best-practices",
+        "how"
+      ]
+    },
+    "data": {
+      "description": "API effects, stored-data compatibility and CI",
+      "skills": [
+        "architect",
+        "orbyn-backend-design",
+        "orbyn-data-migration",
+        "orbyn-ci-design",
+        "how"
+      ]
+    },
+    "mobile": {
+      "description": "Client contracts, native-aware UI and product language",
+      "skills": [
+        "orbyn-ui-design",
+        "orbyn-content-design",
+        "orbyn-backend-design",
+        "typescript-best-practices"
+      ]
+    },
+    "creator": {
+      "description": "Social writing, previews and prose refinement",
+      "skills": ["social-content", "social-preview", "unslop"]
+    },
+    "maintainer": {
+      "description": "Skill authoring, project setup and contribution automation",
+      "skills": [
+        "orbyn-setup",
+        "orbyn-skill-creator",
+        "orbyn-ci-design",
+        "reflect"
+      ]
+    },
+    "rea": {
+      "description": "Optional artifact investigation and REA maintenance",
+      "skills": [
+        "reverse-engineer-anything",
+        "rea-analysis-optimization",
+        "rea-changelog-update",
+        "rea-ci-tests-audit",
+        "rea-tool-design"
+      ]
+    }
+  }
+}

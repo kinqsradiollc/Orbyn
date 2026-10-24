@@ -1,11 +1,16 @@
 ---
 name: principle-type-system-discipline
-description: "Use types to express valid states and prevent meaningful contract mistakes."
+description: "Choose types that express valid states and prevent contract mistakes. For shared TypeScript schema changes, pair this principle with typescript-best-practices."
 ---
 
 # Principle type system discipline
 
 Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+
+For a TypeScript schema or caller change, load
+[typescript-best-practices](../typescript-best-practices/SKILL.md) as the owner.
+This principle explains the design choice; the owner covers runtime validation,
+derived types and migration of affected producers and consumers.
 
 Model state variants explicitly, derive from authoritative schemas and handle variants exhaustively. Validate external and persisted data at runtime; static types do not prove authorization or freshness. Use semantic IDs where they prevent real confusion. Keep unavoidable casts local and justified; avoid ceremony that makes callers harder to read.
 

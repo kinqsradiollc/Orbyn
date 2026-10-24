@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "project_name": "Orbyn",
+  "documents": {
+    "instructions": "AGENTS.md",
+    "stack": "docs/agents/stack.md",
+    "development": "docs/agents/development.md",
+    "verification": "docs/agents/delivery.md",
+    "design": "docs/agents/ui-ux.md",
+    "design_profile": "docs/agents/design-profile.md",
+    "skill_sync": "docs/agents/skill-upstream.md"
+  },
+  "owners": {
+    "domain": "packages/core",
+    "transport": "packages/api-client",
+    "api": "backend/src",
+    "web_desktop": "desktop/src",
+    "mobile": "mobile/src",
+    "assistant": "backend/src/modules/ai/agent",
+    "operations": "deploy"
+  }
+}
