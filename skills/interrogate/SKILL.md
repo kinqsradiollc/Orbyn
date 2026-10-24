@@ -31,3 +31,9 @@ When challenging a module refactor, inspect what callers must know, which
 complexity is hidden, whether the seam reflects actual variation, and whether
 behavior checks survive the internal reorganization. Identify a concrete caller
 or failure scenario; a preferred vocabulary or file count is not a finding.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

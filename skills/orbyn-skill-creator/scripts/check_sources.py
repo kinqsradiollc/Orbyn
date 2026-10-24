@@ -51,6 +51,8 @@ def check(root):
             path = PurePosixPath(name)
             if path.is_absolute() or '..' in path.parts or '\\' in name or not path.parts:
                 raise ValueError('Unsafe offline snapshot path')
+            if path.name == 'SKILL.md':
+                raise ValueError('Offline source must use SOURCE.md, not an active SKILL.md entrypoint')
             target = manifest.parent/name
             current = target
             while current != root:

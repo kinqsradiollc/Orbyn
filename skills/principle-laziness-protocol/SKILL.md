@@ -14,3 +14,13 @@ Aim for less maintenance work. Remove proven unused paths, collapse unnecessary 
 Which maintained path can disappear without losing the contract?
 
 If three wrappers only rename a request field, consolidate interpretation in the transport owner and migrate its callers. Keep a wrapper that enforces authority, cancellation or recovery. Fewer lines are not useful when a real boundary becomes implicit.
+
+## Apply and hand off
+
+Inventory maintained paths and what contract each enforces. Remove a path only after its callers and compatibility obligations have an owner.
+
+Concrete check: A pass-through wrapper can disappear when callers migrate. A wrapper enforcing authorization or cleanup needs that enforcement transferred before removal.
+
+Return the changed invariant, its owning location and the observation or evidence
+gap. Carry execution through [architect](../architect/SKILL.md) when relevant. This
+principle refines that task; it does not create another mandatory phase.

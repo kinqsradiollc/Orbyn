@@ -27,3 +27,9 @@ Summarize the useful findings without copying the entire log into the reply.
 ## Keep a reviewable evidence chain
 
 For a schema rollout, record the candidate, the writer-cutover decision, the observation and the remaining operator step. Link to the actual artifact rather than copying private payloads. A later reviewer should be able to distinguish a planned check, a failed attempt and a completed observation.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

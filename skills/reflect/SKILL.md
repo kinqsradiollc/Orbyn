@@ -31,3 +31,9 @@ with evidence and limits.
 ## A useful lesson is bounded
 
 For a failed sync, identify whether the cause was stale baseline, shared write ownership or an unsafe path. Repair that owner when authorized. Do not add a generic “always double-check everything” rule or turn one interrupted run into a permanent extra approval phase.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

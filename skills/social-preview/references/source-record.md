@@ -2,7 +2,7 @@
 
 The active Orbyn [preview method](../SKILL.md) is independently authored. For
 optional design background, the local unmodified
-[Anthropic canvas-design text](upstream/anthropic-canvas-design/SKILL.md) can be
+[Anthropic canvas-design text](upstream/anthropic-canvas-design/SOURCE.md) can be
 read without network access.
 
 Source: Anthropic, `anthropics/skills`, revision

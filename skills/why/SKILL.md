@@ -28,3 +28,9 @@ will change the design, identify constraints to preserve and decisions to revisi
 ## Separate rationale from mechanics
 
 When a worker uses a lease instead of a process-local lock, inspect the introducing change and related recovery contract. Source can show that cross-process recovery is possible; only a linked rationale or other authorized record can establish why the original author selected it. Return both at their actual confidence.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

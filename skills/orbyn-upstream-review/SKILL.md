@@ -146,3 +146,8 @@ was updated when only selected guidance was adapted.
 
 [The offline comparison example](examples/stale-source.md) shows a review result
 that preserves company material and confirmed pins without claiming freshness.
+
+For shared skill releases, use the [single-candidate release handoff](references/release-handoff.md).
+Inspect existing PR dependencies before making another branch; keep one authoring
+owner and reconcile consumer edits against their recorded baseline. A green
+candidate check does not make an outdated public `main` or consumer lock current.

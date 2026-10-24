@@ -175,3 +175,9 @@ TypeScript schemas retain their existing owner. Use
 or demonstrated technology mismatch; it produces the decision for architect and
 the implementation owners, not an automatic rewrite. The human requests the
 outcome once; the agent chooses these handoffs internally.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

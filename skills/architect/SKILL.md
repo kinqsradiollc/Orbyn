@@ -76,3 +76,9 @@ then own interfaces and lifecycle here. An established project's bounded feature
 usually retains its stack. Pair implementation with the relevant
 [language reference](../language-best-practices/SKILL.md), preserving FFI/transport
 encoding, ownership and failure contracts across polyglot boundaries.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.
