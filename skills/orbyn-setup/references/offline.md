@@ -11,6 +11,13 @@ supporting resources. Installing discovery links does not install a model,
 Python, fonts, an exporter, REA engines or external providers. Check the host's
 actual local capabilities and use supported outputs; report missing dependencies.
 
+The five optional REA skills also include local operating methods and worked
+examples. Their [source/compatibility record](../../reverse-engineer-anything/references/source-record.md)
+identifies historical lineage and later reviewed guidance. No mandatory remote
+skill reading remains. Offline methods do not supply an analysis engine, target
+bytes, provider prerequisites or missing REA Git history. Continue supported work
+and report those capability/input limits without installing or fetching implicitly.
+
 ## Sources and freshness
 
 For reusable third-party instructions needed by a skill, retain a licensed,

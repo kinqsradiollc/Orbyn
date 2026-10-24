@@ -24,6 +24,11 @@ Bundled dependencies retain their own licenses and
 their original repositories and exact revisions in the root `.gitmodules` and Git
 index; they are not initialized by this migration.
 
+The five portable REA methods retain their own upstream/local MIT notices. Their
+[guidance source record](../skills/reverse-engineer-anything/references/source-record.md)
+records historical lineage and selected later documentation review separately.
+Importing that offline guidance does not advance the engine snapshot above.
+
 ## Provenance
 
 [upstream-manifest.json](upstream-manifest.json) records 85 pstack files and 4,933

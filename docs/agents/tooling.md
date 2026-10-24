@@ -47,6 +47,15 @@ for packaged/native/runtime questions. The source tree alone does not install
 Hopper, Ghidra, IDA, JADX or a connected MCP server. Discover actual available
 capabilities before claiming them. Source-only investigations need none of them.
 
+The five maintained REA skills provide local operating methods and worked
+examples without requiring upstream webpages. Use their shared
+[evidence and recovery guide](../../skills/reverse-engineer-anything/references/evidence-and-recovery.md)
+for summary/dossier compatibility, coverage, bounded retries and cleanup ownership.
+The [source record](../../skills/reverse-engineer-anything/references/source-record.md)
+separates later reviewed guidance from the unchanged engine snapshot above.
+Updating `skills/upstream-lock.json` promotes portable guidance only; it does not
+upgrade `tools/rea`, its submodules, Node requirements or client configuration.
+
 For an explicitly requested local REA build, use its `.nvmrc`, `packageManager`
 and lockfile. REA's toolchain differs from Orbyn's. From `tools/rea`, run
 `HUSKY=0 npm ci` and then `npm run build:cached` when installation/build is in
