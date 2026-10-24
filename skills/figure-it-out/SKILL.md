@@ -5,7 +5,7 @@ description: "Plan and execute an authorized large migration or cross-cutting ta
 
 # Figure it out
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Use [orbyn-plan](../orbyn-plan/SKILL.md) to establish or revise the execution plan
 and [stack ownership](../../docs/agents/stack.md) to place changes.
@@ -30,3 +30,7 @@ attempt without a new explanation.
 Use [show-me-your-work](../show-me-your-work/SKILL.md) for decisions that matter
 later. Revisit the full checklist at the end. Report verified, unverified and
 blocked parts without silently reducing the requested outcome.
+
+## Finish the vertical slice
+
+For an API extraction, the inventory includes shared schema, consumers, persistence, service routing and the old handler. Close a unit only when its named artifact and evidence exist. Keep unfinished operator/deployment work visible; do not replace it with a future-work paragraph and call the migration complete.

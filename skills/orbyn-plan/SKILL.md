@@ -58,3 +58,7 @@ Update the same plan when evidence changes the design; explain the change. Use
 `figure-it-out` to execute a large plan and `show-me-your-work` for consequential
 decisions. Session creation follows [coordination](../../docs/agents/coordination.md).
 Do not invent extra stages, stacked PRs, sessions or recurring monitors.
+
+## Plan a connected feature
+
+For a task-scheduling change, make the domain/API/calendar dependencies explicit and keep shared-schema changes with their consumers. State whether the requested end state is a local preview, a reviewed patch or deployed behavior. Keep the plan short enough to reconcile against actual delivery.

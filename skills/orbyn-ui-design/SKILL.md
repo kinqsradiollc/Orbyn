@@ -5,9 +5,15 @@ description: "Design, implement, or review Orbyn UI and UX across web, desktop, 
 
 # Orbyn UI and UX Design
 
-Make Orbyn easy to scan and operate at real window sizes. Use the agreed palette and
+Apply Orbyn Engineering's UI approach to the target product: make its task flow easy
+to scan and operate at real window sizes. Use the agreed palette and
 shared components. Compact default text must remain readable and grow with user
 accessibility settings.
+
+For social announcement graphics, product screenshot compositions and feed
+mockups, use [social-preview](../social-preview/SKILL.md), with
+[social-content](../social-content/SKILL.md) for the post. This skill owns changes
+to the product UI itself; a promotional mockup is not an implemented screen.
 
 ## Read before designing
 
@@ -21,8 +27,10 @@ accessibility settings.
 - Read [research](references/research.md) when choosing or revising a rule. It
   distinguishes accessibility requirements, research guidance, and Orbyn choices.
 - Inspect the owning screen and shared controls before adding a local override.
-  Current tokens live in `packages/core/src/presentation.ts`,
-  `desktop/src/styles/global.css`, and `mobile/src/theme/index.ts`.
+  Resolve token/component owners from the consuming project's stack guide and
+  manifests. In Orbyn's application these are `packages/core/src/presentation.ts`,
+  `desktop/src/styles/global.css`, and `mobile/src/theme/index.ts`; other projects
+  use their own owners. Never create these paths to fit the skill.
 
 ## Current product direction
 
@@ -52,8 +60,8 @@ host's theme or tool APIs.
 ## Review and delivery
 
 Apply the on-demand cadence in `AGENTS.md`: no automatic visual sweep for every
-change or checkpoint. Prefer tests/API evidence for functional behavior and reuse
-valid prior UI evidence. For a material layout/interaction risk or reproduced
+change or checkpoint. Prefer authorized tests/API evidence for functional behavior
+and reuse valid prior UI evidence. For a material layout/interaction risk or reproduced
 visual defect, inspect the relevant flow when authorized. If an independent
 visual role is requested, use the session/subagent topology in
 [coordination](../../docs/agents/coordination.md). Give that inspector the candidate checkout/ref,

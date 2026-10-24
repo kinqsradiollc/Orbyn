@@ -5,7 +5,7 @@ description: "Investigate design rationale, regressions and trade-offs using Git
 
 # Why
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Find the code anchor, symbols and introducing/changing commits with scoped
 `git log`, `git blame` and diffs. Read linked ADRs, issues and PR discussions when
@@ -24,3 +24,7 @@ children assigned a slice proceed directly. Do not create tickets or send messag
 while investigating.
 Return the supported explanation with sources, inference and unknowns. If work
 will change the design, identify constraints to preserve and decisions to revisit.
+
+## Separate rationale from mechanics
+
+When a worker uses a lease instead of a process-local lock, inspect the introducing change and related recovery contract. Source can show that cross-process recovery is possible; only a linked rationale or other authorized record can establish why the original author selected it. Return both at their actual confidence.

@@ -5,7 +5,7 @@ description: "Design and edit TypeScript data models and boundaries using precis
 
 # Typescript best practices
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Use discriminated unions for meaningful state variants and exhaustive handling
 where new variants must trigger review. Prefer `unknown` for untrusted input;
@@ -22,3 +22,7 @@ types do not establish tenant access or freshness of stored data. Keep helpers
 and parameter objects where they clarify callers, not to satisfy arbitrary size
 rules. Match repository Prettier and dependency direction in
 [development](../../docs/agents/development.md).
+
+## One contract across clients
+
+When changing a run’s result shape, update the owning runtime schema, derived shared types, transport and web/mobile consumers together. Keep platform-only presentation state separate. Exhaustive handling should expose an unhandled lifecycle variant without forcing the domain layer to import application components.

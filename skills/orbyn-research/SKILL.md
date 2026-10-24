@@ -30,3 +30,7 @@ Keep only decision-relevant findings in a durable record. If a runtime experimen
 is needed, describe its scope and use it only when authorized; do not call a source
 review a benchmark or live qualification. Do not create a new skill just to store
 one research result.
+
+## Research that changes implementation
+
+For a retry or streaming API, record the supported version, cancellation/unknown-outcome behavior and the implication for the current adapter. Separate documented availability from this account’s observed access. The result should settle one decision, not become a general technology survey.

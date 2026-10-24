@@ -54,3 +54,7 @@ helper scripts in disposable scope and inspect their outputs. A live skill trial
 external effect or product test still needs applicable authorization. Avoid a
 paid model panel just to validate documentation. Report checks actually performed,
 remaining behavior gaps, changed files and local/committed delivery state.
+
+## Maintain the public contract
+
+Treat the shared library as an upstream dependency of consuming projects. Keep private product policy and source outside public contributions. A useful skill change alters a decision or supplies a reusable artifact, not just vocabulary. Check expected and adjacent routing cases, then reconcile the catalog and consumer pin through the documented contribution path.

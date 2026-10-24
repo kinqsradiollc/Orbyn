@@ -139,23 +139,23 @@ Use the shared scale by role at normal text settings:
 ## Acceptance for a changed feature
 
 Select representative states for the agreed risk, not every axis automatically.
-User exclusions and `AGENT.md` take precedence; this is a menu of checks, not a
-new requirement for native builds, enlarged text or repeated visual sweeps:
+User exclusions and [repository policy](../../../AGENTS.md) take precedence. This
+is a menu of checks, not a new requirement for native builds, enlarged text or repeated visual sweeps:
 
 When visual checks are authorized, select the cases relevant to the changed flow.
 This is a reference menu, not a mandatory sweep. Native checks require explicit
 scope; keep unperformed cases unverified.
 
-| Axis | Candidate checks |
-| --- | --- |
-| Width/height | Web 320/390/768/1280; mobile browser 320/390; short window and landscape where relevant |
-| Containers | Expanded/collapsed main nav, secondary panel, nested picker/dialog, actual pane width |
-| Density/UX | Useful task space at 320×740; concise copy; clear first action; complete, cancel, recover and return without losing work |
-| Appearance | Light/Dark at normal settings; enlarged text/zoom only when in scope |
-| Content | Empty/populated, long/localized labels, large catalogs, selected/manual values |
-| Network/state | Loading, offline/error, retry, success, disabled, stale/revoked where relevant |
-| Interaction | Pointer, Tab/Shift+Tab, Escape, focus return, scroll-to-last-item, keyboard visible |
-| Platforms | Browser checks; installed desktop/iOS/Android only when requested; native gaps stay explicit |
+| Axis          | Candidate checks                                                                                                         |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Width/height  | Web 320/390/768/1280; mobile browser 320/390; short window and landscape where relevant                                  |
+| Containers    | Expanded/collapsed main nav, secondary panel, nested picker/dialog, actual pane width                                    |
+| Density/UX    | Useful task space at 320×740; concise copy; clear first action; complete, cancel, recover and return without losing work |
+| Appearance    | Light/Dark at normal settings; enlarged text/zoom only when in scope                                                     |
+| Content       | Empty/populated, long/localized labels, large catalogs, selected/manual values                                           |
+| Network/state | Loading, offline/error, retry, success, disabled, stale/revoked where relevant                                           |
+| Interaction   | Pointer, Tab/Shift+Tab, Escape, focus return, scroll-to-last-item, keyboard visible                                      |
+| Platforms     | Browser checks; installed desktop/iOS/Android only when requested; native gaps stay explicit                             |
 
 At 320 CSS px, ordinary horizontal prose must not need horizontal scrolling;
 if an accessibility resizing audit is requested, include its agreed zoom/text

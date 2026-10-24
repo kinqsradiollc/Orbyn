@@ -5,7 +5,7 @@ description: "Design data shapes, interfaces and ownership for substantive featu
 
 # Architect
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Read the relevant [stack boundaries](../../docs/agents/stack.md). Use
 [orbyn-research](../orbyn-research/SKILL.md) for a consequential external unknown
@@ -30,3 +30,7 @@ production code unless they are being completed in the same delivery.
 Repeated escape hatches or duplicated state interpretation mean reconsider the
 owner/type design. Fix that source of complexity instead of adding wrappers.
 Record a durable rationale only when future maintainers need the decision.
+
+## Cross-stack handoff
+
+For a proposal-approval feature, specify the durable proposal state, authenticated apply operation, stale-version behavior and shared result shape before designing the buttons. Return a contract the API, web and mobile owners can implement without inventing their own lifecycle. A model sketch is sufficient only when it answers those ownership questions.

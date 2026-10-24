@@ -5,7 +5,7 @@ description: "Capture explicitly requested working preferences in a reusable loc
 
 # Automate me
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Locate an existing skill for the requested workflow before creating one. Use
 only the conversation or records the user selected; do not mine unrelated sessions.
@@ -17,3 +17,7 @@ loaded only when needed. Prefer a small edit over another overlapping mode skill
 Choose a repository path for shared conventions and a personal path only when
 requested. Do not change global models, memory, connectors or schedules as a
 side effect. Show the resulting file and the preferences it encodes.
+
+## Preference → maintained owner
+
+If the user repeatedly requests export readback, place that check in the export owner when they ask to encode it. Preserve what the preference actually covers: a PDF readback rule should not require application builds for a prose edit. Return the changed owner and an example of when it should not activate.

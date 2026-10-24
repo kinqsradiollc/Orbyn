@@ -5,7 +5,7 @@ description: "Trace source behavior, data flow, ownership and module boundaries 
 
 # How
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Anchor the question in an entry point and follow its real callers, state and
 effects. Record inputs, validation, authority, transitions, persistence, output,
@@ -25,3 +25,7 @@ Use [why](../why/SKILL.md) when intent cannot be established from source.
 
 Return the answer, the few source locations needed to verify it, and meaningful
 unknowns. Avoid annotated dumps and unsupported historical explanations.
+
+## Trace a request through its effect
+
+A useful source explanation can follow a screen action → client method → API handler → authorization → transaction → response → rendered state. Stop at the relevant boundary and return those anchors. For an asynchronous path, identify who persists the work and who owns its terminal result.

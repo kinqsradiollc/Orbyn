@@ -35,6 +35,12 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 - [unslop](unslop/SKILL.md) — Edit agent prose and documentation for clear factual communication while preserving the requested voice and evidence.
 - [why](why/SKILL.md) — Investigate design rationale, regressions and trade-offs using Git history and relevant authorized records; distinguish documented intent from inference.
 
+## Fullstack contracts and delivery
+
+- [orbyn-backend-design](orbyn-backend-design/SKILL.md) — Design and implement API/service behavior across validation, authorization, persistence, concurrency and client errors using the consuming project's stack. Use architect first for unsettled ownership; use orbyn-data-migration for stored-format changes.
+- [orbyn-ci-design](orbyn-ci-design/SKILL.md) — Design or repair CI checks, contribution automation and release promotion with scoped credentials, deterministic artifacts and clear evidence boundaries. Use for workflow changes; not permission to publish, merge or deploy.
+- [orbyn-data-migration](orbyn-data-migration/SKILL.md) — Plan and implement stored-data, schema and writer migrations with compatibility, cutover, retry and recovery evidence. Use for durable format changes; not a routine in-memory type refactor or permission to run production migrations.
+
 ## Engineering principles
 
 - [principle-boundary-discipline](principle-boundary-discipline/SKILL.md) — Design validation and error handling at real trust or effect boundaries.
@@ -63,6 +69,11 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 - [orbyn-content-design](orbyn-content-design/SKILL.md) — Write and arrange concise Orbyn product content, labels, status, errors and help across web, desktop and mobile. Use for visible interface copy and content hierarchy; preserve user-authored documents and messages.
 - [orbyn-ui-design](orbyn-ui-design/SKILL.md) — Design, implement, or review Orbyn UI and UX across web, desktop, and mobile: task flows, concise copy, responsive layouts, overlays, and AI interactions. Use for visible product flows; not backend-only work.
 
+## Social content and visuals
+
+- [social-content](social-content/SKILL.md) — Draft and revise LinkedIn and other social posts, product announcements, threads and carousel copy from supplied evidence in the author's voice. Use social-preview for visual assets and feed mockups.
+- [social-preview](social-preview/SKILL.md) — Create and inspect local social post previews, announcement graphics and carousels for LinkedIn and other platforms. Use for feed mockups and exportable social visuals, not product UI changes or publishing.
+
 ## Artifact investigation and REA maintenance
 
 - [rea-analysis-optimization](rea-analysis-optimization/SKILL.md) — Optimize a measured REA analysis bottleneck while preserving evidence and resource ownership; scoped to REA.
@@ -73,8 +84,7 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 
 ## Scope and attribution
 
-The public [Orbyn connector skill](../docs/agent-skill/orbyn/SKILL.md) describes
-using the hosted planner, separately from repository development. REA maintenance
-skills apply only to that tooling. See [tooling](../docs/agents/tooling.md) and
+These are Orbyn Engineering workflows, usable with a consuming project's own
+stack and policies. REA maintenance skills apply only to that optional tooling. See [tooling](../docs/agents/tooling.md) and
 [notices](../tools/THIRD_PARTY_NOTICES.md) for complete source and attribution.
 Old standalone skill files have been retired; use the canonical folders above.

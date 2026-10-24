@@ -68,7 +68,8 @@ These are Orbyn choices, not externally mandated sizes or universal AI rules:
   16px narrow/coarse field text; preserve tokens without inflating surrounding copy.
 - Native `mobile/src/theme/index.ts`: shared type roles, light font weights,
   44pt tap target, compact control exception, radius/spacing tokens.
-- `AGENTS.md`: palette preservation, shared controls, more menus, web/mobile parity.
+- [UI/UX guide](../../../docs/agents/ui-ux.md) and this skill's design rules:
+  palette preservation, shared controls, more menus and web/mobile parity.
 - `docs/agents/ui-ux.md`: scope browser/native evidence separately; independent
   visual inspection is used when requested under the coordination policy.
 - User decisions: short copy, Settings modal, no overlapping sidebars, character

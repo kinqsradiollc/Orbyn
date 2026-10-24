@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
+<title>@@PLATFORM@@ · Local social preview</title>
+<style>
+* { box-sizing: border-box; }
+:root { color-scheme: light; --background: @@BACKGROUND@@; --foreground: @@FOREGROUND@@; --accent: @@ACCENT@@; }
+body { margin: 0; padding: 32px; background: #eef1f4; color: #172535; font: 16px/1.5 system-ui, sans-serif; }
+main { max-width: 1120px; margin: auto; }
+h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -.03em; }
+h2 { font-size: 16px; font-weight: 600; }
+.notice { max-width: 76ch; color: #485a6c; margin: 0 0 28px; }
+.feeds { display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap; }
+.feed { min-width: 0; max-width: 100%; }
+.wide { width: 600px; }
+.narrow { width: 360px; }
+article { border: 1px solid #d4dde5; border-radius: 14px; background: white; overflow: hidden; }
+article header { padding: 20px 20px 0; display: grid; gap: 3px; overflow-wrap: anywhere; }
+article header span { font-size: 13px; color: #485a6c; }
+details { padding: 16px 20px 20px; }
+summary { cursor: pointer; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary:focus-visible, .deck:focus-visible { outline: 3px solid #146ba5; outline-offset: -3px; }
+.caption { white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; overflow: hidden; }
+details[open] .caption { display: block; overflow: visible; }
+.expand { display: block; margin-top: 10px; color: #405a71; font-size: 13px; text-decoration: underline; }
+.deck { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; }
+.deck > .card { flex: 0 0 100%; scroll-snap-align: start; }
+.card { container-type: inline-size; min-width: 0; background: var(--background); color: var(--foreground); }
+.art { aspect-ratio: @@RATIO@@; padding: 8%; display: flex; flex-direction: column; gap: 3cqw; overflow-wrap: anywhere; }
+.art p, .art h3 { margin: 0; white-space: pre-wrap; }
+.eyebrow { color: var(--accent); font-size: 2.7cqw; font-weight: 650; letter-spacing: .04em; }
+.art h3 { font-size: 8cqw; line-height: 1.08; letter-spacing: -.04em; font-weight: 700; }
+.body { font-size: 3.6cqw; line-height: 1.45; }
+.art img { display: block; width: 100%; max-height: 40cqw; object-fit: contain; object-position: left; }
+.art footer { margin-top: auto; padding-top: 3cqw; display: flex; justify-content: space-between; gap: 3cqw; color: var(--accent); font-size: 2.4cqw; }
+.art footer span:last-child { flex-shrink: 0; }
+.exports { margin-top: 40px; }
+.export-card { width: min(100%, 1080px); margin: 0 0 24px; }
+.text-export { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: white; padding: 24px; }
+@media (max-width: 640px) { body { padding: 16px; } .feeds { gap: 16px; } }
+@page { size: 108mm @@PAGE_HEIGHT@@mm; margin: 0; }
+@media print {
+  html, body, main { width: 108mm; margin: 0; padding: 0; background: white; }
+  .screen-only, .exports > h2 { display: none; }
+  .exports { margin: 0; }
+  .export-card { width: 108mm; margin: 0; break-after: page; break-inside: avoid; }
+  .export-card:last-child { break-after: auto; }
+  * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}
+</style>
+</head>
+<body>
+<main>
+<div class="screen-only">
+<h1>@@PLATFORM@@ · Local preview</h1>
+<p class="notice">Approximate feed layout. Fonts, truncation and upload behavior may differ on the platform. Scroll cards horizontally. Export cards below exclude feed controls.</p>
+<div class="feeds">@@FEEDS@@</div>
+</div>
+<div class="exports"><h2>Export cards · inspect each before capture or print</h2>@@EXPORTS@@</div>
+</main>
+</body>
+</html>

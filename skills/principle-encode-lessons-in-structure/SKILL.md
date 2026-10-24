@@ -5,6 +5,12 @@ description: "Prevent a demonstrated recurring error at its owning boundary."
 
 # Principle encode lessons in structure
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Identify the common cause before generalizing a correction. Prefer a type, schema, existing lint rule or runtime invariant where it actually enforces the property. Keep judgment in focused guidance. Do not write personal memory, trackers or organization-wide rules without authorization, or make unrelated cleanup part of every fix.
+
+## Decision in practice
+
+Can the owning representation rule out the recurring error?
+
+If a conversation can show both “waiting” and “completed”, replace independent booleans with a lifecycle union at the shared contract. Update serializers and consumers together. A repeated warning in a prompt is weaker than a representation that cannot encode the contradictory state.

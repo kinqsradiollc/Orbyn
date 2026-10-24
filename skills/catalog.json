@@ -3,8 +3,10 @@
   "categories": [
     "Workflow and planning",
     "Engineering practice",
+    "Fullstack contracts and delivery",
     "Engineering principles",
     "Product design",
+    "Social content and visuals",
     "Artifact investigation and REA maintenance"
   ],
   "skills": [
@@ -15,7 +17,9 @@
         "how",
         "why",
         "arena",
-        "orbyn-plan"
+        "orbyn-plan",
+        "orbyn-backend-design",
+        "orbyn-data-migration"
       ]
     },
     {
@@ -51,10 +55,39 @@
       ]
     },
     {
+      "name": "orbyn-backend-design",
+      "category": "Fullstack contracts and delivery",
+      "related": [
+        "architect",
+        "how",
+        "typescript-best-practices",
+        "orbyn-data-migration",
+        "orbyn-ui-design"
+      ]
+    },
+    {
+      "name": "orbyn-ci-design",
+      "category": "Fullstack contracts and delivery",
+      "related": [
+        "orbyn-workflow",
+        "orbyn-skill-creator"
+      ]
+    },
+    {
       "name": "orbyn-content-design",
       "category": "Product design",
       "related": [
-        "orbyn-ui-design"
+        "orbyn-ui-design",
+        "social-content"
+      ]
+    },
+    {
+      "name": "orbyn-data-migration",
+      "category": "Fullstack contracts and delivery",
+      "related": [
+        "architect",
+        "orbyn-backend-design",
+        "orbyn-ci-design"
       ]
     },
     {
@@ -100,7 +133,8 @@
       "related": [
         "orbyn-research",
         "orbyn-setup",
-        "reflect"
+        "reflect",
+        "orbyn-ci-design"
       ]
     },
     {
@@ -108,7 +142,8 @@
       "category": "Product design",
       "related": [
         "orbyn-content-design",
-        "orbyn-research"
+        "orbyn-research",
+        "social-preview"
       ]
     },
     {
@@ -119,7 +154,10 @@
         "how",
         "architect",
         "orbyn-ui-design",
-        "orbyn-skill-creator"
+        "orbyn-skill-creator",
+        "orbyn-backend-design",
+        "orbyn-data-migration",
+        "orbyn-ci-design"
       ]
     },
     {
@@ -260,6 +298,24 @@
       "related": []
     },
     {
+      "name": "social-content",
+      "category": "Social content and visuals",
+      "related": [
+        "social-preview",
+        "unslop",
+        "orbyn-content-design"
+      ]
+    },
+    {
+      "name": "social-preview",
+      "category": "Social content and visuals",
+      "related": [
+        "social-content",
+        "unslop",
+        "orbyn-ui-design"
+      ]
+    },
+    {
       "name": "tdd",
       "category": "Engineering practice",
       "related": [
@@ -274,7 +330,11 @@
     {
       "name": "unslop",
       "category": "Engineering practice",
-      "related": []
+      "related": [
+        "social-content",
+        "social-preview",
+        "orbyn-content-design"
+      ]
     },
     {
       "name": "why",

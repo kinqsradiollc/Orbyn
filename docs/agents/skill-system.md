@@ -19,9 +19,14 @@ Astra/Fable for explicit human selection.
 | Historical reason                  | `why`                                      | Relevant Git/source history → constraints, with uncertainty                                         |
 | External/version uncertainty       | `orbyn-research`                           | Specific question → cited finding for the planner/designer                                          |
 | Interface/ownership decision       | `architect`                                | Grounded requirements → chosen contracts and lifecycle                                              |
+| API/service effects                | `orbyn-backend-design`                     | Caller contract + authority → transactional effect and client errors                                |
+| Stored-data/schema transition      | `orbyn-data-migration`                     | Reader/writer inventory → compatible cutover and recovery                                           |
+| CI and contribution automation     | `orbyn-ci-design`                          | Event/trust model → scoped checks and reviewable promotion                                          |
 | Consequential competing designs    | `arena`                                    | Shared criteria → bounded alternatives and one decision                                             |
 | Large execution                    | `figure-it-out`                            | Agreed plan → completed units and concise handoffs                                                  |
 | UI flow/layout                     | `orbyn-ui-design` + `orbyn-content-design` | User task + actual tokens → coherent UI/copy                                                        |
+| Social posts and carousel copy     | `social-content`                           | Supplied facts + author voice → copy, claim notes and optional visual brief                         |
+| Social graphics and feed previews  | `social-preview`                           | Chosen copy + assets → editable visual source, rendered review and requested exports                |
 | TypeScript contract                | `typescript-best-practices`                | Existing schema/callers → precise valid states                                                      |
 | Requested tests/TDD                | `tdd`                                      | Failure contract + allowed environment → focused regression and fix                                 |
 | Existing security findings         | `orbyn-security-remediation`               | Saved findings + current source → scoped fixes and authorized evidence; no new scan                 |
@@ -38,7 +43,29 @@ context cost and evidence. They refine the task; they are not separate obligator
 phases or approval gates. REA maintenance skills apply only when that tooling is
 the requested target.
 
+## Orbyn Engineering identity
+
+Use the [fullstack contract](../../skills/orbyn-workflow/references/fullstack-contract.md)
+to connect domain, transport, persistence, clients and operations. Resolve the
+consuming project’s actual stack before applying examples. The skills preserve
+source attribution and provide concrete decision examples rather than claiming
+all methods originated here. Backend, stored-data and CI skills own separate
+boundaries; they do not duplicate the architect or launch extra workflow stages.
+
 ## Keep the system coherent
+
+Shared skill changes follow the [public upstream contract](skill-upstream.md).
+The public library owns shared content; this private application keeps its own
+product policy and consumes a hash-pinned copy. Explicit skill-only export and
+review replace automatic publication of private changes.
+
+Social writing and visuals share a brief, not a recursive workflow: `social-content`
+owns the message and evidence; `social-preview` owns composition and rendering.
+`unslop` supplies prose refinement. In-app language and product layout stay with
+the product design skills. A text-only post needs no renderer, and a supplied
+caption needs no rewrite merely to preview it. PDF, presentation and image tools
+are optional output paths selected from capabilities actually available in the
+host. See the [source/design record](../../tools/research/social-content.md).
 
 `skills/catalog.json` inventories canonical skills and routing relationships.
 `sync-agent-skills.py` maintains the index and both host discovery links. The
@@ -66,5 +93,13 @@ it must not add another competing policy document for the same concern.
   it does not recursively spawn engineers. The parent supplies review separation.
 - “Use a named delegate” when it is unavailable: state the capability failure and
   permitted direct fallback; do not substitute a generic inherited model.
+
+- “Write a LinkedIn update from these feature notes”: social writing produces
+  a supported draft; it does not infer release status from implementation alone.
+- “Preview this exact caption with a two-card carousel”: social preview preserves
+  the caption and renders the cards at wide/narrow sizes; it does not publish.
+- “Shorten this Settings label”: product content design owns the edit, not social writing.
+- “Export this carousel” without an available exporter: deliver editable source
+  and identify the missing export step; HTML generation is not PDF/PNG evidence.
 
 These examples are routing expectations, not claims of executed model trials.

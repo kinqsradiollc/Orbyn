@@ -5,7 +5,7 @@ description: "Compare competing design or implementation sketches when a consequ
 
 # Arena
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 State the artifact and a few observable criteria before generating alternatives.
 Use at most two candidates initially, each with its own output path and rationale.
@@ -26,3 +26,7 @@ Record the selected approach, useful alternatives, rejected ideas and remaining
 uncertainty. The lead reviews the synthesized diff and performs authorized proportional
 verification;
 candidate agreement is not correctness evidence. Stop when the decision is made.
+
+## Compare the same user outcome
+
+For a live-update decision, give both sketches the same reconnect, ordering and resource constraints. Compare a concrete failure trace and maintenance consequence, not only the happy-path demo. Return one selected contract to architecture; this skill does not own an ongoing implementation tournament.

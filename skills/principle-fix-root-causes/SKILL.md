@@ -5,6 +5,12 @@ description: "Trace a defect to the owner of the invalid state or interpretation
 
 # Principle fix root causes
 
-Follow [repository policy](../../AGENTS.md) and [model/agent policy](../../docs/agents/model-policy.md). Use only relevant references.
+Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
 
 Reproduce with authorized evidence, follow the producing boundary and consumers, and fix the cause. Check directly related occurrences. For restart bugs inspect persistence, locks and stale ownership before rewriting logic. If reproduction is unavailable, label the diagnosis as source-derived. Do not erase user data to make a symptom disappear.
+
+## Decision in practice
+
+Where did the invalid state first become possible?
+
+When a mobile update reverts a web edit, trace versions through shared schema, client request and database update. Repair the concurrency contract at its owner rather than forcing every screen to refresh. A UI workaround may hide the symptom while stale writes still lose data.

@@ -71,9 +71,8 @@ for category in catalog['categories']:
     text += '\n'
 text += '''## Scope and attribution
 
-The public [Orbyn connector skill](../docs/agent-skill/orbyn/SKILL.md) describes
-using the hosted planner, separately from repository development. REA maintenance
-skills apply only to that tooling. See [tooling](../docs/agents/tooling.md) and
+These are Orbyn Engineering workflows, usable with a consuming project's own
+stack and policies. REA maintenance skills apply only to that optional tooling. See [tooling](../docs/agents/tooling.md) and
 [notices](../tools/THIRD_PARTY_NOTICES.md) for complete source and attribution.
 Old standalone skill files have been retired; use the canonical folders above.
 '''
