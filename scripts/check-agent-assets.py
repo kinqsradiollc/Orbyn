@@ -86,6 +86,15 @@ for group, directory in [('engineering', 'tools/pstack/skills'), ('rea', 'tools/
     check(set(mapping) == sources, f'Incomplete source provenance: {group}')
     for local_name in mapping.values():
         check((ROOT / 'skills' / local_name / 'SKILL.md').exists(), f'Missing skill: {local_name}')
+# Incorporated TypeScript guidance retains its upstream grant after owner retirement.
+ts_guide = ROOT / 'skills/language-best-practices/references/typescript.md'
+ts_notice = ROOT / 'skills/language-best-practices/references/typescript-LICENSE.txt'
+check(ts_guide.is_file(), 'Missing incorporated TypeScript guide')
+check(ts_notice.is_file(), 'Missing incorporated TypeScript MIT notice')
+if ts_notice.is_file():
+    original_notice = (ROOT / 'tools/pstack/LICENSE').read_text().strip()
+    check(original_notice in ts_notice.read_text(), 'Incorporated TypeScript upstream license was changed')
+
 for host in ['.agents', '.claude']:
     discovered = {p.name for p in (ROOT / host / 'skills').iterdir()}
     check(discovered == ({p.parent.name for p in skills} | set(local_skills)), f'Stale/extra discovery entries: {host}')

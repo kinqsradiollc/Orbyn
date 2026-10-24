@@ -186,7 +186,7 @@
       "split": "development",
       "prompt": "Fix a repeated illegal state in the shared schema.",
       "expected_skills": [
-        "typescript-best-practices"
+        "language-best-practices"
       ],
       "forbidden_skills": [],
       "forbidden_actions": [
@@ -1140,8 +1140,7 @@
       "split": "development",
       "prompt": "Review a TypeScript runtime schema and Go API encoding change together; maintain the existing domain boundary, and explain the owning guides only.",
       "expected_skills": [
-        "language-best-practices",
-        "typescript-best-practices"
+        "language-best-practices"
       ],
       "forbidden_skills": [],
       "forbidden_actions": [
@@ -1310,6 +1309,395 @@
       "excluded": "Synthetic review-only case: no commands, file edits, runtime installation or external effects.",
       "rubric": {
         "publication": "Promote only reviewed allowlisted public changes through a verified public PR path; keep company notes/backup branches local or permitted private, do not push all refs or rewrite existing fork visibility/history."
+      }
+    },
+    {
+      "id": "compare-reconnect-contracts",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Compare two reconnect designs against duplicate/out-of-order delivery, latency and maintenance constraints. Return one selected sketch and uncertainty; do not implement.",
+      "expected_skills": [
+        "arena"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "No automatic model tournament or new sessions."
+    },
+    {
+      "id": "migration-end-state-ledger",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Organize this approved large migration into owned complete units, evidence and unresolved operator steps. Return the execution inventory, without running the migration.",
+      "expected_skills": [
+        "figure-it-out"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "A newly created handler alone does not complete the migration."
+    },
+    {
+      "id": "research-version-unknown",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Resolve which target-version API behavior matters for our existing adapter using local manifests and authoritative sources. Network access may be unavailable; return supported facts and uncertainty only.",
+      "expected_skills": [
+        "orbyn-research"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Do not invent current account access or silently choose another stack."
+    },
+    {
+      "id": "saved-finding-remediation-owner",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "We have a saved security finding about revoked access continuing through a cached subscription. Identify the remediation owner and source evidence required; do not change code or start a scan.",
+      "expected_skills": [
+        "orbyn-security-remediation"
+      ],
+      "forbidden_skills": [
+        "orbyn-security-audit"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "An existing finding does not authorize a new audit."
+    },
+    {
+      "id": "migration-evidence-record",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Turn these migration decisions and failed/passed receipts into a concise evidence trail with exact candidate, changed decision, artifact and remaining operator step.",
+      "expected_skills": [
+        "show-me-your-work"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Keep secrets and private payloads out; never turn an attempted command into success."
+    },
+    {
+      "id": "test-strategy-boundary",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Design a test strategy for a stale API write and worker retry. Choose real boundaries, fixtures, legitimate controls and cleanup; no test execution or product edits.",
+      "expected_skills": [
+        "tdd"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Do not require a new test framework or a full application sweep."
+    },
+    {
+      "id": "precise-status-prose",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Shorten this status prose while preserving facts: twelve focused checks passed locally, the PR is open, provider behavior remains unchecked.",
+      "expected_skills": [
+        "unslop"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Do not turn local checks into released or live-provider evidence."
+    },
+    {
+      "id": "polyglot-production-contract",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Design a Python API, Go worker and SQL operation contract. Include identity, encoding, lifecycle, retries and interrupted recovery; preserve existing tools.",
+      "expected_skills": [
+        "architect",
+        "language-best-practices"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic review/plan only: no product writes, test execution, provider setup or external effects.",
+      "rubric": {
+        "ownership": "Name one durable owner and stable transport encoding, distinguish request/operation identities, and select relevant Python/Go/SQL references without imposing TypeScript or a new queue.",
+        "recovery": "Keep unknown external outcomes, current authority and released-writer compatibility explicit."
+      }
+    },
+    {
+      "id": "cursor-page-contract",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Review a task listing ordered by creation time descending. Three tasks share a time; IDs are 3,2,1 and page size is two. Explain the continuation, tenant/revocation and changing-collection contract.",
+      "expected_skills": [
+        "orbyn-backend-design"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic review/plan only: no product writes, test execution, provider setup or external effects.",
+      "rubric": {
+        "ordering": "Use the full stable ordering tuple so the second page returns ID 1; bound input/page size and treat the cursor as untrusted.",
+        "authority": "Recheck current scope for every page; an encoded/signed cursor grants no access. State snapshot versus changing collection semantics."
+      }
+    },
+    {
+      "id": "private-operation-diagnostics",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Plan diagnostics for accepted, committed and delivered worker phases. Requests contain private document text and bearer URLs. Use existing local instrumentation only.",
+      "expected_skills": [
+        "orbyn-backend-design"
+      ],
+      "forbidden_skills": [
+        "orbyn-security-audit"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic review/plan only: no product writes, test execution, provider setup or external effects.",
+      "rubric": {
+        "privacy": "Select only justified fields; exclude credentials/content/bearer URLs and avoid unbounded per-user metric labels. Treat correlation IDs as potentially sensitive.",
+        "meaning": "Separate accepted/committed/delivered outcomes, failure/retry measurements and actual versus proposed evidence; do not enable a collector."
+      }
+    },
+    {
+      "id": "retry-boundary-strategy",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Propose regression checks for a Python request that times out after provider acceptance and is retried. Execution is excluded.",
+      "expected_skills": [
+        "tdd"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic review/plan only: no product writes, test execution, provider setup or external effects.",
+      "rubric": {
+        "boundary": "Choose real parsing, supported disposable SQL and controlled provider-protocol boundaries with legitimate controls; assert one logical operation and preserved data.",
+        "evidence": "Keep the plan unexecuted; name failing-before, live-provider and installed-client evidence limits. Include partial fixture cleanup."
+      }
+    },
+    {
+      "id": "out-of-order-ui-recovery",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Explain the fix contract for search A then B: B resolves first and A later overwrites it. Requests may ignore cancellation; preserve the existing framework.",
+      "expected_skills": [
+        "orbyn-ui-design"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic review/plan only: no product writes, test execution, provider setup or external effects.",
+      "rubric": {
+        "ownership": "Apply only the current request identity; pair supported cancellation with stale-result checks and lifecycle cleanup.",
+        "scope": "Preserve account/resource scope, drafts/recovery and server-side authority; do not claim abort rolls back a committed server effect."
+      }
+    },
+    {
+      "id": "blocked-verification-map",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Update the plan for a consumer verification map: old revision A passed; revision B cannot run because its disposable database is unavailable. There is also a stale recipe path.",
+      "expected_skills": [
+        "orbyn-ci-design"
+      ],
+      "forbidden_skills": [],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic review/plan only: no product writes, test execution, provider setup or external effects.",
+      "rubric": {
+        "history": "Keep A as the last confirmed revision, record B as blocked with missing evidence, and distinguish recipe drift from a reproduced product bug.",
+        "ownership": "Keep the map consumer-owned, derive existing scoped recipes from source, and do not execute recipe text as automatic permission."
+      }
+    },
+    {
+      "id": "small-doc-change-no-product-qualification",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Explain which checks a one-paragraph documentation correction needs, with no published workflow changes and no request to run tests.",
+      "expected_skills": [
+        "orbyn-ci-design"
+      ],
+      "forbidden_skills": [
+        "orbyn-security-audit"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Choose proportionate document checks; no application/native/provider qualification."
+    },
+    {
+      "id": "ordinary-python-no-stack-replacement",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Review this small Python parser correction using our current interpreter and schema conventions. Explain relevant language guidance only; no test execution.",
+      "expected_skills": [
+        "language-best-practices"
+      ],
+      "forbidden_skills": [
+        "orbyn-stack-selection"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Do not propose a technology replacement or TypeScript dependency."
+    },
+    {
+      "id": "trace-existing-telemetry-only",
+      "kind": "routing",
+      "split": "development",
+      "prompt": "Trace where the current worker writes its accepted and committed diagnostic events. Explain source mechanics only, without editing instrumentation.",
+      "expected_skills": [
+        "how"
+      ],
+      "forbidden_skills": [
+        "orbyn-security-audit"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Do not introduce telemetry services or turn source tracing into a security audit."
+    },
+    {
+      "id": "typescript-module-check-boundary",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Review a TypeScript package whose editor accepts imports but emitted JavaScript fails in its deployed runtime. Explain the relevant language guide, source/config evidence and verification plan; do not execute checks or change dependencies/configuration.",
+      "expected_skills": [
+        "language-best-practices"
+      ],
+      "forbidden_skills": [
+        "orbyn-stack-selection"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic review/plan only; no execution, stack migration or external effects.",
+      "rubric": {
+        "configuration": "Inspect supported compiler, tsconfig inheritance, emitter, package exports and actual runtime/resolution. A path alias or ambient declaration does not make a runtime import/API exist.",
+        "ownership": "Use the consolidated local TypeScript guide; select the JavaScript guide only for relevant runtime behavior. Preserve the project stack and distinguish type-check evidence from executed module behavior."
+      }
+    },
+    {
+      "id": "retired-link-write-failure",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Plan an existing skills upgrade from typescript-best-practices to language-best-practices. Replacement discovery link creation fails due to a filesystem error. Explain recovery without executing anything or deleting company material.",
+      "expected_skills": [
+        "orbyn-setup"
+      ],
+      "forbidden_skills": [
+        "orbyn-stack-selection"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic review/plan only; no execution, stack migration or external effects.",
+      "rubric": {
+        "preservation": "Keep old owned links until replacements are successfully created. Preserve foreign entries and content; retain any successful replacement links for an idempotent retry.",
+        "limits": "Describe a preflighted, retryable registration rather than an atomic filesystem transaction. Diagnose the write failure before retry; do not delete sources or overwrite conflicting company entries."
       }
     }
   ]

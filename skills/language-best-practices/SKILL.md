@@ -1,6 +1,6 @@
 ---
 name: language-best-practices
-description: "Implement or review JavaScript, Python, Go, Rust, Java, Kotlin, C#, Swift, C, C++, SQL or shell code using its actual runtime, ownership and error contracts. Select only the affected language guide; TypeScript schemas stay with typescript-best-practices."
+description: "Implement or review TypeScript, JavaScript, Python, Go, Rust, Java, Kotlin, C#, Swift, C, C++, SQL or shell code using its actual runtime, ownership and error contracts. Select only the affected local guide, including TypeScript schemas and lifecycle contracts."
 ---
 
 # Apply the language's actual contracts
@@ -13,21 +13,21 @@ version, deployment model or permission to migrate it.
 
 ## Select only the relevant guide
 
-| Changed code                           | Local guide                                                        | Additional owner when relevant                 |
-| -------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------- |
-| JavaScript, Node, browser JS           | [JavaScript](references/javascript.md)                             | TypeScript schemas → existing TypeScript skill |
-| Python                                 | [Python](references/python.md)                                     | API effects → backend design                   |
-| Go                                     | [Go](references/go.md)                                             | Durable workers → backend design               |
-| Rust                                   | [Rust](references/rust.md)                                         | FFI/data boundaries → architect                |
-| Java                                   | [Java](references/java.md)                                         | JVM interop → Kotlin guide only if affected    |
-| Kotlin                                 | [Kotlin](references/kotlin.md)                                     | Android lifecycle/UI → UI design               |
-| C# / .NET                              | [C#](references/csharp.md)                                         | Database effects → backend design              |
-| Swift                                  | [Swift](references/swift.md)                                       | Platform interaction → UI design               |
-| C                                      | [C](references/c.md)                                               | ABI/interface ownership → architect            |
-| C++                                    | [C++](references/cpp.md)                                           | C interop → C guide only if affected           |
-| SQL                                    | [SQL](references/sql.md)                                           | Stored changes → data migration                |
-| POSIX shell / Bash / zsh               | [Shell](references/shell.md)                                       | Automation trust → CI design                   |
-| TypeScript schemas and lifecycle types | [Existing TypeScript owner](../typescript-best-practices/SKILL.md) | JS runtime guide only for runtime effects      |
+| Changed code                                      | Local guide                            | Additional owner when relevant              |
+| ------------------------------------------------- | -------------------------------------- | ------------------------------------------- |
+| JavaScript, Node, browser JS                      | [JavaScript](references/javascript.md) | TypeScript schemas → TypeScript guide       |
+| Python                                            | [Python](references/python.md)         | API effects → backend design                |
+| Go                                                | [Go](references/go.md)                 | Durable workers → backend design            |
+| Rust                                              | [Rust](references/rust.md)             | FFI/data boundaries → architect             |
+| Java                                              | [Java](references/java.md)             | JVM interop → Kotlin guide only if affected |
+| Kotlin                                            | [Kotlin](references/kotlin.md)         | Android lifecycle/UI → UI design            |
+| C# / .NET                                         | [C#](references/csharp.md)             | Database effects → backend design           |
+| Swift                                             | [Swift](references/swift.md)           | Platform interaction → UI design            |
+| C                                                 | [C](references/c.md)                   | ABI/interface ownership → architect         |
+| C++                                               | [C++](references/cpp.md)               | C interop → C guide only if affected        |
+| SQL                                               | [SQL](references/sql.md)               | Stored changes → data migration             |
+| POSIX shell / Bash / zsh                          | [Shell](references/shell.md)           | Automation trust → CI design                |
+| TypeScript, including schemas and lifecycle types | [TypeScript](references/typescript.md) | JS runtime guide only for runtime effects   |
 
 For a polyglot boundary, load the guides on both sides of the actual interface,
 not every guide in the repository. For an unlisted language, preserve the project's
@@ -60,7 +60,9 @@ failure-sensitive behavior checks. Reuse configured commands and disposable
 fixtures. Do not install twelve toolchains, run all suites or claim production,
 platform, race freedom or live-agent qualification from these written examples.
 
-The local guides are independently authored operational guidance and original
-synthetic examples. Their dated primary references are evidence/update pointers;
-the instructions work offline. Preserve target-version uncertainty rather than
-claiming the linked moving documentation describes the installed environment.
+The language owner includes independently authored operational guidance and
+synthetic examples. Its consolidated TypeScript guide retains its adapted source
+lineage and [original notice](references/typescript-LICENSE.txt); consolidation
+does not change that history. Dated primary references are evidence/update
+pointers; the instructions work offline. Preserve target-version uncertainty
+rather than claiming moving documentation describes the installed environment.

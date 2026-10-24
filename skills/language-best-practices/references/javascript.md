@@ -33,6 +33,10 @@ cancellation and shutdown; adding void does not create that owner.
 
 Use the configured runtime and lint/type checks for the touched module. A passing promise fixture does not prove browser rendering or cancellation of an unsupported underlying API.
 
+## Maintainability and checks
+
+Keep module exports deliberate and preserve ESM/CommonJS compatibility. Return stable error meanings at adapters, keep logging/configuration owned by the application, and test the actual promise/resource boundary. For UI results, pair supported cancellation with current-request identity so an older response cannot overwrite newer state.
+
 ## Primary references
 
 Reviewed 24 October 2026. These independently written instructions and synthetic

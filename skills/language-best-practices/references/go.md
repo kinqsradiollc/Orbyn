@@ -31,6 +31,10 @@ the snippet does not make an arbitrary worker pool leak-free.
 
 Use configured package tests and go vet when authorized. The race detector observes executed paths; a clean -race run is not proof of race freedom or logical atomicity.
 
+## Maintainability and checks
+
+Choose packages and exported APIs from actual responsibilities. Use internal packages for implementation details when that visibility contract fits. Keep consumer interfaces narrow around real variation; do not generate one interface per struct. Preserve wrapped error identity, worker lifetime and supported toolchain behavior in representative tests.
+
 ## Primary references
 
 Reviewed 24 October 2026. These independently written instructions and synthetic

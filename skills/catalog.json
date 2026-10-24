@@ -68,12 +68,13 @@
       "category": "Engineering practice",
       "related": [
         "how",
-        "typescript-best-practices",
         "architect",
         "orbyn-backend-design",
         "orbyn-data-migration",
         "orbyn-ci-design",
-        "orbyn-stack-selection"
+        "orbyn-stack-selection",
+        "principle-type-system-discipline",
+        "principle-encode-lessons-in-structure"
       ]
     },
     {
@@ -82,10 +83,9 @@
       "related": [
         "architect",
         "how",
-        "typescript-best-practices",
+        "language-best-practices",
         "orbyn-data-migration",
-        "orbyn-ui-design",
-        "language-best-practices"
+        "orbyn-ui-design"
       ]
     },
     {
@@ -254,7 +254,6 @@
       "name": "principle-encode-lessons-in-structure",
       "category": "Engineering principles",
       "related": [
-        "typescript-best-practices",
         "language-best-practices",
         "architect"
       ]
@@ -375,7 +374,6 @@
       "name": "principle-type-system-discipline",
       "category": "Engineering principles",
       "related": [
-        "typescript-best-practices",
         "language-best-practices"
       ]
     },
@@ -446,15 +444,6 @@
       ]
     },
     {
-      "name": "typescript-best-practices",
-      "category": "Engineering practice",
-      "related": [
-        "principle-type-system-discipline",
-        "principle-encode-lessons-in-structure",
-        "language-best-practices"
-      ]
-    },
-    {
       "name": "unslop",
       "category": "Engineering practice",
       "related": [
@@ -471,5 +460,8 @@
         "architect"
       ]
     }
-  ]
+  ],
+  "retired_skills": {
+    "typescript-best-practices": "language-best-practices"
+  }
 }

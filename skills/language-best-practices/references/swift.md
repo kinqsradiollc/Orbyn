@@ -26,6 +26,10 @@ entire suspended operation an atomic transaction.
 
 Use the supported toolchain build/checks and authorized target tests. A package build is not iOS interaction, device behavior or proof of freedom from logical races.
 
+## Maintainability and checks
+
+Keep actor/public API and SDK availability explicit. Revalidate state after suspension when another operation can change the invariant. Test a meaningful asynchronous interleaving or recovery boundary when authorized; do not silence isolation diagnostics with unchecked annotations or claim a package build qualifies device behavior.
+
 ## Primary references
 
 Reviewed 24 October 2026. These independently written instructions and synthetic

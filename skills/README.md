@@ -35,11 +35,10 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 - [arena](arena/SKILL.md) — Compare competing design or implementation sketches when a consequential choice cannot be resolved cheaply from existing evidence.
 - [how](how/SKILL.md) — Trace source behavior, data flow, ownership and module boundaries before explaining or changing an unfamiliar subsystem.
 - [interrogate](interrogate/SKILL.md) — Challenge a specified design, patch or claim for concrete correctness, ownership and evidence gaps. Use for adversarial review, not every routine edit.
-- [language-best-practices](language-best-practices/SKILL.md) — Implement or review JavaScript, Python, Go, Rust, Java, Kotlin, C#, Swift, C, C++, SQL or shell code using its actual runtime, ownership and error contracts. Select only the affected language guide; TypeScript schemas stay with typescript-best-practices.
+- [language-best-practices](language-best-practices/SKILL.md) — Implement or review TypeScript, JavaScript, Python, Go, Rust, Java, Kotlin, C#, Swift, C, C++, SQL or shell code using its actual runtime, ownership and error contracts. Select only the affected local guide, including TypeScript schemas and lifecycle contracts.
 - [orbyn-security-remediation](orbyn-security-remediation/SKILL.md) — Investigate and resolve existing Orbyn security findings, record evidence and add preventive checks without starting a security scan.
 - [orbyn-stack-selection](orbyn-stack-selection/SKILL.md) — Choose or reassess a language, framework, database, runtime, hosting or build-versus-buy option from project constraints and current primary evidence. Produce a decision with operating and migration costs; ordinary implementation keeps the established stack.
-- [tdd](tdd/SKILL.md) — Write a focused failing-before regression and fix when the user requests TDD or testing and the affected behavior has a practical test boundary.
-- [typescript-best-practices](typescript-best-practices/SKILL.md) — Design or fix shared TypeScript schemas, illegal state combinations, lifecycle unions and unsafe casts. Own the runtime schema, derived types and affected callers together.
+- [tdd](tdd/SKILL.md) — Design focused contract tests or a failing-before regression when the user requests testing or TDD; select practical boundaries, fixtures and evidence within the requested execution scope.
 - [unslop](unslop/SKILL.md) — Edit agent prose and documentation for clear factual communication while preserving the requested voice and evidence.
 - [why](why/SKILL.md) — Investigate design rationale, regressions and trade-offs using Git history and relevant authorized records; distinguish documented intent from inference.
 
@@ -71,7 +70,7 @@ in `docs/agents/`. This index is generated from `catalog.json` and frontmatter b
 - [principle-separate-before-serializing-shared-state](principle-separate-before-serializing-shared-state/SKILL.md) — Prevent concurrent writers from corrupting a shared artifact or state object.
 - [principle-sequence-verifiable-units](principle-sequence-verifiable-units/SKILL.md) — Order a multi-part change so failures are localized and delivery is understandable.
 - [principle-subtract-before-you-add](principle-subtract-before-you-add/SKILL.md) — Reduce existing complexity before extending an affected design.
-- [principle-type-system-discipline](principle-type-system-discipline/SKILL.md) — Choose types that express valid states and prevent contract mistakes. For shared TypeScript schema changes, pair this principle with typescript-best-practices.
+- [principle-type-system-discipline](principle-type-system-discipline/SKILL.md) — Choose types that express valid states and prevent contract mistakes. For shared TypeScript schema changes, use the TypeScript reference in language-best-practices.
 
 ## Product design
 

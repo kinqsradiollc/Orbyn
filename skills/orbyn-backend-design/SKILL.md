@@ -48,3 +48,7 @@ for the actual service/runtime. Database syntax and isolation need the engine's
 SQL reference; language types alone do not prove transaction or authorization
 behavior. Choosing a replacement stack belongs to stack selection and architect,
 not an incidental service implementation.
+
+## Production behavior and diagnostics
+
+Use [production service contracts](references/service-contracts.md) for bounded input/work, error semantics, concurrency and stable pagination. Use [observability](references/observability.md) when the changed operation needs diagnosable phases and privacy-aware records; installing telemetry or a provider is a separate decision.

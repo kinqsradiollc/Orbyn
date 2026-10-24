@@ -63,6 +63,48 @@ def hosts_for(host):
     return ['.agents', '.claude'] if host == 'both' else ['.agents' if host == 'codex' else '.claude']
 
 
+def retirements(catalog):
+    """Only explicit one-step retirements into a current canonical owner."""
+    retired = catalog.get('retired_skills', {})
+    names = {entry['name'] for entry in catalog['skills']}
+    if not isinstance(retired, dict):
+        raise ValueError('Invalid retired skill map')
+    for old, replacement in retired.items():
+        if (not isinstance(old, str) or not NAME.fullmatch(old)
+                or not isinstance(replacement, str) or replacement not in names
+                or old in names or len(old) >= 64):
+            raise ValueError('Retired skills must map distinct old names to current owners')
+    return retired
+
+
+def plan_retired_links(project, source_root, retired, sources, hosts):
+    """Remove only known links into this same source tree; never delete content."""
+    pending = {}
+    for host in hosts:
+        base = project/host/'skills'
+        for parent in [project/host, base]:
+            if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+                raise ValueError(f'Refusing a non-directory or symlinked host path: {parent}')
+        for old, replacement in retired.items():
+            if replacement not in sources:
+                continue  # A smaller unrelated selection never uninstalls old skills.
+            link = base/old
+            target = source_root/'skills'/old
+            if link.is_symlink() and link.resolve() == target.resolve():
+                if (target/'SKILL.md').exists() or (target/'SKILL.md').is_symlink():
+                    raise ValueError(f'Retired skill still has an active source: {old}')
+                pending[link] = target.resolve()
+    return pending
+
+
+def remove_retired_links(pending):
+    for link, target in pending.items():
+        if not link.is_symlink() or link.resolve() != target:
+            raise ValueError(f'Retired discovery entry changed after preflight; preserved: {link}')
+    for link in pending:
+        link.unlink()  # Only preflighted symlinks; never their target directories.
+
+
 def plan_links(project, sources, hosts, require_existing=False, replacing=(), planned_sources=()):
     """Preflight both hosts before returning any writes; preserve unrelated entries."""
     pending = []

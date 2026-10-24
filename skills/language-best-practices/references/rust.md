@@ -28,6 +28,10 @@ lifetime ownership, not a blanket rule against allocation.
 
 Use configured cargo check/test, formatting and Clippy within authorized scope. Compilation proves neither unsafe-code soundness nor transactional cancellation safety.
 
+## Maintainability and checks
+
+Keep public types and dependency exposure deliberate; document errors, panic conditions and unsafe invariants where relevant. Debug output must not reveal secret fields. Choose ownership/borrowing and traits from real caller needs rather than adding Clone, Arc or generic layers mechanically. Keep useful regression seeds for parser or state invariants.
+
 ## Primary references
 
 Reviewed 24 October 2026. These independently written instructions and synthetic

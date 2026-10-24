@@ -29,6 +29,10 @@ allocation exactly once. This is an original fragment, not a complete allocator.
 
 Use the actual compiler warnings and authorized sanitizer/behavior checks for bounds and cleanup. Sanitizers observe executed behavior and do not prove absence of undefined behavior.
 
+## Maintainability and checks
+
+Document public ABI ownership and caller obligations, including partial initialization and cleanup. Keep capacity/length/error conventions consistent across consumers. Use representative invalid input and failure paths in authorized checks; warnings or one sanitizer run cannot establish all lifetime and concurrency invariants.
+
 ## Primary references
 
 Reviewed 24 October 2026. These independently written instructions and synthetic

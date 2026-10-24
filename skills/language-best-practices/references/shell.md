@@ -7,7 +7,7 @@ Resolve the shebang, actual shell/version and OS utilities. POSIX sh, Bash and z
 ## Apply at the affected boundary
 
 - Pass arguments as separate quoted words or native arrays; preserve "$@". Never treat JSON escaping as shell quoting or eval untrusted text.
-- Inspect every external effect and its exit status. set -e has conditional/pipeline exceptions; pipefail is a Bash feature, not a portable POSIX contract.
+- Inspect every external effect and its exit status. set -e has conditional/pipeline exceptions; check pipefail support in the actual deployed shell rather than assuming all sh implementations provide it.
 - Own temporary paths, validate destructive destinations and trap cleanup only for created resources. Do not reset/clean arbitrary Git work or remove a user's output to make a retry succeed.
 - Keep credentials out of traces/logs and command substitution output. Use structured APIs or body files for multiline content; account for filename newlines and utility-specific option parsing.
 
@@ -28,6 +28,10 @@ utility. Quoting alone does not stop option parsing.
 ## Evidence to report
 
 Run syntax checks for the actual interpreter and authorized disposable failure/recovery fixtures. bash -n does not execute the path, prove portability or validate a remote deployment.
+
+## Maintainability and checks
+
+Separate parsing, validation and external effects. Use the actual interpreter and utility contract, preserve argument boundaries, and inspect command status at each meaningful effect. Cleanup removes only paths/resources created by this operation; a failed retry must not erase another worker’s output or a user’s checkout.
 
 ## Primary references
 

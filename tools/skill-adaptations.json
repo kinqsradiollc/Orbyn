@@ -18,7 +18,7 @@
     "principle-make-operations-idempotent": "principle-make-operations-idempotent",
     "principle-sequence-verifiable-units": "principle-sequence-verifiable-units",
     "principle-outcome-oriented-execution": "principle-outcome-oriented-execution",
-    "typescript-best-practices": "typescript-best-practices",
+    "typescript-best-practices": "language-best-practices",
     "architect": "architect",
     "principle-never-block-on-the-human": "principle-never-block-on-the-human",
     "principle-redesign-from-first-principles": "principle-redesign-from-first-principles",

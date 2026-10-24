@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: "Write a focused failing-before regression and fix when the user requests TDD or testing and the affected behavior has a practical test boundary."
+description: "Design focused contract tests or a failing-before regression when the user requests testing or TDD; select practical boundaries, fixtures and evidence within the requested execution scope."
 ---
 
 # Tdd
@@ -37,3 +37,7 @@ For a stale update, place the regression at the API/version boundary and assert 
 Use the [local operating method](references/operating-method.md) for the execution
 sequence, concrete failure case, expected result and stopping condition. It is
 Orbyn-authored guidance; historical source notices remain in provenance.
+
+## Choose a useful strategy
+
+For requested test design, use [test strategy](references/test-strategy.md) to select the real boundary, fixtures, failure controls and execution scope. A plan can be the requested output; this skill does not turn every test request into mandatory production edits.

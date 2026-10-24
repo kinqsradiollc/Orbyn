@@ -126,3 +126,10 @@ Reuse the owned shared candidate for related corrections and serialize shared
 writes with the consumer owner. Follow the [release handoff](../orbyn-upstream-review/references/release-handoff.md):
 finish authorized dependency merges, pin the actual merged public SHA and verify
 both repos' final state. An unmerged candidate is not current public `main`.
+
+When consolidating an owner, migrate incoming links, presets, examples, active
+cases and host discovery together. Preserve old measured suites/revisions as
+historical evidence. A declared catalog retirement may map an old installer
+selection to the maintained owner; remove only known owned discovery links,
+preflight both hosts and retain foreign/company content. Preserve incorporated
+source/license records when moving a derived reference into an original skill.

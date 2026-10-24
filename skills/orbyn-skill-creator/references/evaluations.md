@@ -121,3 +121,13 @@ This workflow is independently authored. Design references are
 [Anthropic's skill creator](https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md),
 [agent evaluation guidance](https://www.anthropic.com/research/demystifying-evals-for-ai-agents)
 and [SkillsBench](https://arxiv.org/abs/2602.12670v4). No evaluator code was imported.
+
+## Consolidating a skill owner
+
+Keep observed historical trials tied to their original suite and revision. The
+released 61-case suite before TypeScript consolidation is retained verbatim in
+[the baseline archive](../evals/baselines/2026-10-24-55-skills.json). The active
+suite migrates its two TypeScript selection identities to the language owner;
+this is a new suite checksum, not a regrade of the old observations. New routing
+and production-practice cases are development cases. Run fresh paired trials
+before claiming a measured behavioral improvement from this candidate.

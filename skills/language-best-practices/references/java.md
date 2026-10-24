@@ -31,6 +31,10 @@ translation belongs at an interface that requires it.
 
 Use the project wrapper and configured compiler/analyzers plus scoped authorized tests. Building on a newer developer JDK alone does not establish compatibility with the deployment release.
 
+## Maintainability and checks
+
+Keep public interfaces, exception meanings and deployment release compatibility explicit. Do not expose persistence/vendor exceptions as API results or treat a record containing a mutable collection as deeply immutable. Use the existing build wrapper and effect-owned fixtures; a developer JDK build alone does not qualify the deployment target.
+
 ## Primary references
 
 Reviewed 24 October 2026. These independently written instructions and synthetic

@@ -32,7 +32,10 @@
     ".C": "cpp"
   },
   "ambiguous_extensions": {
-    ".h": ["c", "cpp"]
+    ".h": [
+      "c",
+      "cpp"
+    ]
   },
   "guides": {
     "javascript": "references/javascript.md",
@@ -47,6 +50,6 @@
     "cpp": "references/cpp.md",
     "sql": "references/sql.md",
     "shell": "references/shell.md",
-    "typescript": "../typescript-best-practices/SKILL.md"
+    "typescript": "references/typescript.md"
   }
 }

@@ -31,16 +31,21 @@ for entry in entries:
 project_tools = runpy.run_path(str(ROOT / 'skills/orbyn-setup/scripts/project_skills.py'))
 local = {}
 pending = []
+retired_links = {}
 try:
     local = project_tools['inventory'](ROOT, actual)
     sources = {name: ROOT / 'skills' / name for name in actual}
     sources.update(local)
+    retired = project_tools['retirements'](catalog)
+    retired_links = project_tools['plan_retired_links'](ROOT, ROOT, retired, sources, ['.agents', '.claude'])
+    if retired_links and not args.write:
+        errors.append('Known retired discovery links remain; run sync-agent-skills.py --write')
     pending = project_tools['plan_links'](ROOT, sources, ['.agents', '.claude'], not args.write)
     for host in ['.agents', '.claude']:
         base = ROOT / host / 'skills'
         if base.exists():
             for link in base.iterdir():
-                if link.name not in sources:
+                if link.name not in sources and link not in retired_links:
                     errors.append(f'Unmanaged discovery entry; classify ownership before moving: {link.relative_to(ROOT)}')
 except (OSError, ValueError) as error:
     errors.append(str(error))
@@ -87,6 +92,7 @@ Old standalone skill files have been retired; use the canonical folders above.
 index = ROOT / 'skills/README.md'
 if args.write:
     project_tools['write_links'](pending)
+    project_tools['remove_retired_links'](retired_links)
     index.write_text(text)
     print(f'Updated shared index and discovery links: {len(actual)} shared, {len(local)} project skills.')
 else:

@@ -40,7 +40,7 @@ This consumer-owned map is outside shared skill synchronization and adds no auth
 | UI, responsive behavior or product copy | [UI/UX](docs/agents/ui-ux.md), [UI skill](skills/orbyn-ui-design/SKILL.md), [content skill](skills/orbyn-content-design/SKILL.md)                            |
 | Social posts, graphics or feed previews | [Social writing](skills/social-content/SKILL.md), [social previews](skills/social-preview/SKILL.md)                                                          |
 | API contracts, migrations or CI         | [Backend design](skills/orbyn-backend-design/SKILL.md), [data migration](skills/orbyn-data-migration/SKILL.md), [CI design](skills/orbyn-ci-design/SKILL.md) |
-| Language-specific implementation        | [Language guidance](skills/language-best-practices/SKILL.md), [TypeScript contracts](skills/typescript-best-practices/SKILL.md)                              |
+| Language-specific implementation        | [Language guidance](skills/language-best-practices/SKILL.md), [TypeScript contracts](skills/language-best-practices/references/typescript.md)                |
 | Technology or stack choice              | [Stack selection](skills/orbyn-stack-selection/SKILL.md), [current stack](docs/agents/stack.md)                                                              |
 | Runtime, data, providers or deployment  | [Operations](docs/agents/operations.md)                                                                                                                      |
 | Verification and delivery               | [Delivery workflow](docs/agents/delivery.md)                                                                                                                 |
