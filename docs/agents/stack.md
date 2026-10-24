@@ -43,8 +43,9 @@ only the languages affected by a change. Orbyn's application is TypeScript;
 JavaScript owns supporting browser/Node scripts, Python owns services such as
 `ocr/server.py`, SQL owns `backend/migrations/`, and shell owns deployment helpers.
 Inspect actual paths, manifests and target versions before selecting a guide.
-TypeScript schema/state changes retain the existing
-[TypeScript owner](../../skills/language-best-practices/references/typescript.md). Availability
+TypeScript schema/state changes use the incorporated
+[TypeScript guide](../../skills/language-best-practices/references/typescript.md)
+under the language owner. Availability
 of guides for other languages does not add them to this product's stack.
 
 Use [orbyn-stack-selection](../../skills/orbyn-stack-selection/SKILL.md) only when

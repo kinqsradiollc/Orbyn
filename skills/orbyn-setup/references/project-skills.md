@@ -105,7 +105,10 @@ A shared catalog may declare `retired_skills`, mapping an old name to one curren
 owner. TypeScript now selects `language-best-practices` and its local TypeScript
 reference. This is an upgrade alias, not a second active skill or a company name.
 The installer accepts the old explicit selection, installs its replacement and
-removes only matching old discovery symlinks into that same library source.
+removes only matching old discovery symlinks into that same library source,
+after replacement links have been created successfully. If link creation fails,
+keep the old links and any successfully created replacements; inspect the error
+and retry the idempotent registration. This is not an atomic filesystem transaction.
 Dry-run reports the planned retirement; repeated setup converges.
 
 Foreign directories, links into other sources and consumer-owned skills stay

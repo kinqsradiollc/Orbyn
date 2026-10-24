@@ -3,7 +3,7 @@
 ## Candidate and scope
 
 Consumer base: merged main `6cdc382b`. Public candidate: PR #10,
-`8d8809a145e948aa1e02af148f6aa1593687ea6e`, with 54 skills and 230 managed files.
+`a8e862e5f77fd3b5d3ab6fe527541b68b5470fa4`, with 54 skills and 230 managed files.
 This draft is separate from the released 55-skill pin `7876158` and does not
 update the primary checkout or authorize a merge.
 
@@ -29,12 +29,25 @@ are unchanged. Generic public root guides are not copied into this application.
 - Source/attribution, model registry (zero changes), project context, Python AST,
   scoped documentation formatting and whitespace checks pass.
 - The released 61-case archive and relocated TypeScript MIT notice have identical
-  bytes to their pre-migration originals. The active 77-case suite validates;
+  bytes to their pre-migration originals. The active 79-case suite validates;
   no model trials ran.
-- The public candidate's hosted helper validation passed. Consumer disposable
-  retirement/failure fixtures await the requested human test authorization;
-  static checks and the actual local migration are not a claim that those
-  independent negative-path fixtures ran here.
+- After explicit human authorization, 12 focused disposable consumer checks pass:
+  invalid retirement declarations, owned-link retirement, active-source refusal,
+  foreign-entry preservation, pre-removal revalidation, host-path refusal,
+  unrelated selections, read-only reporting, replacement conflicts, unmanaged
+  entries, the full upgrade and repeat-run safety. Project-owned skills, fixture
+  configuration and output remain intact.
+- Independent consumer fault injection reproduced a replacement-creation failure
+  removing old links before replacements existed. The generator now writes new
+  links before retiring old links; the same injected failure preserves both old
+  links. All 12 earlier checks still pass. These fixtures exercise filesystem
+  behavior, not live Codex or Claude skill selection.
+- The primary checkout's 21 retained local files and four private configurations
+  match their preservation hashes. No application checks or REA changes ran.
+- The reviewed public revision adds compiler, module and public-type guidance,
+  corrects preset/routing descriptions and retains the incorporated TypeScript
+  lineage. Its reported 94 helper tests and compiler example checks are public
+  evidence; the consumer checks above were executed independently here.
 
 ## Delivery
 
@@ -43,3 +56,8 @@ Merge the public dependency first, then repin to its actual reviewed merged SHA
 and recheck the consumer under a separate authorized merge. Preserve unrelated
 local documents, output and private configuration. GitHub records the draft's
 actual commit/check/merge state.
+
+After an explicitly authorized merge and main synchronization, remove completed
+owned task worktrees only after preserving remaining output, research and local
+changes. Keep primary checkouts and worktrees still in use. This conditional
+cleanup request does not authorize merging this draft or removing active paths.

@@ -91,8 +91,8 @@ Old standalone skill files have been retired; use the canonical folders above.
 '''
 index = ROOT / 'skills/README.md'
 if args.write:
-    project_tools['remove_retired_links'](retired_links)
     project_tools['write_links'](pending)
+    project_tools['remove_retired_links'](retired_links)
     index.write_text(text)
     print(f'Updated shared index and discovery links: {len(actual)} shared, {len(local)} project skills.')
 else:

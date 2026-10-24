@@ -88,7 +88,7 @@
       ]
     },
     "languages": {
-      "description": "Language-aware implementation with local guides for 12 languages and the existing TypeScript contract owner",
+      "description": "Language-aware implementation with 13 local guides, including TypeScript",
       "skills": [
         "language-best-practices",
         "how"

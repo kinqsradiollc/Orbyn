@@ -72,7 +72,9 @@
         "orbyn-backend-design",
         "orbyn-data-migration",
         "orbyn-ci-design",
-        "orbyn-stack-selection"
+        "orbyn-stack-selection",
+        "principle-type-system-discipline",
+        "principle-encode-lessons-in-structure"
       ]
     },
     {

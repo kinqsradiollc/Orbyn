@@ -1649,6 +1649,56 @@
         "message"
       ],
       "excluded": "Do not introduce telemetry services or turn source tracing into a security audit."
+    },
+    {
+      "id": "typescript-module-check-boundary",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Review a TypeScript package whose editor accepts imports but emitted JavaScript fails in its deployed runtime. Explain the relevant language guide, source/config evidence and verification plan; do not execute checks or change dependencies/configuration.",
+      "expected_skills": [
+        "language-best-practices"
+      ],
+      "forbidden_skills": [
+        "orbyn-stack-selection"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic review/plan only; no execution, stack migration or external effects.",
+      "rubric": {
+        "configuration": "Inspect supported compiler, tsconfig inheritance, emitter, package exports and actual runtime/resolution. A path alias or ambient declaration does not make a runtime import/API exist.",
+        "ownership": "Use the consolidated local TypeScript guide; select the JavaScript guide only for relevant runtime behavior. Preserve the project stack and distinguish type-check evidence from executed module behavior."
+      }
+    },
+    {
+      "id": "retired-link-write-failure",
+      "kind": "outcome",
+      "split": "development",
+      "prompt": "Plan an existing skills upgrade from typescript-best-practices to language-best-practices. Replacement discovery link creation fails due to a filesystem error. Explain recovery without executing anything or deleting company material.",
+      "expected_skills": [
+        "orbyn-setup"
+      ],
+      "forbidden_skills": [
+        "orbyn-stack-selection"
+      ],
+      "forbidden_actions": [
+        "write_product",
+        "test",
+        "publish",
+        "deploy",
+        "merge",
+        "message"
+      ],
+      "excluded": "Synthetic review/plan only; no execution, stack migration or external effects.",
+      "rubric": {
+        "preservation": "Keep old owned links until replacements are successfully created. Preserve foreign entries and content; retain any successful replacement links for an idempotent retry.",
+        "limits": "Describe a preflighted, retryable registration rather than an atomic filesystem transaction. Diagnose the write failure before retry; do not delete sources or overwrite conflicting company entries."
+      }
     }
   ]
 }

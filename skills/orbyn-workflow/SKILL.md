@@ -170,7 +170,7 @@ actual evidence and limits, without ceremonial principle citations. Source attri
 
 For an affected code path, select [language guidance](../language-best-practices/SKILL.md)
 from the actual files/manifests and load only its relevant local reference.
-TypeScript schemas retain their existing owner. Use
+TypeScript schemas use that owner's [local TypeScript guide](../language-best-practices/references/typescript.md). Use
 [stack selection](../orbyn-stack-selection/SKILL.md) for a requested recommendation
 or demonstrated technology mismatch; it produces the decision for architect and
 the implementation owners, not an automatic rewrite. The human requests the
