@@ -2,7 +2,7 @@
 
 The active Orbyn [social writing method](../SKILL.md) is independently authored.
 For optional background, read the local unmodified
-[Corey Haines social skill](upstream/marketingskills-social/SKILL.md) and its
+[Corey Haines social skill](upstream/marketingskills-social/SOURCE.md) and its
 bundled `references/` directory. No online fetch is required to inspect these.
 
 Source: Corey Haines, `coreyhaines31/marketingskills`, revision

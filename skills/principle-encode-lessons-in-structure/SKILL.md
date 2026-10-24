@@ -23,3 +23,13 @@ consuming project's schema owner; this principle does not choose a language.
 For another implementation language, use its [local language guide](../language-best-practices/SKILL.md)
 and the consuming project's contract owner. Preserve valid-state and runtime
 validation principles without requiring TypeScript syntax or schema libraries.
+
+## Apply and hand off
+
+Write the recurring invalid state and identify the representation that permits it. Move the invariant into that owner and migrate its producers and consumers together.
+
+Concrete check: Replacing two lifecycle booleans requires updating persisted readers as well as the type. Keep a compatibility path for old stored data until it is deliberately retired.
+
+Return the changed invariant, its owning location and the observation or evidence
+gap. Carry execution through [architect](../architect/SKILL.md) when relevant. This
+principle refines that task; it does not create another mandatory phase.

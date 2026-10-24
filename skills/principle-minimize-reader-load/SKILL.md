@@ -14,3 +14,13 @@ Trace where values originate and who changes them. Collapse wrappers that add no
 Can a maintainer explain where this value changes?
 
 For a reviewable proposal, keep its lifecycle in the shared domain owner and render the current state directly. Avoid a second local status plus effects that continually synchronize it. Keep separate presentation state, such as an expanded panel, local to the view.
+
+## Apply and hand off
+
+Follow one value from creation through mutation and use. Collapse duplicate interpretations while keeping useful effect and authority boundaries explicit.
+
+Concrete check: Derive a displayed operation status from the domain result. Retain local expanded/collapsed state because presentation state has a different owner and lifetime.
+
+Return the changed invariant, its owning location and the observation or evidence
+gap. Carry execution through [architect](../architect/SKILL.md) when relevant. This
+principle refines that task; it does not create another mandatory phase.

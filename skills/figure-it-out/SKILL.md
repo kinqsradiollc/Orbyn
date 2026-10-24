@@ -34,3 +34,9 @@ blocked parts without silently reducing the requested outcome.
 ## Finish the vertical slice
 
 For an API extraction, the inventory includes shared schema, consumers, persistence, service routing and the old handler. Close a unit only when its named artifact and evidence exist. Keep unfinished operator/deployment work visible; do not replace it with a future-work paragraph and call the migration complete.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

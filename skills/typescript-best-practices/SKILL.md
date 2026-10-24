@@ -38,3 +38,8 @@ For JavaScript runtime, cancellation and resource-lifecycle effects, use only th
 relevant. Other languages route through [language guidance](../language-best-practices/SKILL.md).
 This skill remains the TypeScript schema/type owner; do not translate its specific
 schema-library examples into a mandatory dependency for another language.
+
+## Local contract example
+
+Use the [TypeScript contract guide](references/contracts.md) for an original
+lifecycle example, unknown-input handling, runtime effects and caller migration.

@@ -35,3 +35,9 @@ user's exact symptom. Pin material inputs, source and timing where practical;
 vary one consequential factor and retain failed attempts. Separate observations
 from hypotheses. If runtime access is unavailable, continue bounded source
 tracing and name the missing check without claiming a reproduction.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

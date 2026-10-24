@@ -105,3 +105,10 @@ routing. Inspect the consumer's real manifests before selecting a guide; do not
 infer that it uses TypeScript from this library's examples. The additive
 `languages` and `architecture` presets support focused installations. This does
 not install runtimes, choose a new stack or change the consumer's model settings.
+
+Before reporting the installed version, identify the library checkout's HEAD,
+branch and managed dirty state, and compare any consumer lock. Use the requested
+reviewed release by default; do not silently install pending PR content as if it
+were public `main`. A discovery link follows its source working tree, so report
+that actual source and any unmerged/local changes. When online freshness cannot
+be checked, keep the cached revision and limitation explicit.

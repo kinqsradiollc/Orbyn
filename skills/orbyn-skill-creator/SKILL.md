@@ -99,3 +99,30 @@ changes; do not change frozen criteria after observing a held-out result.
 Prepared or incomplete trials remain unverified. Helper fixtures test the tooling;
 only captured, reviewed host trials provide evidence of skill behavior. Record
 baseline and candidate results separately before claiming an improvement.
+
+## Audit completeness without inflating the catalog
+
+For a full sweep, inventory every catalog entry and its local support files.
+Record its input, useful result, failure boundary, execution owner and actual
+evidence; distinguish a focused principle from a complete workflow. Essential
+execution must work from the local method rather than a link to a missing skill.
+Add concrete operational guidance where a short summary loses the method, and
+retain concise entrypoints when their linked resources supply it.
+
+Keep only canonical entrypoints named `SKILL.md`. Bundled upstream entrypoint
+text uses `SOURCE.md`, retaining original `source_path`, bytes, hashes and notices
+in the snapshot record. Historical mentions inside that text are source data,
+not installed skills or permission to fetch them. Validate recursive discovery,
+related catalog owners, local files and Markdown heading fragments.
+
+Maintained Orbyn guidance can be independently written while earlier derived
+material retains its provenance. New wording, a renamed title or extra length
+does not justify deleting attribution or asserting exclusive origin. Describe
+original additions and retained lineage separately. A full audit is not complete
+qualification when optional adapters or live behavior remain unverified.
+
+Before a shared edit, inspect relevant open PR heads/bases and the consumer lock.
+Reuse the owned shared candidate for related corrections and serialize shared
+writes with the consumer owner. Follow the [release handoff](../orbyn-upstream-review/references/release-handoff.md):
+finish authorized dependency merges, pin the actual merged public SHA and verify
+both repos' final state. An unmerged candidate is not current public `main`.
