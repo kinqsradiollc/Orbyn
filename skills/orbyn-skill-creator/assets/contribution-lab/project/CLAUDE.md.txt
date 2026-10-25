@@ -1,0 +1,1 @@
+Read AGENTS.md and relevant target-owned guidance before changing code.

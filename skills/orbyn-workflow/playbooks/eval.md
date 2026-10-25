@@ -8,3 +8,9 @@ Use the [recorded-trial evaluator](../../orbyn-skill-creator/references/evaluati
 for this library's routing and outcome cases. Validate the suite, prepare a frozen
 run, capture authorized host evidence, then grade it. Incomplete runs stay
 unverified; deterministic CI fixtures are not a model benchmark.
+
+For requested contribution execution, use the
+[local execution lab](../../orbyn-skill-creator/references/contribution-execution.md)
+and preserve actual reproduction, patch, Git, review and exact-head check evidence.
+Keep blocked layouts and revised experiments separate; a scenario answer does
+not substitute for the requested executable outcome.

@@ -1,0 +1,17 @@
+---
+name: widget-contracts
+description: "Apply Widget Events subscription identity, replacement and disposal contracts when changing or reviewing this project's event registry."
+---
+
+# Widget Events contract
+
+A registration is identified by (topic, key), not callback equality. Subscribing
+again with the same identity replaces its callback: later emits deliver once to
+the latest callback. Distinct keys or topics remain independent even when they
+share the exact same callable. A disposer belongs to the registration returned by
+its subscribe call, is safe to repeat and must not remove a newer replacement.
+Emit dispatches the snapshot current at emit start. Nested subscription changes
+must not mutate that in-progress iteration.
+
+Keep this target-owned skill and its host links in place. The public portable
+library does not own Widget's contract or its dirty working documents.

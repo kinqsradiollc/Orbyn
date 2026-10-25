@@ -1,6 +1,6 @@
 ---
 name: reflect
-description: "Review the current task for reusable lessons when requested, and update only the authorized workflow or skill scope."
+description: "Review current-task evidence for reusable lessons when requested or a demonstrated skill gap emerges; propose bounded improvements and edit only within authorized scope."
 ---
 
 # Reflect
@@ -10,6 +10,12 @@ Follow the consuming project's instructions first. Use [Orbyn Engineering policy
 Use the current conversation and its artifacts. Do not scan unrelated chat
 histories or private workspace transcripts. Identify the failed assumption,
 working correction and evidence that the lesson generalizes.
+
+For a demonstrated shared-skill gap, use the creator's
+[contribution feedback policy](../orbyn-skill-creator/references/contribution-feedback.md).
+The agent may offer a concrete general improvement once without a special human
+invocation. Do not turn every successful task into a prompt, publish company-only
+material or edit a managed installation merely to propose upstream improvement.
 
 Prefer a small structural fix to another universal rule. Keep one-off preferences
 local to the task. If a skill edit is authorized, update its owning instructions

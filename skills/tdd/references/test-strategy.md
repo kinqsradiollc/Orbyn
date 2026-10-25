@@ -49,6 +49,16 @@ Do not add tests that duplicate an implementation just to increase counts. Do
 not broaden every change to every platform/suite. Use the CI owner's impact
 selection for required checks and retain real evidence limits.
 
+For [bulk pipeline failures](../../orbyn-ci-design/references/bulk-failures.md),
+select regressions at confirmed causes with representative failing and passing
+controls across material environment/instance variants. Shared symptoms do not
+justify a test per log line or prove one fix covers every failure. Retain actual
+selected counts and all attempts; fail/pass recovery is not a demonstrated repair.
+Run affected checks after a correction and hand the complete candidate back to
+the project's required broader gates. Do not drop tests or weaken assertions to
+turn a large inventory green. Source/configuration repair, report-parser checks,
+generated capacity records and real application test runs are different evidence.
+
 [The retry example](../examples/retry-test-plan.md) provides a Python/worker
 verification plan without pretending the plan has executed.
 

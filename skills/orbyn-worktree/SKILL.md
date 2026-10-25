@@ -30,8 +30,10 @@ or move existing worktrees merely to enforce this convention.
 
 ## Sibling location and names
 
-An optional library-root `repo/` workspace keeps contribution clones and
+The nested library-root `repo/` option keeps contribution clones and
 worktrees together; follow the [nested repository contract](../orbyn-setup/references/repository-workspaces.md).
+It is the recommended/default choice for new contribution workspaces after the
+setup agent resolves the user's layout choice, not a reason to move existing work.
 For `orbyn-fullstack-skills/repo/widget`, use sibling `repo/widget-wt/<purpose>/`.
 Target instructions and skills apply to its work; the outer library owns its
 ignore/export boundary. Do not put targets inside canonical `skills/`, infer
@@ -147,6 +149,15 @@ pushed and proposed for review. A local branch is recoverable only while its
 checkout/Git data remain; preserve valuable unpushed work before cleanup.
 
 ## Create and verify the selected checkout
+
+For unattended execution, verify required host capabilities on a disposable
+checkout with the actual topology before expensive work. A primary-clone commit
+probe does not establish write access to a linked worktree's separate Git index
+or common metadata. Test only effects already authorized by the task.
+If the host denies metadata writes, preserve the patch and report delivery as
+blocked; do not rewrite `.git`, supply an alternate index or bypass the sandbox.
+A separately authorized new workspace must have its own readiness evidence;
+never move or reset existing owned work to manufacture a passing probe.
 
 Resolve the requested base revision before writes. Continue an existing task/PR
 from its actual branch or reviewed commit. For new work, use the project's

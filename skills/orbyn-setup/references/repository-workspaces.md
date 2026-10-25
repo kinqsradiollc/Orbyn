@@ -1,8 +1,35 @@
 # Independent contribution repositories inside a library checkout
 
-Use this optional layout when the user wants contribution projects beside the
-local library. Existing projects elsewhere keep their location. It is not a
-reason to move active work or clone another repository without a task.
+Nested is the recommended default for a new contribution workspace. Offer the
+two layouts below before creating a checkout or registering discovery when the
+user has not chosen one. This is a workspace decision, not a preset/model choice.
+
+| Layout | Location | When it fits |
+| --- | --- | --- |
+| Nested (recommended/default) | `<library>/repo/<project>/`, worktrees at `<library>/repo/<project>-wt/<purpose>/` | New contribution clones kept beside the shared library |
+| Existing project in place | The user's existing project path, with its established sibling worktree root | An active project or preferred checkout elsewhere |
+
+Ask one short question, with nested first and preselected when the host supports
+choices: “Where should I set up this project: nested under `<library>/repo/`
+(recommended/default), or keep an existing project in place?” Include resolved
+paths and an existing-checkout option when known. An explicit layout, destination
+or request to set up a named existing checkout already answers the question;
+honor it without asking again. A current working directory alone does not select
+a layout for a new contribution workspace.
+
+Wait for the answer before layout-dependent writes; inventory known paths and
+read instructions while waiting. A preselected default or silence is not an
+answer. If the user says “use the default” or delegates the layout choice, select
+nested and report its paths. Do not repeatedly ask during reinstall, validation,
+worktree continuation or later ordinary tasks. No separate skill invocation is
+needed after the choice.
+
+Existing projects elsewhere keep their location. Nested is not a reason to move
+active work, create a duplicate clone, alter remotes or clone an unrelated repository.
+Explain an existing checkout/collision before proposing a new destination. Use
+the selected layout for new authorized work; relocation needs explicit scope and
+preservation of existing work and output. Once identity, destination and authority
+are clear, complete authorized setup rather than asking the human to run commands.
 
 ```text
 orbyn-fullstack-skills/           library Git repository
@@ -99,3 +126,13 @@ nothing about a target's dirty or unpushed work.
 Report both repository identities, selected checkout, relevant instructions and
 skills, authorized setup changes, exclusions, actual checks and delivery state.
 Claim live host discovery only when observed, not from directory layout alone.
+
+## Keep layout separate from distribution
+
+Either layout can read methods from a stable local library clone. Host links are
+developer-local setup; a reviewed pinned copy is the portable option for team
+adoption under [ownership](project-skills.md) and the consuming project's sync
+policy. Do not invent an installer layout flag: `scripts/install.py --project`
+still takes the exact consuming checkout. The agent resolves the chosen layout
+first, then runs that helper when installation is authorized. Merely choosing
+nested does not authorize publishing local links or adopting skills upstream.

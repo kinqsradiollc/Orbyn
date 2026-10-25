@@ -126,6 +126,32 @@ review for subjective outcomes. Do not grade only output keywords, require a sin
 wording, or accept a task's own success assertion as proof. Extend helpers with an
 actual failing input/output boundary when their behavior changes.
 
+## Verify discovery isolation before scoring
+
+A clean fixture and a disabled-feature flag do not establish the effective input.
+Use the installed host's supported prompt-inventory preview when available to
+check actual skill names, roots, descriptions, instruction ancestry and exposed
+capabilities. Exclude global/system/plugin skills and previous context from both
+conditions; check that a baseline has not inherited candidate methods. Preserve
+the preflight receipt and do not score a contaminated trial as a matched run.
+
+Disable discovery only through supported per-run controls. In the recorded desktop
+host, folder-only skill overrides left extras visible; actual advertised
+`SKILL.md` path overrides and resolved locations were needed, followed by another
+inventory check. This is version-specific evidence, not a promise about every
+host's setting syntax. Never edit global skills, user policy or installed caches
+to force isolation. If the runner cannot establish it, report the limitation and
+leave the comparison unverified.
+
+Treat a missing fixture contract as an evaluation-input gap. Retain the original
+rubric and observation as unverified where the criterion cannot be established;
+do not penalize an answer for refusing an unsupported assumption. Correct a
+development prompt or fixture in a new suite revision, freeze it before rerunning,
+and report the follow-up separately. Do not silently regrade old observations,
+combine different suites into a new full-suite score or weaken a criterion after
+seeing a held-out answer. The callback-count assessment illustrates why a symptom
+label alone is not a supplied expected-behavior contract.
+
 This workflow is independently authored. Design references are
 [Anthropic's skill creator](https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md),
 [agent evaluation guidance](https://www.anthropic.com/research/demystifying-evals-for-ai-agents)
@@ -147,3 +173,21 @@ suite migrates its two TypeScript selection identities to the language owner;
 this is a new suite checksum, not a regrade of the old observations. New routing
 and production-practice cases are development cases. Run fresh paired trials
 before claiming a measured behavioral improvement from this candidate.
+
+## Contribution workflow checks
+
+The contribution milestone adds 13 development assessment cases covering stale
+issue availability, overlap, target ownership, reproduction-only scope, runner
+discovery, intermittent evidence, stale-head CI, pagination, feedback disagreement,
+human gates, retry budgets, optional checks and separate external effects. Earlier
+cases and holdouts retain their objects; the expanded suite has a new checksum.
+
+`tests/test_contribution_workflow.py` exercises the actual managed copy and core/all
+host installation with networking unavailable and no library root docs or tools.
+It checks required support reachability, missing-asset rejection and preservation
+of target policy/company guidance. Synthetic evaluator fixtures check that prepared
+cases remain unverified, incomplete rubric evidence stays unverified and a recorded
+forbidden message fails despite positive rubric assertions. These are packaging
+and evaluator checks, not a live PR, framework test, agent score or host comparison.
+Use fresh matched trials under the protocol above before claiming improved agent
+behavior. Normal library CI already runs this test module through discovery.

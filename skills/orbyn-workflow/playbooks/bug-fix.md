@@ -3,7 +3,8 @@
 The lead owns the diagnosis and corrected contract. Delegate substantial
 investigation and implementation under the parent [workflow](../SKILL.md).
 
-1. Capture expected and observed behavior and the closest authorized reproduction.
+1. Capture expected and observed behavior and the closest authorized reproduction
+   using the [reproduction contract](../../how/references/reproduction.md).
    Trace the producing boundary with `how`, using `why` for relevant history.
 2. Write the throughput checkpoint. Delegate bounded hypotheses or source paths
    to Investigators; keep observations, inference and missing evidence distinct.
@@ -16,3 +17,7 @@ investigation and implementation under the parent [workflow](../SKILL.md).
 
 Small clear fixes stay direct; children implement their assigned fix directly.
 Do not broaden runtime access, testing or delivery authority to obtain evidence.
+Reproduction-only requests stop at the evidence and limitations. For an upstream
+issue, use [contribution intake](contribution-intake.md) to establish availability,
+target guidance and scope; submitted PR feedback uses
+[bounded iteration](pr-iteration.md). The agent selects these handoffs directly.
