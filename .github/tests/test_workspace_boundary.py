@@ -64,6 +64,32 @@ class WorkspaceBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Root .gitignore'):
             boundary.check(self.root)
 
+    def test_negated_research_rule_does_not_count_as_an_exclusion(self):
+        (self.root / '.gitignore').write_text('/openSrc/\n!/orbyn-references/boundary-probe\n')
+        with self.assertRaisesRegex(ValueError, 'Root .gitignore'):
+            boundary.check(self.root)
+
+    def test_bare_retired_file_symlink_and_gitlink_roots_are_rejected(self):
+        self.stage('skills')
+        with self.assertRaises(ValueError):
+            boundary.check(self.root)
+        subprocess.run(['git', '-C', str(self.root), 'rm', '--cached', '-q', 'skills'], check=True)
+        target = self.write('allowed/retained.txt')
+        (self.root / '.agents').symlink_to(target)
+        subprocess.run(['git', '-C', str(self.root), 'add', '.agents'], check=True)
+        with self.assertRaises(ValueError):
+            boundary.check(self.root)
+        subprocess.run(['git', '-C', str(self.root), 'rm', '--cached', '-q', '.agents'], check=True)
+        subprocess.run(['git', '-C', str(self.root), 'update-index', '--add',
+                        '--cacheinfo', '160000', 'a' * 40, 'orbyn-references'], check=True)
+        with self.assertRaises(ValueError):
+            boundary.check(self.root)
+
+    def test_cursor_skill_installation_is_rejected(self):
+        self.stage('.cursor/skills/how/SKILL.md')
+        with self.assertRaises(ValueError):
+            boundary.check(self.root)
+
 
 if __name__ == '__main__':
     unittest.main()

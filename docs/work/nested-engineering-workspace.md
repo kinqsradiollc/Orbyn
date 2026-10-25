@@ -48,11 +48,12 @@ transfer is complete. Filesystem nesting does not establish live host discovery.
 
 ## Evidence and delivery limits
 
-- Twenty-one focused CI/source-integrity/boundary checks pass in disposable repositories.
+- Twenty-four focused CI/source-integrity/boundary checks pass in disposable repositories.
   They cover normal and rejected classification/gating/deployment records, safe
   server preflight, retained source hashes, file modes, external symlinks,
   tracking and gitlink revisions. Indexed-path guards reject retired installation
-  files and force-added research while allowing product connector guidance,
+  files (including bare symlink/gitlink roots and Cursor discovery) and force-added
+  research. Negated ignore rules do not count as exclusions. Checks allow product connector guidance,
   retained tool snapshots and untracked private work.
 - All 5,018 retained upstream files and five gitlink pins pass static validation.
   REA/pstack source trees, `tools/upstream-manifest.json`, `.gitmodules`, application
