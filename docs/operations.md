@@ -1,4 +1,4 @@
-# Architecture and operations
+# Orbyn operations
 
 Read current source and deployment configuration before using historical service
 names, defaults or incident reports. Keep runtime changes within the user's
@@ -40,9 +40,30 @@ periodic delete job. Preserve migration ordering and existing advisory locking.
   or `ocr` images locally. Optional provider engines stay optional.
 - Preserve user approvals for assistant proposals, study edits and revision plans.
   A workflow document cannot authorize externally visible messages or publication.
-- For packaged-app or native investigation, read [tooling](tooling.md). Copying
+- For packaged-app or native investigation, see the retained tooling section below. Copying
   REA source does not install its engines, register MCP or authorize target runs.
 
 Record what was changed, the commands actually run, remaining manual checks,
 rollback/recovery considerations and exact delivery state. Report denied actions
 rather than bypassing host restrictions.
+
+## Retained tooling snapshots
+
+`tools/rea` retains source revision `ccc7da309d7db385d5c6d73b0a3a8e093be33504`
+(package 6.7.0), and `tools/pstack` retains its historical plugin source. They are
+licensed source snapshots, not the active engineering workspace. Their manifest,
+source bytes and five provider gitlinks are unchanged by retiring copied skills.
+See [third-party notices](../tools/THIRD_PARTY_NOTICES.md).
+
+Run `python3 scripts/check-tool-sources.py` from the repository root for static
+hash/mode/gitlink checks. This neither installs nor runs REA or native providers.
+A future explicitly scoped REA build uses its own `.nvmrc`, `packageManager` and
+lockfile. Its documented local build path is `HUSKY=0 npm ci` followed by
+`npm run build:cached` from `tools/rea`; inspect current scripts first. Disabling
+Husky prevents a vendored prepare hook from changing Orbyn hooks. REA is not an
+Orbyn npm workspace or production-container dependency.
+
+Provider initialization, client/model setup, engine upgrades and target execution
+remain separate work requiring applicable authority. Keep local research and
+outputs outside tracked source and preserve them before checkout cleanup. No
+engine, submodule or runtime upgrade follows from this documentation migration.

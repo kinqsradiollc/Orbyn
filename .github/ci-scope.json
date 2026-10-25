@@ -9,9 +9,7 @@
     "LICENSE.md",
     "LICENSE.txt"
   ],
-  "docs_prefixes": [
-    "docs/"
-  ],
+  "docs_prefixes": ["docs/"],
   "deployment_files": [
     "package.json",
     "package-lock.json",

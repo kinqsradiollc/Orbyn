@@ -1,9 +1,8 @@
-# Orbyn product design profile
+# Orbyn product design
 
-This consumer-owned guide preserves the Orbyn conventions previously carried in
-the shared UI skill. It defines design intent, not a claim that every surface
-already conforms. Use [UI/UX](ui-ux.md), current components and the user's scope
-alongside the portable [UI rules](../../skills/orbyn-ui-design/references/design-rules.md).
+These conventions define design intent, not proof that every surface conforms.
+Use current components and source tokens alongside the engineering workspace
+guidance in [CONTRIBUTING](../CONTRIBUTING.md).
 
 ## Tokens and appearance
 
@@ -61,4 +60,39 @@ headings stay neutral on hover; expansion, selection and focus remain distinct.
 
 These choices include the owner's four-line composer preference. Historical
 reference inspections informed them but do not establish rendered or native
-acceptance. Record checks of changed flows under [delivery](delivery.md).
+acceptance. Record checks of changed flows under [verification](verification.md).
+
+## Interaction conventions
+
+- Keep one clear action per outcome. Remove duplicate controls, competing toolbars
+  and explanations of obvious actions. Put rare management actions in the existing
+  overflow menu. Icon-only controls need accessible names and keyboard focus.
+- Use the current accent, neutral surfaces, text roles and spacing tokens. Do not
+  introduce a new palette or shrink text to hide layout problems. Filled/bordered
+  controls need padding and consistent heights; mobile touch targets remain usable.
+- Respond to the actual pane width. Preserve user-selected sidebar widths; opening
+  another pane must not reset them. Align pane/tab headers and avoid duplicate
+  gutters. Keep primary work usable with a compact navigation rail and secondary
+  panels. Hover labels also need keyboard and touch alternatives.
+- Reuse one Library layout inside and outside documents. Keep source and preview
+  together where requested and retain synchronization/error location semantics.
+  Selection menus appear after selection settles, not while dragging.
+- Keep settings compact, statuses factual and error recovery close to the action.
+  Separate connected external agents from Background/Overnight work. Do not put
+  implementation details in routine product flows.
+
+For a full redesign, assess every screen family and shared surface: layout,
+style, spacing, positions, copy, states and interactions. Keep a coverage ledger;
+shared token changes alone do not establish that every layout has been reviewed.
+
+## Scoped visual evidence
+
+When visual verification is authorized, preview shared web/desktop UI in the web
+app and mobile UI through Expo web. Record the actual URL, source revision,
+viewport, zoom, theme and checked states; browser evidence does not establish
+native integration behavior. Do not require native builds unless in scope.
+
+Inspect changed flows and concrete risks, not a matrix of unchanged screens.
+Follow the outer workspace for review coordination. Builds and DOM dimensions alone
+do not establish usable visuals. Keep failed/blocked states and evidence limits.
+A blocked browser origin is not permission to retry through another transport.

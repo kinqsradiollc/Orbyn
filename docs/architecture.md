@@ -831,7 +831,7 @@ The mobile app shares its look with the web app so both read as one product:
   panes before squeezing the main task. Fixed dialogs remain viewport-owned.
 - **Settings.** Web uses its owned modal and compact category picker; mobile uses
   a sheet. Grouped rows and named optional help keep controls easy to scan.
-  Follow [UI guidance](agents/ui-ux.md) for current design and evidence scope.
+  Follow [UI guidance](design.md) for current design and evidence scope.
 - **Full screen.** The app draws edge to edge. The header extends under the status bar, the tab bar
   under the home indicator, and each applies safe-area insets itself. Landscape and iPad
   multitasking are enabled in `app.json`; content is capped at 720 points wide and centred on large

@@ -31,7 +31,9 @@ jobs:
       - name: Verify scope and safe candidate preflight with disposable Git fixtures
         run: python3 -m unittest discover -s .github/tests -v
       - name: Verify vendored source hashes and submodule pins
-        run: python3 scripts/check-tool-sources.py
+        run: |
+          python3 scripts/check-tool-sources.py
+          python3 scripts/check-project-docs.py
       - name: Classify the complete candidate diff
         id: scope
         env:
