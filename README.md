@@ -116,6 +116,9 @@ For mobile, see [docs/mobile.md](docs/mobile.md).
 
 ## Contributing
 
+Start with the [engineering setup](CONTRIBUTING.md#engineering-setup) for contributors
+and maintainers. Coding agents read [AGENTS.md](AGENTS.md).
+
 Contribute through the [Orbyn Engineering workspace](https://github.com/kinqsradio/orbyn-fullstack-skills),
 with this checkout nested under its ignored `repo/` directory. Engineering policies
 and skills live in that outer workspace; no copied installation or skills pin is
