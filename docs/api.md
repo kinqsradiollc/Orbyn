@@ -2306,6 +2306,44 @@ Apps can also connect by signing in with Orbyn (OAuth 2.1 with PKCE S256 for eve
 
 Only a person signed in to Orbyn can use these: personal API keys get `403`, and agent credentials get `401`. Making and revoking a key is in the audit log (`agent_key.created`, `agent_key.revoked`), with the request id. A connection that goes over its limits more than 5 times, or is refused more than 50 times, within ten minutes is paused until you restore it (`agent_grant.suspended`, `agent_grant.restored`).
 
+## Retained assistant conversations
+
+These are first-party session endpoints owned by
+`backend/src/modules/assistant-workspace/conversation-routes.ts`; MCP/plugin
+credentials do not grant access. Responses use `Cache-Control: private, no-store`
+and current account/source authority. The schemas in
+`packages/core/src/assistant-conversation.ts` own exact response fields.
+
+| Method and path                                                | Contract                                                                                                                                                      |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /me/assistant/conversation`                               | Read rollout availability and an existing personal destination; does not create it                                                                            |
+| `POST /me/assistant/conversation`                              | Explicitly open/create the signed-in person's personal destination                                                                                            |
+| `GET /me/assistant/conversation/for-chat/:id`                  | Resolve an existing owned chat destination                                                                                                                    |
+| `GET /me/assistant/conversations/:id`                          | Authorized feed with `after`, optional `through`, and `limit` (1–100, default 50); sequence cursors are strings                                               |
+| `GET /me/assistant/conversations/:id/entries/:entryId`         | Resolve an available entry's destination and sequence                                                                                                         |
+| `GET /me/assistant/conversations/:id/entries/:entryId/details` | Read current entry, source titles and execution/question availability under one primary repeatable-read snapshot; no acknowledgement or execution side effect |
+| `POST /me/assistant/conversations/:id/read`                    | Acknowledge only displayed entries with `{ "through": "positive sequence" }`                                                                                  |
+| `POST /me/assistant/conversations/:id/entries/:entryId/answer` | Resume an available question with `{ "answer", "turn_id" }`; plain chat replies do not implicitly answer a waiting job                                        |
+| `GET /me/assistant/conversation/preferences`                   | Read current conversation alert preferences                                                                                                                   |
+| `PATCH /me/assistant/conversation/preferences`                 | Set `{ "muted": true/false }` independently of job admission                                                                                                  |
+| `GET /me/assistant/work-controls`                              | Read Background/Overnight admission pauses                                                                                                                    |
+| `PATCH /me/assistant/work-controls`                            | Set `background_paused` and/or `overnight_paused`; existing jobs continue                                                                                     |
+| `GET /me/assistant/conversations/:id/history`                  | Read authorized saved legacy history through its separately validated query contract                                                                          |
+
+The conversation flag defaults off. The personal-home read reports
+`{ "enabled": false, "destination": null }` when off; rollout-gated feed,
+entry, answer and preference endpoints return 404. Saved history and work
+controls remain independently available. A missing, retired or inaccessible
+entry cannot be reconstructed from client-supplied content.
+
+`POST /ai/chat/start` accepts `reply_to_entry_id` and optional `reply_excerpt`
+(1–2,000 characters) alongside the existing `chat_id`, `turn_id` and message.
+The server validates the excerpt against the exact authorized target, retains its
+revision/dependencies and rechecks authority at provider/effect boundaries.
+A retry cannot reuse a turn identity for changed text, target or excerpt.
+See [Assistant](assistant.md) for client behavior and
+[deployment](deployment.md#unified-conversation-rollout-opt-in) for rollout.
+
 ## AI assistant
 
 ### `PUT /planner/prefs` — daily digest
@@ -2382,9 +2420,8 @@ it: `minutes` is then at most 25). `reasons` are short sentences, most important
 ### `POST /ai/chat/start` (auth, 10/min)
 
 Starts an assistant turn and returns `202 { "id": "job uuid" }` at once. The body is the same as
-`POST /ai/chat` below. The turn runs on the server for as long as the model needs (up to ten
-minutes), so a proxy's limit on one request (Cloudflare gives an origin 100 seconds) never cuts
-it off. Returns `503` when no provider is set up.
+`POST /ai/chat` below. The durable job runs on the server within its configured runtime and token
+budgets; a proxy timeout on the admission/polling request does not own the job's lifetime. Returns `503` when no provider is set up.
 
 ### `GET /ai/chat/:id` (auth)
 
