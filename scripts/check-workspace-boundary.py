@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Reject a tracked copied engineering installation or raw research in Orbyn."""
+"""Reject recognized retired installation controls and tracked raw research."""
 import argparse
 from pathlib import Path
 import subprocess
 
 RETIRED_FILES = {
-    'AGENTS.md', 'AGENT.md', 'CLAUDE.md', '.cursorrules', 'codex.md',
+    'skills/catalog.json', 'skills/upstream-lock.json',
     '.github/workflows/skills-upstream.yml', 'tools/skill-adaptations.json',
     'scripts/install.py', 'scripts/check-agent-assets.py',
     'scripts/sync-agent-models.py', 'scripts/sync-agent-skills.py',
     'scripts/sync-public-skills.py',
 }
-RETIRED_PREFIXES = ('skills/', 'project-skills/', '.agents/', '.codex/', '.claude/', '.cursor/',
-                    'docs/agents/', 'openSrc/', 'orbyn-references/')
-RETIRED_ROOTS = {prefix.rstrip('/') for prefix in RETIRED_PREFIXES}
+RESEARCH_PREFIXES = ('openSrc/', 'orbyn-references/')
+RESEARCH_ROOTS = {prefix.rstrip('/') for prefix in RESEARCH_PREFIXES}
 RESEARCH_PROBES = ('openSrc/boundary-probe', 'orbyn-references/boundary-probe')
 
 
@@ -21,7 +20,7 @@ def check(root):
     root = root.resolve(strict=True)
     tracked = subprocess.check_output(['git', 'ls-files', '--cached', '-z'], cwd=root)
     rejected = [p for p in tracked.decode().split('\0')
-                if p in RETIRED_FILES or p in RETIRED_ROOTS or p.startswith(RETIRED_PREFIXES)]
+                if p in RETIRED_FILES or p in RESEARCH_ROOTS or p.startswith(RESEARCH_PREFIXES)]
     if rejected:
         raise ValueError('Retired installation or raw research is staged/tracked:\n'
                          + '\n'.join(sorted(set(rejected))))

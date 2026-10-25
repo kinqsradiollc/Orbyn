@@ -11,16 +11,23 @@ orbyn-fullstack-skills/
     orbyn-wt/<purpose>/    application task worktrees
 ```
 
-The outer workspace owns engineering policies, skills and host configuration.
+The outer workspace owns shared engineering methods and its own host configuration.
 This repository owns application source, CI and the project guides below. It does
 not carry a copied skill installation, public-skill pin or synchronization job.
 Nesting alone is not proof that a host loaded instructions or skills; read the
 workspace guidance and the relevant target guides explicitly.
 
-When contributing to another target, preserve and follow that target's own
-instructions and skills alongside the outer workspace. Orbyn's previous copied
-installation was deliberately retired; this does not authorize deleting another
-project's guidance.
+Orbyn may add its own project-specific `AGENT.md`, `AGENTS.md`, `CLAUDE.md`,
+Cursor rules, host settings or local skills in future. Read those alongside the
+outer methods: target guidance specializes compatible shared methods and governs
+its stack and contribution contracts. Resolve material conflicts before edits.
+Today's removal retires the known duplicated installation, not those filenames
+or future target-owned guidance. Preserve other targets' own guidance as well.
+
+CI rejects recognized legacy installation controls (catalog, pin and old sync
+commands) and tracked raw research. It does not infer ownership from prose or
+skill names, detect every possible copy, or prove an agent read a policy.
+Reviewers remain responsible for those semantic checks.
 
 ## Project guides
 

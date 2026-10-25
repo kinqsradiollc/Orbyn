@@ -31,20 +31,24 @@ class WorkspaceBoundaryTests(unittest.TestCase):
         subprocess.run(['git', '-C', str(self.root), 'add', '-f', '--', name], check=True)
         return path
 
-    def test_product_guides_snapshots_and_untracked_private_work_are_allowed(self):
-        for name in ['docs/agent-skill/orbyn/SKILL.md', 'tools/rea/AGENTS.md',
-                     'tools/pstack/skills/example/SKILL.md']:
-            self.stage(name)
-        preserved = [self.write(name) for name in ['AGENTS.md', '.env',
-                     '.claude/settings.local.json', 'orbyn-references/local-note.txt']]
+    def test_target_owned_guidance_settings_and_private_work_are_preserved(self):
+        target_files = ['AGENT.md', 'AGENTS.md', 'CLAUDE.md', 'codex.md', '.cursorrules',
+                        '.cursor/rules/domain.mdc', '.codex/config.toml', '.claude/settings.json',
+                        '.agents/skills/domain-check/SKILL.md', '.claude/skills/domain-check/SKILL.md',
+                        'skills/domain-check/SKILL.md', 'project-skills/domain-check/SKILL.md',
+                        'docs/agents/product.md', 'docs/agent-skill/orbyn/SKILL.md',
+                        'tools/rea/AGENTS.md', 'tools/pstack/skills/example/SKILL.md']
+        preserved = [self.stage(name) for name in target_files]
+        preserved += [self.write(name) for name in ['.env', '.claude/settings.local.json',
+                                                   'orbyn-references/local-note.txt']]
         before = {p: p.read_bytes() for p in preserved}
-        self.assertEqual(boundary.check(self.root), 4)
+        self.assertEqual(boundary.check(self.root), 1 + len(target_files))
         self.assertEqual(before, {p: p.read_bytes() for p in preserved})
 
-    def test_staged_retired_instructions_discovery_and_sync_are_rejected(self):
-        for name in ['AGENTS.md', 'AGENT.md', 'CLAUDE.md', 'skills/upstream-lock.json',
-                     '.agents/skills/example', '.claude/skills/example', '.codex/config.toml',
-                     'scripts/sync-public-skills.py', '.github/workflows/skills-upstream.yml']:
+    def test_recognized_copied_installation_controls_are_rejected(self):
+        for name in ['skills/catalog.json', 'skills/upstream-lock.json',
+                     'scripts/install.py', 'scripts/sync-public-skills.py',
+                     '.github/workflows/skills-upstream.yml']:
             with self.subTest(name=name):
                 self.stage(name)
                 with self.assertRaisesRegex(ValueError, 'staged/tracked'):
@@ -69,26 +73,28 @@ class WorkspaceBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Root .gitignore'):
             boundary.check(self.root)
 
-    def test_bare_retired_file_symlink_and_gitlink_roots_are_rejected(self):
-        self.stage('skills')
+    def test_bare_raw_research_file_symlink_and_gitlink_roots_are_rejected(self):
+        self.stage('openSrc')
         with self.assertRaises(ValueError):
             boundary.check(self.root)
-        subprocess.run(['git', '-C', str(self.root), 'rm', '--cached', '-q', 'skills'], check=True)
+        subprocess.run(['git', '-C', str(self.root), 'rm', '--cached', '-q', 'openSrc'], check=True)
         target = self.write('allowed/retained.txt')
-        (self.root / '.agents').symlink_to(target)
-        subprocess.run(['git', '-C', str(self.root), 'add', '.agents'], check=True)
+        (self.root / 'orbyn-references').symlink_to(target)
+        subprocess.run(['git', '-C', str(self.root), 'add', '-f', 'orbyn-references'], check=True)
         with self.assertRaises(ValueError):
             boundary.check(self.root)
-        subprocess.run(['git', '-C', str(self.root), 'rm', '--cached', '-q', '.agents'], check=True)
+        subprocess.run(['git', '-C', str(self.root), 'rm', '--cached', '-q', 'orbyn-references'], check=True)
         subprocess.run(['git', '-C', str(self.root), 'update-index', '--add',
-                        '--cacheinfo', '160000', 'a' * 40, 'orbyn-references'], check=True)
+                        '--cacheinfo', '160000', 'a' * 40, 'openSrc'], check=True)
         with self.assertRaises(ValueError):
             boundary.check(self.root)
 
-    def test_cursor_skill_installation_is_rejected(self):
-        self.stage('.cursor/skills/how/SKILL.md')
-        with self.assertRaises(ValueError):
-            boundary.check(self.root)
+    def test_same_name_target_skills_are_not_classified_as_copied_prose(self):
+        files = [self.stage(name) for name in ['.cursor/skills/how/SKILL.md',
+                 '.agents/skills/how/SKILL.md', 'skills/how/SKILL.md']]
+        before = {p: p.read_bytes() for p in files}
+        boundary.check(self.root)
+        self.assertEqual(before, {p: p.read_bytes() for p in files})
 
 
 if __name__ == '__main__':

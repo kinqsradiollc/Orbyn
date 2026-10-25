@@ -5,6 +5,8 @@
 The public `orbyn-fullstack-skills` workspace owns engineering guidance and host
 configuration. Orbyn owns application source, project documentation and its CI.
 Orbyn no longer installs a copied skill tree or pins/pulls public skill releases.
+Future project-owned instruction files, settings and local skills remain allowed;
+the removal below applies to today’s known duplicated installation.
 Other targets retain their own upstream instructions and skills; retiring Orbyn's
 explicitly duplicated installation does not authorize deleting those targets' rules.
 See [CONTRIBUTING](../../CONTRIBUTING.md) for the entrypoint and intended layout.
@@ -51,10 +53,16 @@ transfer is complete. Filesystem nesting does not establish live host discovery.
 - Twenty-four focused CI/source-integrity/boundary checks pass in disposable repositories.
   They cover normal and rejected classification/gating/deployment records, safe
   server preflight, retained source hashes, file modes, external symlinks,
-  tracking and gitlink revisions. Indexed-path guards reject retired installation
-  files (including bare symlink/gitlink roots and Cursor discovery) and force-added
-  research. Negated ignore rules do not count as exclusions. Checks allow product connector guidance,
+  tracking and gitlink revisions. Indexed-path guards reject recognized retired installation
+  controls and force-added research, including bare symlink/gitlink research roots.
+  Negated ignore rules do not count as exclusions. Positive controls retain staged
+  project AGENT/AGENTS, host settings and local skills, including same-name skills.
+  The guard does not classify prose ownership. Checks allow product connector guidance,
   retained tool snapshots and untracked private work.
+- The first local verification attempt for the project-guidance correction failed
+  with seven ENOSPC environment errors. No unrelated data was deleted; after disk
+  headroom recovered, the complete 24-case retry passed. Both outcomes are retained
+  in the external preservation evidence. Earlier-head CI is not final-head evidence.
 - All 5,018 retained upstream files and five gitlink pins pass static validation.
   REA/pstack source trees, `tools/upstream-manifest.json`, `.gitmodules`, application
   code, runtime manifests and deployment scripts are unchanged.
