@@ -1,5 +1,14 @@
 # Assistant UI implementation
 
+## Delivery update — 24 October 2026
+
+The implementation was merged through [PR #223](https://github.com/kinqsradiollc/Orbyn/pull/223).
+The historical sequence below retains its original local/PR status and evidence;
+statements about work being uncommitted or PRs being open describe that earlier
+stage. Current behavior is in [Assistant](../assistant.md), with rollout still
+opt-in. Main CI at `28b0c227` passed; this does not establish deployment or
+installed-native/live-provider qualification.
+
 Status: implementation complete and qualified locally; PR delivery requested.
 The [accepted ADR](adr-assistant-ui-refinement.md) and approved mockup define the
 scope. Base: `934df6852105c4f7bd08325ad068044e19b040ad`.

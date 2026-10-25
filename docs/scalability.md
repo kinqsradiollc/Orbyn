@@ -1,9 +1,16 @@
 # Scalability
 
-How Orbyn grows from one Docker host to many machines and a million users,
-what has been measured, and what to add next. For image builds and the
+Deployment topology, scaling constraints, historical load measurements and
+capacity-planning scenarios. The million-user section is a planning model, not
+verified production capacity. For image builds and the
 release checklist see [deployment.md](deployment.md); for Kubernetes see
 [deploy/k8s/README.md](../deploy/k8s/README.md).
+
+The file service uses its configured encrypted file storage for both temporary
+imports and retained page attachments. Multiple file-service replicas need a
+shared durable store/volume and a routing design; backend statelessness does not
+make local filesystem data available across hosts. AI workers also retain
+process-local in-flight calls while durable ownership/checkpoints live in the database.
 
 ## Principles
 
@@ -47,7 +54,7 @@ flowchart LR
 | `realtime`      | Horizontal, on CPU and memory                  | Holds the apps' open streams; one `LISTEN` connection per copy fans news out                 |
 | `status`        | 2 for availability                             | One prober at a time (advisory lock); report cached 15 s                                     |
 | `notifier`      | Horizontal                                     | Parallel lanes (`NOTIFIER_CONCURRENCY`) per instance                                         |
-| `files`         | 1, on a volume; shard by import id if needed   | Holds upload streams only; files live a day at most                                          |
+| `files`         | 1, on a volume; shard by import id if needed   | Encrypted import staging and retained page attachments; shared storage required              |
 | `converter`     | Horizontal                                     | Claims files and pages with `SKIP LOCKED`; runs Tesseract itself (`TESSERACT_WORKERS` lanes) |
 | `formula`       | 1, ~1–2 GB (optional)                          | pix2tex for equations on scans; only lines that look like maths are sent                     |
 | `ocr`           | More containers (`--scale ocr=N`), ~12 GB each | CPU only, one page at a time per container; set `OCR_WORKERS` to match                       |
