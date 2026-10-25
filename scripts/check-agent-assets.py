@@ -80,12 +80,21 @@ for skill in skills:
         check(link.is_symlink() and link.resolve() == skill.parent.resolve(), f'Broken discovery link: {relative(link)}')
         check(contained(link), f'External discovery link: {relative(link)}')
 adaptations = json.loads((ROOT / 'tools/skill-adaptations.json').read_text())
+preserved_methods = set()
 for group, directory in [('engineering', 'tools/pstack/skills'), ('rea', 'tools/rea/.agents/skills')]:
     mapping = adaptations[group]
     sources = {p.parent.name for p in (ROOT / directory).glob('*/SKILL.md')}
     check(set(mapping) == sources, f'Incomplete source provenance: {group}')
     for local_name in mapping.values():
-        check((ROOT / 'skills' / local_name / 'SKILL.md').exists(), f'Missing skill: {local_name}')
+        target = ROOT / 'skills' / local_name
+        owner = local_name.split('/', 1)[0]
+        check(owner in {p.parent.name for p in skills}, f'Unknown adaptation owner: {local_name}')
+        check(target.resolve().is_relative_to(ROOT / 'skills'), f'External adaptation target: {local_name}')
+        check((target if target.suffix == '.md' else target / 'SKILL.md').is_file(),
+              f'Missing skill or preserved method: {local_name}')
+        if target.suffix == '.md':
+            preserved_methods.add(target)
+            check((target.parent / 'LICENSE.txt').is_file(), f'Missing preserved method license: {local_name}')
 # Incorporated TypeScript guidance retains its upstream grant after owner retirement.
 ts_guide = ROOT / 'skills/language-best-practices/references/typescript.md'
 ts_notice = ROOT / 'skills/language-best-practices/references/typescript-LICENSE.txt'
@@ -128,7 +137,16 @@ provenance_docs = {ROOT / 'skills/orbyn-workflow/references/contribution-sources
 for path in active:
     if path in snapshots or path in provenance_docs:
         continue  # Source credits/identities are data, not active agent roles.
-    check(not re.search(r'poteto|pstack', path.read_text(), re.I), f'Inherited active branding: {relative(path)}')
+    body = path.read_text()
+    if path in preserved_methods:
+        # Exclude only the recognized attribution block; the method stays checked.
+        body = re.sub(
+            r"\n## Source and license\n\nAdapted from Lauren Tan's pstack \[[^\n]+\]"
+            r"\(https://github\.com/cursor/plugins/blob/[0-9a-f]{40}/pstack/skills/"
+            r"principle-[a-z-]+/SKILL\.md\),\nrevision `[0-9a-f]{40}`\.\n"
+            r"Orbyn adaptations and worked examples retain the \[original MIT notice\]"
+            r"\(LICENSE\.txt\)\.\n?", '', body)
+    check(not re.search(r'poteto|pstack', body, re.I), f'Inherited active branding: {relative(path)}')
 
 model_check = subprocess.run([sys.executable, str(ROOT / 'scripts/sync-agent-models.py'), '--check'], cwd=ROOT, capture_output=True, text=True)
 check(model_check.returncode == 0, model_check.stderr.strip() or 'Model registry drift')

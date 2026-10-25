@@ -5,7 +5,8 @@ description: "Review current-task evidence for reusable lessons when requested o
 
 # Reflect
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 Use the current conversation and its artifacts. Do not scan unrelated chat
 histories or private workspace transcripts. Identify the failed assumption,
@@ -30,7 +31,7 @@ follow the explicit contribution path. See
 Permission to improve a local skill does not itself authorize a public push or PR.
 
 The lead may assign an in-task reviewer for a specific difficult lesson under
-[coordination](../../docs/agents/coordination.md); children assess their owned slice
+[coordination](../orbyn-workflow/references/project-policy.md#delegation-and-host-configuration); children assess their owned slice
 directly. A mandatory panel is unnecessary. Return the applied change or proposal
 with evidence and limits.
 

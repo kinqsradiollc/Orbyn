@@ -5,7 +5,8 @@ description: "Investigate design rationale, regressions and trade-offs using Git
 
 # Why
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 Find the code anchor, symbols and introducing/changing commits with scoped
 `git log`, `git blame` and diffs. Read linked ADRs, issues and PR discussions when

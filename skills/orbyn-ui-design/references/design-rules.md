@@ -110,7 +110,7 @@ defaults for this one. These rules describe interaction and evidence boundaries.
 ## Acceptance for a changed feature
 
 Select representative states for the agreed risk, not every axis automatically.
-User exclusions and [repository policy](../../../AGENTS.md) take precedence. This
+User exclusions and [project instructions and scope](../../orbyn-workflow/references/project-policy.md#scope-and-evidence) take precedence. This
 is a menu of checks, not a new requirement for native builds, enlarged text or repeated visual sweeps:
 
 When visual checks are authorized, select the cases relevant to the changed flow.

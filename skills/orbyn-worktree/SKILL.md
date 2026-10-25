@@ -212,3 +212,9 @@ leave the worktree intact, record the reason and continue independent work.
 Return the primary clone, sibling root, selected path, branch/base/HEAD, owner,
 preserved data and actual retained/removed/archived state. A merged PR does not
 prove its local checkout or outputs are safe to delete.
+
+For preview/evidence storage and task servers, ports, volumes and test environments,
+use [artifact lifecycle](../orbyn-workflow/references/artifact-lifecycle.md).
+Before removing a tree, check whether a human still needs its preview and move/reopen
+needed ignored artifacts in an approved retained location. Stop only identified
+owned processes; a clean Git status is not a resource inventory.

@@ -1,6 +1,6 @@
 ---
 name: orbyn-ci-design
-description: "Design or repair CI, analyze bulk multi-suite failures and verify release evidence across environments. Use complete run/artifact identity and proportional checks; not permission to publish, merge or deploy."
+description: "Design or repair CI, select affected checks, analyze bulk failures, verify release evidence and plan rollout or incident recovery. Keep artifact readiness and deployed health distinct; no implicit deployment authority."
 ---
 
 # CI that checks the artifact it will promote
@@ -66,3 +66,11 @@ stage evidence to the actual candidate, artifact bytes, configuration, current r
 and freshness. Unknown/failed required gates block readiness. Offline JSON/digests
 do not authenticate a provider or grant deployment authority. The agent completes
 authorized collection and analysis without making the human invoke each helper.
+
+## Affected graphs and operations
+
+For cross-package selection, use [affected targets](references/affected-targets.md)
+with the existing build graph, generator/runtime edges and conservative fallback.
+For an authorized rollout plan or incident recovery, use
+[health-driven rollout](references/rollout-recovery.md). Artifact readiness,
+deployed health and recovery completion are separate evidence claims.

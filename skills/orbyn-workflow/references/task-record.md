@@ -61,3 +61,8 @@ A planned check has no observed result. A source trace does not establish a live
 provider, rendered UI or deployed state. Preserve earlier failed observations
 when explaining a correction. Use a short paragraph instead of this template for
 a small task with no meaningful handoff.
+
+For retained previews or running resources, add only the useful path/URL, current
+state, process/session ownership and cleanup/restart condition from
+[artifact lifecycle](artifact-lifecycle.md). Preserve an existing record instead
+of requiring another resource manifest for every task.

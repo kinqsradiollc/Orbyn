@@ -5,29 +5,23 @@ description: "Set up Orbyn skills in an existing project for Codex, Claude Code 
 
 # Orbyn agent setup
 
-Read [repository policy](../../AGENTS.md), [roles](../../docs/agents/roles.md),
-[model policy](../../docs/agents/model-policy.md) and the actual host capabilities.
-Inspect only relevant non-secret settings. Preserve unrelated config and MCP access.
+Read the consuming project's instructions and actual host capabilities. Inspect
+only relevant non-secret settings; preserve unrelated config and MCP access.
+Follow the [portable host boundary](../orbyn-workflow/references/project-policy.md#delegation-and-host-configuration).
+Use existing named roles/model definitions when available and in scope. Installing
+skills does not select a provider, model, effort or processing speed.
 
-Use `orbyn-agent` for complex assignments and `orbyn-light` for bounded
-assignments, with the model and effort from [the shared registry](../../docs/agents/models.json).
-Use `orbyn-workflow` for task routing and one canonical skill source linked into
-both hosts. Standard processing only: no Fast, Priority,
-Ultrafast or speed-optimized variants. Verify delegation against the named
-definition; do not silently fall back to an inherited model or speed setting.
-The registry's human-only tier requires explicit human selection; follow model policy. Do not
-silently substitute an unavailable model or install a provider to hide the gap.
+In a full library checkout, optional model presets are owned by
+`docs/agents/models.json` and `scripts/sync-agent-models.py`. For an explicitly
+requested library-preset update, first confirm those files exist, read the
+library's model policy and run that helper's write/check modes. A skills-only
+export intentionally omits the registry, host settings and library scripts; use
+the consumer's own supported configuration path instead. Do not reconstruct a
+missing preset or silently substitute a model. If required settings cannot be
+preserved, report the boundary and do permitted direct work.
 
-Follow [coordination](../../docs/agents/coordination.md) for requested project
-sessions and bounded children. Keep prompts small, reuse suitable owners and
-serialize shared writes. Do not create sessions or recursive agent chains merely
-to complete setup.
-
-For model updates, edit [the shared model registry](../../docs/agents/models.json)
-for both providers, then run `python3 scripts/sync-agent-models.py --write` and
-`python3 scripts/sync-agent-models.py --check`. Do not recreate host config from
-an old snippet. The registry owns model/effort and standard-speed settings;
-[model policy](../../docs/agents/model-policy.md) owns routing and authority.
+Keep prompts small, reuse suitable owners and serialize shared writes. Do not
+create sessions or recursive agent chains merely to complete setup.
 
 Change only requested project or user configuration. Check syntax, discoverable
 paths and the installed client's supported fields. A file does not prove runtime

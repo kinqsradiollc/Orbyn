@@ -61,9 +61,10 @@ with tests or clipping text.
   IDs and technical diagnostics in a revealable detail, not the headline.
 - Empty states give a short fact and one useful action: “No providers yet” with
   “Add provider”. Avoid generic promises such as “Give your ideas a home”.
-- Keep ChatGPT inference providers distinct from MCP/Connected agents. Keep
-  interactive chat distinct from Background and Overnight. Short labels must
-  not collapse these different destinations into “Connect AI”.
+- Preserve distinctions that affect the user's destination or authority. In Orbyn,
+  for example, inference providers differ from MCP/Connected agents and interactive
+  chat differs from Background and Overnight. Other products use their own
+  concepts; do not impose those features or names.
 
 ## Present real content and long values
 

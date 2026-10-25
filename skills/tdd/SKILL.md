@@ -1,14 +1,16 @@
 ---
 name: tdd
-description: "Design focused contract tests or a failing-before regression when the user requests testing or TDD; select practical boundaries, fixtures and evidence within the requested execution scope."
+description: "Design focused contract tests or a failing-before regression for authorized implementation, bug repair or requested testing/TDD; select practical boundaries, fixtures and evidence within the requested execution scope."
 ---
 
 # Tdd
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
-Respect verification authorization in AGENTS.md. This skill does not itself
-permit tests excluded by the current user or session.
+An implementation or repair request normally includes focused local regression
+checks. Respect tests excluded by the current user, session or consumer policy;
+this skill grants no production or live-provider authority.
 
 Identify the smallest observable contract. Reproduce the defect in a test at its
 owning boundary, run it before the fix and check it fails for the intended reason.
@@ -22,7 +24,7 @@ If the practical test requires unrelated harness churn or unrealistic mocks,
 explain the limitation and use the closest authorized evidence. Retain failing
 attempts. A passing new test without a demonstrated baseline failure provides
 less regression evidence; state that distinction. No production databases or
-unapproved live-provider calls. Read [development](../../docs/agents/development.md)
+unapproved live-provider calls. Read [development](../orbyn-workflow/references/project-policy.md#development-resources)
 for guarded database and package prerequisites.
 
 ## Regression evidence across layers

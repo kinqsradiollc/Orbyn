@@ -18,6 +18,22 @@ skill reading remains. Offline methods do not supply an analysis engine, target
 bytes, provider prerequisites or missing REA Git history. Continue supported work
 and report those capability/input limits without installing or fetching implicitly.
 
+## Distribution boundary
+
+The managed export contains `skills/catalog.json`, `skills/README.md` and complete
+cataloged skill folders. Required authored Markdown links stay within that export.
+Root `AGENTS.md`, `docs/agents/`, host model settings, library scripts and provenance
+indexes are not consumer dependencies. Discover consumer policy in place and use
+[portable defaults](../../orbyn-workflow/references/project-policy.md) only where
+needed. Optional full-library attribution URLs are not required reading. A selected
+host preset exposes fewer entrypoints but retains the complete managed source and
+references locally; copying a single folder is not the supported export contract.
+
+The full library checker validates dependency closure and pinned source bytes.
+Immutable upstream text is exempt from active link routing only when its snapshot
+hash validates. A copied-consumer test checks every authored distributed Markdown
+file, so an existing library-only document cannot conceal an export dependency.
+
 ## Sources and freshness
 
 For reusable third-party instructions needed by a skill, retain a licensed,

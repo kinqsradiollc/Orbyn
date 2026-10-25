@@ -44,7 +44,7 @@ distinct from routine implementation choices. Preserve unrelated work.
   checks and reviewable promotion; CI success does not prove agent judgment.
 
 The main workflow selects these only when the task crosses their boundary.
-Principle leaves answer a difficult decision; they do not start separate projects.
+Conditional principle methods live under those owners; they add no separate project.
 An agent assignment carries a concrete artifact and a stopping condition, not
 an instruction to recreate the entire workflow recursively.
 
@@ -61,3 +61,12 @@ an instruction to recreate the entire workflow recursively.
 
 Use the verification authority actually granted by the task. Record unchecked
 boundaries plainly, then complete the authorized delivery work.
+
+## Preview and operating handoff
+
+For a user-facing design, deliver the [preview](../../orbyn-ui-design/references/prototypes.md)
+the person can actually open, with states to try and simulated effects labelled.
+For implementation, connect that flow to real domain/API/authority and recovery
+contracts; preview success does not establish backend persistence. Material service
+changes also need the architect's [operating contract](../../architect/references/service-readiness.md).
+Retain artifacts and close owned resources under [artifact lifecycle](artifact-lifecycle.md).

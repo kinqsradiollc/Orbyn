@@ -5,7 +5,8 @@ description: "Capture explicitly requested working preferences in a reusable loc
 
 # Automate me
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 Locate an existing skill for the requested workflow before creating one. Use
 only the conversation or records the user selected; do not mine unrelated sessions.

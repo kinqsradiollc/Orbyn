@@ -4,7 +4,6 @@
     "Workflow and planning",
     "Engineering practice",
     "Fullstack contracts and delivery",
-    "Engineering principles",
     "Product design",
     "Social content and visuals",
     "Artifact investigation and REA maintenance"
@@ -20,9 +19,9 @@
         "orbyn-plan",
         "orbyn-backend-design",
         "orbyn-data-migration",
-        "principle-minimize-reader-load",
         "orbyn-stack-selection",
-        "language-best-practices"
+        "language-best-practices",
+        "orbyn-ci-design"
       ]
     },
     {
@@ -74,9 +73,7 @@
         "orbyn-backend-design",
         "orbyn-data-migration",
         "orbyn-ci-design",
-        "orbyn-stack-selection",
-        "principle-type-system-discipline",
-        "principle-encode-lessons-in-structure"
+        "orbyn-stack-selection"
       ]
     },
     {
@@ -125,7 +122,8 @@
         "why",
         "architect",
         "orbyn-research",
-        "figure-it-out"
+        "figure-it-out",
+        "orbyn-workflow"
       ]
     },
     {
@@ -155,8 +153,7 @@
       "category": "Engineering practice",
       "related": [
         "how",
-        "principle-boundary-discipline",
-        "principle-fix-root-causes"
+        "orbyn-backend-design"
       ]
     },
     {
@@ -199,7 +196,8 @@
       "related": [
         "orbyn-content-design",
         "orbyn-research",
-        "social-preview"
+        "social-preview",
+        "orbyn-workflow"
       ]
     },
     {
@@ -240,147 +238,6 @@
         "orbyn-workflow",
         "orbyn-setup",
         "orbyn-plan"
-      ]
-    },
-    {
-      "name": "principle-boundary-discipline",
-      "category": "Engineering principles",
-      "related": [
-        "orbyn-backend-design"
-      ]
-    },
-    {
-      "name": "principle-build-the-lever",
-      "category": "Engineering principles",
-      "related": [
-        "figure-it-out"
-      ]
-    },
-    {
-      "name": "principle-encode-lessons-in-structure",
-      "category": "Engineering principles",
-      "related": [
-        "language-best-practices",
-        "architect"
-      ]
-    },
-    {
-      "name": "principle-exhaust-the-design-space",
-      "category": "Engineering principles",
-      "related": [
-        "arena"
-      ]
-    },
-    {
-      "name": "principle-experience-first",
-      "category": "Engineering principles",
-      "related": [
-        "orbyn-ui-design"
-      ]
-    },
-    {
-      "name": "principle-fix-root-causes",
-      "category": "Engineering principles",
-      "related": [
-        "how"
-      ]
-    },
-    {
-      "name": "principle-foundational-thinking",
-      "category": "Engineering principles",
-      "related": [
-        "architect"
-      ]
-    },
-    {
-      "name": "principle-guard-the-context-window",
-      "category": "Engineering principles",
-      "related": [
-        "how"
-      ]
-    },
-    {
-      "name": "principle-laziness-protocol",
-      "category": "Engineering principles",
-      "related": [
-        "architect"
-      ]
-    },
-    {
-      "name": "principle-make-operations-idempotent",
-      "category": "Engineering principles",
-      "related": [
-        "orbyn-backend-design"
-      ]
-    },
-    {
-      "name": "principle-migrate-callers-then-delete-legacy-apis",
-      "category": "Engineering principles",
-      "related": [
-        "orbyn-data-migration"
-      ]
-    },
-    {
-      "name": "principle-minimize-reader-load",
-      "category": "Engineering principles",
-      "related": [
-        "architect"
-      ]
-    },
-    {
-      "name": "principle-never-block-on-the-human",
-      "category": "Engineering principles",
-      "related": [
-        "orbyn-plan"
-      ]
-    },
-    {
-      "name": "principle-outcome-oriented-execution",
-      "category": "Engineering principles",
-      "related": [
-        "figure-it-out"
-      ]
-    },
-    {
-      "name": "principle-prove-it-works",
-      "category": "Engineering principles",
-      "related": [
-        "orbyn-ci-design"
-      ]
-    },
-    {
-      "name": "principle-redesign-from-first-principles",
-      "category": "Engineering principles",
-      "related": [
-        "architect"
-      ]
-    },
-    {
-      "name": "principle-separate-before-serializing-shared-state",
-      "category": "Engineering principles",
-      "related": [
-        "orbyn-worktree"
-      ]
-    },
-    {
-      "name": "principle-sequence-verifiable-units",
-      "category": "Engineering principles",
-      "related": [
-        "orbyn-plan"
-      ]
-    },
-    {
-      "name": "principle-subtract-before-you-add",
-      "category": "Engineering principles",
-      "related": [
-        "architect"
-      ]
-    },
-    {
-      "name": "principle-type-system-discipline",
-      "category": "Engineering principles",
-      "related": [
-        "language-best-practices"
       ]
     },
     {
@@ -462,9 +319,8 @@
       "name": "tdd",
       "category": "Engineering practice",
       "related": [
-        "principle-prove-it-works",
-        "how",
         "orbyn-workflow",
+        "how",
         "orbyn-ci-design"
       ]
     },
@@ -487,6 +343,26 @@
     }
   ],
   "retired_skills": {
-    "typescript-best-practices": "language-best-practices"
+    "typescript-best-practices": "language-best-practices",
+    "principle-boundary-discipline": "orbyn-backend-design",
+    "principle-build-the-lever": "orbyn-workflow",
+    "principle-encode-lessons-in-structure": "architect",
+    "principle-exhaust-the-design-space": "architect",
+    "principle-experience-first": "orbyn-ui-design",
+    "principle-fix-root-causes": "how",
+    "principle-foundational-thinking": "architect",
+    "principle-guard-the-context-window": "how",
+    "principle-laziness-protocol": "architect",
+    "principle-make-operations-idempotent": "orbyn-backend-design",
+    "principle-migrate-callers-then-delete-legacy-apis": "architect",
+    "principle-minimize-reader-load": "architect",
+    "principle-never-block-on-the-human": "orbyn-plan",
+    "principle-outcome-oriented-execution": "orbyn-workflow",
+    "principle-prove-it-works": "orbyn-workflow",
+    "principle-redesign-from-first-principles": "architect",
+    "principle-separate-before-serializing-shared-state": "orbyn-workflow",
+    "principle-sequence-verifiable-units": "orbyn-plan",
+    "principle-subtract-before-you-add": "architect",
+    "principle-type-system-discipline": "language-best-practices"
   }
 }

@@ -1,10 +1,10 @@
 # TypeScript: schemas, states and callers
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../../AGENTS.md) and [host/model guidance](../../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions first. Use [project instructions and scope](../../orbyn-workflow/references/project-policy.md#scope-and-evidence) and [host configuration](../../orbyn-workflow/references/project-policy.md#delegation-and-host-configuration) where applicable; load only relevant references.
 
 Use this guide through language-best-practices for TypeScript contract changes, including
-repeated illegal states. [Type-system discipline](../../principle-type-system-discipline/SKILL.md)
-supports state design; [structural learning](../../principle-encode-lessons-in-structure/SKILL.md)
+repeated illegal states. [Type-system discipline](principles/type-system-discipline.md)
+supports state design; [structural learning](../../architect/references/principles/encode-lessons-in-structure.md)
 supports preventing a demonstrated recurrence. The language owner carries the
 change through the schema and its callers.
 
@@ -39,7 +39,7 @@ Preserve cancellation, cleanup and authority checks near effects. Internal stati
 types do not establish tenant access or freshness of stored data. Keep helpers
 and parameter objects where they clarify callers, not to satisfy arbitrary size
 rules. Match repository Prettier and dependency direction in
-[development](../../../docs/agents/development.md).
+[development](../../orbyn-workflow/references/project-policy.md#development-resources).
 
 ## Keep public types and modules deliberate
 

@@ -5,7 +5,8 @@ description: "Keep a compact decision and evidence trail for substantial migrati
 
 # Show me your work
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 Use the [task-record defaults](../orbyn-workflow/references/task-record.md).
 Routine edits need no separate log when existing Git, PR and CI evidence suffices.
@@ -37,7 +38,7 @@ examples belong in the shared skill tree.
 
 Before delivery, follow the evidence pointers and reconcile the trail with actual
 artifacts. The lead may assign a review subagent for a substantial independent
-concern under [coordination](../../docs/agents/coordination.md); children reconcile
+concern under [coordination](../orbyn-workflow/references/project-policy.md#delegation-and-host-configuration); children reconcile
 their own trail directly. This skill does not authorize a separate chat. Commit a
 report only within delivery scope.
 Summarize the useful findings without copying the entire log into the reply.
