@@ -68,7 +68,7 @@ jobs:
           if [ "$EVENT_NAME" = workflow_dispatch ]; then
             echo 'deploy=true' >> "$GITHUB_OUTPUT"
           else
-            python3 skills/orbyn-ci-design/scripts/ci_scope.py deployment \
+            python3 scripts/ci_scope.py deployment \
               --record .ci-scope/ci-scope.json --head "$EXPECTED_HEAD" \
               --repository "$GITHUB_REPOSITORY" --github-output "$GITHUB_OUTPUT"
           fi

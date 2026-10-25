@@ -1,14 +1,14 @@
 # Verification
 
 Verification is scoped to the current task and candidate. Follow
-[delivery](agents/delivery.md), [development](agents/development.md) and the user's
+[contribution guide](../CONTRIBUTING.md), [development](development.md) and the user's
 requested checks. This guide is not a record of a previously qualified release.
 
 ## Select evidence
 
 | Change                            | Relevant evidence when authorized                                        | Limit                                               |
 | --------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------- |
-| Docs, skills or host config       | Paths/links, schema parsing, import hashes, expected discovery structure | Static checks do not prove a model run              |
+| Docs or CI helpers                | Paths/links, schema parsing, import hashes and disposable CI fixtures    | Static checks do not prove a model run              |
 | Shared types and application code | Workspace types, focused behavior tests, affected callers                | A build alone does not prove behavior               |
 | Database/API boundary             | Guarded disposable DB, authority/conflict/retry cases                    | No real user database or secrets                    |
 | UI                                | Changed flows at actual pane widths, focus/selection/recovery            | Web preview does not establish native behavior      |

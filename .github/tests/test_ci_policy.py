@@ -10,7 +10,7 @@ import textwrap
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-spec = importlib.util.spec_from_file_location('ci_scope', ROOT/'skills/orbyn-ci-design/scripts/ci_scope.py')
+spec = importlib.util.spec_from_file_location('ci_scope', ROOT/'scripts/ci_scope.py')
 scope = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scope)
 POLICY = json.loads((ROOT/'.github/ci-scope.json').read_text())
@@ -19,9 +19,50 @@ REMOTE = textwrap.dedent(re.search(r"<<'REMOTE'\n(.*?)\n[ ]+REMOTE", workflow, r
 
 
 class ConsumerPolicyTests(unittest.TestCase):
-    def test_product_docs_skills_and_license_do_not_build_or_deploy_the_app(self):
-        for path in ['README.md', 'LICENSE', 'docs/assistant.md', 'docs/agents/tooling.md',
-                     'skills/how/SKILL.md', 'scripts/sync-agent-skills.py']:
+    def test_incomplete_or_unsafe_changes_fail_closed(self):
+        for paths, complete in [(['README.md'], False), (['../README.md'], True)]:
+            with self.subTest(paths=paths, complete=complete):
+                decision = scope.classify(paths, POLICY, complete)
+                self.assertTrue(decision['run_app'])
+                self.assertFalse(decision['deploy'])
+                self.assertFalse(decision['complete'])
+
+    def test_docs_skips_are_accepted_but_runtime_skips_and_failures_are_not(self):
+        needs = {name: {'result': 'skipped'} for name in POLICY['application_jobs']}
+        needs['changes'] = {'result': 'success', 'outputs': {'run_app': 'false'}}
+        scope.check_gate(needs, POLICY)
+        needs['changes']['outputs']['run_app'] = 'true'
+        with self.assertRaises(ValueError):
+            scope.check_gate(needs, POLICY)
+        for name in POLICY['application_jobs']:
+            needs[name]['result'] = 'success'
+        scope.check_gate(needs, POLICY)
+        for result in ['failure', 'cancelled', None]:
+            needs['backend-and-web']['result'] = result
+            with self.subTest(result=result), self.assertRaises(ValueError):
+                scope.check_gate(needs, POLICY)
+
+    def test_failed_or_missing_selection_cannot_pass_gate(self):
+        for selection in [{}, {'result': 'failure'}, {'result': 'success', 'outputs': {}}]:
+            with self.subTest(selection=selection), self.assertRaises(ValueError):
+                scope.check_gate({'changes': selection}, POLICY)
+
+    def test_automatic_deployment_requires_exact_trusted_runtime_evidence(self):
+        head, repository = 'a' * 40, 'example/target'
+        record = dict(scope='full', complete=True, deploy=True, run_app=True,
+                      schema_version=1, event='push', head=head, repository=repository)
+        self.assertTrue(scope.deployment_allowed(record, head, repository))
+        for key, value in [('head', 'b' * 40), ('repository', 'foreign/target'),
+                           ('event', 'pull_request'), ('complete', False),
+                           ('run_app', False), ('scope', 'docs')]:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                scope.deployment_allowed(dict(record, **{key: value}), head, repository)
+        docs = dict(record, scope='docs', deploy=False, run_app=False)
+        self.assertFalse(scope.deployment_allowed(docs, head, repository))
+
+    def test_product_docs_and_license_do_not_build_or_deploy_the_app(self):
+        for path in ['README.md', 'LICENSE', 'docs/assistant.md', 'docs/development.md',
+                     'CONTRIBUTING.md']:
             with self.subTest(path=path):
                 decision = scope.classify([path], POLICY)
                 self.assertFalse(decision['run_app'])
@@ -37,7 +78,8 @@ class ConsumerPolicyTests(unittest.TestCase):
 
     def test_ci_changes_and_unknown_paths_check_broadly_without_auto_promotion(self):
         for path in ['.github/workflows/ci.yml', 'unknown-root-file',
-                     'skills/orbyn-ci-design/scripts/ci_scope.py', 'mobile/src/screen.tsx']:
+                     'scripts/ci_scope.py', 'scripts/check-tool-sources.py',
+                     'skills/how/SKILL.md', 'mobile/src/screen.tsx']:
             with self.subTest(path=path):
                 decision = scope.classify([path], POLICY)
                 self.assertTrue(decision['run_app'])

@@ -19,19 +19,14 @@ provider consent or external service setup describe those conditions in their gu
 
 ## Develop Orbyn
 
-| Need                            | Guide                                                                                       |
-| ------------------------------- | ------------------------------------------------------------------------------------------- |
-| Repository rules                | [AGENTS.md](../AGENTS.md)                                                                   |
-| Engineering workflow and skills | [Skill index](../skills/README.md)                                                          |
-| Stack and skill integration     | [Stack](agents/stack.md), [skill system](agents/skill-system.md)                            |
-| Agent responsibilities          | [Orbyn roles](agents/roles.md)                                                              |
-| Project sessions and subagents  | [Coordination](agents/coordination.md)                                                      |
-| Codex and Claude defaults       | [Model policy](agents/model-policy.md)                                                      |
-| Source conventions and commands | [Development](agents/development.md)                                                        |
-| UI and product copy             | [UI/UX](agents/ui-ux.md)                                                                    |
-| Checks, handoff and delivery    | [Verification](verification.md), [delivery](agents/delivery.md), [status](agents/status.md) |
-| Documentation ownership         | [Documentation policy](agents/documentation.md)                                             |
-| Imported tools and attribution  | [Tooling](agents/tooling.md)                                                                |
+| Need                                         | Guide                                                  |
+| -------------------------------------------- | ------------------------------------------------------ |
+| Engineering workspace and contribution setup | [CONTRIBUTING](../CONTRIBUTING.md)                     |
+| Stack, source conventions, commands and CI   | [Development](development.md)                          |
+| Environment and service ownership            | [Operations](operations.md)                            |
+| UI and product copy                          | [Product design](design.md)                            |
+| Verification scope and receipts              | [Verification](verification.md)                        |
+| Retained source snapshots and licenses       | [Third-party notices](../tools/THIRD_PARTY_NOTICES.md) |
 
 ## Product and operations
 
@@ -51,5 +46,5 @@ provider consent or external service setup describe those conditions in their gu
 These product references describe application behavior; changing development
 skills does not by itself change API routes, security controls or deployment.
 Current verification is attached to a specific candidate and task, never inferred
-from an old report or this index. See [migration notes](agents/migration.md) for
-the documentation retirement and recovery record.
+from an old report or this index. Dated work records preserve historical delivery
+state; they do not install engineering policy.

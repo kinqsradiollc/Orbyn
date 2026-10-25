@@ -53,7 +53,6 @@ Orbyn is a TypeScript npm workspaces monorepo.
 | `gateway/`, `pgbouncer/`  | nginx routing and database connection pooling                             |
 | `deploy/`, `compose.yaml` | Service definitions, isolation profiles and deployment tooling            |
 | `docs/`                   | Product, setup, architecture and operational references                   |
-| `skills/`                 | Pinned shared engineering skills; product policy stays in this repository |
 
 Clients use `@orbyn/api-client` and `@orbyn/core`; the API client depends on core.
 Shared packages do not import application code. Backend services share an image
@@ -117,32 +116,20 @@ For mobile, see [docs/mobile.md](docs/mobile.md).
 
 ## Contributing
 
-Start with the [setup guide](docs/setup.md) and the shared [repository policy](AGENTS.md).
-Use Orbyn's maintained repository skillset when maintaining this application:
-[orbyn-workflow](skills/orbyn-workflow/SKILL.md) routes substantial engineering
-work, with [roles](docs/agents/roles.md), [coordination](docs/agents/coordination.md)
-and [development guidance](docs/agents/development.md) defining ownership and delivery.
-Downloaded upstream references and global skill collections do not replace this
-repository's active policy. Preserve unrelated local work and follow the current
-verification scope before preparing a contribution.
-
-The separate [Orbyn Fullstack Engineering Skills](https://github.com/kinqsradio/orbyn-fullstack-skills)
-library is portable and can be used in other projects. This application consumes
-a reviewed revision; [upstream synchronization](docs/agents/skill-upstream.md)
-explains how shared changes are contributed and pinned. Product-specific policy
-and configuration remain owned here.
-
-Host model/effort settings come from the shared [registry](docs/agents/models.json)
-under [model policy](docs/agents/model-policy.md). Follow the applicable
-[branch and worktree guidance](docs/agents/development.md#branch-naming) and keep
-contributions scoped to the requested change.
+Contribute through the [Orbyn Engineering workspace](https://github.com/kinqsradio/orbyn-fullstack-skills),
+with this checkout nested under its ignored `repo/` directory. Engineering policies
+and skills live in that outer workspace; no copied installation or skills pin is
+maintained here. See [CONTRIBUTING](CONTRIBUTING.md) for the layout and adoption
+boundary, [development](docs/development.md) for application commands,
+[operations](docs/operations.md) for service ownership and
+[design](docs/design.md) for product conventions.
 
 ## License
 
 Orbyn's original application code is available under the [MIT License](LICENSE).
-Copyright © 2026 Anh Dang. Third-party dependencies, imported tools and adapted
-skills retain their own license and attribution notices; see the component
-licenses under `skills/` and `tools/`. Those notices remain part of the repository.
+Copyright © 2026 Anh Dang. Third-party dependencies, imported tools and adapted helpers retain their own
+license and attribution notices under `tools/` and `scripts/licenses/`;
+see [third-party notices](tools/THIRD_PARTY_NOTICES.md).
 
 ## Creator and contact
 

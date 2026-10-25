@@ -14,14 +14,14 @@ Reviewed the current primary skill sources:
   focuses on original static visual composition and PNG/PDF output. Its art
   philosophy process is not necessary for every product screenshot or feed mockup.
 
-The local [social-content](../../skills/social-content/SKILL.md) and
-[social-preview](../../skills/social-preview/SKILL.md) are independently authored
+The historical [social-content](https://github.com/kinqsradio/orbyn-fullstack-skills/blob/251cd2e9013d2cbb74a6b3c4b88243c7a4094813/skills/social-content/SKILL.md) and
+[social-preview](https://github.com/kinqsradio/orbyn-fullstack-skills/blob/251cd2e9013d2cbb74a6b3c4b88243c7a4094813/skills/social-preview/SKILL.md) are independently authored
 instructions, informed by that comparison and the user's requested writing/preview
 workflow. No upstream text, code, fonts or assets were copied or installed. These
 links identify reviewed sources, not immutable imported snapshots. Consequently
 the source snapshot manifest and imported-skill adaptation map remain unchanged.
 Any future direct import must preserve its license and pinned provenance under
-[tooling policy](../../docs/agents/tooling.md).
+[tooling policy](../../docs/operations.md).
 
 ## Local ownership
 
