@@ -1,7 +1,0 @@
-# Issue 7: replacing a subscription delivers twice
-
-Register an owner on topic news, then register the same (topic, key) again and
-emit one event. The current registry calls both callbacks. The target contract
-requires only the latest callback for that identity. Preserve independent keys,
-topics and disposal semantics. Reproduce the reported behavior, add a focused
-regression and fix it. Keep the patch small and follow target contribution rules.

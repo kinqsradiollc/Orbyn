@@ -30,6 +30,8 @@ jobs:
           python-version: "3.13"
       - name: Verify scope and safe candidate preflight with disposable Git fixtures
         run: python3 -m unittest discover -s .github/tests -v
+      - name: Verify vendored source hashes and submodule pins
+        run: python3 scripts/check-tool-sources.py
       - name: Classify the complete candidate diff
         id: scope
         env:
@@ -39,7 +41,7 @@ jobs:
         run: |
           args=()
           if [ "$EVENT_NAME" = workflow_dispatch ]; then args+=(--force-full); fi
-          python3 skills/orbyn-ci-design/scripts/ci_scope.py select \
+          python3 scripts/ci_scope.py select \
             --config .github/ci-scope.json --base "$BASE_SHA" --head "$HEAD_SHA" \
             --event "$EVENT_NAME" --repository "$GITHUB_REPOSITORY" \
             --record ci-scope.json --github-output "$GITHUB_OUTPUT" "${args[@]}"
@@ -272,5 +274,5 @@ jobs:
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: >-
-          python3 skills/orbyn-ci-design/scripts/ci_scope.py gate
+          python3 scripts/ci_scope.py gate
           --config .github/ci-scope.json --needs-json "$NEEDS_JSON"

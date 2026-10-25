@@ -1,5 +1,0 @@
-# Test ownership
-
-Put behavioral regressions in tests/test_*.py using unittest and the real
-src.event_bus.EventBus. Do not copy its implementation or change tools/check.py.
-Preserve existing controls. Keep fixture data disposable; no network or services.

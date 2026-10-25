@@ -9,25 +9,8 @@
     "LICENSE.md",
     "LICENSE.txt"
   ],
-  "docs_prefixes": ["docs/"],
-  "skills_files": [
-    "AGENTS.md",
-    "AGENT.md",
-    "CLAUDE.md",
-    "tools/THIRD_PARTY_NOTICES.md",
-    "scripts/install.py",
-    "scripts/check-agent-assets.py",
-    "scripts/sync-agent-skills.py",
-    "scripts/sync-agent-models.py",
-    "scripts/sync-public-skills.py"
-  ],
-  "skills_prefixes": [
-    "skills/",
-    ".agents/skills/",
-    ".claude/skills/",
-    "project-skills/",
-    "docs/agents/",
-    "tools/research/"
+  "docs_prefixes": [
+    "docs/"
   ],
   "deployment_files": [
     "package.json",
