@@ -96,6 +96,14 @@ and [skill discovery guide](https://developers.openai.com/codex/skills). Isolate
 global skills and previous context using supported per-run controls. Host behavior
 and available flags vary by version; this evaluator does not launch a host for you.
 
+## Suite evolution
+
+When adding development cases, keep existing holdout criteria unchanged and record
+the new suite hash. Prior reports remain tied to their recorded revision and suite
+bytes; grade or reproduce them from that revision rather than rewriting their
+results against an expanded suite. New cases require fresh observations before
+claiming coverage or comparing scores.
+
 ## CI and contributions
 
 Ordinary PR CI runs static case validation and fixture tests without model calls or
@@ -104,12 +112,82 @@ retain their evidence outside the shared distribution unless it is synthetic or
 reviewed for publication. Add only the public task, rubric and a concise result
 summary to a contribution. Never give untrusted PR code a model key merely to grade it.
 
+By default, commit the concise result report and a reproducible declarative
+protocol with synthetic fixtures, exact revisions and grading criteria. Keep full
+answers, visible tool captures, run records and debug traces in ignored local
+output or explicitly approved CI artifacts. Preserve failed attempts there, and
+retain their verdicts and limitations in the summary. Do not add per-run captures
+to the template merely because they were useful during development. Checkpoint
+and evidence retention belongs to the consuming project; setup must not create
+log folders or export that project's records automatically.
+
 Choose code-based checks for executable behavior, and calibrated human or model
 review for subjective outcomes. Do not grade only output keywords, require a single
 wording, or accept a task's own success assertion as proof. Extend helpers with an
 actual failing input/output boundary when their behavior changes.
 
+## Verify discovery isolation before scoring
+
+A clean fixture and a disabled-feature flag do not establish the effective input.
+Use the installed host's supported prompt-inventory preview when available to
+check actual skill names, roots, descriptions, instruction ancestry and exposed
+capabilities. Exclude global/system/plugin skills and previous context from both
+conditions; check that a baseline has not inherited candidate methods. Preserve
+the preflight receipt and do not score a contaminated trial as a matched run.
+
+Disable discovery only through supported per-run controls. In the recorded desktop
+host, folder-only skill overrides left extras visible; actual advertised
+`SKILL.md` path overrides and resolved locations were needed, followed by another
+inventory check. This is version-specific evidence, not a promise about every
+host's setting syntax. Never edit global skills, user policy or installed caches
+to force isolation. If the runner cannot establish it, report the limitation and
+leave the comparison unverified.
+
+Treat a missing fixture contract as an evaluation-input gap. Retain the original
+rubric and observation as unverified where the criterion cannot be established;
+do not penalize an answer for refusing an unsupported assumption. Correct a
+development prompt or fixture in a new suite revision, freeze it before rerunning,
+and report the follow-up separately. Do not silently regrade old observations,
+combine different suites into a new full-suite score or weaken a criterion after
+seeing a held-out answer. The callback-count assessment illustrates why a symptom
+label alone is not a supplied expected-behavior contract.
+
 This workflow is independently authored. Design references are
 [Anthropic's skill creator](https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md),
 [agent evaluation guidance](https://www.anthropic.com/research/demystifying-evals-for-ai-agents)
 and [SkillsBench](https://arxiv.org/abs/2602.12670v4). No evaluator code was imported.
+
+## Consolidating a skill owner
+
+For a bounded development question, `prepare --case <id>` can select an explicit
+subset; repeat it for each case in the chosen `--split`. Pin the same subset,
+rubrics, fixtures, tool configuration and trial count for both conditions before
+observing output. Report the subset denominator, not the full suite count. The
+helper rejects duplicates, unknown IDs and cases outside that split. No model
+is invoked by preparation. A focused trial does not qualify unrun cases or hosts.
+
+Keep observed historical trials tied to their original suite and revision. The
+released 61-case suite before TypeScript consolidation is retained verbatim in
+[the baseline archive](../evals/baselines/2026-10-24-55-skills.json). The active
+suite migrates its two TypeScript selection identities to the language owner;
+this is a new suite checksum, not a regrade of the old observations. New routing
+and production-practice cases are development cases. Run fresh paired trials
+before claiming a measured behavioral improvement from this candidate.
+
+## Contribution workflow checks
+
+The contribution milestone adds 13 development assessment cases covering stale
+issue availability, overlap, target ownership, reproduction-only scope, runner
+discovery, intermittent evidence, stale-head CI, pagination, feedback disagreement,
+human gates, retry budgets, optional checks and separate external effects. Earlier
+cases and holdouts retain their objects; the expanded suite has a new checksum.
+
+`tests/test_contribution_workflow.py` exercises the actual managed copy and core/all
+host installation with networking unavailable and no library root docs or tools.
+It checks required support reachability, missing-asset rejection and preservation
+of target policy/company guidance. Synthetic evaluator fixtures check that prepared
+cases remain unverified, incomplete rubric evidence stays unverified and a recorded
+forbidden message fails despite positive rubric assertions. These are packaging
+and evaluator checks, not a live PR, framework test, agent score or host comparison.
+Use fresh matched trials under the protocol above before claiming improved agent
+behavior. Normal library CI already runs this test module through discovery.

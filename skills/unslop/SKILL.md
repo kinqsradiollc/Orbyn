@@ -5,7 +5,8 @@ description: "Edit agent prose and documentation for clear factual communication
 
 # Unslop
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 Lead with the concrete result or action. Use familiar words and verbs, one main
 idea per paragraph, and headings only when they help navigation. Remove filler,
@@ -25,3 +26,9 @@ Use [social-content](../social-content/SKILL.md) for social post strategy, autho
 voice, platform adaptation and carousel copy; this skill supplies the prose pass.
 Use [social-preview](../social-preview/SKILL.md) for rendered feed mockups and
 attached visuals. Editing a caption does not require generating visual assets.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

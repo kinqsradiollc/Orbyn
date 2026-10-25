@@ -6,7 +6,7 @@ description: "Resolve a specific architectural, dependency, platform or design u
 # Research for an Orbyn decision
 
 Name the decision, unknown and evidence that would change the choice. Read
-[stack boundaries](../../docs/agents/stack.md). Trace local code with `how` first;
+[stack boundaries](../orbyn-workflow/references/project-policy.md#stack-and-ownership). Trace local code with `how` first;
 installed manifests and current source outrank generic tutorials about this project.
 
 For external facts, prefer official documentation, source repositories, standards
@@ -25,6 +25,12 @@ recovery relevant to the decision. For UI, evaluate task flow, readability, focu
 responsive behavior and existing tokens; generic aesthetic claims are not evidence.
 Imported examples do not authorize new external services, telemetry or CDN assets.
 
+When downloading source or research references, use the ignored local
+`orbyn-references/` workspace and exclusion/provenance rules in
+[upstream review](../orbyn-upstream-review/SKILL.md). Use that owner for freshness
+comparisons and update decisions. Raw downloads stay outside public commits;
+retain only reviewed findings and licensed, deliberately selected support files.
+
 Feed findings into `orbyn-plan`, `architect`, `orbyn-ui-design` or the owning guide.
 Keep only decision-relevant findings in a durable record. If a runtime experiment
 is needed, describe its scope and use it only when authorized; do not call a source
@@ -34,3 +40,9 @@ one research result.
 ## Research that changes implementation
 
 For a retry or streaming API, record the supported version, cancellation/unknown-outcome behavior and the implication for the current adapter. Separate documented availability from this account’s observed access. The result should settle one decision, not become a general technology survey.
+
+For technology recommendations, feed current primary evidence and uncertainty to
+[stack selection](../orbyn-stack-selection/SKILL.md). For a language implementation
+question, consult the relevant [local guide](../language-best-practices/SKILL.md)
+first, then verify only the unresolved target-version behavior. Neither a source
+survey nor popularity alone settles project fit or authorizes implementation.

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+/library/
+/output/
+/.agents/skills/*
+!/.agents/skills/widget-contracts
+/.claude/skills/*
+!/.claude/skills/widget-contracts

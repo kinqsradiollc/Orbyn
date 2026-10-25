@@ -18,3 +18,9 @@ mobile/ios
 
 # Database dumps taken by scripts/deploy.sh before each migration.
 backups/
+
+# Local research references are never part of the public skill integration.
+/openSrc/
+
+# Downloaded source and research references remain local-only.
+/orbyn-references/

@@ -46,6 +46,14 @@ would resolve a design question. Use `orbyn-research` for unknown platform or
 accessibility requirements; do not replace existing product tokens with a foreign
 host's theme or tool APIs.
 
+For new visual direction, a requested redesign or a design-quality audit, read
+[visual direction](references/visual-direction.md): derive composition from the
+person's task and real material, choose a coherent system and distinguish defects
+from stylistic preferences. For existing UI changes, use the
+[redesign contract](references/redesign-contract.md) to preserve routes, content,
+forms, permissions and recovery behavior. Audit-only requests produce findings
+without product edits. A small polish does not authorize a broad redesign.
+
 ## Design and implement
 
 1. State the person's main task, starting state, and observable success. Map the
@@ -56,17 +64,19 @@ host's theme or tool APIs.
    or use a drawer. Keep every action reachable without squeezing the main task.
 4. Preserve data and authority: drafts, selections, permissions, approvals,
    consent, and backend run states must survive visual changes.
-5. Implement feature parity in web/desktop and mobile, with platform-appropriate
-   navigation and controls. Record any authorized platform limitation explicitly.
+5. Cover the supported surfaces affected by the requested change, using their
+   platform-appropriate navigation and controls. Apply parity only where the
+   product contract requires it; record agreed platform limitations.
 
 ## Review and delivery
 
-Apply the on-demand cadence in `AGENTS.md`: no automatic visual sweep for every
-change or checkpoint. Prefer authorized tests/API evidence for functional behavior
-and reuse valid prior UI evidence. For a material layout/interaction risk or reproduced
+Follow the consuming project's visual-review policy and the changed surface.
+Use proportional evidence, avoiding a blanket sweep for unrelated changes. Use
+tests/API evidence for functional behavior and reuse valid prior UI evidence.
+For a material layout/interaction risk or reproduced
 visual defect, inspect the relevant flow when authorized. If an independent
 visual role is requested, use the session/subagent topology in
-[coordination](../../docs/agents/coordination.md). Give that inspector the candidate checkout/ref,
+[coordination](../orbyn-workflow/references/project-policy.md#delegation-and-host-configuration). Give that inspector the candidate checkout/ref,
 URLs, exact states, viewport sizes, themes, and a Markdown report destination.
 Specify whether its assignment is capture-only or includes analysis, following
 the user's current authorization. Report delegated pixel review as delegated;
@@ -89,3 +99,25 @@ when its acceptance evidence supports it; do not claim the whole task complete.
 
 [Recovering a failed save](examples/failed-save.md) applies a consuming project's
 style and draft/conflict contract without claiming an unperformed visual check.
+
+## Async flow ownership
+
+For fetch/save/search or subscription changes, use [asynchronous state and recovery](references/async-state.md). Preserve request identity, stale-result handling, drafts, current scope and cleanup in the actual framework.
+
+## Experience rule
+
+Evaluate the complete task from the person's starting state through success,
+cancellation and recovery. Resolve trade-offs around that outcome, preserving
+accessibility and authority. Use the [experience method](references/principles/experience-first.md)
+when a local visual improvement could make the end-to-end task harder.
+
+## Deliver a preview the human can use
+
+For a requested prototype or preview, produce the actual app route/story or a
+self-contained HTML artifact as appropriate, open it with supported host tools
+when possible, and provide the verified link plus states to try. Follow the
+[prototype method](references/prototypes.md) for deterministic demo controls,
+simulation labels, rendering evidence and transfer into the real frontend/backend.
+Use the [artifact lifecycle](../orbyn-workflow/references/artifact-lifecycle.md)
+for storage, server lifetime and cleanup. A source file or screenshot alone does
+not establish that the human can exercise the interaction.

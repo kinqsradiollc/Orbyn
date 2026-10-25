@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "extensions": {
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".jsx": "javascript",
+    ".py": "python",
+    ".pyi": "python",
+    ".go": "go",
+    ".rs": "rust",
+    ".java": "java",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".cs": "csharp",
+    ".swift": "swift",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".cc": "cpp",
+    ".cxx": "cpp",
+    ".hpp": "cpp",
+    ".hh": "cpp",
+    ".hxx": "cpp",
+    ".sql": "sql",
+    ".sh": "shell",
+    ".bash": "shell",
+    ".zsh": "shell",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
+    ".C": "cpp"
+  },
+  "ambiguous_extensions": {
+    ".h": [
+      "c",
+      "cpp"
+    ]
+  },
+  "guides": {
+    "javascript": "references/javascript.md",
+    "python": "references/python.md",
+    "go": "references/go.md",
+    "rust": "references/rust.md",
+    "java": "references/java.md",
+    "kotlin": "references/kotlin.md",
+    "csharp": "references/csharp.md",
+    "swift": "references/swift.md",
+    "c": "references/c.md",
+    "cpp": "references/cpp.md",
+    "sql": "references/sql.md",
+    "shell": "references/shell.md",
+    "typescript": "references/typescript.md"
+  }
+}

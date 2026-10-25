@@ -4,7 +4,6 @@
     "Workflow and planning",
     "Engineering practice",
     "Fullstack contracts and delivery",
-    "Engineering principles",
     "Product design",
     "Social content and visuals",
     "Artifact investigation and REA maintenance"
@@ -19,13 +18,19 @@
         "arena",
         "orbyn-plan",
         "orbyn-backend-design",
-        "orbyn-data-migration"
+        "orbyn-data-migration",
+        "orbyn-stack-selection",
+        "language-best-practices",
+        "orbyn-ci-design"
       ]
     },
     {
       "name": "arena",
       "category": "Engineering practice",
-      "related": []
+      "related": [
+        "architect",
+        "interrogate"
+      ]
     },
     {
       "name": "automate-me",
@@ -45,7 +50,12 @@
     {
       "name": "how",
       "category": "Engineering practice",
-      "related": []
+      "related": [
+        "why",
+        "orbyn-workflow",
+        "tdd",
+        "orbyn-ci-design"
+      ]
     },
     {
       "name": "interrogate",
@@ -55,12 +65,24 @@
       ]
     },
     {
+      "name": "language-best-practices",
+      "category": "Engineering practice",
+      "related": [
+        "how",
+        "architect",
+        "orbyn-backend-design",
+        "orbyn-data-migration",
+        "orbyn-ci-design",
+        "orbyn-stack-selection"
+      ]
+    },
+    {
       "name": "orbyn-backend-design",
       "category": "Fullstack contracts and delivery",
       "related": [
         "architect",
         "how",
-        "typescript-best-practices",
+        "language-best-practices",
         "orbyn-data-migration",
         "orbyn-ui-design"
       ]
@@ -70,7 +92,9 @@
       "category": "Fullstack contracts and delivery",
       "related": [
         "orbyn-workflow",
-        "orbyn-skill-creator"
+        "orbyn-skill-creator",
+        "how",
+        "tdd"
       ]
     },
     {
@@ -98,7 +122,8 @@
         "why",
         "architect",
         "orbyn-research",
-        "figure-it-out"
+        "figure-it-out",
+        "orbyn-workflow"
       ]
     },
     {
@@ -108,7 +133,19 @@
         "how",
         "orbyn-plan",
         "architect",
-        "orbyn-ui-design"
+        "orbyn-ui-design",
+        "orbyn-upstream-review",
+        "orbyn-stack-selection"
+      ]
+    },
+    {
+      "name": "orbyn-security-audit",
+      "category": "Fullstack contracts and delivery",
+      "related": [
+        "how",
+        "orbyn-security-remediation",
+        "orbyn-backend-design",
+        "orbyn-ci-design"
       ]
     },
     {
@@ -116,15 +153,17 @@
       "category": "Engineering practice",
       "related": [
         "how",
-        "principle-boundary-discipline",
-        "principle-fix-root-causes"
+        "orbyn-backend-design"
       ]
     },
     {
       "name": "orbyn-setup",
       "category": "Workflow and planning",
       "related": [
-        "orbyn-skill-creator"
+        "orbyn-skill-creator",
+        "orbyn-worktree",
+        "language-best-practices",
+        "orbyn-stack-selection"
       ]
     },
     {
@@ -134,6 +173,20 @@
         "orbyn-research",
         "orbyn-setup",
         "reflect",
+        "orbyn-ci-design",
+        "orbyn-upstream-review"
+      ]
+    },
+    {
+      "name": "orbyn-stack-selection",
+      "category": "Engineering practice",
+      "related": [
+        "how",
+        "orbyn-research",
+        "orbyn-upstream-review",
+        "architect",
+        "orbyn-plan",
+        "language-best-practices",
         "orbyn-ci-design"
       ]
     },
@@ -143,7 +196,19 @@
       "related": [
         "orbyn-content-design",
         "orbyn-research",
-        "social-preview"
+        "social-preview",
+        "orbyn-workflow"
+      ]
+    },
+    {
+      "name": "orbyn-upstream-review",
+      "category": "Workflow and planning",
+      "related": [
+        "orbyn-research",
+        "orbyn-skill-creator",
+        "orbyn-worktree",
+        "how",
+        "reflect"
       ]
     },
     {
@@ -157,149 +222,80 @@
         "orbyn-skill-creator",
         "orbyn-backend-design",
         "orbyn-data-migration",
-        "orbyn-ci-design"
+        "orbyn-ci-design",
+        "orbyn-worktree",
+        "orbyn-upstream-review",
+        "language-best-practices",
+        "orbyn-stack-selection",
+        "tdd",
+        "reflect"
       ]
     },
     {
-      "name": "principle-boundary-discipline",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-build-the-lever",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-encode-lessons-in-structure",
-      "category": "Engineering principles",
+      "name": "orbyn-worktree",
+      "category": "Workflow and planning",
       "related": [
-        "typescript-best-practices"
-      ]
-    },
-    {
-      "name": "principle-exhaust-the-design-space",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-experience-first",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-fix-root-causes",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-foundational-thinking",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-guard-the-context-window",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-laziness-protocol",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-make-operations-idempotent",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-migrate-callers-then-delete-legacy-apis",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-minimize-reader-load",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-never-block-on-the-human",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-outcome-oriented-execution",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-prove-it-works",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-redesign-from-first-principles",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-separate-before-serializing-shared-state",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-sequence-verifiable-units",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-subtract-before-you-add",
-      "category": "Engineering principles",
-      "related": []
-    },
-    {
-      "name": "principle-type-system-discipline",
-      "category": "Engineering principles",
-      "related": [
-        "typescript-best-practices"
+        "orbyn-workflow",
+        "orbyn-setup",
+        "orbyn-plan"
       ]
     },
     {
       "name": "rea-analysis-optimization",
       "category": "Artifact investigation and REA maintenance",
-      "related": []
+      "related": [
+        "how",
+        "rea-ci-tests-audit",
+        "reverse-engineer-anything"
+      ]
     },
     {
       "name": "rea-changelog-update",
       "category": "Artifact investigation and REA maintenance",
-      "related": []
+      "related": [
+        "orbyn-upstream-review",
+        "reverse-engineer-anything"
+      ]
     },
     {
       "name": "rea-ci-tests-audit",
       "category": "Artifact investigation and REA maintenance",
-      "related": []
+      "related": [
+        "orbyn-ci-design",
+        "reverse-engineer-anything"
+      ]
     },
     {
       "name": "rea-tool-design",
       "category": "Artifact investigation and REA maintenance",
-      "related": []
+      "related": [
+        "architect",
+        "reverse-engineer-anything"
+      ]
     },
     {
       "name": "reflect",
       "category": "Workflow and planning",
       "related": [
-        "orbyn-skill-creator"
+        "orbyn-skill-creator",
+        "orbyn-upstream-review"
       ]
     },
     {
       "name": "reverse-engineer-anything",
       "category": "Artifact investigation and REA maintenance",
-      "related": []
+      "related": [
+        "how",
+        "orbyn-upstream-review"
+      ]
     },
     {
       "name": "show-me-your-work",
       "category": "Workflow and planning",
-      "related": []
+      "related": [
+        "figure-it-out",
+        "orbyn-plan"
+      ]
     },
     {
       "name": "social-content",
@@ -323,15 +319,9 @@
       "name": "tdd",
       "category": "Engineering practice",
       "related": [
-        "principle-prove-it-works"
-      ]
-    },
-    {
-      "name": "typescript-best-practices",
-      "category": "Engineering practice",
-      "related": [
-        "principle-type-system-discipline",
-        "principle-encode-lessons-in-structure"
+        "orbyn-workflow",
+        "how",
+        "orbyn-ci-design"
       ]
     },
     {
@@ -346,7 +336,33 @@
     {
       "name": "why",
       "category": "Engineering practice",
-      "related": []
+      "related": [
+        "how",
+        "architect"
+      ]
     }
-  ]
+  ],
+  "retired_skills": {
+    "typescript-best-practices": "language-best-practices",
+    "principle-boundary-discipline": "orbyn-backend-design",
+    "principle-build-the-lever": "orbyn-workflow",
+    "principle-encode-lessons-in-structure": "architect",
+    "principle-exhaust-the-design-space": "architect",
+    "principle-experience-first": "orbyn-ui-design",
+    "principle-fix-root-causes": "how",
+    "principle-foundational-thinking": "architect",
+    "principle-guard-the-context-window": "how",
+    "principle-laziness-protocol": "architect",
+    "principle-make-operations-idempotent": "orbyn-backend-design",
+    "principle-migrate-callers-then-delete-legacy-apis": "architect",
+    "principle-minimize-reader-load": "architect",
+    "principle-never-block-on-the-human": "orbyn-plan",
+    "principle-outcome-oriented-execution": "orbyn-workflow",
+    "principle-prove-it-works": "orbyn-workflow",
+    "principle-redesign-from-first-principles": "architect",
+    "principle-separate-before-serializing-shared-state": "orbyn-workflow",
+    "principle-sequence-verifiable-units": "orbyn-plan",
+    "principle-subtract-before-you-add": "architect",
+    "principle-type-system-discipline": "language-best-practices"
+  }
 }

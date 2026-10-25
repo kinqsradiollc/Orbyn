@@ -40,6 +40,8 @@ This consumer-owned map is outside shared skill synchronization and adds no auth
 | UI, responsive behavior or product copy | [UI/UX](docs/agents/ui-ux.md), [UI skill](skills/orbyn-ui-design/SKILL.md), [content skill](skills/orbyn-content-design/SKILL.md)                            |
 | Social posts, graphics or feed previews | [Social writing](skills/social-content/SKILL.md), [social previews](skills/social-preview/SKILL.md)                                                          |
 | API contracts, migrations or CI         | [Backend design](skills/orbyn-backend-design/SKILL.md), [data migration](skills/orbyn-data-migration/SKILL.md), [CI design](skills/orbyn-ci-design/SKILL.md) |
+| Language-specific implementation        | [Language guidance](skills/language-best-practices/SKILL.md), [TypeScript contracts](skills/language-best-practices/references/typescript.md)                |
+| Technology or stack choice              | [Stack selection](skills/orbyn-stack-selection/SKILL.md), [current stack](docs/agents/stack.md)                                                              |
 | Runtime, data, providers or deployment  | [Operations](docs/agents/operations.md)                                                                                                                      |
 | Verification and delivery               | [Delivery workflow](docs/agents/delivery.md)                                                                                                                 |
 | Assigned reviewers or parallel workers  | [Coordination](docs/agents/coordination.md), [review](docs/agents/review.md)                                                                                 |
@@ -110,7 +112,12 @@ from a skill. Follow the user's requested delivery scope.
 
 ## Skill and source ownership
 
-`skills/` holds Orbyn's portable adaptations. Each skill has relative links under
+`skills/` holds Orbyn's portable adaptations. Company/repo-only skills belong in
+`project-skills/<company-or-repo>/<namespaced-skill>/`, with both host links,
+outside public synchronization. Follow the local ownership/setup guide and read
+required references from disk; external citations are attribution/update pointers.
+For a setup request, agents complete authorized helper/migration/check steps
+without asking the human to invoke each skill or run commands separately. Each skill has relative links under
 `.agents/skills` and `.claude/skills` to its canonical folder. Load only relevant skills and references.
 `tools/` preserves complete third-party source snapshots and attribution;
 [the manifest](tools/upstream-manifest.json) records hashes and submodule pins.
@@ -120,3 +127,22 @@ Read REA's nested rules when modifying REA itself. No active workflow depends on
 `openSrc/`. Retired ADRs and review reports are outside the active documentation tree.
 Current source, the task brief and these guides define the work. See
 [documentation policy](docs/agents/documentation.md).
+
+For external code, skills and research freshness, use
+[upstream review](skills/orbyn-upstream-review/SKILL.md). Keep downloaded originals
+in ignored `orbyn-references/`; neither that folder nor `openSrc/` enters Git or
+public skill exports. Compare exact source revisions and selectively update the
+existing owner. Preserve intentionally vendored dependencies and required notices;
+do not edit installed plugin caches or confuse a review revision with an import.
+
+For Orbyn engineering, use this repository's canonical maintained Orbyn skillset
+and its task routing. Downloaded upstream skills and unrelated global collections
+are research references, not alternative active project policy. User instructions
+and higher-priority host requirements still take precedence. The public fullstack
+library is portable for other projects; this Orbyn maintenance rule does not
+impose Orbyn's application stack or company policy on those consumers.
+
+For worktree location/lifecycle and local task branch or personal-fork delivery,
+follow [orbyn-worktree](skills/orbyn-worktree/SKILL.md). Use the primary clone’s
+sibling `orbyn-wt/<purpose>/` root by default. Preserve active paths/output; keep
+branches local until authorized delivery and verify any contribution destination.

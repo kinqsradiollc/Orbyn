@@ -12,17 +12,21 @@
         "why",
         "architect",
         "interrogate",
-        "typescript-best-practices",
+        "language-best-practices",
         "orbyn-backend-design",
-        "orbyn-ui-design"
+        "orbyn-ui-design",
+        "orbyn-setup",
+        "orbyn-skill-creator",
+        "orbyn-worktree",
+        "orbyn-stack-selection"
       ]
     },
     "web": {
-      "description": "Web UI, content and TypeScript; combine with core when useful",
+      "description": "Web UI, content and project-aware JavaScript/TypeScript guidance",
       "skills": [
         "orbyn-ui-design",
         "orbyn-content-design",
-        "typescript-best-practices",
+        "language-best-practices",
         "how"
       ]
     },
@@ -33,7 +37,8 @@
         "orbyn-backend-design",
         "orbyn-data-migration",
         "orbyn-ci-design",
-        "how"
+        "how",
+        "language-best-practices"
       ]
     },
     "mobile": {
@@ -42,12 +47,16 @@
         "orbyn-ui-design",
         "orbyn-content-design",
         "orbyn-backend-design",
-        "typescript-best-practices"
+        "language-best-practices"
       ]
     },
     "creator": {
       "description": "Social writing, previews and prose refinement",
-      "skills": ["social-content", "social-preview", "unslop"]
+      "skills": [
+        "social-content",
+        "social-preview",
+        "unslop"
+      ]
     },
     "maintainer": {
       "description": "Skill authoring, project setup and contribution automation",
@@ -55,7 +64,8 @@
         "orbyn-setup",
         "orbyn-skill-creator",
         "orbyn-ci-design",
-        "reflect"
+        "reflect",
+        "orbyn-upstream-review"
       ]
     },
     "rea": {
@@ -66,6 +76,32 @@
         "rea-changelog-update",
         "rea-ci-tests-audit",
         "rea-tool-design"
+      ]
+    },
+    "security": {
+      "description": "Explicit portable source audit, existing findings and CI trust boundaries; never starts a scan on install",
+      "skills": [
+        "orbyn-security-audit",
+        "orbyn-security-remediation",
+        "orbyn-ci-design",
+        "how"
+      ]
+    },
+    "languages": {
+      "description": "Language-aware implementation with 13 local guides, including TypeScript",
+      "skills": [
+        "language-best-practices",
+        "how"
+      ]
+    },
+    "architecture": {
+      "description": "Evidence-led stack selection and interface design, without automatic implementation",
+      "skills": [
+        "orbyn-stack-selection",
+        "architect",
+        "orbyn-research",
+        "orbyn-plan",
+        "how"
       ]
     }
   }

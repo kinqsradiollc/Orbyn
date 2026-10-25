@@ -1,6 +1,6 @@
 ---
 name: orbyn-ci-design
-description: "Design or repair CI checks, contribution automation and release promotion with scoped credentials, deterministic artifacts and clear evidence boundaries. Use for workflow changes; not permission to publish, merge or deploy."
+description: "Design or repair CI, select affected checks, analyze bulk failures, verify release evidence and plan rollout or incident recovery. Keep artifact readiness and deployed health distinct; no implicit deployment authority."
 ---
 
 # CI that checks the artifact it will promote
@@ -16,6 +16,15 @@ executable helpers need meaningful behavior checks; application changes need the
 affected contract's checks. Keep fixtures disposable and preserve source/runtime
 separation. Do not invoke a paid model or live provider merely to validate skill
 frontmatter. Report live skill selection and model behavior separately.
+
+For small changes and selective execution, follow
+[proportional verification](references/change-scope.md). Cosmetic local work can
+finish with relevant local checks and no hosted CI/CD. Published changes retain
+their required merge status; use a known docs/skills fast path, broader checks for
+uncertain/runtime changes and a final gate that cannot hide classifier or selected
+job failures. Deployment is separate from green CI and must respect scope and
+existing authority. Do not add a new skill or ask the human to invoke one merely
+to decide the appropriate checks.
 
 For fork contributions, use unprivileged PR execution, read-only tokens, no secrets
 and no persisted checkout credentials. Do not execute a contributor's code in a
@@ -38,3 +47,30 @@ run for the exact candidate when available. Name branch-protection, secret or ho
 settings that remain unapplied. Deliver the workflow, commands and evidence; use
 [orbyn-workflow](../orbyn-workflow/SKILL.md) for the broader change and
 [security remediation](../orbyn-security-remediation/SKILL.md) only for existing findings.
+
+## Maintain the verification map
+
+For a requested verification inventory or stale recipes, use the [consumer-owned verification map](references/verification-map.md). Derive it from current source and existing commands; keep attempted and last-confirmed revisions separate.
+
+## Bulk failures and release evidence
+
+For many failed suites, instances or shards, use the [bulk method](references/bulk-failures.md)
+and its disk-backed offline analyzer. Collect the complete expected matrix and
+all attempts before diagnosing. Keep missing/invalid newest reports as blockers;
+never truncate the inventory to a readable top list or erase a fail/pass retry.
+Group shared symptoms as hypotheses, then use `how`/`tdd` for confirmed causes
+and meaningful corrections. A failed pipeline does not by itself identify a code defect.
+
+Use [release verification](references/release-verification.md) to bind required
+stage evidence to the actual candidate, artifact bytes, configuration, current run
+and freshness. Unknown/failed required gates block readiness. Offline JSON/digests
+do not authenticate a provider or grant deployment authority. The agent completes
+authorized collection and analysis without making the human invoke each helper.
+
+## Affected graphs and operations
+
+For cross-package selection, use [affected targets](references/affected-targets.md)
+with the existing build graph, generator/runtime edges and conservative fallback.
+For an authorized rollout plan or incident recovery, use
+[health-driven rollout](references/rollout-recovery.md). Artifact readiness,
+deployed health and recovery completion are separate evidence claims.

@@ -42,8 +42,10 @@ python3 scripts/sync-public-skills.py check --root .
 The full public tree remains the source of shared skills; this copy is not a
 second independent upstream. A local experiment can differ temporarily, but
 the scoped CI check fails until it is contributed/reconciled with a public pin.
-Regenerate host links after changes; remove retired generated links explicitly
-if the generator reports them. Keep the existing local host Git exclusions intact.
+Regenerate host links with the matching reviewed helper. It preflights both hosts,
+creates replacement links and removes only known owned retired links; foreign
+entries stop the migration and remain intact. Keep the existing local host Git
+exclusions intact.
 
 ## CI and limits
 
@@ -61,11 +63,57 @@ Updating the sync helper itself is an explicit tooling change; compare it with
 the public source and run its focused tests before replacing the local trusted copy.
 Neither the lock nor CI authorizes public publication, merges or production changes.
 
-## First quality milestone
+## Current distribution
 
-The shared tree includes additive presets, project customization guidance, five
-worked examples and a 22-case evaluation suite. Fresh external installs default
-to the 10-skill core; Orbyn retains all 50 existing discovery links. Preset
+The shared catalog and `skills/upstream-lock.json` define the installed skills,
+managed files and exact public revision. Presets are additive selections in
+`skills/orbyn-setup/assets/presets.json`; evaluation definitions live in
+`skills/orbyn-skill-creator/evals/cases.json`. Use those owners for current counts.
+The current release consolidates 54 entries to 34 task owners. Twenty standalone
+principles retain their methods and licenses as owner-local references;
+`skills/catalog.json` records their replacement owners. Both Codex and Claude
+discovery follow the current catalog. Language, technology-selection and visual
+design methods remain available without changing Orbyn's product stack or global
+model/tool configuration. Consumer instructions and the design profile take
+precedence over portable defaults.
+
+The reviewed public release also includes quantitative design, impact discovery,
+writer fencing/recovery, service readiness, preview/resource lifecycle and credited
+Hallmark design adaptations. The upstream
+[qualification report](https://github.com/kinqsradio/orbyn-fullstack-skills/blob/251cd2e9013d2cbb74a6b3c4b88243c7a4094813/docs/evaluations/2026-10-25-final-runtime.md)
+records bounded paired trials and remaining large-codebase, accessibility, native
+and production limits. Importing that guidance is not new Orbyn application or
+model qualification. The REA engine and its source/version pins remain unchanged.
+
+The matching vendored installer also supports explicit Cursor project discovery
+and `--host all`; `both` retains Codex/Claude behavior. Existing Orbyn discovery
+remains on that established pair. Selected legacy skills migrate with backups,
+and same-name Cursor copies require all-host reconciliation. Preserve this
+consumer's model settings and company guidance; template installation creates
+no logging directories. Routine work needs no separate log, while useful
+checkpoints stay project-owned under the
+[task-record defaults](../../skills/orbyn-workflow/references/task-record.md).
+
+The optional ignored `repo/` contribution workspace belongs to a library checkout,
+not an automatic relocation of Orbyn or its worktrees. Target repositories retain
+their own instructions and skills. Public-library delivery and consumer promotion
+keep separate authority under the shared
+[release handoff](../../skills/orbyn-upstream-review/references/release-handoff.md).
+
+A draft consumer PR may pin a reviewed public contribution commit for integration
+checks. That is a candidate, not a merged release: merge the public dependency
+first, repin to its actual merged revision, then verify the consumer before its
+separately authorized merge. Preserve company/repository guidance outside the
+managed allowlist.
+
+## First quality milestone (historical)
+
+The counts and revisions below describe the first public milestone, not the
+current lock or discovery configuration.
+
+That shared tree included additive presets, project customization guidance, five
+worked examples and a 22-case evaluation suite. At that milestone, fresh external installs defaulted
+to the 10-skill core and Orbyn retained its 50 discovery links. Preset
 selection does not change models or remove installed skills. Membership lives in
 `skills/orbyn-setup/assets/presets.json`; installation tooling belongs to the public
 library, while the vendored context and evaluation helpers work in this checkout.
@@ -91,8 +139,8 @@ The [23 October Codex evaluation](https://github.com/kinqsradio/orbyn-fullstack-
 compares the previous library with the revised milestone: routing improved from
 16/17 to 17/17, while both versions passed 5/5 reviewed design/content cases.
 The corrected shared-schema route passed three candidate observations. The
-evaluated skill revision is `7503c67f625dd6385dd5fd5d5518d05d22c58bb6`; the lock
-pins `49509d4b134d879923806feae10a849fc259fbc8`, the merged public revision with the same managed skill distribution. The public
+evaluated skill revision is `7503c67f625dd6385dd5fd5d5518d05d22c58bb6`; the milestone lock
+pinned `49509d4b134d879923806feae10a849fc259fbc8`, the merged public revision with the same managed skill distribution. The public
 squash merge changed commit identity without changing the reviewed file tree. Earlier failed/incomplete
 attempts are retained. These bounded synthetic trials do not qualify Orbyn app
 behavior or Claude runtime behavior; Claude was excluded at the user's request.

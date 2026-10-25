@@ -16,3 +16,8 @@ reviews and verifies the result under the parent [workflow](../SKILL.md).
 
 Small clear work stays direct. A child completes its owned implementation
 without further delegation. Delivery remains within the user's requested scope.
+
+For user-facing work, deliver the actual review route/artifact and relevant
+interaction evidence using the [preview method](../../orbyn-ui-design/references/prototypes.md).
+A mock is a design aid; complete the real API/state/frontend connection for an
+implementation request. State demo versus integrated behavior explicitly.

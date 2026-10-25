@@ -5,15 +5,16 @@ description: "Challenge a specified design, patch or claim for concrete correctn
 
 # Interrogate
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 Pin the candidate and intended contract. Inspect the changed code and affected
-callers using [review criteria](../../docs/agents/review.md). Look for scenarios
+callers using [review criteria](../orbyn-workflow/references/project-policy.md#verification-and-review). Look for scenarios
 that falsify the claim, especially lost authority, stale state, partial failures,
 concurrency, cleanup and incomplete verification.
 
 The lead may use an independent in-task reviewer for a distinct unresolved risk
-under [coordination](../../docs/agents/coordination.md), within the task's shared
+under [coordination](../orbyn-workflow/references/project-policy.md#delegation-and-host-configuration), within the task's shared
 child limit. Assigned reviewers inspect their candidate directly without further
 delegation. Follow assigned read-only limits and the model policy. Neither
 multiple models nor a majority vote establishes correctness.
@@ -26,3 +27,14 @@ changes during a review-only task. Return a supported verdict and its limitation
 ## Review the failure that matters
 
 For an approval change, ask whether a revoked user or stale client can still apply it and whether a retry duplicates the effect. Return a concrete reproducing state and affected owner. Missing native evidence is an evidence gap; it is not automatically a source-code defect.
+
+When challenging a module refactor, inspect what callers must know, which
+complexity is hidden, whether the seam reflects actual variation, and whether
+behavior checks survive the internal reorganization. Identify a concrete caller
+or failure scenario; a preferred vocabulary or file count is not a finding.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

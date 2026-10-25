@@ -11,7 +11,7 @@ REPOSITORY = 'https://github.com/kinqsradio/orbyn-fullstack-skills'
 MANIFEST = 'distribution/manifest.json'
 LOCK = 'skills/upstream-lock.json'
 NAME = re.compile(r'[a-z0-9]+(?:-[a-z0-9]+)*')
-EXTENSIONS = {'.md', '.json', '.py', '.sh', '.html', '.txt', '.yaml', '.yml'}
+EXTENSIONS = {'.md', '.json', '.py', '.sh', '.cjs', '.html', '.txt', '.yaml', '.yml'}
 
 
 def load(path):

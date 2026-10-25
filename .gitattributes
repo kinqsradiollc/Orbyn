@@ -14,3 +14,6 @@
 *.woff binary
 *.woff2 binary
 *.ttf binary
+
+# Immutable licensed source snapshots retain their original bytes.
+skills/**/references/upstream/** -text -whitespace

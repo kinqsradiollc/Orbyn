@@ -6,12 +6,15 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import subprocess
 import sys
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 errors = []
+if subprocess.check_output(['git', 'ls-files', '--', 'openSrc/'], cwd=ROOT, text=True).strip():
+    errors.append('openSrc is local research material and must not be tracked')
 
 def check(ok, message):
     if not ok:
@@ -59,6 +62,12 @@ for source in manifest['imports']:
         check(modules.get(section, 'url', fallback='') == module['repository'], f'Wrong module URL: {path}')
         pins += 1
 
+snapshot_tools = runpy.run_path(str(ROOT/'skills/orbyn-skill-creator/scripts/check_sources.py'))
+snapshots = snapshot_tools['check'](ROOT)
+project_tools = runpy.run_path(str(ROOT/'skills/orbyn-setup/scripts/project_skills.py'))
+local_skills = project_tools['inventory'](ROOT)
+project_tools['plan_links'](ROOT, local_skills, ['.agents', '.claude'], True)
+
 skills = sorted((ROOT / 'skills').glob('*/SKILL.md'))
 for skill in skills:
     name = skill.parent.name
@@ -71,15 +80,33 @@ for skill in skills:
         check(link.is_symlink() and link.resolve() == skill.parent.resolve(), f'Broken discovery link: {relative(link)}')
         check(contained(link), f'External discovery link: {relative(link)}')
 adaptations = json.loads((ROOT / 'tools/skill-adaptations.json').read_text())
+preserved_methods = set()
 for group, directory in [('engineering', 'tools/pstack/skills'), ('rea', 'tools/rea/.agents/skills')]:
     mapping = adaptations[group]
     sources = {p.parent.name for p in (ROOT / directory).glob('*/SKILL.md')}
     check(set(mapping) == sources, f'Incomplete source provenance: {group}')
     for local_name in mapping.values():
-        check((ROOT / 'skills' / local_name / 'SKILL.md').exists(), f'Missing skill: {local_name}')
+        target = ROOT / 'skills' / local_name
+        owner = local_name.split('/', 1)[0]
+        check(owner in {p.parent.name for p in skills}, f'Unknown adaptation owner: {local_name}')
+        check(target.resolve().is_relative_to(ROOT / 'skills'), f'External adaptation target: {local_name}')
+        check((target if target.suffix == '.md' else target / 'SKILL.md').is_file(),
+              f'Missing skill or preserved method: {local_name}')
+        if target.suffix == '.md':
+            preserved_methods.add(target)
+            check((target.parent / 'LICENSE.txt').is_file(), f'Missing preserved method license: {local_name}')
+# Incorporated TypeScript guidance retains its upstream grant after owner retirement.
+ts_guide = ROOT / 'skills/language-best-practices/references/typescript.md'
+ts_notice = ROOT / 'skills/language-best-practices/references/typescript-LICENSE.txt'
+check(ts_guide.is_file(), 'Missing incorporated TypeScript guide')
+check(ts_notice.is_file(), 'Missing incorporated TypeScript MIT notice')
+if ts_notice.is_file():
+    original_notice = (ROOT / 'tools/pstack/LICENSE').read_text().strip()
+    check(original_notice in ts_notice.read_text(), 'Incorporated TypeScript upstream license was changed')
+
 for host in ['.agents', '.claude']:
     discovered = {p.name for p in (ROOT / host / 'skills').iterdir()}
-    check(discovered == {p.parent.name for p in skills}, f'Stale/extra discovery entries: {host}')
+    check(discovered == ({p.parent.name for p in skills} | set(local_skills)), f'Stale/extra discovery entries: {host}')
 
 # Check authored Markdown links only, not historical upstream references.
 docs = [ROOT / p for p in ['AGENTS.md', 'AGENT.md', 'CLAUDE.md', 'README.md',
@@ -88,6 +115,8 @@ docs += list((ROOT / 'docs').rglob('*.md'))
 docs += list((ROOT / 'tools/research').glob('*.md'))
 docs += list((ROOT / 'skills').rglob('*.md'))
 for doc in docs:
+    if doc in snapshots:
+        continue  # Immutable upstream references are checked by source hashes.
     body = re.sub(r'```.*?```', '', doc.read_text(), flags=re.S)
     for target in re.findall(r'\[[^\]]*\]\(([^)]+)\)', body):
         target = target.split('#', 1)[0].strip('<>')
@@ -104,8 +133,20 @@ active = [ROOT / p for p in ['AGENTS.md', 'AGENT.md', 'CLAUDE.md']]
 active += list((ROOT / 'skills').rglob('*.md'))
 active += [p for p in (ROOT / 'docs/agents').glob('*.md') if p.name != 'tooling.md']
 active += list((ROOT / '.codex').rglob('*.toml')) + list((ROOT / '.claude/agents').glob('*.md'))
+provenance_docs = {ROOT / 'skills/orbyn-workflow/references/contribution-sources.md'}
 for path in active:
-    check(not re.search(r'poteto|pstack', path.read_text(), re.I), f'Inherited active branding: {relative(path)}')
+    if path in snapshots or path in provenance_docs:
+        continue  # Source credits/identities are data, not active agent roles.
+    body = path.read_text()
+    if path in preserved_methods:
+        # Exclude only the recognized attribution block; the method stays checked.
+        body = re.sub(
+            r"\n## Source and license\n\nAdapted from Lauren Tan's pstack \[[^\n]+\]"
+            r"\(https://github\.com/cursor/plugins/blob/[0-9a-f]{40}/pstack/skills/"
+            r"principle-[a-z-]+/SKILL\.md\),\nrevision `[0-9a-f]{40}`\.\n"
+            r"Orbyn adaptations and worked examples retain the \[original MIT notice\]"
+            r"\(LICENSE\.txt\)\.\n?", '', body)
+    check(not re.search(r'poteto|pstack', body, re.I), f'Inherited active branding: {relative(path)}')
 
 model_check = subprocess.run([sys.executable, str(ROOT / 'scripts/sync-agent-models.py'), '--check'], cwd=ROOT, capture_output=True, text=True)
 check(model_check.returncode == 0, model_check.stderr.strip() or 'Model registry drift')

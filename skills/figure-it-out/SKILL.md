@@ -5,10 +5,11 @@ description: "Plan and execute an authorized large migration or cross-cutting ta
 
 # Figure it out
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 Use [orbyn-plan](../orbyn-plan/SKILL.md) to establish or revise the execution plan
-and [stack ownership](../../docs/agents/stack.md) to place changes.
+and [stack ownership](../orbyn-workflow/references/project-policy.md#stack-and-ownership) to place changes.
 
 Define a checkable end state, exclusions and the largest unresolved risk. Inventory
 the actual units before planning. Sequence by dependency and risk, using coherent
@@ -34,3 +35,9 @@ blocked parts without silently reducing the requested outcome.
 ## Finish the vertical slice
 
 For an API extraction, the inventory includes shared schema, consumers, persistence, service routing and the old handler. Close a unit only when its named artifact and evidence exist. Keep unfinished operator/deployment work visible; do not replace it with a future-work paragraph and call the migration complete.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.

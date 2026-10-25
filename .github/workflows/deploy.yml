@@ -1,6 +1,6 @@
 # Deploys main to the production server over SSH with zero downtime
 # (scripts/deploy.sh). Run it from the Actions tab ("Run workflow"), or set
-# the repository variable AUTO_DEPLOY to "true" to deploy after CI passes on main.
+# the repository variable AUTO_DEPLOY to "true" to deploy runtime changes after CI passes on main.
 #
 # Repository secrets:
 #   DEPLOY_HOST         server address
@@ -23,11 +23,59 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
-  deploy:
+  scope:
+    name: Check deployment scope
+    permissions:
+      contents: read
+      actions: read
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && vars.AUTO_DEPLOY == 'true')
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success' && vars.AUTO_DEPLOY == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      deploy: ${{ steps.scope.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Read data from the successful canonical CI run
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-scope
+          path: .ci-scope
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Select explicit manual deployment or validate exact runtime decision
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EXPECTED_HEAD: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            echo 'deploy=true' >> "$GITHUB_OUTPUT"
+          else
+            python3 skills/orbyn-ci-design/scripts/ci_scope.py deployment \
+              --record .ci-scope/ci-scope.json --head "$EXPECTED_HEAD" \
+              --repository "$GITHUB_REPOSITORY" --github-output "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: scope
+    if: needs.scope.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -39,6 +87,7 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           PORT: ${{ secrets.DEPLOY_PORT }}
           KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          EXPECTED_HEAD: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           for name in HOST USER KEY DEPLOY_PATH; do
             if [ -z "${!name}" ]; then echo "Missing secret for $name (see the top of deploy.yml)"; exit 1; fi
@@ -52,5 +101,17 @@ jobs:
           else
             ssh-keyscan -p "$PORT" "$HOST" > ~/.ssh/known_hosts
           fi
-          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" \
-            "cd '$DEPLOY_PATH' && ./scripts/deploy.sh"
+          [[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid candidate revision'; exit 1; }
+          printf -v candidate_command 'bash -s -- %q %q' "$DEPLOY_PATH" "$EXPECTED_HEAD"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" "$candidate_command" <<'REMOTE'
+          set -euo pipefail
+          cd "$1"
+          expected_revision="$2"
+          [ "$(git branch --show-current)" = main ] || { echo 'Server checkout is not main'; exit 1; }
+          [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo 'Preserve dirty server work before deployment'; exit 1; }
+          git fetch --no-tags origin main
+          [ "$(git rev-parse origin/main)" = "$expected_revision" ] || { echo 'CI candidate is stale; wait for current main CI'; exit 1; }
+          git merge --ff-only "$expected_revision"
+          [ "$(git rev-parse HEAD)" = "$expected_revision" ] || { echo 'Candidate mismatch'; exit 1; }
+          ./scripts/deploy.sh --no-pull
+          REMOTE

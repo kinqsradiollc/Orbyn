@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/cloudflare/security-audit-skill",
+  "revision": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+  "retrieved_on": "2026-10-24",
+  "license": "MIT",
+  "scope": "Original record schema, zero-dependency validators, synthetic validator fixtures and license only. No upstream skill entry point or workflow text is bundled.",
+  "files": {
+    "LICENSE": {
+      "source_path": "LICENSE",
+      "sha256": "e598e694aa506650c7192d5ea3be0e50aca0d356ea00551c53429f0b01eb6391"
+    },
+    "report-schema.json": {
+      "source_path": "skills/security-audit/report-schema.json",
+      "sha256": "6575c9de4a62255699ea052ebf9a49ebfb373a32891bcd89af6f55cc84b35519"
+    },
+    "validate-coverage-ledger.cjs": {
+      "source_path": "skills/security-audit/validate-coverage-ledger.cjs",
+      "sha256": "2eb280bd2e33c002916f86db9b29f9edfedb6454e5db973c766290465b868ac8"
+    },
+    "validate-coverage-ledger.test.cjs": {
+      "source_path": "skills/security-audit/validate-coverage-ledger.test.cjs",
+      "sha256": "cfb9df26b03469a4279a70e7664a2a5434dd6f8c2c204e91f9b0aeb9dd71e648"
+    },
+    "validate-findings.cjs": {
+      "source_path": "skills/security-audit/validate-findings.cjs",
+      "sha256": "e85f232e36bfac0f866f244da50376692d6b45c690beadcb00608b0e6c8b5283"
+    },
+    "validate-findings.test.cjs": {
+      "source_path": "skills/security-audit/validate-findings.test.cjs",
+      "sha256": "b92001117a92c4161d43777a0ba2fa182a8a4d97f2304cc8c0cee5331497b73b"
+    }
+  },
+  "license_files": [
+    "LICENSE"
+  ]
+}

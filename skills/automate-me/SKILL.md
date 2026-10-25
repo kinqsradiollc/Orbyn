@@ -5,7 +5,8 @@ description: "Capture explicitly requested working preferences in a reusable loc
 
 # Automate me
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 Locate an existing skill for the requested workflow before creating one. Use
 only the conversation or records the user selected; do not mine unrelated sessions.
@@ -21,3 +22,9 @@ side effect. Show the resulting file and the preferences it encodes.
 ## Preference → maintained owner
 
 If the user repeatedly requests export readback, place that check in the export owner when they ask to encode it. Preserve what the preference actually covers: a PDF readback rule should not require application builds for a prose edit. Return the changed owner and an example of when it should not activate.
+
+## Operational method
+
+Use the [local operating method](references/operating-method.md) for the execution
+sequence, concrete failure case, expected result and stopping condition. It is
+Orbyn-authored guidance; historical source notices remain in provenance.
