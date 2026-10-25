@@ -14,6 +14,9 @@ Identify the smallest observable contract. Reproduce the defect in a test at its
 owning boundary, run it before the fix and check it fails for the intended reason.
 Make the production correction, then rerun that check and relevant adjacent cases.
 Do not test a copy of the implementation or weaken assertions to obtain green.
+Use the [reproduction contract](../how/references/reproduction.md) for baseline,
+fixture and runner discovery. Confirm the intended test actually ran; zero
+selected tests, an unrelated setup error or a skipped mode is not regression proof.
 
 If the practical test requires unrelated harness churn or unrealistic mocks,
 explain the limitation and use the closest authorized evidence. Retain failing

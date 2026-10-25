@@ -82,6 +82,13 @@ remaining behavior gaps, changed files and local/committed delivery state.
 
 ## Maintain the public contract
 
+When current work demonstrates a meaningful reusable gap, use the
+[contribution feedback policy](references/contribution-feedback.md). Prepare a
+concrete, sanitized proposal and offer it once at a natural checkpoint. The user
+can approve a public PR, request a local draft or decline. Existing exact-scope
+authority carries through. Silence and local improvement permission do not
+authorize publication. Keep company-only lessons local and continue the main task.
+
 Treat the shared library as an upstream dependency of consuming projects. Keep private product policy and source outside public contributions. A useful skill change alters a decision or supplies a reusable artifact, not just vocabulary. Check expected and adjacent routing cases, then reconcile the catalog and consumer pin through the documented contribution path.
 
 For external skill freshness and source comparisons, use
@@ -99,6 +106,15 @@ changes; do not change frozen criteria after observing a held-out result.
 Prepared or incomplete trials remain unverified. Helper fixtures test the tooling;
 only captured, reviewed host trials provide evidence of skill behavior. Record
 baseline and candidate results separately before claiming an improvement.
+For an explicitly requested reproduce/fix/PR-feedback execution trial, use the
+[disposable contribution lab](references/contribution-execution.md). Its real
+source/tests/Git and local PR fixture supply stronger evidence than scenario
+answers; they do not qualify a hosted provider or authorize ordinary model calls.
+
+For explicitly requested multi-suite CI or release/capacity exercises, use the
+[disposable pipeline method](references/pipeline-execution.md). Distinguish actual
+fixture tests from generated report records and from live agent behavior. Measure
+resource usage and retain missing/failed attempts; no blanket scale guarantee follows.
 
 ## Audit completeness without inflating the catalog
 

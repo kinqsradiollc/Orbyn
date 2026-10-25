@@ -43,13 +43,20 @@ pointers. Setup and validation must not silently download missing dependencies.
 ## Complete setup from the user’s goal
 
 A request to set up or migrate this project selects this workflow directly.
+First resolve the [workspace layout choice](references/repository-workspaces.md):
+ask once between nested (recommended/default for new workspaces) and an existing
+project in place when the user has not selected a destination/layout. Honor an
+explicit existing path or “use the default” without another question. Wait for
+an unresolved choice before dependent writes; silence is not acceptance. Preserve
+active checkouts and output; never relocate them merely to apply the default.
 Inspect existing instructions, skills, docs and host settings; infer clear
 company/repo ownership from that evidence, preview the selected changes, then
 perform authorized registration/migration and checks. Do not ask the human to
 invoke another skill or run helper commands the agent can execute. Use the
 creator for authoring changes internally. Ask only for a consequential unresolved
-ownership conflict or unavailable authority; preserve that material and continue
-independent setup. Do not silently guess ownership of a foreign installation.
+ownership conflict or unavailable authority after the layout decision; preserve
+that material and continue independent setup. Do not silently guess ownership
+of a foreign installation.
 
 ## Consumer-aware setup
 
@@ -69,8 +76,8 @@ active worktrees or create one merely to install skills.
 ## Agent-owned setup result
 
 Within an authorized setup request, resolve the actual consumer root and library
-clone, read consumer instructions, inventory current skills/docs/config and
-identify the relevant stack. Choose the default/core or justified additive
+clone under the selected layout, read consumer instructions, inventory current
+skills/docs/config and identify the relevant stack. Choose the default/core or justified additive
 selection yourself. Preview helper changes, migrate only clearly owned selected
 skills with backups, register shared/local discovery, then initialize/check the
 context map and add only source-grounded guide/owner pointers. Run local skill,

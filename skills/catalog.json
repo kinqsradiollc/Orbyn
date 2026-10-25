@@ -53,7 +53,9 @@
       "category": "Engineering practice",
       "related": [
         "why",
-        "orbyn-workflow"
+        "orbyn-workflow",
+        "tdd",
+        "orbyn-ci-design"
       ]
     },
     {
@@ -93,7 +95,9 @@
       "category": "Fullstack contracts and delivery",
       "related": [
         "orbyn-workflow",
-        "orbyn-skill-creator"
+        "orbyn-skill-creator",
+        "how",
+        "tdd"
       ]
     },
     {
@@ -224,7 +228,9 @@
         "orbyn-worktree",
         "orbyn-upstream-review",
         "language-best-practices",
-        "orbyn-stack-selection"
+        "orbyn-stack-selection",
+        "tdd",
+        "reflect"
       ]
     },
     {
@@ -456,7 +462,10 @@
       "name": "tdd",
       "category": "Engineering practice",
       "related": [
-        "principle-prove-it-works"
+        "principle-prove-it-works",
+        "how",
+        "orbyn-workflow",
+        "orbyn-ci-design"
       ]
     },
     {

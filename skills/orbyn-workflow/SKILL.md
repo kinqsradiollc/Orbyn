@@ -1,6 +1,6 @@
 ---
 name: orbyn-workflow
-description: "Route substantial Orbyn engineering work through evidence-led investigation, design, implementation and verification. Use for Orbyn workflow requests and multi-step changes."
+description: "Route engineering work through investigation, design, implementation and verification, including open-source contribution intake and bounded PR feedback/CI iteration. Follow the consuming project's instructions."
 ---
 
 # Orbyn engineering workflow
@@ -16,7 +16,10 @@ when creating, adapting or relocating them; keep them outside public skill sync.
 For work that needs a durable handoff, use the optional
 [task record](references/task-record.md) without duplicating an existing tracker.
 
-For a target inside the library's optional `repo/` workspace, resolve that
+For setup without a selected layout, use the setup skill's
+[one-time layout choice](../orbyn-setup/references/repository-workspaces.md):
+nested is recommended/default for new workspaces; preserve existing explicit paths.
+For a target inside the library's ignored `repo/` workspace, resolve that
 repository and follow its [workspace contract](../orbyn-setup/references/repository-workspaces.md).
 Read existing upstream instructions and skills in place; an ordinary contribution
 does not authorize migrating their guidance or publishing local setup additions.
@@ -61,6 +64,9 @@ permits. Do not load the whole library or repeat a checklist in every reply.
 | User requests a pause                | [Pause safely](playbooks/pause-safely.md)           |
 | Large migration or staged delivery   | [Multi-phase plan](playbooks/multi-phase-plan.md)   |
 | User requests PR delivery            | [Opening a PR](playbooks/opening-a-pr.md)           |
+| Investigate or contribute upstream   | [Contribution intake](playbooks/contribution-intake.md) |
+| Address PR feedback or check CI      | [Bounded PR iteration](playbooks/pr-iteration.md) |
+| Diagnose bulk CI or verify release evidence | [Pipeline failures](playbooks/pipeline-failures.md) |
 
 Use [orbyn-plan](../orbyn-plan/SKILL.md) for explicit plans or a complex change;
 use [orbyn-research](../orbyn-research/SKILL.md) for unresolved external facts and
@@ -151,6 +157,12 @@ Do not create sessions recursively or turn design comparison into a model panel.
 
 ## Review, verify and deliver
 
+If the current task demonstrates a meaningful general skill gap, follow the
+[optional contribution feedback](../orbyn-skill-creator/references/contribution-feedback.md):
+prepare a concrete proposal, then offer it once without blocking the user's task.
+Keep company-only material local. No automatic publication, self-edit, telemetry
+or cross-user learning follows; exact existing contribution authority still applies.
+
 For substantial work, the lead must inspect the actual returned artifacts and
 diff against the intended contract, including affected callers, authority,
 failure/recovery and unrelated changes. A delegate's summary is evidence to
@@ -168,6 +180,11 @@ applies to requested independent qualification, not ordinary lead correction loo
 
 Deliver only the requested scope. Report changed behavior/artifacts, actual
 evidence, unresolved limits and local/committed/pushed/merged/deployed state.
+For authorized delivery, verify the successful owned commit and its validated
+tree before pushing. A failed stage/commit stops dependent push, PR and CI actions;
+a later command's success cannot repair that missing prerequisite. Use the
+[commit and push gate](playbooks/opening-a-pr.md#commit-and-push-gate) for the
+execution and remote-ref checks. Preserve the patch when host metadata is blocked.
 No automatic PR, merge, publish, deployment, external message or monitor follows
 from delegation or a playbook.
 

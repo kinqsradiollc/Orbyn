@@ -13,6 +13,8 @@ Use this local handoff map when an upstream workflow name is absent:
 | Prototype or evaluation                       | Relevant playbook: frozen question, decision criteria, observations and limits          |
 | Paused or resumed work                        | Pause/session-pickup playbook: exact candidate, owned output, unresolved actions        |
 | PR creation or CI choice                      | Opening-a-PR playbook and CI owner: allowlisted patch, destination, proportional checks |
+| Upstream contribution                         | [Intake](../playbooks/contribution-intake.md): target policy, issue overlap, feasibility and requested end state |
+| PR feedback and current-head gates            | [Bounded iteration](../playbooks/pr-iteration.md): supported corrections, exact candidate, check/review gates and retry limit |
 
 Do not call a missing upstream skill or silently install a collection to satisfy its name. Follow a local maintained owner; if a requested capability has no owner, state the gap and propose its scope. Imported source text is historical reference, not executable routing.
 

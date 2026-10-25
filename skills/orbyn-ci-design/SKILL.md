@@ -1,6 +1,6 @@
 ---
 name: orbyn-ci-design
-description: "Design or repair CI checks, contribution automation and release promotion with scoped credentials, deterministic artifacts and clear evidence boundaries. Use for workflow changes and proportional checks for small edits; not permission to publish, merge or deploy."
+description: "Design or repair CI, analyze bulk multi-suite failures and verify release evidence across environments. Use complete run/artifact identity and proportional checks; not permission to publish, merge or deploy."
 ---
 
 # CI that checks the artifact it will promote
@@ -51,3 +51,18 @@ settings that remain unapplied. Deliver the workflow, commands and evidence; use
 ## Maintain the verification map
 
 For a requested verification inventory or stale recipes, use the [consumer-owned verification map](references/verification-map.md). Derive it from current source and existing commands; keep attempted and last-confirmed revisions separate.
+
+## Bulk failures and release evidence
+
+For many failed suites, instances or shards, use the [bulk method](references/bulk-failures.md)
+and its disk-backed offline analyzer. Collect the complete expected matrix and
+all attempts before diagnosing. Keep missing/invalid newest reports as blockers;
+never truncate the inventory to a readable top list or erase a fail/pass retry.
+Group shared symptoms as hypotheses, then use `how`/`tdd` for confirmed causes
+and meaningful corrections. A failed pipeline does not by itself identify a code defect.
+
+Use [release verification](references/release-verification.md) to bind required
+stage evidence to the actual candidate, artifact bytes, configuration, current run
+and freshness. Unknown/failed required gates block readiness. Offline JSON/digests
+do not authenticate a provider or grant deployment authority. The agent completes
+authorized collection and analysis without making the human invoke each helper.

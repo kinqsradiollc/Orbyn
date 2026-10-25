@@ -124,8 +124,9 @@ active = [ROOT / p for p in ['AGENTS.md', 'AGENT.md', 'CLAUDE.md']]
 active += list((ROOT / 'skills').rglob('*.md'))
 active += [p for p in (ROOT / 'docs/agents').glob('*.md') if p.name != 'tooling.md']
 active += list((ROOT / '.codex').rglob('*.toml')) + list((ROOT / '.claude/agents').glob('*.md'))
+provenance_docs = {ROOT / 'skills/orbyn-workflow/references/contribution-sources.md'}
 for path in active:
-    if path in snapshots:
+    if path in snapshots or path in provenance_docs:
         continue  # Source credits/identities are data, not active agent roles.
     check(not re.search(r'poteto|pstack', path.read_text(), re.I), f'Inherited active branding: {relative(path)}')
 
