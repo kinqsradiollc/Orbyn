@@ -41,17 +41,19 @@ helper was moved by its author out of primary after a hash comparison; it is not
 part of this application candidate.
 
 A later fresh nested clone may be prepared at
-`orbyn-fullstack-skills/repo/Orbyn` with sibling `repo/Orbyn-wt/`. Such a clone does
+`orbyn-fullstack-skills/repo/Orbyn` with sibling `repo/orbyn-wt/`. Such a clone does
 not transfer local files, environment settings, databases or process ownership.
 The existing primary remains the active local-work/recovery owner until an explicit
 transfer is complete. Filesystem nesting does not establish live host discovery.
 
 ## Evidence and delivery limits
 
-- Seventeen focused CI/source-integrity checks pass in disposable repositories.
+- Twenty-one focused CI/source-integrity/boundary checks pass in disposable repositories.
   They cover normal and rejected classification/gating/deployment records, safe
   server preflight, retained source hashes, file modes, external symlinks,
-  tracking and gitlink revisions.
+  tracking and gitlink revisions. Indexed-path guards reject retired installation
+  files and force-added research while allowing product connector guidance,
+  retained tool snapshots and untracked private work.
 - All 5,018 retained upstream files and five gitlink pins pass static validation.
   REA/pstack source trees, `tools/upstream-manifest.json`, `.gitmodules`, application
   code, runtime manifests and deployment scripts are unchanged.

@@ -73,7 +73,10 @@ branch statuses are a repository setting; YAML does not configure them.
 
 [`scripts/check-tool-sources.py`](../scripts/check-tool-sources.py) verifies
 retained snapshot hashes, executable bits and gitlink pins in the selection job.
-The CI-policy, safe-server-preflight and source-integrity fixtures run with
+The indexed-path boundary check rejects copied installations and force-added raw
+research without inspecting or deleting untracked private work. It also requires
+the root research ignore rules. The CI-policy, safe-server-preflight, boundary
+and source-integrity fixtures run with
 `python3 -m unittest discover -s .github/tests -v`. They use disposable repositories
 and do not execute upstream engines. The adapted CI helper retains its
 [MIT notice](../scripts/licenses/ci-scope-MIT.txt).

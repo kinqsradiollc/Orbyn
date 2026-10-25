@@ -8,7 +8,7 @@ from its root. The expected layout is:
 orbyn-fullstack-skills/
   repo/
     Orbyn/                 application checkout
-    Orbyn-wt/<purpose>/    application task worktrees
+    orbyn-wt/<purpose>/    application task worktrees
 ```
 
 The outer workspace owns engineering policies, skills and host configuration.
