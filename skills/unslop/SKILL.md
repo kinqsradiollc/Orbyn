@@ -5,7 +5,8 @@ description: "Edit agent prose and documentation for clear factual communication
 
 # Unslop
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 Lead with the concrete result or action. Use familiar words and verbs, one main
 idea per paragraph, and headings only when they help navigation. Remove filler,

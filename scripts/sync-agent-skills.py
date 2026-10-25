@@ -55,7 +55,7 @@ if errors:
 text = '''# Orbyn skills
 
 Start with [orbyn-workflow](orbyn-workflow/SKILL.md) and the
-[skill system](../docs/agents/skill-system.md). Use
+[skill system](orbyn-workflow/references/project-policy.md#routing). Use
 [orbyn-skill-creator](orbyn-skill-creator/SKILL.md) to maintain this catalog,
 [orbyn-plan](orbyn-plan/SKILL.md) for planning and
 [orbyn-setup](orbyn-setup/SKILL.md) for host configuration.
@@ -65,8 +65,9 @@ separately under `project-skills/<company-or-repo>/<namespaced-skill>/`; follow 
 [ownership guide](orbyn-setup/references/project-skills.md). They are discovered
 by both hosts but excluded from this shared catalog and public sync.
 Load only the relevant
-skill body and references. Roles, stack boundaries and model/session policy live
-in `docs/agents/`. This index is generated from `catalog.json` and frontmatter by
+skill body and references. Consumer instructions own roles, stack boundaries and
+model/session policy; use the portable defaults only where guidance is missing.
+This index is generated in the full library from `catalog.json` and frontmatter by
 `python3 scripts/sync-agent-skills.py --write`.
 
 '''
@@ -85,8 +86,10 @@ for category in catalog['categories']:
 text += '''## Scope and attribution
 
 These are Orbyn Engineering workflows, usable with a consuming project's own
-stack and policies. REA maintenance skills apply only to that optional tooling. See [tooling](../docs/agents/tooling.md) and
-[notices](../tools/THIRD_PARTY_NOTICES.md) for complete source and attribution.
+stack and policies. REA maintenance skills apply only to that optional tooling.
+Each skill carries its license and any incorporated source records. See
+[attribution](orbyn-workflow/references/project-policy.md#documentation-and-attribution)
+for the optional full-library indexes.
 Old standalone skill files have been retired; use the canonical folders above.
 '''
 index = ROOT / 'skills/README.md'

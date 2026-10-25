@@ -11,6 +11,12 @@ domain owners. Use [how](../how/SKILL.md) to trace the existing request, and
 Do not introduce Fastify, PostgreSQL, Zod or any other Orbyn stack component merely
 because it appears in an example.
 
+For service readiness or a material workload change, include the
+[operating contract](../architect/references/service-readiness.md): user completion
+indicator and observation window, demand/quota bounds, operator/recovery ownership,
+and data classification, retention/deletion and safe diagnostic fields. Put these
+in the returned criteria; unknown targets or policies remain unresolved gates.
+
 State the caller's input, allowed identity/scope, successful result and expected
 domain failures. Identify which reads establish authority/freshness and which
 write or external effect must preserve them. A parsed ID and a signed-in session
@@ -52,3 +58,13 @@ not an incidental service implementation.
 ## Production behavior and diagnostics
 
 Use [production service contracts](references/service-contracts.md) for bounded input/work, error semantics, concurrency and stable pagination. Use [observability](references/observability.md) when the changed operation needs diagnosable phases and privacy-aware records; installing telemetry or a provider is a separate decision.
+
+## Boundary and retry rules
+
+Validate at actual trust/effect boundaries and express failures in the owning
+contract; do not scatter defensive checks over already valid internal values.
+Retries, crashes and duplicate delivery need an explicit idempotency key, effect
+identity or recovery contract. Concurrent writers need application-level ownership
+or fencing; a Git worktree cannot isolate them. Use the
+[boundary method](references/principles/boundary-discipline.md) and
+[idempotency method](references/principles/make-operations-idempotent.md) for examples.

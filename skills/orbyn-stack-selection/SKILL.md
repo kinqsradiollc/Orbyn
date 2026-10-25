@@ -7,7 +7,7 @@ description: "Choose or reassess a language, framework, database, runtime, hosti
 
 Use for an explicit technology recommendation, greenfield design, replacement
 proposal or a demonstrated mismatch in the current stack. Read the consuming
-project's instructions and [stack map](../../docs/agents/stack.md), then use
+project's instructions and [stack map](../orbyn-workflow/references/project-policy.md#stack-and-ownership), then use
 [how](../how/SKILL.md) to establish what already exists. A routine feature or a
 popular new release does not require a new stack decision.
 

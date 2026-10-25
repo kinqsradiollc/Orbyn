@@ -17,3 +17,11 @@ owned artifacts intentionally without deleting someone else's output.
 Return the answer and hand it to [architect](../../architect/SKILL.md) or
 [stack selection](../../orbyn-stack-selection/SKILL.md). A prototype is not
 production code, a deployment or permission to install external services.
+
+For UI exploration, use the [preview method](../../orbyn-ui-design/references/prototypes.md)
+to deliver an app route/story or portable HTML, meaningful interactive states and
+a verified opening path. For all prototypes, name stored artifacts, owned running
+resources and their retention/cleanup condition under
+[artifact lifecycle](../references/artifact-lifecycle.md). An empirical backend
+prototype needs its measured decision and reproducible inputs; a requested human
+UI preview also needs an artifact the person can open and exercise.

@@ -68,7 +68,7 @@ Check current primary platform guidance when a request depends on exact upload
 limits, format support or other changing rules. Do not present posting frequency,
 algorithm tricks or a preview's truncation as established platform behavior.
 Research context and source distinctions live in the
-[source record](../../tools/research/social-content.md).
+[local source record](references/source-record.md).
 For offline source inspection, use the [local pinned social text and references](references/source-record.md).
 The active method above is self-contained. If current platform rules cannot be
 checked, draft from supplied evidence and mark that specific limit unverified.

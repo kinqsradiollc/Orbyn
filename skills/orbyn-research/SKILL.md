@@ -6,7 +6,7 @@ description: "Resolve a specific architectural, dependency, platform or design u
 # Research for an Orbyn decision
 
 Name the decision, unknown and evidence that would change the choice. Read
-[stack boundaries](../../docs/agents/stack.md). Trace local code with `how` first;
+[stack boundaries](../orbyn-workflow/references/project-policy.md#stack-and-ownership). Trace local code with `how` first;
 installed manifests and current source outrank generic tutorials about this project.
 
 For external facts, prefer official documentation, source repositories, standards

@@ -42,8 +42,10 @@ python3 scripts/sync-public-skills.py check --root .
 The full public tree remains the source of shared skills; this copy is not a
 second independent upstream. A local experiment can differ temporarily, but
 the scoped CI check fails until it is contributed/reconciled with a public pin.
-Regenerate host links after changes; remove retired generated links explicitly
-if the generator reports them. Keep the existing local host Git exclusions intact.
+Regenerate host links with the matching reviewed helper. It preflights both hosts,
+creates replacement links and removes only known owned retired links; foreign
+entries stop the migration and remain intact. Keep the existing local host Git
+exclusions intact.
 
 ## CI and limits
 
@@ -67,8 +69,21 @@ The shared catalog and `skills/upstream-lock.json` define the installed skills,
 managed files and exact public revision. Presets are additive selections in
 `skills/orbyn-setup/assets/presets.json`; evaluation definitions live in
 `skills/orbyn-skill-creator/evals/cases.json`. Use those owners for current counts.
-Host discovery checks include the language and technology-selection owners without
-changing Orbyn's product stack or installing models/tools globally.
+The current release consolidates 54 entries to 34 task owners. Twenty standalone
+principles retain their methods and licenses as owner-local references;
+`skills/catalog.json` records their replacement owners. Both Codex and Claude
+discovery follow the current catalog. Language, technology-selection and visual
+design methods remain available without changing Orbyn's product stack or global
+model/tool configuration. Consumer instructions and the design profile take
+precedence over portable defaults.
+
+The reviewed public release also includes quantitative design, impact discovery,
+writer fencing/recovery, service readiness, preview/resource lifecycle and credited
+Hallmark design adaptations. The upstream
+[qualification report](https://github.com/kinqsradio/orbyn-fullstack-skills/blob/251cd2e9013d2cbb74a6b3c4b88243c7a4094813/docs/evaluations/2026-10-25-final-runtime.md)
+records bounded paired trials and remaining large-codebase, accessibility, native
+and production limits. Importing that guidance is not new Orbyn application or
+model qualification. The REA engine and its source/version pins remain unchanged.
 
 The matching vendored installer also supports explicit Cursor project discovery
 and `--host all`; `both` retains Codex/Claude behavior. Existing Orbyn discovery

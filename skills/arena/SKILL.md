@@ -5,7 +5,8 @@ description: "Compare competing design or implementation sketches when a consequ
 
 # Arena
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 State the artifact and a few observable criteria before generating alternatives.
 Use at most two candidates initially, each with its own output path and rationale.
@@ -13,7 +14,7 @@ The owning lead uses named native Orbyn Architect/Engineer assignments under the
 [workflow](../orbyn-workflow/SKILL.md), with disjoint candidate paths. Keep at most
 two active children across the task; compare sequentially when slots are occupied.
 A child forbidden delegation compares sketches directly within its owned scope.
-Follow [coordination](../../docs/agents/coordination.md) for user-requested project
+Follow [coordination](../orbyn-workflow/references/project-policy.md#delegation-and-host-configuration) for user-requested project
 sessions; candidate comparison alone does not authorize new chats. Never launch
 hidden CLI model sessions or recursive tournaments.
 

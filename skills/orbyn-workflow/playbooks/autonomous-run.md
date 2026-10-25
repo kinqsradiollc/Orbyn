@@ -7,6 +7,6 @@ Children execute their owned tasks directly and return evidence; the lead routes
 corrections and assesses completion.
 
 For separately requested project sessions, follow
-[coordination](../../../docs/agents/coordination.md). Do not infer permission for
+[coordination](../references/project-policy.md#delegation-and-host-configuration). Do not infer permission for
 recurring schedules or new sidebar chats. Respect explicit pauses and unresolved
 authority. Autonomy does not expand testing or delivery scope.

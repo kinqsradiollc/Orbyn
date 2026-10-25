@@ -66,3 +66,11 @@ lineage and [original notice](references/typescript-LICENSE.txt); consolidation
 does not change that history. Dated primary references are evidence/update
 pointers; the instructions work offline. Preserve target-version uncertainty
 rather than claiming moving documentation describes the installed environment.
+
+## Express valid states
+
+Use types to represent valid combinations and handle variants exhaustively where
+the language permits. Parse external/persisted data at runtime; types and casts
+prove neither authorization nor freshness. Avoid ceremony that burdens callers.
+The [type-system method](references/principles/type-system-discipline.md) supplies
+a worked check; implementation details stay in the relevant language reference.

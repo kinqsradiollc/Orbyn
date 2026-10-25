@@ -13,6 +13,18 @@ The original source name remains in the adaptation map for provenance.
 Orbyn's pstack skill adaptations in `skills/` derive from this source; the original
 copyright and permission notice apply to those adaptations as well. The complete
 plugin, including all 34 skills, references, playbooks and helpers, is retained.
+Twenty former principle entrypoints now live as references under their execution
+owners. The [adaptation map](skill-adaptations.json) identifies each local method;
+its adjacent `LICENSE.txt` preserves the original portable license bytes.
+
+## Hallmark design methods
+
+Selected visual-direction and behavior-preserving redesign methods derive from
+[Nutlope/hallmark](https://github.com/nutlope/hallmark), revision
+`7ec868225c6caa040558c321ee0fefa0e73f83a8`. Copyright 2026 Hallmark contributors.
+The maintained UI owner carries the [original MIT notice](../skills/orbyn-ui-design/references/hallmark-LICENSE.txt)
+and [source, hashes and adaptation decisions](../skills/orbyn-ui-design/references/hallmark-source.md).
+No Hallmark runtime, theme collection, fonts or image assets are installed.
 
 ## Reverse Engineer Anything (REA)
 

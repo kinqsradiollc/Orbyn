@@ -40,10 +40,13 @@ routes complex work to the standard tier and bounded work to the light tier in
 | Lessons/preferences                 | `reflect` / `automate-me`                    | Current-task evidence + authorization → owning instruction change                                   |
 | Prose / durable evidence            | `unslop` / `show-me-your-work`               | Supported facts → concise result or decision record                                                 |
 
-Select principle leaves when the decision needs them: ownership and boundaries,
-root cause, idempotency, shared-state isolation, simpler design, compatibility,
-context cost and evidence. They refine the task; they are not separate obligatory
-phases or approval gates. REA maintenance skills apply only when that tooling is
+Engineering principles now live in their execution owners and conditional local
+references, rather than separate discovery entries. Architecture owns design and
+caller migration; investigation owns root cause and bounded context; backend
+design owns idempotency and effect boundaries; planning and workflow own sequencing,
+shared-resource isolation and completion evidence. Load a principle reference only
+when the decision needs it. The catalog retirement map routes old explicit skill
+selections to those owners. REA maintenance skills apply only when that tooling is
 the requested target.
 
 ## Orbyn Engineering identity

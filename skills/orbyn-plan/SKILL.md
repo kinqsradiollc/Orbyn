@@ -5,8 +5,9 @@ description: "Refine an engineering request or scope and sequence a change, migr
 
 # Plan Orbyn work
 
-Read [repository policy](../../AGENTS.md), the applicable
-[stack boundaries](../../docs/agents/stack.md) and [skill routing](../../docs/agents/skill-system.md).
+Read the consuming project's instructions and stack guide. Use the
+[portable scope and routing defaults](../orbyn-workflow/references/project-policy.md)
+only where guidance is missing.
 An explicit planning request always receives a plan, even for one file. A small
 clear implementation request can proceed directly without a separate artifact.
 
@@ -35,7 +36,7 @@ materially affect correctness, cost, compatibility or the requested outcome.
 
 Use `architect` for interface/ownership choices. Compare alternatives only where
 there is a real trade-off; use `arena` when distinct sketches would settle it.
-Select relevant principles; do not load every principle or require model panels.
+Use the relevant owner's conditional methods; do not load every method or require model panels.
 
 Split work by coherent outcomes, dependencies and reversible boundaries. Choose
 narrow user outcomes that connect the necessary contract, persistence/API and
@@ -52,8 +53,9 @@ them as completed implementation.
 
 Each meaningful unit records outcome, owning files/modules, prerequisites,
 assigned role, authorized evidence and completion condition. Add platform/data/
-permission failure cases where they affect the contract. Do not turn a planned
-check into permission to run tests, native builds or live providers.
+permission failure cases where they affect the contract. An implementation request
+normally includes proportional local checks; respect
+explicit exclusions and separate authority for live providers or production effects.
 
 ## Deliver and maintain
 
@@ -74,9 +76,29 @@ the [checkable handoff](../orbyn-workflow/references/handoffs.md) when structure
 validation helps a transfer or resumed task, preserving candidate and scope.
 Do not expand a prompt rewrite into a mandatory packet or implementation phase.
 Use `figure-it-out` to execute a large plan and `show-me-your-work` for consequential
-decisions. Session creation follows [coordination](../../docs/agents/coordination.md).
+decisions. Session creation follows [coordination](../orbyn-workflow/references/project-policy.md#delegation-and-host-configuration).
 Do not invent extra stages, stacked PRs, sessions or recurring monitors.
 
 ## Plan a connected feature
 
 For a task-scheduling change, make the domain/API/calendar dependencies explicit and keep shared-schema changes with their consumers. State whether the requested end state is a local preview, a reviewed patch or deployed behavior. Keep the plan short enough to reconcile against actual delivery.
+
+## Problem framing and sequencing
+
+For a consequential initiative, identify the observed problem, affected person or
+system, evidence of need and checkable success measure before choosing delivery
+units. Compare no change, a smaller correction and the proposed investment where
+those alternatives are viable. Prioritize technical debt by demonstrated failures,
+change cost or operational risk; do not justify a rewrite solely by code age.
+Label assumptions and the evidence that would change the priority.
+
+Continue authorized reversible work while waiting on a genuinely blocking decision;
+do not turn routine choices into permission gates. Sequence coherent, verifiable
+outcomes, including mixed-version compatibility and recovery where relevant.
+Use [autonomy](references/principles/never-block-on-the-human.md) and
+[verifiable units](references/principles/sequence-verifiable-units.md) for worked checks.
+
+For cross-team direction, platform investment or a technical roadmap, use
+[technical strategy](references/technical-strategy.md) to connect decision owners,
+trade-offs, adoption/support and outcome measures. Do not mistake shipped code
+for organizational adoption or create a governance layer for a bounded task.

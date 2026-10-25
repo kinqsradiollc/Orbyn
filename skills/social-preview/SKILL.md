@@ -20,7 +20,7 @@ post belongs to [social-content](../social-content/SKILL.md); polishing prose
 belongs to [unslop](../unslop/SKILL.md).
 
 Use approved copy, supplied screenshots and brand assets. For Orbyn visuals, read
-the relevant [stack/token owners](../../docs/agents/stack.md) and reference assets;
+the relevant [stack/token owners](../orbyn-workflow/references/project-policy.md#stack-and-ownership) and reference assets;
 do not invent a logo or treat the helper's default colors as official branding.
 Label conceptual UI and synthetic data as mockups. Keep actual product screenshots
 faithful; annotations must not imply behavior the captured product lacks.

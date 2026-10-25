@@ -5,8 +5,9 @@ description: "Create, refine, merge or retire Orbyn repository skills while keep
 
 # Maintain Orbyn skills
 
-Read [AGENTS.md](../../AGENTS.md), [skill system](../../docs/agents/skill-system.md),
-[stack boundaries](../../docs/agents/stack.md) and [documentation ownership](../../docs/agents/documentation.md).
+Read the consuming project's instructions and relevant guides in place. Use the
+[portable policy and routing defaults](../orbyn-workflow/references/project-policy.md)
+only where guidance is missing.
 Inspect nearby skills before editing. Prefer improving the existing owner over
 creating a second skill that attracts the same requests.
 
@@ -38,8 +39,9 @@ another product exist here. Make examples realistic to Orbyn's architecture.
 
 Keep essential choices in `SKILL.md`; put conditional templates or deep guidance
 in linked references. Do not duplicate model/session/permission policy in every
-skill. Name Orbyn-specific entrypoints `orbyn-*`; descriptive generic principles
-can retain meaningful names. Keep third-party attribution in source/provenance
+skill. Name Orbyn-specific entrypoints `orbyn-*`. A decision principle normally
+belongs in an existing owner's entrypoint and conditional reference; a separate
+skill needs a distinct task trigger and useful result. Keep third-party attribution in source/provenance
 records, never as an inherited active agent identity.
 
 Keep essential instructions and required references usable from disk under the

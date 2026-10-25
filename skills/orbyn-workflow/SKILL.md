@@ -5,7 +5,8 @@ description: "Route engineering work through investigation, design, implementati
 
 # Orbyn engineering workflow
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](references/project-policy.md) only where guidance is missing.
 
 Read the consuming checkout's optional `.agents/orbyn-context.json` using the
 [context contract](../orbyn-setup/references/project-context.md). Follow relevant
@@ -41,8 +42,8 @@ Preserve active legacy layouts and local output; isolation does not require a ne
 chat or imply separate databases/services.
 
 Start from the user's requested outcome, current source and
-[stack ownership](../../docs/agents/stack.md). Use the
-[skill system](../../docs/agents/skill-system.md) to select the relevant handoff. Choose one playbook
+[stack ownership](references/project-policy.md#stack-and-ownership). Use the
+[skill system](references/project-policy.md#routing) to select the relevant handoff. Choose one playbook
 below; a clear small edit can proceed directly. Keep the plan as short as the task
 permits. Do not load the whole library or repeat a checklist in every reply.
 
@@ -67,6 +68,7 @@ permits. Do not load the whole library or repeat a checklist in every reply.
 | Investigate or contribute upstream   | [Contribution intake](playbooks/contribution-intake.md) |
 | Address PR feedback or check CI      | [Bounded PR iteration](playbooks/pr-iteration.md) |
 | Diagnose bulk CI or verify release evidence | [Pipeline failures](playbooks/pipeline-failures.md) |
+| Plan a rollout or incident recovery | [Health and recovery](../orbyn-ci-design/references/rollout-recovery.md) |
 
 Use [orbyn-plan](../orbyn-plan/SKILL.md) for explicit plans or a complex change;
 use [orbyn-research](../orbyn-research/SKILL.md) for unresolved external facts and
@@ -93,7 +95,8 @@ Use [how](../how/SKILL.md) before changing unfamiliar behavior,
 [architect](../architect/SKILL.md) for consequential data/ownership decisions,
 [why](../why/SKILL.md) for historical constraints, and
 [figure-it-out](../figure-it-out/SKILL.md) when a larger task needs its own plan.
-Use [principles](references/principles.md) to select only the relevant leaf rules.
+Essential rules live with each engineering owner. Use the [method index](references/principles.md)
+only when a decision needs a concrete example or check.
 
 ## Lead contract
 
@@ -127,29 +130,18 @@ ownership or dependencies.
 
 ## Delegate within the current session
 
-Use [Orbyn roles](../../docs/agents/roles.md) and the named native `orbyn-agent`
-or `orbyn-light` definition selected by assignment complexity. Give each child
-its role, outcome, source/candidate, owned files, allowed effects/checks,
-exclusions, relevant skill/file pointers and stopping condition. Keep briefs
-self-contained and compact. Reuse a matching child for follow-up fixes. Tell
-writers they share the checkout and must preserve others' changes.
+Follow the [consumer host and coordination boundary](references/project-policy.md#delegation-and-host-configuration).
+Use configured named roles and preserve the required model, effort and processing
+mode. If the host cannot do so, report the limit and continue permitted direct
+work. Never silently substitute a model, launch a hidden inference process or
+install a provider. Library model presets are optional, consumer-owned policy wins.
 
-Follow [coordination](../../docs/agents/coordination.md): default to one child,
-never more than two active children, and no recursive delegation. Delegate
-coupled implementation to one owner; split only genuinely independent outputs.
-Assign disjoint writes or serialize them, including generated files and fixtures.
-Design alternatives can run sequentially when slots are occupied. Children return
-artifacts and evidence to their owner, not to other user-owned chats.
-
-Read the assignments in [the shared model registry](../../docs/agents/models.json)
-and follow [model policy](../../docs/agents/model-policy.md) for tier, effort and
-standard processing speed. Never enable Fast, Priority, Ultrafast or speed variants. The registry's human-only tier requires explicit human
-selection. Check the named type and its definition before dispatch and inspect
-effective model/effort/speed when exposed. If the named type is unavailable or
-required settings cannot be preserved, report that boundary and do permitted
-work directly. Never substitute a generic agent, hidden CLI inference process or
-unrequested model. Missing runtime metadata remains unverified; configured speed
-alone is not proof of effective speed.
+Give each child its role, outcome, source/candidate, owned files, allowed effects,
+exclusions, relevant pointers and stopping condition. Reuse matching children;
+tell writers they share the checkout and must preserve others' work. Default to
+one child, at most two, without recursive delegation. Split independent outputs
+only; serialize shared generated files and fixtures. Children return evidence to
+the lead, who owns integration and review.
 
 New sidebar/project chats require an explicit human request. This workflow
 authorizes bounded native children, not extra user-owned sessions or messages.
@@ -169,13 +161,14 @@ failure/recovery and unrelated changes. A delegate's summary is evidence to
 inspect, not a completion verdict. Route concrete fixes back to the same child
 and review the resulting diff. The lead writes the final assessment.
 
-The lead performs authorized verification proportional to the changed contract
-and inspects its results. Do not add or run tests without applicable authorization;
+The lead performs verification proportional to the changed contract and inspects
+its results. An implementation request includes appropriate local checks unless
+explicitly excluded; respect consumer limits and separate external effects;
 documentation needs document/link checks, not product builds. When runtime or
 surface evidence is unavailable or excluded, report that limit explicitly.
 Additional independent Verifier/Reviewer assignments are optional unless requested.
 Requested independent qualification uses the same frozen candidate and at most
-three full review rounds under [delivery](../../docs/agents/delivery.md). This limit
+three full review rounds under [delivery](references/project-policy.md#verification-and-review). This limit
 applies to requested independent qualification, not ordinary lead correction loops.
 
 Deliver only the requested scope. Report changed behavior/artifacts, actual
@@ -190,7 +183,7 @@ from delegation or a playbook.
 
 Use [unslop](../unslop/SKILL.md) for concise factual output. Report the result,
 actual evidence and limits, without ceremonial principle citations. Source attribution and preserved dependencies are documented in
-[tooling](../../docs/agents/tooling.md). Orbyn owns this workflow and its defaults.
+[attribution and resource boundaries](references/project-policy.md#documentation-and-attribution). Orbyn owns this workflow and its defaults.
 
 ## Language and technology decisions
 
@@ -207,3 +200,27 @@ outcome once; the agent chooses these handoffs internally.
 Use the [local operating method](references/operating-method.md) for the execution
 sequence, concrete failure case, expected result and stopping condition. It is
 Orbyn-authored guidance; historical source notices remain in provenance.
+
+## Execution invariants
+
+Complete the agreed outcome, including necessary caller migration and removal,
+without silently expanding authority. Use a small reusable tool for proven
+repetition when its cost and failure behavior justify it. Separate concurrent
+writers' files, fixtures and resources before serializing what truly must be shared.
+Match each completion claim to direct evidence for the requested artifact; retain
+missing checks as limits. Read conditional methods for
+[outcomes](references/principles/outcome-oriented-execution.md),
+[automation](references/principles/build-the-lever.md),
+[shared state](references/principles/separate-before-serializing-shared-state.md) or
+[proof](references/principles/prove-it-works.md) when needed.
+For requested rollout or incident work, use the CI owner's
+[health and recovery method](../orbyn-ci-design/references/rollout-recovery.md).
+
+## Scope, review and resource handoff
+
+Use [engineering scope](references/engineering-scope.md) for onboarding, ordinary
+review, mentoring or junior/senior/staff responsibility questions. Scale ownership
+and explanation to the task without lowering correctness or creating role-specific
+skill catalogs. Cross-team strategy belongs to the planning owner.
+For prototypes, evidence or local servers, use [artifact lifecycle](references/artifact-lifecycle.md)
+to choose storage, retain the human handoff and clean only owned disposable resources.

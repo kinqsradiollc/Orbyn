@@ -5,15 +5,16 @@ description: "Challenge a specified design, patch or claim for concrete correctn
 
 # Interrogate
 
-Follow the consuming project's instructions first. Use [Orbyn Engineering policy](../../AGENTS.md) and [host/model guidance](../../docs/agents/model-policy.md) where applicable; load only relevant references.
+Follow the consuming project's instructions and requested scope; use the
+[portable defaults](../orbyn-workflow/references/project-policy.md) only where guidance is missing.
 
 Pin the candidate and intended contract. Inspect the changed code and affected
-callers using [review criteria](../../docs/agents/review.md). Look for scenarios
+callers using [review criteria](../orbyn-workflow/references/project-policy.md#verification-and-review). Look for scenarios
 that falsify the claim, especially lost authority, stale state, partial failures,
 concurrency, cleanup and incomplete verification.
 
 The lead may use an independent in-task reviewer for a distinct unresolved risk
-under [coordination](../../docs/agents/coordination.md), within the task's shared
+under [coordination](../orbyn-workflow/references/project-policy.md#delegation-and-host-configuration), within the task's shared
 child limit. Assigned reviewers inspect their candidate directly without further
 delegation. Follow assigned read-only limits and the model policy. Neither
 multiple models nor a majority vote establishes correctness.

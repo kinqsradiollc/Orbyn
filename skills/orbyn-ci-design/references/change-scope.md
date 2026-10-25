@@ -21,9 +21,11 @@ just to conceal an observed failure or call skipped tests passing.
 
 ## Encode a conservative fast path
 
-Prefer a small known docs/skills allowlist with full checks for anything unmapped
-before attempting a complex per-package dependency graph. The consuming project
-owns the map. Root dependencies, shared code, CI definitions and the classifier
+Use the project's existing [affected-target graph](affected-targets.md) when it
+provides trustworthy scope. When no such graph exists, prefer a small known
+docs/skills allowlist with full checks for anything unmapped before building a new
+selection system. The consuming project owns the map. Root dependencies, shared
+code, CI definitions and the classifier
 itself need broad checks. Check every changed path, including deleted paths and
 both sides of renames. Use complete Git changes at exact revisions; incomplete
 pagination, an unavailable base or an unknown path must not silently select the
