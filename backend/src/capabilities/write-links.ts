@@ -235,7 +235,11 @@ export const link = defineCapability({
         after: [() => syncSavedPages(doc.id)],
       });
     }
-    const row = await visibleItem(ctx, a.from);
+    const row = await visibleItem(
+      ctx,
+      a.from,
+      a.kind === "task_project" && on ? [projectId(a.to)] : [],
+    );
     destination(ctx, row.team_id, tier) === "review" &&
       refuseSuggest(ctx, row.team_id);
     if (a.kind === "task_doc") {

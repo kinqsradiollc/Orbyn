@@ -434,7 +434,9 @@ export async function runUndo(
         break;
       }
       case "item.restore": {
-        const row = await lockItem(db, op.id);
+        const row = await lockItem(db, op.id, [
+          op.fields.project_id as string | null | undefined,
+        ]);
         if (!same(`item:${op.id}`, row.version, op.version)) changedSince();
         const put = await mutate(db, u, {
           operation: "update",

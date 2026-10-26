@@ -1108,7 +1108,9 @@ export async function applyChange(
       return {};
     }
     case "task.update": {
-      const row = await lockItem(db, c.item_id);
+      const row = await lockItem(db, c.item_id, [
+        c.patch.project_id as string | null | undefined,
+      ]);
       await mutate(db, u, {
         operation: "update",
         item_id: c.item_id,

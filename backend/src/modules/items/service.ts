@@ -206,12 +206,49 @@ async function setMeasure(
   );
 }
 
-/** Lock an item row for the rest of the transaction, or 404. */
-export async function lockItem(db: Db, id: string): Promise<ItemRow> {
+/** Placement's parent locks precede task locks, including prelocking callers.
+ * Nonlocking reads discover candidates; the locked task is revalidated below.
+ * This helper acquires no authority: callers retain their existing access checks. */
+export async function lockItemProjects(
+  db: Db,
+  itemIds: readonly string[],
+  destinations: readonly (string | null | undefined)[] = [],
+): Promise<Set<string>> {
+  const current = itemIds.length
+    ? (
+        await db.query<{ project_id: string }>(
+          "SELECT DISTINCT project_id FROM items WHERE id=ANY($1::uuid[]) AND project_id IS NOT NULL",
+          [itemIds],
+        )
+      ).rows.map((row) => row.project_id)
+    : [];
+  const ids = [
+    ...new Set([
+      ...current,
+      ...destinations.filter((id): id is string => !!id),
+    ]),
+  ].sort();
+  if (ids.length)
+    await db.query(
+      "SELECT id FROM projects WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE",
+      [ids],
+    );
+  return new Set(ids);
+}
+
+/** Lock an item's current/destination parents before its row, or 404. */
+export async function lockItem(
+  db: Db,
+  id: string,
+  destinations: readonly (string | null | undefined)[] = [],
+): Promise<ItemRow> {
+  const projects = await lockItemProjects(db, [id], destinations);
   const item = (
     await db.query<ItemRow>("SELECT * FROM items WHERE id=$1 FOR UPDATE", [id])
   ).rows[0];
   if (!item) fail(404, "Item not found");
+  if (item.project_id && !projects.has(item.project_id))
+    fail(409, "This item's project changed. Refresh and try again.");
   return item;
 }
 
@@ -650,7 +687,11 @@ export async function mutate(
   await actAs(db, actor.id);
   let item: ItemRow | undefined;
   if (operation !== "create") {
-    item = await lockItem(db, item_id!);
+    item = await lockItem(
+      db,
+      item_id!,
+      operation === "update" ? [itemData.parse(action.data).project_id] : [],
+    );
     await requireItemAccess(actor, item, "items:write", db);
     if (item.version !== version)
       fail(409, "This item changed. Refresh and try again.");
@@ -1255,7 +1296,7 @@ export async function setItemPlacement(
   },
 ): Promise<Item> {
   const placement = projectAssign.parse(input);
-  const row = await lockItem(db, itemId);
+  const row = await lockItem(db, itemId, [placement.project_id]);
   await requireItemAccess(actor, row, "items:write", db);
   if (row.version !== placement.version)
     fail(409, "This item changed. Refresh and try again.");
@@ -1266,6 +1307,7 @@ export async function setItemPlacement(
       placement.project_id,
       actor,
       "items:write",
+      "key-share",
     );
     if (project.team_id !== row.team_id)
       fail(
@@ -1370,6 +1412,11 @@ export async function restoreDerivedItemPlacement(
       )
     ).rows.map((stage) => [stage.id, stage.project_id]),
   );
+  const projects = await lockItemProjects(
+    db,
+    [...byId.keys()],
+    [...targets.map((target) => target.project_id), ...stageProjects.values()],
+  );
   const rows = await db.query<ItemRow>(
     "SELECT * FROM items WHERE id=ANY($1::uuid[]) AND kind='task' ORDER BY id FOR UPDATE",
     [[...byId.keys()]],
@@ -1377,6 +1424,8 @@ export async function restoreDerivedItemPlacement(
   let restored = 0;
   let preserved = targets.length - rows.rows.length;
   for (const row of rows.rows) {
+    if (row.project_id && !projects.has(row.project_id))
+      fail(409, "This item's project changed. Refresh and try again.");
     const target = byId.get(row.id)!;
     // Legacy snapshots cannot prove whether NULL came from deletion or a later deliberate unfile.
     if (

@@ -32,12 +32,17 @@ const snapshot = (id: string, team = "teamA") => ({
 function fixture() {
   let saved: string | null = null,
     hold: Promise<void> | null = null,
+    holdRead: Promise<void> | null = null,
     failed = false;
   const calls: string[] = [];
   const session = { userId: "A" as string | null, generation: 1 };
   const storage = {
     async getItem() {
-      return saved;
+      const value = saved;
+      const waiting = holdRead;
+      holdRead = null;
+      if (waiting) await waiting;
+      return value;
     },
     async setItem(_key: string, value: string) {
       calls.push("set");
@@ -81,6 +86,9 @@ function fixture() {
     },
     hold: (promise: Promise<void>) => {
       hold = promise;
+    },
+    holdRead: (promise: Promise<void>) => {
+      holdRead = promise;
     },
     fail: () => {
       failed = true;
@@ -134,4 +142,50 @@ test("logout clear queued for an old generation cannot erase a new account cache
   await Promise.all([clearing, saving]);
   assert.equal(f.saved().user.id, "B");
   assert.equal(f.calls.includes("remove"), false);
+});
+
+test("same-owner logout/login cannot let a queued purge erase the newer session save behind an old write", async () => {
+  const f = fixture(),
+    gate = deferred();
+  f.hold(gate.promise);
+  const old = f.api.saveCache(snapshot("A", "revoked"));
+  await Promise.resolve(); // The old storage write has passed its generation check.
+  const purge = f.api.purgeCacheTeams([]);
+  f.session.userId = null;
+  f.session.generation++;
+  const clear = f.api.clearCache();
+  f.session.userId = "A";
+  f.session.generation++;
+  const current = f.api.saveCache(snapshot("A", "newly-allowed"));
+  gate.resolve();
+  await Promise.all([old, purge, clear, current]);
+  assert.equal(f.saved().user.id, "A");
+  assert.equal(f.saved().items[0].team_id, "newly-allowed");
+  assert.deepEqual(f.calls, ["set", "remove", "set"]);
+});
+
+test("a paused purge read finishes before the same owner's newer-session save can write", async () => {
+  const f = fixture(),
+    gate = deferred();
+  f.seed(snapshot("A", "revoked"));
+  f.holdRead(gate.promise);
+  const purge = f.api.purgeCacheTeams([]);
+  await Promise.resolve(); // Purge has read the old snapshot but has not removed it.
+  f.session.userId = null;
+  f.session.generation++;
+  const clear = f.api.clearCache();
+  f.session.userId = "A";
+  f.session.generation++;
+  const current = f.api.saveCache(snapshot("A", "newly-allowed"));
+  await Promise.resolve();
+  assert.equal(
+    f.calls.length,
+    0,
+    "new save waits behind the purge's read/remove transaction",
+  );
+  assert.equal(f.saved().items[0].team_id, "revoked");
+  gate.resolve();
+  await Promise.all([purge, clear, current]);
+  assert.equal(f.saved().items[0].team_id, "newly-allowed");
+  assert.deepEqual(f.calls, ["remove", "set"]);
 });

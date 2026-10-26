@@ -565,10 +565,10 @@ snapshot/undo/project tests, 11 compatibility boundary/accounting tests, 7 clien
 callback tests, generated MCP catalog checks, and backend/client typechecks.
 Overlapping batches are not additive unique-test counts. Source review preceded
 the final compatibility and undo additions; those additions have focused local
-test evidence. Large cascade latency is unbenchmarked. Competing item-first and
-project-first locks can deadlock; PostgreSQL rolls back atomically, and no blanket
-transaction retry was added. Installed old-client/old-server retirement remains
-a deployment requirement.
+test evidence. Large cascade latency is unbenchmarked. PR #240 validation later
+reproduced the item-first/project-first inversion and corrected the shared parent
+lock order; see the follow-up record below. No blanket transaction retry was
+added. Installed old-client/old-server retirement remains a deployment requirement.
 
 ## Phase 3 implementation record (local implementation)
 
@@ -729,8 +729,51 @@ web PNGs. Temporary preview processes and the owned disposable database were
 stopped after verification. Synthetic account credentials were removed. These
 local artifacts are evidence for this candidate, not portable release receipts.
 
-No commit, PR, hosted CI, merge or production deployment has been performed.
-Installed native storage/clipboard and restart, mounted recovery flows,
+At the close of initial local verification, no commit, PR, hosted CI, merge or
+production deployment had been performed. Publication and subsequent validation
+are recorded below. Installed native storage/clipboard and restart, mounted recovery flows,
 legacy-writer shutdown, real-provider mail semantics, production load/fairness
 targets and actual rollback/cutover exercises remain separate qualification
 gates. A source fixture or green typecheck does not close those gates.
+
+## PR 240 validation follow-up
+
+The user authorized commit, push, PR creation and hosted CI, then explicitly
+withheld merge while Copilot findings were validated. Initial published head
+`9113e62c` contains the reviewed architecture candidate; private environment files
+and unrelated generated directories remain excluded.
+
+Copilot's project/task lock-order finding was reproduced through actual service
+calls and two PostgreSQL connections: concurrent placement and deletion produced
+one commit and one `40P01`. Rollback retained atomicity but failed a legitimate
+command. The correction acquires current and destination project locks in ID
+order before the task lock, uses compatible key-share locks for destination
+checks and revalidates discovered placement after task locking. Generic item
+mutations, MCP prelocking, proposal updates and undo/restoration use the same
+order. It adds neither a global mutex nor blanket transaction retry. Three
+barrier-controlled cases cover placement/deletion, ordinary edit/stage removal
+and MCP prelocking/deletion. All three now commit both commands with the expected
+versions and events; 138 related placement/MCP/undo/capture/project checks passed.
+This is evidence for the demonstrated inversion, not global deadlock freedom
+across arbitrary multi-operation item/document/foreign-key transactions.
+
+Copilot's claimed same-user generation purge race did not reproduce through the
+single runtime's supported writers. The planner checks its current session before
+enqueueing, and the full purge read/remove operation shares the same serialization
+queue as every cache write. Two additional controls pause an old write or purge
+read across logout/login and show that the new snapshot waits, then survives.
+All six cache controls pass. A generation-only skip can instead retain an older
+known-revoked snapshot. No product cache change was made for that claim. Separate
+runtimes with independent queues sharing storage are a different boundary; these
+single-runtime tests do not establish cross-tab safety.
+
+The initial full hosted backend run reported 5,409 passes, 11 failures and one
+skip. All 11 failures came from the compatibility suite's setup after an older
+system-settings fixture deleted every settings row, including migration 290's
+policy. The two-suite sequence reproduced that failure locally. Cleanup now
+deletes only the four settings owned by the fixture and has a policy-preservation
+control. The system/compatibility sequence then passed 17/17. Production policy
+lookup remains fail-closed; startup does not recreate a missing policy or extend
+the grace deadline. The other initial hosted jobs (embedding, mobile, Docker and
+mail) passed. The corrected PR requires a fresh hosted run; earlier checks do not
+qualify its updated head.

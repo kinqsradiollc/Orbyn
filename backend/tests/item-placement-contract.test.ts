@@ -944,3 +944,142 @@ test("same-job undo carries only successful item receipts across snapshot restor
     assert.equal((await events(t.id)).length, 4);
   }
 });
+
+// Targeted PR #240 regression: services must serialize placement with deletion
+// without exposing PostgreSQL's deadlock victim as a user-visible failed write.
+for (const scenario of [
+  "placement",
+  "generic update/stage removal",
+  "MCP prelock",
+] as const)
+  test(
+    `PR240 ${scenario} serializes without a project/item lock deadlock`,
+    { timeout: 15000 },
+    async () => {
+      const p = await project();
+      const t = await task({ project_id: p.id, stage_id: p.stages[0].id });
+      const barrier = () => {
+        let resolve!: () => void;
+        const promise = new Promise<void>((yes) => {
+          resolve = yes;
+        });
+        return { promise, resolve };
+      };
+      const itemHeld = barrier(),
+        deleteStarted = barrier(),
+        continuePlacement = barrier();
+      let placingPid = 0,
+        deletingPid = 0;
+      const placing = transaction(async (db) => {
+        placingPid = (await db.query("SELECT pg_backend_pid() AS pid")).rows[0]
+          .pid;
+        await db.query("SET LOCAL statement_timeout='8s'");
+        const original = db.query.bind(db);
+        let intercepted = false;
+        (db as any).query = async (text: any, ...args: any[]) => {
+          const result = await (original as any)(text, ...args);
+          if (
+            !intercepted &&
+            text === "SELECT * FROM items WHERE id=$1 FOR UPDATE"
+          ) {
+            intercepted = true;
+            itemHeld.resolve();
+            await continuePlacement.promise;
+          }
+          return result;
+        };
+        try {
+          if (scenario === "generic update/stage removal")
+            return await mutate(db, actor, {
+              operation: "update",
+              item_id: t.id,
+              version: t.version,
+              data: mergedItem(t, { title: "Concurrent title edit" }),
+            });
+          if (scenario === "MCP prelock") {
+            const { visibleItem } =
+              await import("../src/capabilities/write-tasks.js");
+            // The actual MCP task_project prelock helper, before the item owner.
+            await visibleItem(
+              {
+                db,
+                spaces: { userId: actor.id, teamIds: null, personal: true },
+              } as any,
+              `task:${t.id}`,
+              [p.id],
+            );
+          }
+          return await setItemPlacement(db, actor, t.id, {
+            version: t.version,
+            project_id: p.id,
+            stage_id: p.stages[1].id,
+          });
+        } finally {
+          db.query = original;
+        }
+      });
+      await itemHeld.promise;
+      const deleting = transaction(async (db) => {
+        deletingPid = (await db.query("SELECT pg_backend_pid() AS pid")).rows[0]
+          .pid;
+        await db.query("SET LOCAL statement_timeout='8s'");
+        deleteStarted.resolve();
+        return scenario === "generic update/stage removal"
+          ? updateProject(db, actor, p.id, {
+              stages: [{ id: p.stages[1].id, name: p.stages[1].name }],
+            })
+          : deleteProject(db, actor, p.id);
+      });
+      const completion = Promise.allSettled([placing, deleting]);
+      await deleteStarted.promise;
+      let blocked = false;
+      for (let attempt = 0; attempt < 200; attempt++) {
+        blocked = (
+          await pool.query(
+            "SELECT $1::int=ANY(pg_blocking_pids($2::int)) AS blocked",
+            [placingPid, deletingPid],
+          )
+        ).rows[0].blocked;
+        if (blocked) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      // Baseline waits on the task; corrected project-first deletion waits on its
+      // parent. Observe the real wait instead of requiring either lock order.
+      if (!blocked) continuePlacement.resolve();
+      assert.equal(
+        blocked,
+        true,
+        "Deletion must be waiting on the placing transaction",
+      );
+      continuePlacement.resolve();
+      const outcomes = await completion;
+      const codes = outcomes.map((result) =>
+        result.status === "fulfilled"
+          ? "committed"
+          : (result.reason.code ??
+            result.reason.statusCode ??
+            result.reason.message),
+      );
+      console.info(
+        "PR240 placement/delete interleaving:",
+        JSON.stringify(codes),
+      );
+      assert.deepEqual(codes, ["committed", "committed"]);
+      const current = await row(t.id);
+      // Rejected transactions leave no version/event residue. Serial success
+      // contributes one canonical update from each command.
+      const committed = outcomes.filter(
+        (result) => result.status === "fulfilled",
+      ).length;
+      assert.equal(current.version, t.version + committed);
+      assert.equal((await events(t.id)).length, committed);
+      assert.equal(
+        outcomes.filter(
+          (result) =>
+            result.status === "rejected" && result.reason.code === "40P01",
+        ).length,
+        0,
+        `Item/project lock inversion must be serialized, observed outcomes ${JSON.stringify(codes)}`,
+      );
+    },
+  );
