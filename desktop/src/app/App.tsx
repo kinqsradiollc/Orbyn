@@ -386,7 +386,10 @@ export function App() {
     // Retry restoration after the requested pane is committed or becomes visible.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused, paired, singlePane]);
-  usePresence(planner.token, () => void planner.refresh({ silent: true }));
+  usePresence(
+    planner.token,
+    () => void planner.refresh({ silent: true, force: true }),
+  );
   useEffect(() => {
     setPaired(null);
     if (dockRef.current.account !== (planner.token ?? null))

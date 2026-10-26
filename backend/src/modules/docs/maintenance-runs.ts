@@ -304,8 +304,12 @@ export async function claimMaintainedPageRun(
   suppliedNow?: Date,
   runId?: string,
 ): Promise<PageRun | null> {
-  const now = suppliedNow ?? new Date();
-  if (!(await assistantRuntimeHasRoom(db, lane, now))) return null;
+  if (!(await assistantRuntimeHasRoom(db, lane, suppliedNow))) return null;
+  // The admission lock is held; production claim timestamps use the same
+  // database clock domain as persisted leases. Fixture clocks are test-gated.
+  const now =
+    suppliedNow ??
+    (await db.query<{ at: Date }>("SELECT clock_timestamp() AS at")).rows[0].at;
   await expireMaintainedPageRuns(db, lane, now);
   // Exhausted leases terminate instead of repeatedly charging a stalled provider.
   await db.query(

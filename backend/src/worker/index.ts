@@ -19,6 +19,7 @@ import { closeDatabase, pool } from "../db/pool.js";
 import { runSweep } from "../lib/sweep.js";
 import { CLOCK_CHECK_MS, checkServerClock } from "../lib/clock.js";
 import { closeEmail } from "./channels/email.js";
+import { deliverBookingEmailOne } from "./booking-email.js";
 import { deliverOne } from "./delivery.js";
 import { enqueue } from "./scheduler.js";
 import {
@@ -297,6 +298,7 @@ export async function runWorker() {
             for (let n = 0; n < LANE_BATCH && !stopping; n++) {
               const reminder = await deliverOne();
               const webhook = await deliverWebhookOne();
+              const bookingEmail = await deliverBookingEmailOne();
               const slack = configuredSlack();
               const rotation = slack ? await rotateSlackOne(slack) : false;
               const signingSecret = configuredSlackSigningSecret();
@@ -333,6 +335,7 @@ export async function runWorker() {
               if (
                 !reminder &&
                 !webhook &&
+                !bookingEmail &&
                 !channel &&
                 !rotation &&
                 !reply &&

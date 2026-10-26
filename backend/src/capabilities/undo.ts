@@ -434,7 +434,9 @@ export async function runUndo(
         break;
       }
       case "item.restore": {
-        const row = await lockItem(db, op.id);
+        const row = await lockItem(db, op.id, [
+          op.fields.project_id as string | null | undefined,
+        ]);
         if (!same(`item:${op.id}`, row.version, op.version)) changedSince();
         const put = await mutate(db, u, {
           operation: "update",
@@ -588,7 +590,7 @@ export async function runUndo(
             .filter((t): t is string => typeof t === "string"),
         );
         for (const t of teams) await requireTeam(t, u, "items:write", db);
-        if (!(await restoreSnapshot(db, op))) changedSince();
+        if (!(await restoreSnapshot(db, op, u, carry))) changedSince();
         break;
       }
       case "suggestions.delete":

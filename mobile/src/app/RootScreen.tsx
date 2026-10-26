@@ -241,7 +241,10 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
   // News from another device may be a session: planned time is asked again.
   usePresence(
     token,
-    () => void refresh({ silent: true, planned: true }).catch(() => {}),
+    () =>
+      void refresh({ silent: true, planned: true, force: true }).catch(
+        () => {},
+      ),
   );
   const insets = useSafeAreaInsets();
   /** An iPad or wide window: Tasks keeps the open task beside it (MOB-12). */
@@ -590,7 +593,8 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
         // Ticks and captures from widgets, controls, Siri and the tile.
         const flushed = await flushPending();
         if (!owns()) return;
-        if (flushed) void refresh({ silent: true }).catch(() => {});
+        if (flushed)
+          void refresh({ silent: true, force: true }).catch(() => {});
         const asked = takeNativeOpen();
         const link = asked ? parseAppLink(asked) : null;
         if (link) openLink.current?.(link);

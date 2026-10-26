@@ -4,13 +4,12 @@ import type { FastifyInstance } from "fastify";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
 
-const {
-  buildApiService,
-  buildAiService,
-  buildStatusService,
-  buildRealtimeService,
-  buildMcpService,
-} = await import("../src/app.js");
+const { buildApiService } = await import("../src/services/api-app.js");
+const { buildAiService } = await import("../src/services/ai-app.js");
+const { buildStatusService } = await import("../src/services/status-app.js");
+const { buildRealtimeService } =
+  await import("../src/services/realtime-app.js");
+const { buildMcpService } = await import("../src/services/mcp-app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { clearStatusCache } = await import("../src/modules/status/report.js");
@@ -210,5 +209,46 @@ test("a dropped idle database connection is logged, not fatal", async () => {
     pool.emit("error", new Error("server closed the connection"));
   } finally {
     console.error = quiet;
+  }
+});
+
+test("isolated status keeps public report caching, HTTP identity and error boundaries", async () => {
+  clearStatusCache();
+  const report = await status.inject({ url: "/status" });
+  assert.equal(report.statusCode, 200);
+  assert.equal(report.headers["cache-control"], "public, max-age=15");
+  assert.ok(report.headers.etag);
+  const unchanged = await status.inject({
+    url: "/status",
+    headers: { "if-none-match": report.headers.etag! },
+  });
+  assert.equal(unchanged.statusCode, 304);
+  assert.equal(unchanged.body, "");
+  for (const url of ["/live", "/version"]) {
+    const response = await status.inject({ url });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().service, "status");
+  }
+  for (const url of ["/items", "/ai/chat", "/mcp", "/auth/login"]) {
+    const response = await status.inject({ method: "POST", url, payload: {} });
+    assert.equal(response.statusCode, 404, url);
+    assert.ok(response.json().request_id);
+  }
+});
+
+test("isolated status readiness fails on database loss while liveness remains public", async () => {
+  const query = pool.query;
+  pool.query = function (this: unknown, text: unknown, ...args: unknown[]) {
+    if (text === "SELECT 1")
+      return Promise.reject(new Error("status readiness fixture"));
+    return Reflect.apply(query, this, [text, ...args]);
+  } as typeof pool.query;
+  try {
+    const health = await status.inject({ url: "/health" });
+    assert.equal(health.statusCode, 503);
+    assert.equal(health.json().service, "status");
+    assert.equal((await status.inject({ url: "/live" })).statusCode, 200);
+  } finally {
+    pool.query = query;
   }
 });

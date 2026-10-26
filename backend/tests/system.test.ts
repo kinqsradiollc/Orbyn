@@ -42,9 +42,22 @@ const call = (
     ...(payload === undefined ? {} : { payload }),
   });
 
+// These are the only settings this fixture changes. Migration-owned policies
+// must survive cleanup so later suites observe the same installed deployment.
+const fixtureSettings = [
+  "cors_origins",
+  "status_interval_ms",
+  "smtp",
+  "maintenance",
+];
+const clearFixtureSettings = () =>
+  pool.query("DELETE FROM system_settings WHERE key = ANY($1::text[])", [
+    fixtureSettings,
+  ]);
+
 before(async () => {
   await migrate();
-  await pool.query("DELETE FROM system_settings");
+  await clearFixtureSettings();
   invalidateSettings();
   admin = await register(adminEmail);
   await pool.query("UPDATE users SET role='admin' WHERE id=$1", [admin.id]);
@@ -52,12 +65,25 @@ before(async () => {
 });
 
 after(async () => {
-  await pool.query("DELETE FROM system_settings");
+  await clearFixtureSettings();
   await pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [
     [admin.id, member.id],
   ]);
   await app.close();
   await pool.end();
+});
+
+test("system fixture cleanup preserves the installed MCP compatibility policy", async () => {
+  const key = "mcp_task_project_version_compat";
+  const before = (
+    await pool.query("SELECT value FROM system_settings WHERE key=$1", [key])
+  ).rows[0]?.value;
+  assert.ok(before, "migration-owned policy remains after fixture setup");
+  await clearFixtureSettings();
+  const after = (
+    await pool.query("SELECT value FROM system_settings WHERE key=$1", [key])
+  ).rows[0]?.value;
+  assert.deepEqual(after, before, "cleanup must not reset the grace deadline");
 });
 
 test("every service reports the build it runs", async () => {

@@ -115,7 +115,9 @@ event search, and webhooks with every event's payload. The usual recipes:
 - **Triggers:** webhooks such as `item.created`, `item.completed` and `event.starting`.
 - **Actions:** create a task or event (`POST /items`, or `POST /items/quick` from one line of
   text) and find events (`GET /calendar/search`).
-- **Polling:** incremental sync (`GET /items?updated_after=…&include_deleted=1`).
+- **Polling:** reconcile with `GET /items/reconcile`, then use best-effort
+  incremental sync (`GET /items?updated_after=…&include_deleted=1`) between
+  periodic authoritative reconciliations.
 
 **Priorities on a 0–9 scale.** Orbyn has three. Tools that number them 1 (highest) to 9 (lowest),
 with 0 for none, map 1–3 to `high`, 4–6 and 0 to `medium` and 7–9 to `low`; going the other way,
@@ -956,10 +958,13 @@ the project with no stage.
 ### `PUT /items/:id/project` (auth)
 
 ```json
-{ "project_id": "uuid", "stage_id": "uuid" }
+{ "version": 3, "project_id": "uuid", "stage_id": "uuid" }
 ```
 
-Moves a task into a project and stage. `project_id: null` takes it out of the project. A stage
+Moves a task into a project and stage using the item version last read. A stale
+version returns `409` without changing the task; refresh and review the intended
+destination before retrying. A missing version returns `422`: older clients must
+update or reload before moving a task. `project_id: null` takes it out of the project. A stage
 that belongs to a different project is `422`. Leaving `stage_id` out keeps the stage when the
 project stays the same; a different project starts with no stage. The response is
 `{ "ok": true, "item": <updated item> }`, including its new edit version.
@@ -995,8 +1000,8 @@ record's id), in the app and as a push to their devices; their answer sends one 
 whoever offered it. A notice whose record has since been deleted is dropped before delivery.
 
 A decision with no linked task is shown as "No task delivers this yet" with a **Make a task**
-action. That is two ordinary calls: `POST /items` for the task, then `PUT /items/:id/project`
-and `PUT /work-records/:id` with its `linked_item_id`.
+action. That is two ordinary calls: `POST /items` with the initial `project_id`
+for the task, then `PUT /work-records/:id` with its `linked_item_id`.
 
 ### `GET /work-records/:id/evidence` (auth)
 
@@ -1989,6 +1994,21 @@ estimate (estimate − time spent) fits the largest free working slot left today
 working day once today's hours are over), 0.5 when it doesn't, and 0.75 for a task without an
 estimate. The planner ranks tasks with the same score, comparing with the first planned day.
 
+### `GET /items/reconcile` (auth)
+
+Returns `{ "items": [...], "updated_after": "ISO time" }` from one primary,
+read-only repeatable-read transaction. Collection uses SQL pages of at most 500
+rows and preserves ordinary newest ordering; the response contains all currently
+visible items with scores. The timestamp precedes the first item page. This is
+the planner's authoritative bootstrap/reconciliation, not a persisted cache.
+
+Clients reconcile on manual refresh, observed access-scope changes, reconnect
+after a stale interval, and at least every five minutes while active and
+connected. Failed requests retain previous valid state and retry; the interval
+does not promise freshness while offline or while requests fail. Item deltas
+optimize reads between reconciliations. A large account still needs its full
+snapshot in memory; local fixture results are not a native capacity guarantee.
+
 ### Incremental sync: `GET /items?updated_after=&cursor=&include_deleted=1` (auth)
 
 For tools that poll. With `updated_after` (an ISO time) the answer is the items changed after it,
@@ -2010,6 +2030,12 @@ they were deleted (the owner of a personal item, or the team's members); deletin
 its subtasks too. Deletions are kept for 90 days. Only `team_id` filters `deleted`. An item moved
 out of a team shows as changed to its new audience, not as deleted to the old one. Without
 `updated_after` or `cursor`, `GET /items` pages by offset as before.
+
+This legacy timestamp cursor is best effort: a long transaction can commit behind
+an already advanced cursor, and membership changes do not emit item deltas.
+Tombstone expiry also requires reconciliation. Use primary reads, preserve a
+small timestamp overlap, commit all pages and their cursor together, and retain
+periodic authoritative reconciliation. It is not a lossless change stream.
 
 ### `POST /items/:id/time` (auth)
 

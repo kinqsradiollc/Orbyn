@@ -379,6 +379,7 @@ test("hover cards: a page, a task with its session, an event with its note, a pr
     })
   ).json();
   await call(me, "PUT", `/items/${task.id}/project`, {
+    version: task.version,
     project_id: project.id,
   });
   const start = new Date(Date.now() + 86_400_000);

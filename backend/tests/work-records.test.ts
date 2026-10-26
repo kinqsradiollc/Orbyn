@@ -189,8 +189,12 @@ test("a promise stays private and follows its linked task", async () => {
   const projectId = project.json().id as string;
   const taskId = task.json().id as string;
   assert.equal(
-    (await call("PUT", `/items/${taskId}/project`, { project_id: projectId }))
-      .statusCode,
+    (
+      await call("PUT", `/items/${taskId}/project`, {
+        version: task.json().version,
+        project_id: projectId,
+      })
+    ).statusCode,
     200,
   );
   const made = await call("POST", "/work-records", {

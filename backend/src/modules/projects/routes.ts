@@ -18,7 +18,7 @@ import { requireTeam } from "../../lib/teams.js";
 import { projectTimeMachineRoutes } from "./time-machine.js";
 import { milestoneRoutes } from "./milestones.js";
 import { setAssistantOff } from "./assistant.js";
-import { loadItem } from "../items/service.js";
+import { loadItem, setItemPlacement } from "../items/service.js";
 import { projectPlanning } from "./planning.js";
 import { visibleProjectActivity } from "./activity-visibility.js";
 import { makeProjectPlan } from "../planner/plans.js";
@@ -349,66 +349,9 @@ export async function projectRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const body = projectAssign.parse(r.body);
-    return transaction(async (db) => {
-      await actAs(db, u.id);
-      const item = (
-        await db.query<{
-          id: string;
-          user_id: string;
-          team_id: string | null;
-          kind: string;
-          project_id: string | null;
-          stage_id: string | null;
-        }>(
-          `SELECT id, user_id, team_id, kind, project_id, stage_id
-             FROM items WHERE id = $1 FOR UPDATE`,
-          [id],
-        )
-      ).rows[0];
-      if (!item) fail(404, "Item not found");
-      if (item.kind !== "task")
-        fail(422, "Only tasks can be filed in projects.");
-      if (item.team_id) await requireTeam(item.team_id, u, "items:write", db);
-      else if (item.user_id !== u.id) fail(404, "Item not found");
-
-      const stageId = body.project_id
-        ? body.stage_id === undefined && item.project_id === body.project_id
-          ? item.stage_id
-          : (body.stage_id ?? null)
-        : null;
-
-      if (body.project_id) {
-        const project = await requireProject(
-          db,
-          body.project_id,
-          u,
-          "items:write",
-        );
-        // A task goes into a project in its own space: a team's task into
-        // that team's project, a personal task into a personal one.
-        if (project.team_id !== item.team_id)
-          fail(
-            422,
-            project.team_id
-              ? "Only this team's tasks can go into a team project."
-              : "Team tasks can only go into their team's projects.",
-          );
-        if (stageId) {
-          const ok = (
-            await db.query(
-              "SELECT 1 FROM project_stages WHERE id = $1 AND project_id = $2",
-              [stageId, body.project_id],
-            )
-          ).rowCount;
-          if (!ok) fail(422, "That stage isn't in this project.");
-        }
-      }
-      await db.query(
-        `UPDATE items SET project_id = $2, stage_id = $3,
-           version = version + 1, updated_at = now() WHERE id = $1`,
-        [id, body.project_id, stageId],
-      );
-      return { ok: true, item: await loadItem(db, id) };
-    });
+    return transaction(async (db) => ({
+      ok: true,
+      item: await setItemPlacement(db, u, id, body),
+    }));
   });
 }

@@ -164,6 +164,7 @@ test("a deleted task keeps its history under its last access rules", async () =>
   ).json();
   const filed = (
     await call("PUT", `/items/${task.id}/project`, {
+      version: (await call("GET", `/items/${task.id}`)).json().version,
       project_id: project.id,
     })
   ).json();
@@ -202,6 +203,7 @@ test("a snapshot shows task state at the selected change, including later remova
     await call("POST", "/items", { title: "Prepare launch", kind: "task" })
   ).json();
   const filed = await call("PUT", `/items/${task.id}/project`, {
+    version: (await call("GET", `/items/${task.id}`)).json().version,
     project_id: project.id,
   });
   assert.equal(filed.statusCode, 200);
@@ -277,8 +279,12 @@ test("a snapshot shows task state at the selected change, including later remova
   );
 
   assert.equal(
-    (await call("PUT", `/items/${task.id}/project`, { project_id: null }))
-      .statusCode,
+    (
+      await call("PUT", `/items/${task.id}/project`, {
+        version: (await call("GET", `/items/${task.id}`)).json().version,
+        project_id: null,
+      })
+    ).statusCode,
     200,
   );
   const removed = (
@@ -351,6 +357,7 @@ test("a preexisting project starts at a truthful baseline", async () => {
     await call("POST", "/items", { title: "Existing task", kind: "task" })
   ).json();
   const filed = await call("PUT", `/items/${task.id}/project`, {
+    version: (await call("GET", `/items/${task.id}`)).json().version,
     project_id: project.id,
   });
   assert.equal(filed.statusCode, 200);

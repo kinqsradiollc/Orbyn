@@ -9,6 +9,7 @@ import {
 import { Params, scopeFor, visibleItems } from "../lib/visibility.js";
 import {
   lockItem,
+  lockItemProjects,
   mutate,
   quickAddContext,
   recomputeProgress,
@@ -67,6 +68,7 @@ const when = (v: Date | string | null | undefined) =>
 export async function visibleItem(
   ctx: CapabilityContext,
   input: string,
+  projects: readonly (string | null | undefined)[] = [],
 ): Promise<ItemRow> {
   const ref = parseRef(input);
   if (ref.type !== "task" && ref.type !== "event" && ref.type !== "any")
@@ -89,7 +91,7 @@ export async function visibleItem(
       "Nothing with that id is reachable from this connection.",
       "Search for it and use an id from the results.",
     );
-  return lockItem(dbOf(ctx), ref.id);
+  return lockItem(dbOf(ctx), ref.id, projects);
 }
 
 /** A task or event as the answers list it. */
@@ -481,6 +483,11 @@ export const updateTasks = defineCapability({
     const review: ReviewChangeInput[] = [];
     const undo: UndoOp[] = [];
     let lastTeam: string | null = null;
+    await lockItemProjects(
+      db,
+      a.changes.map((c) => uuidOf(c.id, "task")),
+      a.changes.flatMap((c) => (c.project ? [projectId(c.project)] : [])),
+    );
     for (const c of a.changes) {
       refuseSecrets(
         c.title,
@@ -489,7 +496,11 @@ export const updateTasks = defineCapability({
         c.meeting_url,
         ...(c.links ?? []).map((l) => `${l.url} ${l.title ?? ""}`),
       );
-      const row = await visibleItem(ctx, c.id);
+      const row = await visibleItem(
+        ctx,
+        c.id,
+        c.project ? [projectId(c.project)] : [],
+      );
       if (row.version !== c.version)
         throw new CapabilityError(
           "VERSION_CONFLICT",

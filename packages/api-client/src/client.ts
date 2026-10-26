@@ -685,6 +685,12 @@ export class OrbynClient {
     this.streamFetch = options.streamFetch ?? this.fetchImpl;
   }
 
+  /** A guarded sibling transport mutated data: do not join pre-write reads or use a stale replica. */
+  noteExternalMutation(): void {
+    this.readEpoch++;
+    this.lastWriteAt = Date.now();
+  }
+
   /**
    * A plain authenticated GET, for the few things that come back as a file
    * rather than as JSON. No caching and no retries: a download either
@@ -1306,13 +1312,16 @@ export class OrbynClient {
    * previous page's `next_cursor`), oldest change first, and with
    * `include_deleted` the items deleted since.
    */
-  syncItems(params: {
-    updated_after?: string;
-    cursor?: string;
-    include_deleted?: boolean;
-    limit?: number;
-    team_id?: string;
-  }) {
+  syncItems(
+    params: {
+      updated_after?: string;
+      cursor?: string;
+      include_deleted?: boolean;
+      limit?: number;
+      team_id?: string;
+    },
+    options: Pick<RequestOptions, "headers" | "fresh" | "signal"> = {},
+  ) {
     const q = new URLSearchParams();
     // Without either, GET /items is the ordinary list, not a sync page.
     if (!params.updated_after && !params.cursor)
@@ -1322,7 +1331,17 @@ export class OrbynClient {
     if (params.include_deleted) q.set("include_deleted", "1");
     if (params.limit !== undefined) q.set("limit", String(params.limit));
     if (params.team_id) q.set("team_id", params.team_id);
-    return this.request<ItemSyncPage>(`/items?${q}`);
+    return this.request<ItemSyncPage>(`/items?${q}`, options);
+  }
+  /** One primary, repeatable-read planner snapshot; later deltas are best effort. */
+  reconcileItems() {
+    return this.request<{ items: Item[]; updated_after: string }>(
+      "/items/reconcile",
+      {
+        fresh: true,
+        headers: { "x-orbyn-consistency": "primary" },
+      },
+    );
   }
   /** Move an item in its manual order (doesn't change its version). */
   moveItem(id: string, input: ItemPositionInput) {
@@ -2118,7 +2137,11 @@ export class OrbynClient {
    */
   setItemProject(
     itemId: string,
-    input: { project_id: string | null; stage_id?: string | null },
+    input: {
+      version: number;
+      project_id: string | null;
+      stage_id?: string | null;
+    },
   ) {
     return this.request<{ ok: true; item: Item }>(`/items/${itemId}/project`, {
       method: "PUT",

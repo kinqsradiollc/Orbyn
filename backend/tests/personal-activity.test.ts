@@ -339,7 +339,13 @@ test("snapshot restore preserves completion identities and timestamps", async ()
   await transaction(async (db) => {
     const saved = await snapshot(db, "item", [item.id]);
     await db.query("DELETE FROM items WHERE id=$1", [item.id]);
-    await restoreSnapshot(db, saved);
+    const actor = (
+      await db.query<import("../src/lib/auth.js").UserRow>(
+        "SELECT * FROM users WHERE id=$1",
+        [user.id],
+      )
+    ).rows[0];
+    await restoreSnapshot(db, saved, actor);
   });
   const restored = (
     await pool.query<{ created_at: Date }>(

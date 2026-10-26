@@ -678,6 +678,31 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /items/reconcile:
+    get:
+      tags: [Items]
+      summary: Reconcile all currently visible planner items
+      description: |
+        One primary read-only repeatable-read snapshot, collected in SQL pages
+        of at most 500 rows and returned in newest order with scores. The response
+        contains the full visible set; paging does not cap total payload or memory.
+        `updated_after` precedes its first item page. Use best-effort deltas between
+        reconciliations, and reconcile on access changes and every five minutes
+        while active and connected. Failed/offline requests cannot guarantee freshness.
+      responses:
+        "200":
+          description: Visible items and a server timestamp for overlapping delta reads
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, updated_after]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Item" }
+                  updated_after: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /items:
     get:
       tags: [Items]
@@ -693,6 +718,9 @@ paths:
         `include_deleted=1`, items deleted since are listed in `deleted`
         (kept for 90 days). Filters apply to `items`; `team_id` applies to
         `deleted` too.
+
+        This timestamp cursor is best effort: late commits, membership changes
+        and tombstone expiry require periodic authoritative reconciliation.
       parameters:
         - {
             name: limit,

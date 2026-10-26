@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   type HttpError,
   type Item,
@@ -8,6 +15,7 @@ import {
   type Team,
   type User,
 } from "@orbyn/core";
+import { PlannerItemStore } from "@orbyn/api-client";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { client } from "../lib/api";
 import { deviceId } from "../lib/device";
@@ -28,7 +36,14 @@ export function usePlanner() {
   const [token, setToken] = useState(() => session.get());
   const [user, setUser] = useState<User | null>(null);
   const [twoFactorRequired, setTwoFactorRequired] = useState(false);
-  const [items, setItems] = useState<Item[]>([]);
+  const itemStore = useMemo(
+    () => new PlannerItemStore(client, () => session.binding().generation),
+    [],
+  );
+  const items = useSyncExternalStore(
+    itemStore.subscribe,
+    itemStore.getSnapshot,
+  );
   const [notices, setNotices] = useState<Notice[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   /** Bumps after every successful refresh so dependent views can reload. */
@@ -50,7 +65,7 @@ export function usePlanner() {
     session.clear();
     setToken("");
     setUser(null);
-    setItems([]);
+    itemStore.reset();
     setNotices([]);
     setTeams([]);
     setMaintenance(null);
@@ -66,7 +81,7 @@ export function usePlanner() {
           refreshSeq.current++;
           lastData.current = "";
           setUser(null);
-          setItems([]);
+          itemStore.reset();
           setNotices([]);
           setTeams([]);
           setMaintenance(null);
@@ -129,19 +144,25 @@ export function usePlanner() {
   }, [token]);
   // Account identity must not wait for planner pagination or other boot reads.
   useEffect(() => {
-    if (!token) return;
+    const owner = session.binding();
+    if (!token || owner.token !== token) return;
+    const current = () =>
+      tokenRef.current === token &&
+      session.binding().token === token &&
+      session.binding().generation === owner.generation;
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
     const loadProfile = async (initial = false) => {
+      if (!current()) return;
       if (!initial && document.visibilityState !== "visible") {
         if (alive) timer = setTimeout(loadProfile, 30000);
         return;
       }
       try {
         const profile = await client.me();
-        if (alive && tokenRef.current === token) setUser(profile);
+        if (alive && current()) setUser(profile);
       } catch (e) {
-        if (alive && tokenRef.current === token) report(e);
+        if (alive && current()) report(e);
       }
       if (alive) timer = setTimeout(loadProfile, 30000);
     };
@@ -157,26 +178,64 @@ export function usePlanner() {
    * indicator, and nothing re-renders when the data is unchanged.
    */
   const refresh = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!token) return;
+    async (options?: { silent?: boolean; force?: boolean }) => {
+      const binding = session.binding();
+      if (!token || binding.token !== token || tokenRef.current !== token)
+        return;
+      const generation = binding.generation;
+      const current = () =>
+        tokenRef.current === token &&
+        session.binding().token === token &&
+        session.binding().generation === generation;
       const seq = ++refreshSeq.current;
       if (!options?.silent) setLoading(true);
       try {
-        const all = await client.listAllItems(500);
-        const [n, t] = await Promise.all([
+        const [n, t] = await Promise.allSettled([
           client.listNotifications(),
           client.listTeams(),
         ]);
-        if (tokenRef.current !== token || seq !== refreshSeq.current) return;
-        const snapshot = JSON.stringify([all, n, t]);
-        if (options?.silent && snapshot === lastData.current) return;
-        lastData.current = snapshot;
-        setItems(all);
-        setNotices(n);
-        setTeams(t);
-        setRevision((r) => r + 1);
+        if (!current() || seq !== refreshSeq.current) return;
+        for (const result of [n, t])
+          if (
+            result.status === "rejected" &&
+            (result.reason as HttpError).status === 401
+          )
+            throw result.reason;
+        if (t.status === "fulfilled")
+          itemStore.restrictTeams(t.value.map((team) => team.id));
+        const scope =
+          t.status === "fulfilled"
+            ? JSON.stringify(
+                [...t.value].sort((a, b) => a.id.localeCompare(b.id)),
+              )
+            : null;
+        const [read] = await Promise.allSettled([
+          itemStore.refresh(
+            scope,
+            !!options?.force || !options?.silent,
+            t.status === "fulfilled"
+              ? t.value.map((team) => team.id)
+              : undefined,
+          ),
+        ]);
+        if (!current() || seq !== refreshSeq.current) return;
+        const all = itemStore.getSnapshot();
+        const snapshot = JSON.stringify([
+          all,
+          n.status === "fulfilled" ? n.value : null,
+          t.status === "fulfilled" ? t.value : null,
+        ]);
+        if (!options?.silent || snapshot !== lastData.current) {
+          lastData.current = snapshot;
+          if (n.status === "fulfilled") setNotices(n.value);
+          if (t.status === "fulfilled") setTeams(t.value);
+          setRevision((r) => r + 1);
+        }
+        if (read.status === "rejected") throw read.reason;
+        for (const result of [n, t])
+          if (result.status === "rejected") throw result.reason;
       } finally {
-        if (tokenRef.current === token && !options?.silent) setLoading(false);
+        if (current() && !options?.silent) setLoading(false);
       }
     },
     [token],
@@ -186,15 +245,25 @@ export function usePlanner() {
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
     const loop = async () => {
+      const owner = session.binding();
       try {
         if (document.visibilityState === "visible") {
           if (tokenRef.current) void refreshMaintenance();
           await refresh({ silent: true });
         }
       } catch (e) {
-        if (alive) report(e, { quiet: true });
+        if (
+          alive &&
+          tokenRef.current === owner.token &&
+          session.binding().generation === owner.generation
+        )
+          report(e, { quiet: true });
       }
-      if (alive) timer = setTimeout(loop, 30000);
+      if (alive)
+        timer = setTimeout(
+          loop,
+          Math.max(1, Math.min(30000, itemStore.nextReconcileIn() || 30000)),
+        );
     };
     void loop();
     return () => {
@@ -227,6 +296,7 @@ export function usePlanner() {
 
   /** Adopt a session from a flow that returns one directly (password reset). */
   const adoptSession = (result: { token: string; user: User }) => {
+    itemStore.reset();
     session.set(result.token);
     tokenRef.current = result.token;
     setToken(result.token);
@@ -273,6 +343,7 @@ export function usePlanner() {
         throw e;
       }
       setTwoFactorRequired(false);
+      itemStore.reset();
       session.set(result.token);
       tokenRef.current = result.token;
       setToken(result.token);
@@ -291,6 +362,7 @@ export function usePlanner() {
       });
       const result = await client.passkeyLogin(handle, response);
       setTwoFactorRequired(false);
+      itemStore.reset();
       session.set(result.token);
       tokenRef.current = result.token;
       setToken(result.token);

@@ -36,6 +36,7 @@ import {
   mutate,
   recomputeProgress,
   requireItemAccess,
+  setItemPlacement,
 } from "../items/service.js";
 import {
   createDoc,
@@ -145,6 +146,18 @@ export async function createAgentProposal(
   if (input.changes.length > MAX_PROPOSAL_CHANGES)
     fail(422, `A proposal holds at most ${MAX_PROPOSAL_CHANGES} changes.`);
   const changes = input.changes.map((c) => reviewChange.parse(c));
+  if (
+    changes.some(
+      (c) =>
+        c.type === "link.remove" &&
+        c.kind === "project" &&
+        c.version === undefined,
+    )
+  )
+    fail(
+      422,
+      "Read the task and capture its version before proposing a project unlink.",
+    );
   const guard = await checkAssistantProposalRules(
     db,
     input.userId,
@@ -380,6 +393,16 @@ export async function staleness(
       )
     ).rows[0];
   switch (c.type) {
+    case "link.remove": {
+      if (c.kind !== "project") return null;
+      if (c.version === undefined)
+        return "This older project unlink has no task version. Ask the agent to propose it again.";
+      const found = await item(c.from_id);
+      if (!found) return "It's gone, or you can no longer see it.";
+      return found.version === c.version
+        ? null
+        : "It changed since this was suggested.";
+    }
     case "task.update":
     case "task.delete":
     case "task.complete": {
@@ -1085,7 +1108,9 @@ export async function applyChange(
       return {};
     }
     case "task.update": {
-      const row = await lockItem(db, c.item_id);
+      const row = await lockItem(db, c.item_id, [
+        c.patch.project_id as string | null | undefined,
+      ]);
       await mutate(db, u, {
         operation: "update",
         item_id: c.item_id,
@@ -1366,12 +1391,22 @@ export async function removeLink(
       "DELETE FROM doc_task_links WHERE item_id = $1 AND doc_id = $2",
       [c.from_id, c.to_id],
     );
-  else
-    await db.query(
-      `UPDATE items SET project_id = NULL, stage_id = NULL, version = version + 1,
-         updated_at = now() WHERE id = $1 AND project_id = $2`,
-      [c.from_id, c.to_id],
-    );
+  else {
+    if (c.version === undefined)
+      fail(
+        409,
+        "This older project unlink has no task version. Ask the agent to propose it again.",
+      );
+    if (item.project_id !== c.to_id)
+      fail(
+        409,
+        "This task's project changed. Ask the agent to propose it again.",
+      );
+    await setItemPlacement(db, u, c.from_id, {
+      version: c.version,
+      project_id: null,
+    });
+  }
 }
 
 /** The proposal, locked, when it is `userId`'s and still waiting. */

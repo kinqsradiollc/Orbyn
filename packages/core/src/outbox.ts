@@ -61,12 +61,19 @@ export type OutboxOp =
   /** A page edited with no signal (SHR-03): merged with the page when sent. */
   | { type: "doc.save"; save: PageSave };
 
+/** A mobile command with the authenticated account that created it. */
+export type OwnedOutboxEntry = OutboxEntry & { owner_id: string };
+
 export type OutboxEntry = {
   /** Sent as the Idempotency-Key. */
   key: string;
   op: OutboxOp;
   queued_at: string;
   attempts: number;
+  /** Persisted before dispatch. Receipts are scoped to these credentials and expire. */
+  delivery?: { credential_hash: string; started_at: string };
+  /** Unknown outcome: inspect before explicitly retrying with a new key. */
+  uncertain?: boolean;
   /** Waiting to be sent, or refused and waiting for the person. */
   state: "pending" | "failed";
   /** Why it was refused, in words. */
@@ -182,12 +189,15 @@ export function describeOp(op: OutboxOp) {
 export function queueChange(
   entries: OutboxEntry[],
   entry: OutboxEntry,
+  sendingKeys: ReadonlySet<string> = new Set(),
 ): OutboxEntry[] {
   const op = entry.op;
   if (op.type === "doc.save") {
     const at = entries.findIndex(
       (e) =>
         e.state === "pending" &&
+        !sendingKeys.has(e.key) &&
+        !e.delivery &&
         e.op.type === "doc.save" &&
         e.op.save.id === op.save.id &&
         !!e.op.save.document === !!op.save.document,

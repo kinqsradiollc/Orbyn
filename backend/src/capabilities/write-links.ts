@@ -14,7 +14,8 @@ import {
   visibleTemplates,
 } from "../lib/visibility.js";
 import { createDoc, saveDoc } from "../modules/docs/service.js";
-import { mutate } from "../modules/items/service.js";
+import { mutate, setItemPlacement } from "../modules/items/service.js";
+import { taskProjectExpectedVersion } from "../lib/task-project-compat.js";
 import { createProject } from "../modules/projects/service.js";
 import { mergedItem } from "../modules/proposals/service.js";
 import { syncSavedPages } from "../modules/study/service.js";
@@ -160,11 +161,17 @@ export const link = defineCapability({
   name: "link",
   title: "Link or unlink",
   description:
-    "Links or unlinks: depends_on (task waits on task), task_doc (task and its page line), task_project, doc_project, doc_folder, or related (a plain link between a page or task and a page, task or project, shown in backlinks on both sides). Unlinking removes no content; Undo takes it back.",
+    "Links dependencies, task source lines, project/folder placement or related records. Unlink keeps content; Undo restores the link.",
   input: z
     .object({
       action: z.enum(["link", "unlink"]),
       kind: z.enum(LINK_KINDS),
+      version: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("task_project: expected version; legacy omission expires."),
       from: z.string().trim().min(1).max(300),
       to: z
         .string()
@@ -228,7 +235,11 @@ export const link = defineCapability({
         after: [() => syncSavedPages(doc.id)],
       });
     }
-    const row = await visibleItem(ctx, a.from);
+    const row = await visibleItem(
+      ctx,
+      a.from,
+      a.kind === "task_project" && on ? [projectId(a.to)] : [],
+    );
     destination(ctx, row.team_id, tier) === "review" &&
       refuseSuggest(ctx, row.team_id);
     if (a.kind === "task_doc") {
@@ -303,12 +314,23 @@ export const link = defineCapability({
           }
         : { project_id: null, stage_id: null };
     }
-    const item = (await mutate(db, actor, {
-      operation: "update",
-      item_id: row.id,
-      version: row.version,
-      data: mergedItem(row as never, patch),
-    }))!;
+    const item =
+      a.kind === "task_project"
+        ? await setItemPlacement(db, actor, row.id, {
+            version: await taskProjectExpectedVersion(
+              db,
+              a.version,
+              row.version,
+            ),
+            project_id: patch.project_id as string | null,
+            stage_id: patch.stage_id as string | null,
+          })
+        : (await mutate(db, actor, {
+            operation: "update",
+            item_id: row.id,
+            version: row.version,
+            data: mergedItem(row as never, patch),
+          }))!;
     undo.push({
       op: "item.restore",
       id: item.id,
@@ -1191,6 +1213,7 @@ export const proposeChanges = defineCapability({
           push({
             type: "link.remove",
             kind: needs(c, "unlink"),
+            ...(c.unlink === "project" ? { version: row.version } : {}),
             from_id: row.id,
             to_id: to,
             title: row.title,

@@ -107,11 +107,19 @@ export const insideReadTransaction = new AsyncLocalStorage<true>();
  */
 export async function readTransaction<T>(
   fn: (db: Db) => Promise<T>,
-  options: { primary?: boolean; timeoutMs?: number } = {},
+  options: {
+    primary?: boolean;
+    timeoutMs?: number;
+    isolation?: "repeatable read";
+  } = {},
 ): Promise<T> {
   const db = await (options.primary ? pool : readPool).connect();
   try {
-    await db.query("BEGIN READ ONLY");
+    await db.query(
+      options.isolation === "repeatable read"
+        ? "BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+        : "BEGIN READ ONLY",
+    );
     if (options.timeoutMs)
       await db.query(
         `SET LOCAL statement_timeout = ${Math.max(100, Math.round(options.timeoutMs))}`,

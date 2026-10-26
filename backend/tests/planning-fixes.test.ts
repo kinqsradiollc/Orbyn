@@ -430,6 +430,7 @@ test("a task moved to another space leaves its project and stage", async () => {
     task({ title: "Plant the roses" }),
   );
   const filed = await call(me.token, "PUT", `/items/${made.body.id}/project`, {
+    version: made.body.version,
     project_id: project.body.id,
     stage_id: project.body.stages[0].id,
   });

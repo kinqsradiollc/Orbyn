@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { Alert } from "../lib/alert";
+import * as Clipboard from "expo-clipboard";
 import {
   describeOp,
   fieldsLabel,
@@ -73,6 +73,7 @@ function Body({ state }: { state: Outbox }) {
   const [problem, setProblem] = useState("");
   const [settingsFailed, setSettingsFailed] = useState(false);
   const [pending, setPending] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState("");
   const mutation = useRef(false);
   const ticket = useRef(0);
   const mounted = useRef(true);
@@ -131,6 +132,53 @@ function Body({ state }: { state: Outbox }) {
     }
   };
 
+  const recoveryAction = (discard: boolean) => {
+    const account = session.token;
+    const recovery = state.recovery;
+    confirmAction(
+      discard ? "Discard saved changes?" : "Copy saved changes?",
+      discard
+        ? "These changes may belong to a previously signed-in account. Discarding removes the saved copy from this phone and cannot be undone."
+        : "These changes may belong to a previously signed-in account. Copy only if you are allowed to view them. Their contents will be placed on your clipboard.",
+      discard ? "Discard saved changes" : "Copy saved changes",
+      () => {
+        if (
+          !mounted.current ||
+          account !== session.token ||
+          recovery !== outbox.outboxState().recovery
+        )
+          return;
+        setRecoveryNotice("");
+        void change(
+          async () => {
+            if (discard) {
+              await outbox.discardRecovery();
+              return true;
+            }
+            const saved = await outbox.recoveryCopy();
+            if (
+              !mounted.current ||
+              account !== session.token ||
+              recovery !== outbox.outboxState().recovery
+            )
+              return false;
+            const copied = await Clipboard.setStringAsync(saved);
+            if (!copied)
+              throw new Error("Couldn't copy saved changes. Try again.");
+            return true;
+          },
+          (completed) => {
+            if (completed)
+              setRecoveryNotice(
+                discard ? "Saved changes discarded." : "Saved changes copied.",
+              );
+          },
+        );
+      },
+      discard,
+    );
+  };
+
   const self = deviceId();
   return (
     <ScrollView contentContainerStyle={sheetStyles.body}>
@@ -148,19 +196,83 @@ function Body({ state }: { state: Outbox }) {
               <Text style={s.title}>
                 {state.offline
                   ? "Offline"
-                  : state.entries.length
-                    ? "Online"
-                    : "Everything is in sync"}
+                  : state.storageError
+                    ? "Saved changes need attention"
+                    : state.recovery
+                      ? "Saved changes are held"
+                      : state.entries.length
+                        ? "Online"
+                        : "Everything is in sync"}
               </Text>
               <Text style={shared.small}>
-                {state.entries.length
-                  ? "Changes wait here until they reach the server."
-                  : state.syncedAt
-                    ? `Last in sync ${ago(state.syncedAt)}.`
-                    : "Offline changes wait here."}
+                {state.storageError || state.recovery
+                  ? "Review the saved changes below."
+                  : state.entries.length
+                    ? "Changes wait here until they reach the server."
+                    : state.syncedAt
+                      ? `Last in sync ${ago(state.syncedAt)}.`
+                      : "Offline changes wait here."}
               </Text>
             </View>
           </View>
+          {state.storageError && (
+            <View style={s.firstEntry}>
+              <ErrorBanner error={state.storageError} />
+              <SmallAction
+                label="Retry saved changes"
+                disabled={pending || state.sending}
+                onPress={() => {
+                  const account = session.token;
+                  void change(async () => {
+                    await outbox.loadOutbox();
+                    if (mounted.current && account === session.token)
+                      await outbox.flush();
+                  });
+                }}
+              />
+            </View>
+          )}
+          {state.recovery && (
+            <View style={[s.entry, s.firstEntry]}>
+              <Text style={s.entryTitle}>
+                {state.recovery.count > 0
+                  ? `${state.recovery.count} saved ${state.recovery.count === 1 ? "change" : "changes"} held`
+                  : "Saved changes held"}
+              </Text>
+              <Text style={shared.small}>{state.recovery.reason}</Text>
+              <Text style={shared.small}>
+                These changes cannot sync automatically because their account
+                cannot be confirmed.
+              </Text>
+              <View style={s.actions}>
+                <SmallAction
+                  label="Copy saved changes"
+                  disabled={pending}
+                  onPress={() => recoveryAction(false)}
+                />
+                <SmallAction
+                  label="Discard saved changes"
+                  destructive
+                  disabled={pending}
+                  onPress={() => recoveryAction(true)}
+                />
+              </View>
+            </View>
+          )}
+          {!!recoveryNotice && (
+            <Text
+              accessibilityLiveRegion="polite"
+              style={[shared.small, s.note]}
+            >
+              {recoveryNotice}
+            </Text>
+          )}
+          {state.entries.length > 0 && (
+            <Text style={[shared.small, s.note]}>
+              Pending changes stay on this device for this account after
+              sign-out.
+            </Text>
+          )}
           {state.entries.map((e, n) => (
             <Entry key={e.key} entry={e} first={n === 0} />
           ))}
@@ -297,6 +409,35 @@ function Body({ state }: { state: Outbox }) {
 
 function Entry({ entry, first }: { entry: OutboxEntry; first: boolean }) {
   const failed = entry.state === "failed";
+  const binding = { userId: session.userId, generation: session.generation };
+  const [problem, setProblem] = useState("");
+  const [pending, setPending] = useState(false);
+  const busy = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const current = () =>
+    mounted.current &&
+    binding.userId === session.userId &&
+    binding.generation === session.generation;
+  const resolve = async (choice: "mine" | "retry" | "drop") => {
+    if (!current() || busy.current) return;
+    busy.current = true;
+    setPending(true);
+    setProblem("");
+    try {
+      await outbox.resolve(entry.key, choice, binding);
+    } catch (error) {
+      if (current()) setProblem(errorText(error));
+    } finally {
+      busy.current = false;
+      if (current()) setPending(false);
+    }
+  };
   return (
     <View style={[s.entry, !first && s.divider, first && s.firstEntry]}>
       <Text style={s.entryTitle}>{describeOp(entry.op)}</Text>
@@ -309,48 +450,57 @@ function Entry({ entry, first }: { entry: OutboxEntry; first: boolean }) {
               ? "Waiting for a connection"
               : "Waiting"}
       </Text>
+      <ErrorBanner error={problem} onDismiss={() => setProblem("")} />
       {entry.conflict ? (
         <View style={s.actions}>
           <SmallAction
             label="Keep mine"
-            disabled={false}
-            onPress={() => void outbox.resolve(entry.key, "mine")}
+            disabled={pending}
+            onPress={() => void resolve("mine")}
           />
           <SmallAction
             label="Keep theirs"
-            disabled={false}
-            onPress={() => void outbox.resolve(entry.key, "drop")}
+            disabled={pending}
+            onPress={() => void resolve("drop")}
           />
         </View>
       ) : (
-        failed && (
-          <View style={s.actions}>
+        <View style={s.actions}>
+          {failed && (
             <SmallAction
               label="Try again"
-              disabled={false}
-              onPress={() => void outbox.resolve(entry.key, "retry")}
+              disabled={pending}
+              onPress={() => {
+                if (!current() || busy.current) return;
+                if (!entry.uncertain) {
+                  void resolve("retry");
+                  return;
+                }
+                confirmAction(
+                  "Retry this change?",
+                  "This change may already be saved. Check the result first. Retrying can create a duplicate.",
+                  "Retry anyway",
+                  () => void resolve("retry"),
+                  false,
+                );
+              }}
             />
-            <SmallAction
-              label="Discard"
-              destructive
-              disabled={false}
-              onPress={() =>
-                Alert.alert(
-                  "Discard this change?",
-                  "It was never saved, so it goes for good.",
-                  [
-                    { text: "Keep it", style: "cancel" },
-                    {
-                      text: "Discard",
-                      style: "destructive",
-                      onPress: () => void outbox.resolve(entry.key, "drop"),
-                    },
-                  ],
-                )
-              }
-            />
-          </View>
-        )
+          )}
+          <SmallAction
+            label="Discard"
+            destructive
+            disabled={pending}
+            onPress={() => {
+              if (!current() || busy.current) return;
+              confirmAction(
+                "Discard this change?",
+                "Removes this phone's pending copy. The request may already have been sent; discarding cannot undo a change saved on the server.",
+                "Discard",
+                () => void resolve("drop"),
+              );
+            }}
+          />
+        </View>
       )}
     </View>
   );

@@ -38,6 +38,10 @@ live on different machines; see [scalability.md](scalability.md).
 `server.ts` combines the HTTP modules and status prober for local development.
 It does not replace the notifier, Background/Overnight, conversion or plugin
 inference workers. Compose and production launch their owning service entry points.
+Each deployed HTTP entrypoint imports its own `services/*-app.ts` composition root.
+These roots preserve ordered registrations; `app.ts` is the explicit combined
+development/test compatibility aggregator. The status process does not import that
+union merely to select its routes. Genuine route-owner dependencies remain shared.
 `services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
 with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 
@@ -47,6 +51,18 @@ execution remains in the inference worker through `provider-policy.ts`; request
 handlers do not import the provider adapters merely to validate input.
 
 ## Assistant conversations and execution
+
+Both client hooks use the API-client `AssistantWaitingReplyLifecycle` for waiting
+question attempts and conversation follow/reconnect. The existing conversation
+store remains the authorized history/source owner. Platform adapters supply live
+session generations, foreground visibility, events and timers; native/browser
+rendering and ordinary chat execution remain separate.
+
+Admission reads a persisted policy revision under the shared slot lock before
+reserving work. Initial ceilings remain 8 total, 4 interactive, 2 background and
+2 overnight. Revision mismatch fails closed for compatible claimers. Legacy
+processes must be stopped or externally fenced during cutover; the row cannot
+control binaries that never read it. Budgets and execution lanes remain separate.
 
 The Assistant has personal and project chats, retained timeline entries and
 separate durable execution jobs. Background and Overnight results can publish
@@ -314,9 +330,28 @@ rate limited separately from the rest of the API.
 | `custom_fields`, `custom_field_values`                         | Your own typed fields on pages and projects in a space, and their values.                                                       |
 | `migrations`                                                   | Applied migration file names.                                                                                                   |
 
-Every item write goes through `mutate()` and requires the current `version`. A stale write returns
-HTTP 409 so two clients cannot silently overwrite each other. Ownership is enforced in every SQL
-statement with `user_id`, and cross-tenant access returns 404 rather than 403.
+Versioned item edits use `mutate()` and check the caller's version. Project/stage
+placement uses the item-owned `setItemPlacement()` command, including derived
+deletion and guarded undo effects. A stale choice returns HTTP 409. Manual order
+has a separate route that updates change time without incrementing edit version.
+The published MCP task-project link has a deployment-wide 90-day versionless
+exception; REST placement requires a version. See [API](api.md) and
+[compatibility operations](operations.md#mcp-task-placement-compatibility-cutoff).
+
+Each planner has one ephemeral account-bound item store. It starts from
+`GET /items/reconcile`: all visible rows, collected in bounded SQL pages within a
+single primary read-only repeatable-read transaction. Best-effort legacy deltas
+optimize the interval between five-minute reconciliations while active/connected.
+They are not a lossless cursor. Scope changes force reconciliation; known revoked
+teams are pruned before asynchronous disk/network work. Failed companion reads
+retain their last valid values, subject to known access revocation. Session
+generations fence late responses and mobile cache writes.
+
+Booking email uses encrypted transactional intents with booking-local revisions.
+The notifier commits dispatch before contacting SMTP, with no transaction held
+during delivery. Newer revisions suppress unsent older messages; verification
+expires with its hold. Ambiguous delivery remains uncertain for reconciliation,
+without automatic resend. See [delivery operations](operations.md#booking-email-delivery).
 
 ### Access control
 

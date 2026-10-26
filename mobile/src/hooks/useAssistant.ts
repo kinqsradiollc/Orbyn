@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   AssistantConversationStore,
+  AssistantWaitingReplyLifecycle,
   conversationDisplayItems,
 } from "@orbyn/api-client";
 import { AppState } from "react-native";
@@ -30,7 +31,11 @@ import {
 } from "@orbyn/core";
 import { client } from "../lib/api";
 import { onLive } from "../lib/live";
-import { loadAssistantChat, saveAssistantChat } from "../lib/session";
+import {
+  session as liveSession,
+  loadAssistantChat,
+  saveAssistantChat,
+} from "../lib/session";
 import type { AssistantRunProgress, ChatResult } from "@orbyn/api-client";
 
 /** What happened to an assistant reply's proposed changes. */
@@ -105,11 +110,15 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       { message: string; replyId: string | null; excerpt?: string }
     >(),
   );
-  const answerAttempts = useRef(new Map<string, string>());
   const tokenRef = useRef(token);
   tokenRef.current = token;
+  const liveBinding = () => {
+    return liveSession.token && liveSession.token === tokenRef.current
+      ? `${liveSession.generation}:${liveSession.token}`
+      : null;
+  };
   const conversationStore = useMemo(
-    () => new AssistantConversationStore(client, () => tokenRef.current),
+    () => new AssistantConversationStore(client, liveBinding),
     [],
   );
   const conversation = useSyncExternalStore(
@@ -159,6 +168,48 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   // Every assistant conversation has a durable id from its first question.
   const chatId = useRef<string | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const waitingReply = useMemo(
+    () =>
+      new AssistantWaitingReplyLifecycle(client, conversationStore, {
+        binding: liveBinding,
+        generation: () => generation.current,
+        chatId: () => chatId.current,
+        drafts: () => drafts.current,
+        composer: () => ({
+          message: messageRef.current,
+          replyId: replyTargetRef.current?.id ?? pendingReplyId.current,
+          excerpt: replyTargetRef.current?.excerpt ?? pendingExcerpt.current,
+        }),
+        restoreReply: (id, text) => {
+          setMessage(text);
+          pendingReplyId.current = id;
+          pendingExcerpt.current = undefined;
+          replyLookupId.current = null;
+          setReplyTarget(null);
+          setReplyStatus("loading");
+        },
+        appendUser: (turnId, text) => {
+          const id = nextId();
+          setTurns((turns) => [...turns, { id, role: "user", text, turnId }]);
+          return id;
+        },
+        removeUser: (id) =>
+          setTurns((turns) => turns.filter((turn) => turn.id !== id)),
+        updateMessage: setMessage,
+        clearReply: (id) =>
+          setReplyTarget((current) =>
+            current?.id === id && !current.excerpt ? null : current,
+          ),
+        setSending: (value) => {
+          sending.current = value;
+        },
+      }),
+    [conversationStore],
+  );
+  const failedAnswers = useSyncExternalStore(
+    waitingReply.subscribe,
+    waitingReply.getSnapshot,
+  );
   const [savedChats, setSavedChats] = useState<AiChatSummary[] | null>(null);
   const [chatSearch, setChatSearch] = useState("");
   const chatSearchRef = useRef(chatSearch);
@@ -333,7 +384,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const previousToken = useRef(token);
   useEffect(() => {
     drafts.current.clear();
-    answerAttempts.current.clear();
+    waitingReply.reset();
     clearConversation(!!previousToken.current && !token);
     previousToken.current = token;
     conversationStore.reset();
@@ -347,6 +398,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     setHistoryKindState("chat");
     return () => {
       generation.current += 1;
+      waitingReply.reset();
       stopPolling();
     };
   }, [token]);
@@ -428,83 +480,8 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     )
       return Promise.resolve();
     const question = replyTargetRef.current;
-    if (
-      question?.kind === "update" &&
-      question.event === "question" &&
-      !question.excerpt
-    ) {
-      const destination = conversationStore.getSnapshot().destination;
-      if (!destination || destination.chat_id !== chatId.current)
-        return Promise.resolve();
-      const key = JSON.stringify([destination.id, question.id, trimmed]);
-      const previousAttempt = answerAttempts.current.get(key);
-      if (
-        !previousAttempt &&
-        (question.actionable === false || question.waiting_kind !== "person")
-      )
-        return act(async () => {
-          throw new Error(
-            question.waiting_kind === "approval"
-              ? "Open this request in Review."
-              : "This question changed or was answered. Refresh before answering.",
-          );
-        });
-      const turnId = previousAttempt ?? newId();
-      answerAttempts.current.set(key, turnId);
-      const request = generation.current;
-      const account = tokenRef.current;
-      const userTurn: Turn = {
-        id: nextId(),
-        role: "user",
-        text: trimmed,
-        turnId,
-      };
-      sending.current = true;
-      setTurns((turns) => [...turns, userTurn]);
-      setMessage("");
-      return act(async () => {
-        try {
-          await client.answerAssistantConversationQuestion(
-            destination.id,
-            question.id,
-            trimmed,
-            turnId,
-          );
-          if (account !== tokenRef.current) return;
-          answerAttempts.current.delete(key);
-          if (request !== generation.current) {
-            const draft = drafts.current.get(destination.chat_id);
-            if (draft?.replyId === question.id)
-              drafts.current.set(destination.chat_id, {
-                ...draft,
-                replyId: null,
-              });
-            return;
-          }
-          setReplyTarget((current) =>
-            current?.id === question.id ? null : current,
-          );
-          await conversationStore.refresh();
-        } catch (error) {
-          if (account !== tokenRef.current) return;
-          if (request !== generation.current) {
-            const draft = drafts.current.get(destination.chat_id);
-            drafts.current.set(destination.chat_id, {
-              message: draft?.message
-                ? `${trimmed}\n\n${draft.message}`
-                : trimmed,
-              replyId: question.id,
-            });
-            return;
-          }
-          setTurns((turns) => turns.filter((turn) => turn.id !== userTurn.id));
-          setMessage((draft) => (draft ? `${trimmed}\n\n${draft}` : trimmed));
-          throw error;
-        } finally {
-          if (request === generation.current) sending.current = false;
-        }
-      });
-    }
+    if (waitingReply.isQuestion(question))
+      return act(() => waitingReply.answer(question, trimmed));
     sending.current = true;
     const request = ++generation.current;
     const prior = history();
@@ -766,7 +743,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const openChat = async (id: string) => {
     const initialDraft = chatId.current ? null : messageRef.current;
     if (chatId.current)
-      drafts.current.set(chatId.current, {
+      waitingReply.saveDraft(chatId.current, {
         message: messageRef.current,
         replyId: replyTargetRef.current?.id ?? pendingReplyId.current,
         excerpt: replyTargetRef.current?.excerpt ?? pendingExcerpt.current,
@@ -977,35 +954,16 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       conversationStore.select(null);
       return;
     }
-    let live = true;
-    const id = activeChatId;
-    const abort = new AbortController();
-    const update = () => {
-      if (!live || AppState.currentState !== "active") return;
-      if (conversationStore.getSnapshot().destination) {
-        void conversationStore.refresh();
-        return;
-      }
-      void client
-        .assistantConversationForChat(id, abort.signal)
-        .then((destination) => {
-          if (live) conversationStore.select(destination);
-        })
-        .catch(() => undefined);
-    };
-    update();
-    const timer = setInterval(update, 3000);
-    const stop = onLive((news) => {
-      if (news.kind === "changed" && (!news.area || news.area === "assistant"))
-        update();
+    return waitingReply.follow(activeChatId, {
+      isActive: () => AppState.currentState === "active",
+      onNews: onLive,
+      onForeground: (update) => {
+        const subscription = AppState.addEventListener("change", (state) => {
+          if (state === "active") update();
+        });
+        return () => subscription.remove();
+      },
     });
-    return () => {
-      live = false;
-      abort.abort();
-      clearInterval(timer);
-      stop();
-      conversationStore.reset();
-    };
   }, [token, conversationEnabled, activeChatId, conversationStore]);
   useEffect(() => {
     const id = pendingReplyId.current ?? replyTargetRef.current?.id;
@@ -1220,6 +1178,11 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     acknowledgeConversation: conversationStore.acknowledge,
     replyTarget,
     replyStatus,
+    failedAnswers: failedAnswers.filter(
+      (answer) => answer.chatId === activeChatId,
+    ),
+    restoreFailedAnswer: waitingReply.restore,
+    canRestoreFailedAnswer: waitingReply.canRestore,
     selectExcerpt: (entry: AssistantConversationEntry, excerpt: string) => {
       const current = conversationStore
         .getSnapshot()

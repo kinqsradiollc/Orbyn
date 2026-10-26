@@ -6,6 +6,7 @@ import {
   isClosed,
   isLocalMidnight,
   itemData,
+  projectAssign,
   localDateKey,
   measureProgress,
   nextOccurrence,
@@ -42,6 +43,8 @@ import { carryEventNotes } from "./notes.js";
 import { inMyTeams, visibleItems, visibleOwned } from "../../lib/visibility.js";
 import { actAs } from "../../lib/actor.js";
 import { viaAgentColumn } from "../../lib/via-agent.js";
+import type { UserRow } from "../../lib/auth.js";
+import { requireProject } from "../projects/service.js";
 
 type Actor = { id: string; role: "admin" | "member" };
 
@@ -137,18 +140,16 @@ async function checkProjectPlacement(
     if (stageId) fail(422, "A stage needs a project.");
     return;
   }
-  const project = (
-    await db.query<{ user_id: string; team_id: string | null }>(
-      "SELECT user_id, team_id FROM projects WHERE id = $1",
-      [projectId],
-    )
-  ).rows[0];
-  if (
-    !project ||
-    project.team_id !== teamId ||
-    (!teamId && project.user_id !== actor.id)
-  )
-    fail(404, "Project not found");
+  // Hold the destination until commit: deleting a project/stage takes its
+  // parent FOR UPDATE before enumerating tasks, so new attachments cannot pass.
+  const project = await requireProject(
+    db,
+    projectId,
+    actor,
+    "items:write",
+    "key-share",
+  );
+  if (project.team_id !== teamId) fail(404, "Project not found");
   if (stageId) {
     const stage = await db.query(
       "SELECT 1 FROM project_stages WHERE id = $1 AND project_id = $2",
@@ -205,12 +206,49 @@ async function setMeasure(
   );
 }
 
-/** Lock an item row for the rest of the transaction, or 404. */
-export async function lockItem(db: Db, id: string): Promise<ItemRow> {
+/** Placement's parent locks precede task locks, including prelocking callers.
+ * Nonlocking reads discover candidates; the locked task is revalidated below.
+ * This helper acquires no authority: callers retain their existing access checks. */
+export async function lockItemProjects(
+  db: Db,
+  itemIds: readonly string[],
+  destinations: readonly (string | null | undefined)[] = [],
+): Promise<Set<string>> {
+  const current = itemIds.length
+    ? (
+        await db.query<{ project_id: string }>(
+          "SELECT DISTINCT project_id FROM items WHERE id=ANY($1::uuid[]) AND project_id IS NOT NULL",
+          [itemIds],
+        )
+      ).rows.map((row) => row.project_id)
+    : [];
+  const ids = [
+    ...new Set([
+      ...current,
+      ...destinations.filter((id): id is string => !!id),
+    ]),
+  ].sort();
+  if (ids.length)
+    await db.query(
+      "SELECT id FROM projects WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE",
+      [ids],
+    );
+  return new Set(ids);
+}
+
+/** Lock an item's current/destination parents before its row, or 404. */
+export async function lockItem(
+  db: Db,
+  id: string,
+  destinations: readonly (string | null | undefined)[] = [],
+): Promise<ItemRow> {
+  const projects = await lockItemProjects(db, [id], destinations);
   const item = (
     await db.query<ItemRow>("SELECT * FROM items WHERE id=$1 FOR UPDATE", [id])
   ).rows[0];
   if (!item) fail(404, "Item not found");
+  if (item.project_id && !projects.has(item.project_id))
+    fail(409, "This item's project changed. Refresh and try again.");
   return item;
 }
 
@@ -626,7 +664,7 @@ export type MutateOptions = {
    * (else its current time is). Its classes' notes move by as much.
    */
   editedFrom?: Date;
-  /** For a create: the project (and its stage) the new task starts in. */
+  /** For a create: validated fallback placement; explicit data fields take precedence. */
   place?: { project_id: string; stage_id: string | null };
 };
 
@@ -649,7 +687,11 @@ export async function mutate(
   await actAs(db, actor.id);
   let item: ItemRow | undefined;
   if (operation !== "create") {
-    item = await lockItem(db, item_id!);
+    item = await lockItem(
+      db,
+      item_id!,
+      operation === "update" ? [itemData.parse(action.data).project_id] : [],
+    );
     await requireItemAccess(actor, item, "items:write", db);
     if (item.version !== version)
       fail(409, "This item changed. Refresh and try again.");
@@ -707,9 +749,20 @@ export async function mutate(
     const parentId = d.parent_id ?? null;
     if (parentId)
       await checkParent(db, actor, parentId, null, d.team_id, actor.id);
-    const projectId = d.kind === "task" ? (d.project_id ?? null) : null;
-    const stageId = projectId ? (d.stage_id ?? null) : null;
-    if (d.kind !== "task" && (d.project_id || d.stage_id))
+    // Explicit data (including null) wins over the capture caller's fallback.
+    // A different explicit project cannot inherit the fallback project's stage.
+    const projectId =
+      d.project_id !== undefined
+        ? d.project_id
+        : (options.place?.project_id ?? null);
+    const stageId = projectId
+      ? d.stage_id !== undefined
+        ? d.stage_id
+        : projectId === options.place?.project_id
+          ? options.place.stage_id
+          : null
+      : null;
+    if (d.kind !== "task" && (projectId || stageId))
       fail(422, "Only tasks can be filed in projects.");
     await checkProjectPlacement(db, actor, d.team_id, projectId, stageId);
     const prefs = await loadPrefs(db, actor.id);
@@ -764,16 +817,11 @@ export async function mutate(
           alerts,
           parentId,
           createId ?? null,
-          options.place?.project_id ?? null,
-          options.place?.stage_id ?? null,
+          projectId,
+          stageId,
         ],
       )
     ).rows[0];
-    if (projectId)
-      await db.query(
-        "UPDATE items SET project_id = $2, stage_id = $3 WHERE id = $1",
-        [created.id, projectId, stageId],
-      );
     await setTags(db, created.id, tagIds);
     if (d.kind === "task") await setMeasure(db, created.id, d);
     // Only a task waits on anything; an event happens when it happens.
@@ -1234,6 +1282,186 @@ export async function setItemStatus(
     undefined,
     options,
   ))!;
+}
+
+/** Place an existing task through the canonical versioned mutation, inside the caller's transaction. */
+export async function setItemPlacement(
+  db: Db,
+  actor: UserRow,
+  itemId: string,
+  input: {
+    version: number;
+    project_id: string | null;
+    stage_id?: string | null;
+  },
+): Promise<Item> {
+  const placement = projectAssign.parse(input);
+  const row = await lockItem(db, itemId, [placement.project_id]);
+  await requireItemAccess(actor, row, "items:write", db);
+  if (row.version !== placement.version)
+    fail(409, "This item changed. Refresh and try again.");
+  if (row.kind !== "task") fail(422, "Only tasks can be filed in projects.");
+  if (placement.project_id) {
+    const project = await requireProject(
+      db,
+      placement.project_id,
+      actor,
+      "items:write",
+      "key-share",
+    );
+    if (project.team_id !== row.team_id)
+      fail(
+        422,
+        project.team_id
+          ? "Only this team's tasks can go into a team project."
+          : "Team tasks can only go into their team's projects.",
+      );
+  }
+  const iso = (value: Date | string | null) =>
+    value ? new Date(value).toISOString() : null;
+  return (await mutate(db, actor, {
+    operation: "update",
+    item_id: itemId,
+    version: placement.version,
+    data: itemData.parse({
+      title: row.title,
+      notes: row.notes,
+      kind: row.kind,
+      status: row.status,
+      priority: row.priority,
+      due_at: iso(row.due_at),
+      end_at: iso(row.end_at),
+      team_id: row.team_id,
+      project_id: placement.project_id,
+      ...(placement.stage_id === undefined
+        ? {}
+        : { stage_id: placement.stage_id }),
+    }),
+  }))!;
+}
+
+/**
+ * Derived changes from an authorized project/stage deletion, in its transaction.
+ * Unlike a user's placement choice, the deletion deliberately applies to current
+ * membership: lock and use each current version, never accept a stale snapshot.
+ * The parent lock excludes new attachments until the caller deletes the target.
+ */
+export async function clearDerivedItemPlacement(
+  db: Db,
+  actor: UserRow,
+  projectId: string,
+  removedStageIds?: readonly string[],
+): Promise<number> {
+  await requireProject(db, projectId, actor, "items:write");
+  const stages =
+    removedStageIds === undefined
+      ? undefined
+      : [...new Set(removedStageIds)].sort();
+  if (stages) {
+    if (!stages.length) return 0;
+    const found = await db.query(
+      "SELECT id FROM project_stages WHERE project_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE",
+      [projectId, stages],
+    );
+    if (found.rowCount !== stages.length)
+      fail(409, "These project stages changed. Refresh and try again.");
+  }
+  const rows = await db.query<ItemRow>(
+    `SELECT * FROM items WHERE kind='task' AND project_id=$1
+       ${stages ? "AND stage_id=ANY($2::uuid[])" : ""}
+       ORDER BY id FOR UPDATE`,
+    stages ? [projectId, stages] : [projectId],
+  );
+  for (const row of rows.rows) {
+    await setItemPlacement(db, actor, row.id, {
+      version: row.version,
+      project_id: stages ? projectId : null,
+      stage_id: null,
+    });
+  }
+  return rows.rowCount ?? 0;
+}
+
+export type ItemPlacementRestore = {
+  id: string;
+  project_id?: string;
+  stage_id?: string;
+  /** Expected version after the captured deletion's single cascade update. */
+  expectedVersion?: number;
+};
+
+/** Restore a snapshot's placement only while the task is still as the deletion left it. */
+export async function restoreDerivedItemPlacement(
+  db: Db,
+  actor: UserRow,
+  targets: readonly ItemPlacementRestore[],
+  /** Only versions produced by successful steps of this same undo transaction. */
+  undoVersions?: Map<string, number>,
+): Promise<{ restored: number; preserved: number }> {
+  const byId = new Map(targets.map((target) => [target.id, target]));
+  const stages = [
+    ...new Set(
+      targets.flatMap((target) => (target.stage_id ? [target.stage_id] : [])),
+    ),
+  ];
+  const stageProjects = new Map(
+    (
+      await db.query<{ id: string; project_id: string }>(
+        "SELECT id,project_id FROM project_stages WHERE id=ANY($1::uuid[])",
+        [stages],
+      )
+    ).rows.map((stage) => [stage.id, stage.project_id]),
+  );
+  const projects = await lockItemProjects(
+    db,
+    [...byId.keys()],
+    [...targets.map((target) => target.project_id), ...stageProjects.values()],
+  );
+  const rows = await db.query<ItemRow>(
+    "SELECT * FROM items WHERE id=ANY($1::uuid[]) AND kind='task' ORDER BY id FOR UPDATE",
+    [[...byId.keys()]],
+  );
+  let restored = 0;
+  let preserved = targets.length - rows.rows.length;
+  for (const row of rows.rows) {
+    if (row.project_id && !projects.has(row.project_id))
+      fail(409, "This item's project changed. Refresh and try again.");
+    const target = byId.get(row.id)!;
+    // Legacy snapshots cannot prove whether NULL came from deletion or a later deliberate unfile.
+    if (
+      target.expectedVersion === undefined ||
+      (row.version !== target.expectedVersion &&
+        undoVersions?.get(row.id) !== row.version)
+    ) {
+      preserved++;
+      continue;
+    }
+    const projectId =
+      row.project_id == null && target.project_id
+        ? target.project_id
+        : (row.project_id ?? null);
+    const stageId =
+      row.stage_id == null &&
+      target.stage_id &&
+      stageProjects.get(target.stage_id) === projectId
+        ? target.stage_id
+        : (row.stage_id ?? null);
+    if (
+      projectId === (row.project_id ?? null) &&
+      stageId === (row.stage_id ?? null)
+    ) {
+      preserved++;
+      continue;
+    }
+    const saved = await setItemPlacement(db, actor, row.id, {
+      version: row.version,
+      project_id: projectId,
+      stage_id: stageId,
+    });
+    undoVersions?.set(row.id, saved.version);
+    restored++;
+  }
+  return { restored, preserved };
 }
 
 export type Run = (text: string, values: unknown[]) => Promise<QueryResult>;

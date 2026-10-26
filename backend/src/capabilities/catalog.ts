@@ -41,15 +41,16 @@ const kindOf = (c: Capability) =>
  * The catalog's version: the date of the last change to any tool's
  * contract. Bump it (and add a CHANGELOG entry) with every change.
  */
-export const CATALOG_VERSION = "2026-09-28";
+export const CATALOG_VERSION = "2026-10-26";
 
 /**
  * How tools change (the versioning and deprecation policy), in the words
  * the developer page and docs/mcp.md use.
  */
 export const VERSIONING_POLICY = [
-  "Tools only change by adding. A tool is never renamed, an argument never changes its type or becomes required, and an answer only gains fields.",
-  "A new argument is always optional, and leaving it out behaves as before.",
+  "Tools change by adding, with the sole task_project version-omission exception announced below. Tool names and argument types stay stable; answers only gain fields.",
+  "A new argument is optional and omission retains its behavior, except for the announced task_project concurrency cutover below.",
+  "Exception announced 2026-10-26: link task_project version omission is deprecated for one deployment-wide 90-day window. Its fixed database deadline starts with migration 290; omission uses the locked current row version during that window, so it does not protect the caller against stale placement. At the deadline callers must supply their last-read version. REST placement already requires version.",
   'A tool that is going away is marked "Deprecated:" at the start of its description, with what to use instead, at least 90 days before it is removed. Removals are listed here and in the changelog first.',
   "Error codes and their meaning never change; new codes may be added.",
   "Every change to a tool, resource or prompt shows in docs/mcp-catalog.json, which CI compares with the code, and in this changelog. The catalog's version is the date of its last change.",
@@ -57,6 +58,13 @@ export const VERSIONING_POLICY = [
 
 /** What changed in the MCP server, newest first. */
 export const CHANGELOG: { date: string; changes: string[] }[] = [
+  {
+    date: "2026-10-26",
+    changes: [
+      "Task project concurrency cutover: link task_project accepts optional version now, retaining the caller's expected version whenever supplied. Versionless calls have a deployment-wide 90-day grace period from migration 290, then fail with INVALID and instructions to fetch and send version. During the grace period only, omission uses the current locked row version through canonical placement. REST remains version-required.",
+      "Operators must announce the deployment's persisted deadline to affected clients, monitor the content-free legacy use count/last-use timestamp, and retire every older server that ignores this policy before cutover. All replicas share the original system_settings deadline. Restart, configuration changes, migration reruns and rollback must not reset it or restore a versionless writer after expiry; retain the policy row. Missing or corrupt policy refuses legacy writes while explicit-version requests remain available.",
+    ],
+  },
   {
     date: "2026-09-28",
     changes: [

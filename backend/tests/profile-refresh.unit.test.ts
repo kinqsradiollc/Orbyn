@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import { PlannerItemStore } from "@orbyn/api-client";
 
 function mount(me: () => Promise<unknown>) {
   const effects: (() => (() => void) | void)[] = [];
@@ -25,6 +26,9 @@ function mount(me: () => Promise<unknown>) {
       refs.push(ref);
       return ref;
     },
+    useMemo: (fn: () => unknown) => fn(),
+    useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) =>
+      snapshot(),
     useCallback: (fn: unknown) => fn,
     useEffect: (fn: () => (() => void) | void) => effects.push(fn),
   };
@@ -43,22 +47,32 @@ function mount(me: () => Promise<unknown>) {
     exports,
     document: { visibilityState: "visible" },
     require: (id: string) =>
-      id === "react"
-        ? react
-        : id.endsWith("/api")
-          ? {
-              client: {
-                me,
-                listAllItems: async () => {
-                  throw new Error("Planner unavailable");
+      id === "@orbyn/api-client"
+        ? { PlannerItemStore }
+        : id === "react"
+          ? react
+          : id.endsWith("/api")
+            ? {
+                client: {
+                  me,
+                  listNotifications: async () => [],
+                  listTeams: async () => [],
+                  reconcileItems: async () => {
+                    throw new Error("Planner unavailable");
+                  },
                 },
-              },
-            }
-          : id.endsWith("/session")
-            ? { session: { get: () => "account-a", clear: () => {} } }
-            : id.endsWith("/errors")
-              ? { errorText: () => "Profile request failed" }
-              : {},
+              }
+            : id.endsWith("/session")
+              ? {
+                  session: {
+                    get: () => "account-a",
+                    binding: () => ({ token: "account-a", generation: 1 }),
+                    clear: () => {},
+                  },
+                }
+              : id.endsWith("/errors")
+                ? { errorText: () => "Profile request failed" }
+                : {},
     setTimeout: (fn: () => void) => {
       timers.push(fn);
       return timers.length;

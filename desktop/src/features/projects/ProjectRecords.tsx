@@ -225,8 +225,8 @@ function ProjectRecordsBody({
         kind: "task",
         title: record.title,
         team_id: project.team_id,
+        project_id: project.id,
       });
-      await client.setItemProject(task.id, { project_id: project.id });
       await client.updateWorkRecord(record.id, {
         version: record.version,
         linked_item_id: task.id,
