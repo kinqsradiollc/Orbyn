@@ -41,6 +41,16 @@ session-fenced cache writes prevent an older save from resurrecting that snapsho
 An unavailable cache purge reports its failure; native storage behavior still
 requires installed-device qualification.
 
+Expo web coordinates planner snapshot reads, writes and purges across cooperating
+same-origin runtimes with the exclusive `orbyn-planner-cache` Web Lock. The whole
+read/remove sequence holds that lock; a per-tab queue alone does not protect
+`localStorage`. Native AsyncStorage keeps its existing per-runtime queue.
+Without Web Locks, optional web snapshot caching is disabled: cache reads return
+no snapshot and writes/clears/purges leave the shared key untouched. Lock rejection
+has no unlocked fallback; purge errors remain visible while connected reads can
+continue. This does not disable the in-memory planner or server reads. Reload older
+Expo web tabs during rollout because older bundles do not acquire the lock.
+
 ## Mobile navigation and layout
 
 The bottom bar contains Today, Tasks, Calendar, Assistant and Workspace. Notifications are

@@ -763,9 +763,24 @@ enqueueing, and the full purge read/remove operation shares the same serializati
 queue as every cache write. Two additional controls pause an old write or purge
 read across logout/login and show that the new snapshot waits, then survives.
 All six cache controls pass. A generation-only skip can instead retain an older
-known-revoked snapshot. No product cache change was made for that claim. Separate
-runtimes with independent queues sharing storage are a different boundary; these
-single-runtime tests do not establish cross-tab safety.
+known-revoked snapshot. A separate cross-runtime check then reproduced actual
+cache loss with the installed AsyncStorage web adapter and core codec: one runtime
+read the old snapshot, another saved a fresh one, and the first removed the shared
+key. The same schedule lost the fresh snapshot in 20/20 real Chrome attempts with
+two independent same-origin frame contexts and synthetic session/platform adapters.
+
+Web cache reads, writes and complete purge transactions now acquire the same
+origin-scoped exclusive Web Lock, retaining the per-module queue and checking
+session generation after admission. Native queue/read behavior is unchanged.
+Missing Web Locks disables optional persistent web caching; rejected lock requests
+never fall back to unlocked shared storage access. Older open bundles must be
+reloaded during rollout. The focused cache suite passes 13/13, including the real
+installed adapter/codec, independent runtimes, lock absence/rejection and session
+transitions. The corrected Chrome schedule retained the fresh snapshot in 20/20
+attempts with no captured runtime exception. This is a focused browser storage
+fixture, not a full Expo UI or installed-native qualification. Production source
+cache changes address the confirmed cross-runtime race rather than adding the
+suggested generation-only skip.
 
 The initial full hosted backend run reported 5,409 passes, 11 failures and one
 skip. All 11 failures came from the compatibility suite's setup after an older
