@@ -4,6 +4,43 @@ The mobile app lives in `mobile/` and is the `@orbyn/mobile` workspace of the mo
 types, validation, and the API client with the web app through `@orbyn/core` and
 `@orbyn/api-client`.
 
+## Pending changes and account ownership
+
+Pending mobile commands are saved for the account that created them before sending.
+Signing out retains that account's pending work on the device; another account
+cannot see or send it. Signing back into the same account can resume it after
+current server permission checks. If a previous send has an unknown outcome,
+new credentials or an expired receipt window require checking the result before
+explicit retry, which can otherwise duplicate an already saved change. Attempted
+commands keep their payload and key; later edits receive a separate key.
+Sync & devices provides explicit discard;
+removing a local copy cannot undo a request already accepted by the server.
+
+An older queue has no verified account owner. Its original contents are preserved
+for recovery and excluded from normal lists and automatic sending. Sync & devices
+shows a generic held-changes notice and offers confirmed copy or discard. It does
+not automatically adopt those changes into the current account. Storage failures
+remain visible and block unsafe sending until retried.
+
+The queue and session formats must ship together. Rollback must keep their ownership
+and recovery behavior; arbitrary older binaries are unsupported. See the
+[architecture consolidation record](work/adr-architecture-consolidation.md#rollout-and-rollback-contract)
+for writer control and remaining native rollout qualification.
+
+## Planner refresh and cached access
+
+The shared item store begins with an authorized primary snapshot and uses
+best-effort incremental pages between reconciliations. Manual refresh, observed
+access changes and local write receipts force reconciliation; active connected
+polling schedules it at least every five minutes. Offline or failed requests
+retain valid data and retry, so the interval is not an offline freshness promise.
+Failed companion reads preserve their last successful values unless access has
+been revoked. Known team loss prunes items before awaiting storage/network work
+and removes the owner's saved snapshot if it contains lost teams. Serialized,
+session-fenced cache writes prevent an older save from resurrecting that snapshot.
+An unavailable cache purge reports its failure; native storage behavior still
+requires installed-device qualification.
+
 ## Mobile navigation and layout
 
 The bottom bar contains Today, Tasks, Calendar, Assistant and Workspace. Notifications are

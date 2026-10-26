@@ -653,16 +653,14 @@ export async function makeLineTasks(
   for (const line of lines) {
     const item = await mutate(db, u, {
       operation: "create",
-      data: itemFromLine(links.line(line.text).text, doc.team_id),
+      data: {
+        ...itemFromLine(links.line(line.text).text, doc.team_id),
+        ...(options.projectId
+          ? { project_id: options.projectId, stage_id: stage }
+          : {}),
+      },
     });
     if (!item) continue;
-    if (options.projectId) {
-      await db.query(
-        "UPDATE items SET project_id = $2, stage_id = $3 WHERE id = $1",
-        [item.id, options.projectId, stage],
-      );
-      item.project_id = options.projectId;
-    }
     await db.query(
       // Only unticked lines become tasks, so each starts unticked: what the
       // page last said for the line, which a save without X-Orbyn-Ticks-From

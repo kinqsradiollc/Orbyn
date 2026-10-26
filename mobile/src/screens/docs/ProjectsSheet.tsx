@@ -721,6 +721,16 @@ function ProjectsBody({
   const [failed, setFailed] = useState(false);
   /** The task whose stage is being chosen, if any. */
   const [moving, setMoving] = useState<string | null>(null);
+  const [placementRetry, setPlacementRetry] = useProjectState<{
+    itemId: string;
+    title: string;
+    version: number;
+    stageId: string | null;
+    unfile: boolean;
+  } | null>(open?.id, null);
+  const retryItem = placementRetry
+    ? items.find((item) => item.id === placementRetry.itemId)
+    : null;
   /**
    * A stage being named. `id` null means a new one. The desktop asks with
    * `prompt`, which a phone has not got, so the name is typed in place.
@@ -959,7 +969,30 @@ function ProjectsBody({
   const unfile = (item: Item) =>
     void run(async () => {
       if (!open || !canWriteIn(open.team_id)) return;
-      await client.setItemProject(item.id, { project_id: null });
+      try {
+        await client.setItemProject(item.id, {
+          project_id: null,
+          version: item.version,
+        });
+      } catch (error) {
+        if (
+          owns() &&
+          activeProject.current === open.id &&
+          (error as { status?: number }).status === 409
+        ) {
+          setPlacementRetry({
+            itemId: item.id,
+            title: item.title,
+            version: item.version,
+            stageId: null,
+            unfile: true,
+          });
+          onItemsChanged?.();
+        }
+        throw error;
+      }
+      if (!owns() || activeProject.current !== open.id) return;
+      setPlacementRetry(null);
       setMoving(null);
       onItemsChanged?.();
     });
@@ -972,10 +1005,31 @@ function ProjectsBody({
   const moveTo = (item: Item, stageId: string | null) =>
     void run(async () => {
       if (!open || !canWriteIn(open.team_id)) return;
-      await client.setItemProject(item.id, {
-        project_id: open.id,
-        stage_id: stageId,
-      });
+      try {
+        await client.setItemProject(item.id, {
+          version: item.version,
+          project_id: open.id,
+          stage_id: stageId,
+        });
+      } catch (error) {
+        if (
+          owns() &&
+          activeProject.current === open.id &&
+          (error as { status?: number }).status === 409
+        ) {
+          setPlacementRetry({
+            itemId: item.id,
+            title: item.title,
+            version: item.version,
+            stageId,
+            unfile: false,
+          });
+          onItemsChanged?.();
+        }
+        throw error;
+      }
+      if (!owns() || activeProject.current !== open.id) return;
+      setPlacementRetry(null);
       setMoving(null);
       onItemsChanged?.();
     });
@@ -1355,6 +1409,64 @@ function ProjectsBody({
       >
         <View style={sheet.column}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
+          {placementRetry && open && (
+            <View>
+              <Text style={styles.meta}>
+                “{placementRetry.title}” changed. Review its current placement
+                before retrying your saved choice:{" "}
+                {placementRetry.unfile
+                  ? "No project"
+                  : `${open.name} / ${open.stages.find((stage) => stage.id === placementRetry.stageId)?.name ?? "No stage"}`}
+                .
+              </Text>
+              {retryItem && (
+                <Text style={styles.meta}>
+                  Current placement:{" "}
+                  {retryItem.project_id === open.id
+                    ? `${open.name} / ${open.stages.find((stage) => stage.id === retryItem.stage_id)?.name ?? "No stage"}`
+                    : retryItem.project_id
+                      ? "Another project"
+                      : "No project"}
+                  .
+                </Text>
+              )}
+              <SmallAction
+                label="Retry saved move"
+                disabled={
+                  busy ||
+                  !canWriteIn(open.team_id) ||
+                  !retryItem ||
+                  retryItem.version <= placementRetry.version ||
+                  (!placementRetry.unfile &&
+                    !!retryItem.project_id &&
+                    retryItem.project_id !== open.id)
+                }
+                onPress={() => {
+                  if (!retryItem || retryItem.version <= placementRetry.version)
+                    return;
+                  if (placementRetry.unfile) unfile(retryItem);
+                  else moveTo(retryItem, placementRetry.stageId);
+                }}
+              />
+              {retryItem && onOpenItem && (
+                <SmallAction
+                  label="Open task"
+                  disabled={busy}
+                  onPress={() => onOpenItem(retryItem)}
+                />
+              )}
+              <SmallAction
+                label="Refresh tasks"
+                disabled={busy}
+                onPress={() => onItemsChanged?.()}
+              />
+              <SmallAction
+                label="Dismiss saved move"
+                disabled={busy}
+                onPress={() => setPlacementRetry(null)}
+              />
+            </View>
+          )}
           {failed && projects !== null && !open && draft === null && (
             <Button
               title="Retry projects"

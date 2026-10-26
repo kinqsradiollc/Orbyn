@@ -90,6 +90,7 @@ test("a test digest previews the day and needs a mail server", async () => {
   });
   assert.equal(hiddenTask.statusCode, 201, hiddenTask.body);
   await call("PUT", `/items/${hiddenTask.json().id}/project`, {
+    version: hiddenTask.json().version,
     project_id: hiddenProject.json().id,
   });
   await pool.query("UPDATE projects SET assistant_off = true WHERE id = $1", [

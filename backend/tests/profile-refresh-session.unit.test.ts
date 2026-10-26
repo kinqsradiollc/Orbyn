@@ -40,6 +40,10 @@ function refresh(platform: "desktop" | "mobile", variable = "refreshUser") {
     }).outputText,
     {
       tokenRef,
+      // The authenticated profile may bind a legacy mobile session. Keep the
+      // fixture's ownership decision tied to the same live token as the hook.
+      setSessionUser: async (_userId: string, expectedToken: string) =>
+        tokenRef.current === expectedToken,
       client: {
         updatePreferences: () => {
           calls++;

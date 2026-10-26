@@ -1375,6 +1375,27 @@ export function AssistantView({
                 Latest <ChevronDown size={14} aria-hidden="true" />
               </button>
             )}
+            {assistant.failedAnswers.map((answer) => (
+              <div key={answer.id} className="ai-reply-target" role="status">
+                <span>
+                  Answer draft: {answer.text}
+                  {!assistant.canRestoreFailedAnswer(answer.id) &&
+                    " · Clear your current draft and reply to restore this answer."}
+                </span>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={
+                    busy ||
+                    thinking ||
+                    !assistant.canRestoreFailedAnswer(answer.id)
+                  }
+                  onClick={() => assistant.restoreFailedAnswer(answer.id)}
+                >
+                  Restore answer
+                </button>
+              </div>
+            ))}
             {!!assistant.replyStatus && (
               <div className="ai-reply-target" role="status">
                 <span>

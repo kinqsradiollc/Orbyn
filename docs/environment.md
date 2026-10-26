@@ -38,6 +38,38 @@ Database credentials in URLs must be URL-encoded. Do not source an env file in a
 shell: values may contain shell syntax. Use dotenv-compatible syntax, and follow
 the deploy script's simple unquoted `KEY=value` format for deployment settings.
 
+## Architecture consolidation settings
+
+Merge these non-secret settings into existing `.env.production` and the server's
+active `.env` without replacing existing credentials or encryption keys:
+
+| Setting                          | Default | Upgrade behavior                                                                                                                                                                        |
+| -------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BOOKING_EMAIL_DELIVERY_ENABLED` | `true`  | The notifier sends committed booking email intents. Set `false` to pause delivery while retaining work.                                                                                 |
+| `ASSISTANT_ADMISSION_REVISION`   | `1`     | Must match the persisted admission policy on every claimer. Migration 294 seeds revision 1; after a policy change use the database's current revision. This is not a concurrency limit. |
+| `ASSISTANT_CONVERSATION_ENABLED` | `false` | Explicit rollout gate. Adding the variable does not enable unified conversation delivery; follow the [conversation cutover](deployment.md#unified-conversation-rollout-opt-in).         |
+
+Compose passes booking delivery and admission settings through its shared backend
+`env_file: .env`; the conversation flag is also explicitly interpolated. A private
+`.env.production` is a configuration source, not the file Compose containers load.
+Copy the reviewed file to the target as `.env`, then recreate affected services
+through the deployment procedure. Editing either file alone changes no running
+process. Keep the notifier and all assistant claimers on compatible code and
+policy revisions; the [operations guide](operations.md#assistant-admission-policy)
+describes the coordinated cutover.
+
+Compose supplies `DOC_LATEX_URL=http://latex:8000` and
+`DOC_PDF_URL=http://pdf:8000` for the API. These are internal service URLs, not
+public browser URLs; they need no private env override for Compose. Outside
+Compose, configure reachable renderer URLs explicitly. Leave
+`LEGACY_SECRET_CUTOVER` unset: it is a migration-only attestation, not a missing
+runtime setting.
+
+Planner reconciliation has no environment variable: the shared client store owns
+the active five-minute bound. Assistant ceilings remain 8 global / 4 interactive /
+2 background / 2 overnight in the persisted policy; fairness attribution is by
+team. Do not invent per-service env overrides for either contract.
+
 ## Client builds
 
 `VITE_*` and `EXPO_PUBLIC_*` values are visible to users. Put only public URLs and

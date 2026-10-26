@@ -1294,6 +1294,20 @@ export function AssistantComposer({
       {needsProject && (
         <WorkProjectPicker assistant={assistant} disabled={locked} />
       )}
+      {assistant.failedAnswers.map((answer) => (
+        <View key={answer.id} style={s.replyContext}>
+          <Text style={[shared.small, s.replyContextText]}>
+            Answer draft: {answer.text}
+            {!assistant.canRestoreFailedAnswer(answer.id) &&
+              " · Clear your current draft and reply to restore this answer."}
+          </Text>
+          <SmallAction
+            label="Restore answer"
+            disabled={locked || !assistant.canRestoreFailedAnswer(answer.id)}
+            onPress={() => assistant.restoreFailedAnswer(answer.id)}
+          />
+        </View>
+      ))}
       {!!assistant.replyStatus && (
         <View>
           <Text style={shared.small}>

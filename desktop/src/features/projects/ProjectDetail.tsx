@@ -205,6 +205,18 @@ function ProjectDetailBody({
     void client.recordRecent("project", project.id).catch(() => {});
   }, [project.id]);
   const [busy, setBusy] = useState(false);
+  const [placementRetry, setPlacementRetry] = useState<{
+    projectId: string;
+    itemId: string;
+    title: string;
+    version: number;
+    stageId: string | null;
+    unfile: boolean;
+  } | null>(null);
+  const retryItem =
+    placementRetry?.projectId === project.id
+      ? items.find((item) => item.id === placementRetry.itemId)
+      : null;
   const mutation = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -835,12 +847,25 @@ function ProjectDetailBody({
     setBusy(true);
     try {
       await client.setItemProject(item.id, {
+        version: item.version,
         project_id: project.id,
         stage_id: stageId,
       });
+      setPlacementRetry(null);
       onItemsChanged();
       return true;
     } catch (e) {
+      if ((e as { status?: number }).status === 409 && mounted.current) {
+        setPlacementRetry({
+          projectId: project.id,
+          itemId: item.id,
+          title: item.title,
+          version: item.version,
+          stageId,
+          unfile: false,
+        });
+        onItemsChanged();
+      }
       report(e);
       return false;
     } finally {
@@ -859,9 +884,25 @@ function ProjectDetailBody({
     mutation.current = true;
     setBusy(true);
     client
-      .setItemProject(item.id, { project_id: null })
-      .then(onItemsChanged)
-      .catch(report)
+      .setItemProject(item.id, { project_id: null, version: item.version })
+      .then(() => {
+        setPlacementRetry(null);
+        onItemsChanged();
+      })
+      .catch((error) => {
+        if ((error as { status?: number }).status === 409 && mounted.current) {
+          setPlacementRetry({
+            projectId: project.id,
+            itemId: item.id,
+            title: item.title,
+            version: item.version,
+            stageId: null,
+            unfile: true,
+          });
+          onItemsChanged();
+        }
+        report(error);
+      })
       .finally(() => {
         mutation.current = false;
         setBusy(false);
@@ -926,6 +967,64 @@ function ProjectDetailBody({
 
   return (
     <div className="project-detail">
+      {placementRetry?.projectId === project.id && (
+        <div role="status">
+          <p>
+            “{placementRetry.title}” changed. Review its current placement
+            before retrying your saved choice:{" "}
+            {placementRetry.unfile
+              ? "No project"
+              : `${project.name} / ${project.stages.find((stage) => stage.id === placementRetry.stageId)?.name ?? "No stage"}`}
+            .
+          </p>
+          {retryItem && (
+            <p>
+              Current placement:{" "}
+              {retryItem.project_id === project.id
+                ? `${project.name} / ${project.stages.find((stage) => stage.id === retryItem.stage_id)?.name ?? "No stage"}`
+                : retryItem.project_id
+                  ? "Another project"
+                  : "No project"}
+              .
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={
+              busy ||
+              !canWrite ||
+              !retryItem ||
+              retryItem.version <= placementRetry.version ||
+              (!placementRetry.unfile &&
+                !!retryItem.project_id &&
+                retryItem.project_id !== project.id)
+            }
+            onClick={() => {
+              if (!retryItem || retryItem.version <= placementRetry.version)
+                return;
+              if (placementRetry.unfile) unfile(retryItem);
+              else void moveTo(retryItem, placementRetry.stageId);
+            }}
+          >
+            Retry saved move
+          </button>
+          {retryItem && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onOpenItem(retryItem)}
+            >
+              Open task
+            </button>
+          )}
+          <button type="button" disabled={busy} onClick={onItemsChanged}>
+            Refresh tasks
+          </button>
+          <button type="button" onClick={() => setPlacementRetry(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
       {chatsOpen && onAskProject && (
         <ProjectEditorDialog
           title="Project chats"

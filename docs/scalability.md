@@ -21,13 +21,41 @@ process-local in-flight calls while durable ownership/checkpoints live in the da
 - **Separate services, one image.** `api`, `ai`, `status` and `notifier`
   run from the same backend image with different commands. Each scales on
   its own, and a slow AI provider cannot starve the planner API.
-- **Coordination through the database.** Reminder delivery claims work with
-  `FOR UPDATE SKIP LOCKED`, and status probing takes an advisory lock, so
-  running several notifier or status instances never double-sends or
-  double-records.
+- **Coordination through the database.** Delivery claims use row/advisory locks
+  to prevent concurrent owners; status probing also coordinates its work.
+  External SMTP acceptance can remain ambiguous after a crash. Booking mail
+  records uncertain delivery instead of blindly retrying, without promising
+  exactly-once delivery.
 - **Pooling everywhere.** Instances keep small pools (`DB_POOL_MAX`); PgBouncer
   multiplexes thousands of client connections onto a few dozen Postgres
   connections.
+
+## Consolidated ownership and current limits
+
+HTTP services have explicit composition roots while sharing their image, database,
+HTTP shell and coordinated migrations. This permits separate runtime scaling;
+it does not establish independent release or data ownership.
+
+The planner uses bounded best-effort deltas between primary repeatable-read
+snapshots, with a five-minute reconciliation interval while active/connected.
+Known access changes force reconciliation and prune revoked teams. Failed requests
+retain valid state and retry; offline intervals have no freshness guarantee.
+Bootstrap still collects the account's full visible item set, so SQL paging alone
+does not bound total response size or client memory.
+
+Synthetic local `app.inject` samples for `GET /items/reconcile` were 120,738 bytes
+for 100 items, 1,208,840 bytes for 1,000 and 6,052,840 bytes for 5,000. A repeated
+5,000-item sample varied from about 232 ms to 1.02 s in the shared test process.
+These establish fixture baselines, not production/native capacity, peak memory,
+percentiles or an agreed latency target.
+
+Assistant admission retains ceilings of 8 total, 4 interactive, 2 background and
+2 overnight. Compatible claimers check one persisted policy revision under the
+slot lock. Policy decreases drain existing leases; they do not kill work. Old
+claimers must be stopped or fenced at cutover. Budgets remain separate from slots.
+Fairness measurement is by team when scope is known, with private owners and
+unscoped jobs reported separately. No scheduler change, starvation bound or
+capacity increase follows from synthetic queue-age attribution fixtures.
 
 ## Topology
 

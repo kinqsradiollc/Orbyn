@@ -35,9 +35,19 @@ test("nothing imports from another module's routes: shared logic is a service", 
       .filter((path) => !path.startsWith("./"))
       .map((path) => `${rel} imports ${path}`),
   );
-  // The app assembles every module's routes; that is what routes are for.
+  // Only named composition roots assemble other modules' route plugins.
+  const compositionRoots = new Set([
+    "app.ts",
+    "services/api-app.ts",
+    "services/ai-app.ts",
+    "services/status-app.ts",
+    "services/realtime-app.ts",
+    "services/files-app.ts",
+    "services/mcp-app.ts",
+    "services/plugin-app.ts",
+  ]);
   assert.deepEqual(
-    reaching.filter((r) => !r.startsWith("app.ts ")),
+    reaching.filter((r) => !compositionRoots.has(r.split(" imports ")[0])),
     [],
     "Move what's shared into the module's service.ts and import that.",
   );

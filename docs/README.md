@@ -43,6 +43,15 @@ provider consent or external service setup describe those conditions in their gu
 | Deployment and recovery              | [Deployment](deployment.md), [scalability](scalability.md)                             | Deployment scripts, Compose and Kubernetes manifests                  |
 | Hosted planner usage                 | [Connector skill](agent-skill/orbyn/SKILL.md)                                          | Public tool contract, separate from developer-agent workflow          |
 
+## Architecture work
+
+- [Architecture consolidation](work/adr-architecture-consolidation.md) — accepted direction for
+  ownership boundaries, current and proposed topology diagrams, and a phased
+  migration plan. Queue ownership, placement, booking delivery, service
+  composition, shared assistant lifecycle, planner reconciliation and admission
+  policy have local implementation and verification evidence. Deployment and
+  installed-client acceptance remain open.
+
 These product references describe application behavior; changing development
 skills does not by itself change API routes, security controls or deployment.
 Current verification is attached to a specific candidate and task, never inferred

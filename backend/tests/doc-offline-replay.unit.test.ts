@@ -33,7 +33,11 @@ const source = readFileSync(
   "utf8",
 );
 const compiled = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+  compilerOptions: {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.CommonJS,
+    esModuleInterop: true,
+  },
 }).outputText;
 function fixture(
   offline = false,
@@ -41,7 +45,9 @@ function fixture(
 ) {
   const calls: { name: string; args: unknown[] }[] = [];
   const stored: string[] = [];
+  const disk = new Map<string, string>();
   const client = {
+    noteExternalMutation: () => {},
     getDocForEditor: async (docId: string) => {
       calls.push({ name: "owned-read", args: [docId] });
       return remote;
@@ -63,16 +69,35 @@ function fixture(
   };
   const modules: Record<string, unknown> = {
     "@react-native-async-storage/async-storage": {
-      getItem: async () => null,
+      getItem: async (key: string) => disk.get(key) ?? null,
       setItem: async (_key: string, value: string) => {
         if (write) await write(_key, value);
-        stored.push(value);
+        disk.set(_key, value);
+        if (_key === "orbyn-outbox-v2") stored.push(value);
       },
       removeItem: async () => {},
     },
+    "expo-crypto": {
+      CryptoDigestAlgorithm: { SHA256: "sha256" },
+      digestStringAsync: async () => "a".repeat(64),
+    },
     "@orbyn/core": core,
+    "@orbyn/api-client": {
+      OrbynClient: class {
+        constructor() {
+          return client;
+        }
+      },
+    },
     "./api": { client },
-    "./session": { session: { token: "fixture-account" } },
+    "./session": {
+      session: {
+        token: "fixture-account",
+        userId: "fixture-owner",
+        generation: 1,
+      },
+      subscribeSession: () => () => {},
+    },
     "./errors": { errorText: (e: unknown) => String(e) },
     "./pageCache": { rememberPage: async () => {} },
   };
@@ -82,6 +107,7 @@ function fixture(
     outboxState?: () => { entries: core.OutboxEntry[] };
   } = {};
   runInNewContext(compiled, {
+    JSON,
     exports,
     require: (name: string) => {
       if (!(name in modules)) throw new Error(`Unmocked module ${name}`);
@@ -127,8 +153,8 @@ test("offline page receipt waits for durable storage and rejects failed writes",
   await queued;
   assert.equal(settled, true);
   assert.equal(
-    (JSON.parse(f.stored[0])[0].op as { save: core.PageSave }).save.document
-      ?.format,
+    (JSON.parse(f.stored.at(-1)!).entries[0].op as { save: core.PageSave }).save
+      .document?.format,
     2,
   );
 
@@ -165,7 +191,7 @@ test("an interrupted owned write keeps the whole edit pending without invoking a
     save,
   );
   assert.deepEqual(
-    (JSON.parse(f.stored.at(-1)!)[0].op as { save: core.PageSave }).save
+    (JSON.parse(f.stored.at(-1)!).entries[0].op as { save: core.PageSave }).save
       .document,
     edited,
   );
@@ -187,7 +213,8 @@ test("persisting offline edits retains complete current and base trees, includin
   if (queued.type !== "doc.save") throw new Error("Wrong queue entry");
   assert.deepEqual(queued.save.document, edited);
   assert.deepEqual(queued.save.base.document, document);
-  const stored = JSON.parse(f.stored.at(-1)!) as core.OutboxEntry[];
+  const stored = JSON.parse(f.stored.at(-1)!)
+    .entries as core.OwnedOutboxEntry[];
   assert.equal(stored.length, 2);
   assert.deepEqual((stored[1].op as { save: core.PageSave }).save, save);
 });

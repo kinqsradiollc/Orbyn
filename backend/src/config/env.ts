@@ -32,6 +32,15 @@ const schema = z.object({
   PORT: z.coerce.number().default(8000),
   /** Deprecated: true is rejected by the notifier; use dedicated assistant services. */
   AI_RUNNER_IN_WORKER: z.enum(["true", "false"]).default("false"),
+  /** Expected shared admission policy revision; stale claimers fail closed. */
+  ASSISTANT_ADMISSION_REVISION: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(2147483647)
+    .default(1),
+  /** Pause only booking mail delivery; producers retain committed intents. */
+  BOOKING_EMAIL_DELIVERY_ENABLED: z.enum(["true", "false"]).default("true"),
   CORS_ORIGINS: z
     .string()
     .default("http://localhost:5173,http://localhost:8080"),

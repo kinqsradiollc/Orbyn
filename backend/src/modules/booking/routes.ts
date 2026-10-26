@@ -31,7 +31,8 @@ import { reader, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { authenticate, digest, type UserRow } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { encryptSecret } from "../../lib/secrets.js";
-import { emailEnabled, sendEmail } from "../../worker/channels/email.js";
+import { emailEnabled } from "../../worker/channels/email.js";
+import { queueBookingEmail } from "../../worker/booking-email.js";
 import { availableSlots, chooseHost, type PageRow } from "./availability.js";
 import {
   checkCoHosts,
@@ -492,19 +493,21 @@ export async function bookingRoutes(app: FastifyInstance) {
         ).rows[0];
         await logEvent(db, booking.id, "requested", { actor: "booker" });
         if (needsEmail) {
-          await sendEmail({
-            id: booking.id,
-            destination: d.email,
-            title: `Confirm your booking: ${page.title}`,
-            body: [
-              `Hi ${d.name},`,
-              `Please confirm ${page.title} with ${page.hosts.map((h) => h.name).join(", ")} on ${whenLabel(start, end, d.timezone)}:`,
-              appLink(`/book/confirm/${confirmToken}`),
-              "The time is held for 30 minutes.",
-              `To change or cancel it: ${appLink(`/book/manage/${manageToken}`)}`,
-            ].join("\n\n"),
-          }).catch(() =>
-            fail(502, "Couldn't send the confirmation email. Try again."),
+          await queueBookingEmail(
+            db,
+            booking.id,
+            {
+              destination: d.email,
+              title: `Confirm your booking: ${page.title}`,
+              body: [
+                `Hi ${d.name},`,
+                `Please confirm ${page.title} with ${page.hosts.map((h) => h.name).join(", ")} on ${whenLabel(start, end, d.timezone)}:`,
+                appLink(`/book/confirm/${confirmToken}`),
+                "The time is held for 30 minutes.",
+                `To change or cancel it: ${appLink(`/book/manage/${manageToken}`)}`,
+              ].join("\n\n"),
+            },
+            { expiresAt: booking.hold_until },
           );
         } else if (page.requires_approval)
           await awaitApproval(db, booking, page);

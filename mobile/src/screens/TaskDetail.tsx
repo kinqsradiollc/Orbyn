@@ -728,6 +728,12 @@ function useTaskDetailContent({
    * when a task is open, since events never belong to a project.
    */
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [placementRetry, setPlacementRetry] = useState<{
+    itemId: string;
+    projectId: string | null;
+    stageId?: string | null;
+    version: number;
+  } | null>(null);
   useEffect(() => {
     if (!active || item.kind !== "task" || readOnly) return;
     let alive = true;
@@ -754,10 +760,24 @@ function useTaskDetailContent({
     void run(async () => {
       const previous = detail;
       if (!previous) throw new Error("Reload task details first.");
-      const saved = await client.setItemProject(item.id, {
-        project_id: projectId,
-        ...(stageId === undefined ? {} : { stage_id: stageId }),
-      });
+      let saved: Awaited<ReturnType<typeof client.setItemProject>>;
+      try {
+        saved = await client.setItemProject(item.id, {
+          version: previous.version,
+          project_id: projectId,
+          ...(stageId === undefined ? {} : { stage_id: stageId }),
+        });
+      } catch (error) {
+        if (owns() && (error as { status?: number }).status === 409)
+          setPlacementRetry({
+            itemId: item.id,
+            projectId,
+            stageId,
+            version: previous.version,
+          });
+        throw error;
+      }
+      if (owns()) setPlacementRetry(null);
       if (!owns()) return null;
       // The write receipt is authoritative; context refresh is a separate read.
       const request = ++contextRead.current;
@@ -1538,6 +1558,31 @@ function useTaskDetailContent({
                   onChange={(id) => putInProject(project.id, id || null)}
                 />
               )}
+            </View>
+          )}
+          {placementRetry?.itemId === item.id && (
+            <View>
+              <Text style={shared.small}>
+                Task changed. Review its current placement before retrying your
+                saved choice:{" "}
+                {projects?.find((p) => p.id === placementRetry.projectId)
+                  ?.name ?? "No project"}
+                {placementRetry.stageId !== undefined &&
+                  ` / ${projects?.flatMap((p) => p.stages).find((stage) => stage.id === placementRetry.stageId)?.name ?? "No stage"}`}
+                .
+              </Text>
+              <SmallAction
+                label="Retry saved move"
+                disabled={locked || item.version <= placementRetry.version}
+                onPress={() =>
+                  putInProject(placementRetry.projectId, placementRetry.stageId)
+                }
+              />
+              <SmallAction
+                label="Dismiss saved move"
+                disabled={busy}
+                onPress={() => setPlacementRetry(null)}
+              />
             </View>
           )}
           {item.kind === "task" && !!onOpenPage && (

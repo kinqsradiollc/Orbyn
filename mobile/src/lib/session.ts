@@ -25,7 +25,7 @@ const store = {
       : SecureStore.deleteItemAsync(key),
 };
 
-/** Browser storage can be unavailable or full; neither should sign someone out. */
+/** Unavailable browser reads never establish an account identity. */
 function safeRead(key: string): string | null {
   try {
     return globalThis.localStorage?.getItem(key) ?? null;
@@ -35,35 +35,159 @@ function safeRead(key: string): string | null {
 }
 function safeWrite(key: string, value: string | null): void {
   try {
-    if (value === null) globalThis.localStorage?.removeItem(key);
-    else globalThis.localStorage?.setItem(key, value);
-  } catch {
-    // Nothing to do; the in-memory token still works for this session.
+    const storage = globalThis.localStorage;
+    if (!storage) {
+      if (key === SESSION_KEY)
+        throw new Error("Session storage is unavailable.");
+      return;
+    }
+    if (value === null) storage.removeItem(key);
+    else storage.setItem(key, value);
+  } catch (error) {
+    // Credential persistence/removal must report failure. Auxiliary preferences
+    // remain best effort, as before.
+    if (key === SESSION_KEY) throw error;
   }
 }
 
-/** In-memory copy of the session token so API calls never wait on storage. */
-export const session: { token: string } = { token: "" };
+/** A recoverable device-storage failure, bound to its own identity transition. */
+export class SessionStorageError extends Error {
+  constructor(
+    readonly generation: number,
+    operation: "save" | "clear",
+  ) {
+    super(
+      operation === "save"
+        ? "Couldn't save your sign-in on this device. Try signing in again before closing Orbyn."
+        : "Couldn't remove your sign-in from this device. Try signing out again before closing Orbyn.",
+    );
+    this.name = "SessionStorageError";
+  }
+}
 
-/** Restore the token into memory. Resolves with "" when signed out. */
+/** Live identity is confirmed only by login/register or an authenticated profile. */
+export const session = { token: "", userId: "", generation: 0 };
+const sessionListeners = new Set<() => void>();
+export function subscribeSession(listener: () => void) {
+  sessionListeners.add(listener);
+  return () => void sessionListeners.delete(listener);
+}
+
+function adopt(token: string, userId: string) {
+  session.token = token;
+  session.userId = userId;
+  const generation = ++session.generation;
+  for (const listener of sessionListeners) listener();
+  return generation;
+}
+
+// A started native write cannot be cancelled. Serialize later writes after it,
+// and skip queued work belonging to a session that has already been replaced.
+let sessionWrite: Promise<void> = Promise.resolve();
+function persistSession(epoch: number, value: string | null) {
+  const write = sessionWrite.then(async () => {
+    if (session.generation !== epoch) return;
+    if (value === null) await store.remove(SESSION_KEY);
+    else await store.set(SESSION_KEY, value);
+  });
+  sessionWrite = write.catch(() => undefined);
+  return write;
+}
+function encodedSession() {
+  return JSON.stringify({
+    version: 1,
+    token: session.token,
+    userId: session.userId,
+  });
+}
+function decodeSession(raw: string | null): { token: string; userId: string } {
+  if (!raw) return { token: "", userId: "" };
+  // Old installations stored the opaque token directly. Its account stays
+  // unidentified until /me succeeds; cached profile data is never identity proof.
+  if (!raw.trimStart().startsWith("{")) return { token: raw, userId: "" };
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (
+      value &&
+      typeof value === "object" &&
+      "version" in value &&
+      value.version === 1 &&
+      "token" in value &&
+      typeof value.token === "string" &&
+      value.token &&
+      "userId" in value &&
+      typeof value.userId === "string" &&
+      value.userId
+    )
+      return { token: value.token, userId: value.userId };
+  } catch {
+    // Corrupt or unsupported envelopes must not become opaque session tokens.
+  }
+  return { token: "", userId: "" };
+}
+
+/** Restore a session without overwriting a login/clear that happened while reading. */
 export async function loadSession() {
-  const token = (await store.get(SESSION_KEY)) || "";
-  session.token = token;
-  return token;
+  const epoch = session.generation;
+  await sessionWrite;
+  if (epoch !== session.generation) return session.token;
+  const restored = decodeSession(await store.get(SESSION_KEY));
+  if (
+    epoch === session.generation &&
+    (restored.token !== session.token || restored.userId !== session.userId)
+  )
+    adopt(restored.token, restored.userId);
+  return session.token;
 }
 
-export async function saveSession(token: string) {
-  await store.set(SESSION_KEY, token);
-  session.token = token;
+/** The caller supplies the server-confirmed identity from login/register. */
+export async function saveSession(token: string, userId: string) {
+  if (!token || !userId) throw new Error("A confirmed account is required.");
+  const epoch = adopt(token, userId);
+  await persistSession(epoch, encodedSession()).catch(() => {
+    throw new SessionStorageError(epoch, "save");
+  });
 }
 
-export async function clearSession() {
-  await store.remove(SESSION_KEY);
-  await store.remove(ASSISTANT_CHAT_KEY).catch(() => undefined);
-  await store.remove("orbyn-assistant-view-open").catch(() => undefined);
-  await saveSlackInstallation(null);
-  await saveTeamsInstallation(null);
-  session.token = "";
+/** Bind a restored legacy token only while that authenticated request still owns it. */
+export async function setSessionUser(userId: string, expectedToken: string) {
+  if (!userId || !expectedToken || session.token !== expectedToken)
+    return false;
+  if (session.userId) return session.userId === userId;
+  const epoch = adopt(expectedToken, userId);
+  await persistSession(epoch, encodedSession()).catch(() => {
+    throw new SessionStorageError(epoch, "save");
+  });
+  return session.generation === epoch;
+}
+
+/** Clear identity immediately; a late 401 must never clear a newer login. */
+export async function clearSession(expectedToken?: string) {
+  if (expectedToken !== undefined && session.token !== expectedToken)
+    return false;
+  const epoch = adopt("", "");
+  const removed = persistSession(epoch, null);
+  // Keep auxiliary cleanup in the same order as session persistence. Recheck
+  // ownership before each effect so an old clear cannot clean a new account.
+  const cleanup = sessionWrite.then(async () => {
+    for (const remove of [
+      () => store.remove(ASSISTANT_CHAT_KEY),
+      () => store.remove("orbyn-assistant-view-open"),
+      () => saveSlackInstallation(null),
+      () => saveTeamsInstallation(null),
+    ]) {
+      if (session.generation !== epoch) return;
+      await remove().catch(() => undefined);
+    }
+  });
+  sessionWrite = cleanup.catch(() => undefined);
+  try {
+    await removed;
+    await cleanup;
+  } catch {
+    throw new SessionStorageError(epoch, "clear");
+  }
+  return session.generation === epoch;
 }
 
 /** Remember the chat to reattach to after the app restarts. */

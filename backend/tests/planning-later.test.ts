@@ -571,6 +571,7 @@ test("milestones: their own dated list, rolling up their tasks' planned finish",
 
   // Leaving the project leaves the milestone; a task's deadline is never written.
   const moving = await call(owner.token, "PUT", `/items/${b.id}/project`, {
+    version: (await call(owner.token, "GET", `/items/${b.id}`)).body.version,
     project_id: other.id,
   });
   assert.equal(moving.status, 200, moving.raw.body);

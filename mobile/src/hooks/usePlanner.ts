@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { PlannerItemStore } from "@orbyn/api-client";
 import { AppState } from "react-native";
 import * as Notifications from "expo-notifications";
 import type {
@@ -15,11 +23,23 @@ import type {
 import { applyOutbox, dayBounds, isOfflineError } from "@orbyn/core";
 import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
-import { clearSession, loadSession, saveSession } from "../lib/session";
-import { clearCache, loadCache, saveCache } from "../lib/offlineCache";
+import {
+  clearSession,
+  loadSession,
+  saveSession,
+  session,
+  setSessionUser,
+  SessionStorageError,
+  subscribeSession,
+} from "../lib/session";
+import {
+  clearCache,
+  loadCache,
+  saveCache,
+  purgeCacheTeams,
+} from "../lib/offlineCache";
 import { clearPageCache, forgetLostTeams } from "../lib/pageCache";
 import {
-  clearOutbox,
   flush,
   loadOutbox,
   noteOffline,
@@ -57,9 +77,18 @@ export function usePlanner() {
   const [token, setToken] = useState("");
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [items, setItems] = useState<Item[]>([]);
+  const itemStore = useMemo(
+    () => new PlannerItemStore(client, () => session.generation),
+    [],
+  );
+  const items = useSyncExternalStore(
+    itemStore.subscribe,
+    itemStore.getSnapshot,
+  );
+  useEffect(() => subscribeSession(() => itemStore.reset()), [itemStore]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const knownTeams = useRef<Team[] | null>(null);
   const [lists, setLists] = useState<TaskList[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   /** Planned time by task ("Planned 9:15", status chips), for this day. */
@@ -77,7 +106,9 @@ export function usePlanner() {
   // Changes made offline and not sent yet, shown as if they had happened.
   const [outbox, setOutbox] = useState(outboxState);
   useEffect(() => {
-    void loadOutbox();
+    // The outbox publishes its storage error for Sync details; loading must
+    // not create an unhandled rejection while that recovery remains visible.
+    void loadOutbox().catch(() => {});
     return subscribeOutbox(setOutbox);
   }, []);
   const maintenanceSnapshot = useRef("null");
@@ -100,13 +131,15 @@ export function usePlanner() {
 
   const resetSession = () => {
     tokenRef.current = "";
+    refreshSeq.current++;
     void clearCache();
     void clearPageCache();
     clearGlance();
     setToken("");
-    setItems([]);
+    itemStore.reset();
     setNotices([]);
     setTeams([]);
+    knownTeams.current = null;
     setLists([]);
     setTags([]);
     setPlanned(null);
@@ -119,12 +152,20 @@ export function usePlanner() {
   /** Run a mutation with busy/error handling; a 401 clears the session. */
   const act = async (fn: () => Promise<void>) => {
     const owner = tokenRef.current;
+    const generation = session.generation;
     setBusy(true);
     setError("");
     try {
       await fn();
     } catch (e) {
-      if (tokenRef.current !== owner) return;
+      // This action may have advanced the generation itself. Its persistence
+      // failure belongs to that new generation, unless another login replaced it.
+      if (e instanceof SessionStorageError) {
+        if (e.generation === session.generation) setError(e.message);
+        return;
+      }
+      if (tokenRef.current !== owner || session.generation !== generation)
+        return;
       const status = (e as { status?: number }).status;
       // A 503 during maintenance carries the admin's message; show it as is
       // and bring the banner up without waiting for the next poll.
@@ -135,8 +176,17 @@ export function usePlanner() {
       );
       if (status === 503) void checkMaintenance();
       if (status === 401) {
-        await clearSession();
-        if (tokenRef.current === owner) resetSession();
+        try {
+          const cleared = await clearSession(owner);
+          if (cleared && !session.token && tokenRef.current === owner)
+            resetSession();
+        } catch (error) {
+          if (
+            error instanceof SessionStorageError &&
+            error.generation === session.generation
+          )
+            setError(error.message);
+        }
       }
     } finally {
       setBusy(false);
@@ -147,7 +197,6 @@ export function usePlanner() {
    * Reload planner data. With `animate`, rows that move, appear or disappear
    * (e.g. after ticking a checkbox) animate into their new places.
    */
-  const lastData = useRef("");
   /** The last planned feed and Today list, kept when a later load fails. */
   const kept = useRef<{ planned: PlannedFeed | null; today: TodayList | null }>(
     { planned: null, today: null },
@@ -158,19 +207,100 @@ export function usePlanner() {
     async (options?: {
       animate?: boolean;
       silent?: boolean;
+      force?: boolean;
       /** Sessions may have changed (news from another device): ask again. */
       planned?: boolean;
     }) => {
-      if (!token) return;
+      if (!token || session.token !== token || tokenRef.current !== token)
+        return;
+      let generation = session.generation;
       const seq = ++refreshSeq.current;
-      // Background refreshes never show the pull-to-refresh spinner.
+      let cacheFailed = false;
+      let cacheError: unknown;
+      const current = () =>
+        tokenRef.current === token &&
+        session.token === token &&
+        session.generation === generation &&
+        seq === refreshSeq.current;
       if (!options?.silent) setRefreshing(true);
       try {
-        const list = await client.listAllItems(500);
-        // Planned time and Today are asked for when something may have
-        // changed them: any refresh you asked for, news from another device,
-        // changed tasks, or a few minutes on (the day moves on). A quiet
-        // poll with nothing new reuses them, to spare the server.
+        // An opaque legacy token has no proven account for item/cache ownership.
+        let verified: User | undefined;
+        if (!session.userId) {
+          verified = await client.me();
+          if (!current() || !(await setSessionUser(verified.id, token))) return;
+          generation = session.generation;
+          if (!current()) return;
+          setUser(verified);
+        }
+        const companions = Promise.allSettled([
+          verified ? Promise.resolve(verified) : client.me(),
+          client.listNotifications(),
+          client.listLists(),
+          client.listTags(),
+        ] as const);
+        const [t] = await Promise.allSettled([client.listTeams()]);
+        if (!current()) return;
+        if (
+          t.status === "rejected" &&
+          (t.reason as { status?: number }).status === 401
+        )
+          throw t.reason;
+        if (t.status === "fulfilled") {
+          const ids = t.value.map((team) => team.id);
+          const lostAccess =
+            knownTeams.current?.some((team) => !ids.includes(team.id)) ||
+            itemStore
+              .getSnapshot()
+              .some((item) => item.team_id && !ids.includes(item.team_id));
+          knownTeams.current = t.value;
+          if (lostAccess) {
+            clearGlance();
+            setLists((current) =>
+              current.filter(
+                (list) => !list.team_id || ids.includes(list.team_id),
+              ),
+            );
+            setTags((current) =>
+              current.filter(
+                (tag) => !tag.team_id || ids.includes(tag.team_id),
+              ),
+            );
+            kept.current = { planned: null, today: null };
+            setPlanned(null);
+            setToday(null);
+            plannedAt.current = { at: 0, items: "" };
+          }
+          itemStore.restrictTeams(ids);
+          setTeams(t.value);
+          const purges = await Promise.allSettled([
+            purgeCacheTeams(ids),
+            forgetLostTeams(ids),
+          ]);
+          if (!current()) return;
+          const failed = purges.find((result) => result.status === "rejected");
+          if (failed?.status === "rejected") {
+            cacheFailed = true;
+            cacheError = failed.reason;
+          }
+        }
+        const scope =
+          t.status === "fulfilled"
+            ? JSON.stringify(
+                [...t.value].sort((a, b) => a.id.localeCompare(b.id)),
+              )
+            : null;
+        const [read] = await Promise.allSettled([
+          itemStore.refresh(
+            scope,
+            !!options?.force || !options?.silent,
+            t.status === "fulfilled"
+              ? t.value.map((team) => team.id)
+              : undefined,
+          ),
+        ]);
+        if (!current()) return;
+        const list = itemStore.getSnapshot();
         const itemsNow = JSON.stringify(list);
         const ask =
           !options?.silent ||
@@ -178,68 +308,103 @@ export function usePlanner() {
           itemsNow !== plannedAt.current.items ||
           Date.now() - plannedAt.current.at > PLANNED_EVERY_MS;
         const { from, to } = dayBounds(new Date());
-        const [u, n, t, l, g, p, d] = await Promise.all([
-          client.me(),
-          client.listNotifications(),
-          client.listTeams(),
-          // Older servers have no lists or tags; the planner works without them.
-          client.listLists().catch((): TaskList[] => []),
-          client.listTags().catch((): Tag[] => []),
-          // Nor planned time or a Today list: rows and Today do without, and
-          // a blip keeps what's on screen.
-          ask
-            ? client
-                .planned({ from: from.toISOString(), to: to.toISOString() })
-                .catch(() => kept.current.planned)
-            : kept.current.planned,
-          ask
-            ? client.today(deviceTimeZone()).catch(() => kept.current.today)
-            : kept.current.today,
+        const [[u, n, l, g], p, d] = await Promise.all([
+          companions,
+          Promise.allSettled([
+            ask
+              ? client.planned({
+                  from: from.toISOString(),
+                  to: to.toISOString(),
+                })
+              : Promise.resolve(kept.current.planned),
+          ]).then(([value]) => value),
+          Promise.allSettled([
+            ask
+              ? client.today(deviceTimeZone())
+              : Promise.resolve(kept.current.today),
+          ]).then(([value]) => value),
         ]);
-        if (ask) plannedAt.current = { at: Date.now(), items: itemsNow };
-        if (tokenRef.current !== token || seq !== refreshSeq.current) return;
-        // `now` moves on every call; it isn't a change.
-        const snapshot = JSON.stringify([
-          list,
-          u,
-          n,
-          t,
-          l,
-          g,
-          p,
-          d && { ...d, now: undefined },
-        ]);
-        // Nothing changed: skip the re-render entirely.
-        if (options?.silent && snapshot === lastData.current) return;
-        lastData.current = snapshot;
+        if (!current()) return;
+        for (const result of [u, n, t, l, g, p, d])
+          if (
+            result.status === "rejected" &&
+            (result.reason as { status?: number }).status === 401
+          )
+            throw result.reason;
+        if (u.status === "fulfilled") {
+          if (!(await setSessionUser(u.value.id, token)) || !current()) return;
+          setUser(u.value);
+        }
         if (options?.animate) animateLayout();
-        kept.current = { planned: p, today: d };
-        setItems(list);
-        setUser(u);
-        setNotices(n);
-        setTeams(t);
-        // Pages kept offline from a team they've left go (SHR-03).
-        void forgetLostTeams(t.map((x) => x.id));
-        setLists(l);
-        setTags(g);
-        setPlanned(p);
-        setToday(d);
-        // Keep a copy on the device for the next offline / cold start.
-        void saveCache({
-          items: list,
-          user: u,
-          notices: n,
-          teams: t,
-          lists: l,
-          tags: g,
-          planned: p,
-          today: d,
-        });
-        // Refresh the home-screen widget's glance (iOS only; no-ops elsewhere).
-        publishGlance(list);
+        if (n.status === "fulfilled") setNotices(n.value);
+        if (t.status === "fulfilled") {
+          setTeams(t.value);
+        }
+        const visibleTeamIds =
+          t.status === "fulfilled" ? t.value.map((team) => team.id) : null;
+        const visibleLists =
+          l.status === "fulfilled"
+            ? l.value.filter(
+                (list) =>
+                  !list.team_id ||
+                  !visibleTeamIds ||
+                  visibleTeamIds.includes(list.team_id),
+              )
+            : null;
+        const visibleTags =
+          g.status === "fulfilled"
+            ? g.value.filter(
+                (tag) =>
+                  !tag.team_id ||
+                  !visibleTeamIds ||
+                  visibleTeamIds.includes(tag.team_id),
+              )
+            : null;
+        if (visibleLists) setLists(visibleLists);
+        if (visibleTags) setTags(visibleTags);
+        if (p.status === "fulfilled") {
+          kept.current.planned = p.value;
+          setPlanned(p.value);
+        }
+        if (d.status === "fulfilled") {
+          kept.current.today = d.value;
+          setToday(d.value);
+        }
+        if (ask && p.status === "fulfilled" && d.status === "fulfilled")
+          plannedAt.current = { at: Date.now(), items: itemsNow };
+        // Never replace a complete offline snapshot with fabricated empty fields
+        // after a partial companion failure.
+        if (
+          !cacheFailed &&
+          read.status === "fulfilled" &&
+          u.status === "fulfilled" &&
+          n.status === "fulfilled" &&
+          t.status === "fulfilled" &&
+          l.status === "fulfilled" &&
+          g.status === "fulfilled" &&
+          p.status === "fulfilled" &&
+          d.status === "fulfilled"
+        ) {
+          void saveCache({
+            items: list,
+            user: u.value,
+            notices: n.value,
+            teams: t.value,
+            lists: visibleLists!,
+            tags: visibleTags!,
+            planned: p.value,
+            today: d.value,
+          });
+        }
+        if (read.status === "fulfilled") publishGlance(list);
+        if (read.status === "rejected") throw read.reason;
+        // Storage faults cannot block connected reads. Surface the fault only
+        // after fresh authorized state is visible, without persisting a snapshot.
+        if (cacheFailed) throw cacheError;
+        for (const result of [u, n, t, l, g, p, d])
+          if (result.status === "rejected") throw result.reason;
       } finally {
-        if (tokenRef.current === token && !options?.silent)
-          setRefreshing(false);
+        if (current() && !options?.silent) setRefreshing(false);
       }
     },
     [token],
@@ -250,8 +415,6 @@ export function usePlanner() {
     if (!token) return;
     const [l, g] = await Promise.all([client.listLists(), client.listTags()]);
     if (tokenRef.current !== token) return;
-    // The next background refresh compares against fresh data, not stale lists.
-    lastData.current = "";
     setLists(l);
     setTags(g);
   }, [token]);
@@ -260,6 +423,7 @@ export function usePlanner() {
     let alive = true;
     (async () => {
       const t = await loadSession();
+      const generation = session.generation;
       // Offline-first: show the last data we saved while the network loads
       // (or in its place, when there's no connection).
       //
@@ -270,11 +434,19 @@ export function usePlanner() {
       // app looking empty while the server has just answered.
       if (t) {
         const cached = await loadCache();
-        if (cached && alive) {
-          setItems(cached.items);
+        if (
+          cached &&
+          alive &&
+          session.token === t &&
+          session.generation === generation &&
+          session.userId &&
+          cached.user?.id === session.userId
+        ) {
+          itemStore.seed(cached.items);
           if (cached.user) setUser(cached.user);
           setNotices(cached.notices);
           setTeams(cached.teams);
+          knownTeams.current = cached.teams;
           setLists(cached.lists);
           setTags(cached.tags);
           // Planned time and Today too, still before the token (see above).
@@ -287,7 +459,10 @@ export function usePlanner() {
           setToday(cached.today ?? null);
         }
       }
-      if (alive) setToken(t);
+      if (alive && session.token === t && session.generation === generation) {
+        tokenRef.current = t;
+        setToken(t);
+      }
     })()
       .catch(() => alive && setError("Unable to restore your session"))
       .finally(() => alive && setReady(true));
@@ -302,17 +477,51 @@ export function usePlanner() {
     let timer: ReturnType<typeof setTimeout>;
     // Background refresh: no spinner, no busy state, and errors stay on
     // screen until a later refresh succeeds (then only its own error clears).
-    const background = async () => {
+    const background = async (force = false) => {
+      let generation = session.generation;
+      const current = () =>
+        alive &&
+        session.token === token &&
+        tokenRef.current === token &&
+        session.generation === generation;
+      if (!current()) return;
       void checkMaintenance();
-      // Anything made offline goes first, so the refresh below includes it.
-      await flush();
       try {
-        await refresh({ silent: true });
+        // Legacy opaque tokens cannot authorize queued work. Confirm identity
+        // from the server before the outbox can select an account-owned queue.
+        if (!session.userId) {
+          const profile = await client.me();
+          if (!current()) return;
+          if (!(await setSessionUser(profile.id, token))) return;
+          generation = session.generation;
+          if (!current()) return;
+          setUser(profile);
+        }
+        await flush();
+        if (!current()) return;
+        await refresh({ silent: true, force });
+        // refresh may itself confirm an unidentified session.
+        if (!alive || session.token !== token || tokenRef.current !== token)
+          return;
         noteOnline();
       } catch (e) {
+        if (e instanceof SessionStorageError) {
+          if (alive && e.generation === session.generation) setError(e.message);
+          return;
+        }
+        if (!current()) return;
         if ((e as { status?: number }).status === 401) {
-          await clearSession();
-          resetSession();
+          try {
+            const cleared = await clearSession(token);
+            if (cleared && !session.token && tokenRef.current === token)
+              resetSession();
+          } catch (error) {
+            if (
+              error instanceof SessionStorageError &&
+              error.generation === session.generation
+            )
+              setError(error.message);
+          }
           return;
         }
         // No connection isn't an error to show: the sync pill says so, and
@@ -326,17 +535,23 @@ export function usePlanner() {
         errorText(e, "Refreshing the planner");
       }
     };
-    whenSent(() => void refresh({ silent: true }).catch(() => {}));
+    whenSent(() => {
+      if (alive && session.token === token) void background(true);
+    });
     const loop = async () => {
       if (AppState.currentState === "active") await background();
-      if (alive) timer = setTimeout(loop, 30000);
+      if (alive)
+        timer = setTimeout(
+          loop,
+          Math.max(1, Math.min(30000, itemStore.nextReconcileIn() || 30000)),
+        );
     };
     void loop();
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") void background();
+      if (state === "active") void background(true);
     });
     const notification = Notifications.addNotificationReceivedListener(() => {
-      void background();
+      void background(true);
     });
     return () => {
       alive = false;
@@ -355,6 +570,8 @@ export function usePlanner() {
     code,
     acceptTerms,
   }: SignInInput): Promise<boolean> => {
+    // A response from an earlier sign-in must not replace a newer session.
+    const startingGeneration = session.generation;
     // Clean values: no stray spaces, and a blank name means the default.
     const address = email.trim();
     let result;
@@ -380,8 +597,14 @@ export function usePlanner() {
       }
       throw e;
     }
+    if (session.generation !== startingGeneration) return false;
     setTwoFactorRequired(false);
-    await saveSession(result.token);
+    const saving = saveSession(result.token, result.user.id);
+    const generation = session.generation;
+    await saving;
+    if (session.generation !== generation || session.token !== result.token)
+      return false;
+    itemStore.reset();
     tokenRef.current = result.token;
     setToken(result.token);
     setUser(result.user);
@@ -390,13 +613,28 @@ export function usePlanner() {
 
   const signOut = () =>
     act(async () => {
+      const owner = session.token;
+      const generation = session.generation;
+      const current = () =>
+        session.token === owner && session.generation === generation;
+      // A previous removal failed after pausing the live identity. Retry only
+      // local cleanup; the retained UI keeps this action and its error visible.
+      if (!owner) {
+        const cleared = await clearSession("");
+        if (cleared && !session.token) resetSession();
+        return;
+      }
       await disablePush();
+      if (!current()) return;
       // This phone leaves presence while the session can still say so.
       await client.leavePresence(deviceId()).catch(() => {});
+      if (!current()) return;
       await client.logout();
-      await clearOutbox();
-      await clearSession();
-      resetSession();
+      if (!current()) return;
+      // Pending work stays with its account. Discard is an explicit Sync action.
+      const cleared = await clearSession(owner);
+      if (cleared && !session.token && tokenRef.current === owner)
+        resetSession();
     });
 
   // Tell the server which zone this phone is in, once per sign-in, so what
@@ -412,10 +650,12 @@ export function usePlanner() {
   /** Forget this sign-in on the phone only: the account is already gone. */
   const forgetSession = () =>
     act(async () => {
-      await disablePush().catch(() => {});
-      await clearOutbox();
-      await clearSession();
-      resetSession();
+      const owner = session.token;
+      const generation = session.generation;
+      if (owner) await disablePush().catch(() => {});
+      if (session.token !== owner || session.generation !== generation) return;
+      const cleared = await clearSession(owner);
+      if (cleared && !session.token) resetSession();
     });
 
   /** Re-read the signed-in user, e.g. after confirming their email. */
@@ -425,7 +665,12 @@ export function usePlanner() {
       if (!owner) return;
       try {
         const profile = await client.me();
-        if (tokenRef.current === owner) setUser(profile);
+        if (tokenRef.current !== owner) return;
+        if (
+          (await setSessionUser(profile.id, owner)) &&
+          tokenRef.current === owner
+        )
+          setUser(profile);
       } catch (error) {
         if (tokenRef.current === owner) throw error;
       }

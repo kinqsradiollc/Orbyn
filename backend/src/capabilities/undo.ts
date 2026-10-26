@@ -588,7 +588,7 @@ export async function runUndo(
             .filter((t): t is string => typeof t === "string"),
         );
         for (const t of teams) await requireTeam(t, u, "items:write", db);
-        if (!(await restoreSnapshot(db, op))) changedSince();
+        if (!(await restoreSnapshot(db, op, u, carry))) changedSince();
         break;
       }
       case "suggestions.delete":

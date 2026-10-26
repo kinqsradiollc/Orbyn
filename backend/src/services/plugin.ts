@@ -1,5 +1,5 @@
 import { startPluginAiWorker } from "../modules/plugin/inference-worker.js";
-import { buildPluginService } from "../app.js";
+import { buildPluginService } from "./plugin-app.js";
 import { env } from "../config/env.js";
 import { startService } from "./http.js";
 

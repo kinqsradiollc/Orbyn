@@ -15,6 +15,8 @@ const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
 const { decryptSecret } = await import("../src/lib/secrets.js");
+const { deliverBookingEmailOne } =
+  await import("../src/worker/booking-email.js");
 const { addDays, localDateKey, dayTime, colors } = await import("@orbyn/core");
 const app = await buildApp();
 
@@ -580,4 +582,122 @@ test("hosts track every booking in one inbox", async () => {
     lines.some((l) => l.includes("Rita Moreno") && l.includes("Wants pricing")),
   );
   assert.equal((await call(null, "GET", "/bookings/export.csv")).status, 401);
+});
+
+test("SMTP-enabled public verification is a committed encrypted intent and expires with its hold", async () => {
+  const host = await newUser();
+  const page = await newPage(host.token);
+  const first = (await slots(page.slug, 4))[0];
+  assert.ok(first);
+  await pool.query(
+    `INSERT INTO system_settings(key,value) VALUES('smtp',$1::jsonb)
+    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,
+    [
+      JSON.stringify({
+        host: "127.0.0.1",
+        port: 1,
+        secure: false,
+        user: "",
+        from: "fixture@example.invalid",
+      }),
+    ],
+  );
+  invalidateSettings();
+  try {
+    // No SMTP listener exists. The old inline path would fail instead of 201.
+    const r = await book(page.slug, first);
+    assert.equal(r.status, 201, r.raw.body);
+    const b = (
+      await pool.query("SELECT * FROM bookings WHERE id=$1", [r.body.id])
+    ).rows[0];
+    assert.equal(b.status, "pending");
+    assert.ok(b.confirm_token_hash);
+    const intent = (
+      await pool.query(
+        "SELECT * FROM booking_email_outbox WHERE booking_id=$1",
+        [b.id],
+      )
+    ).rows[0];
+    assert.equal(intent.state, "pending");
+    assert.equal(intent.expires_at.toISOString(), b.hold_until.toISOString());
+    const plain = JSON.parse(await decryptSecret(intent.payload_encrypted));
+    assert.match(plain.body, /\/book\/confirm\//);
+    assert.match(plain.body, /\/book\/manage\//);
+    assert.equal(JSON.stringify(intent).includes("/book/confirm/"), false);
+    await pool.query(
+      "UPDATE booking_email_outbox SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [intent.id],
+    );
+    await deliverBookingEmailOne({
+      enabled: async () => true,
+      send: async (mail) => {
+        assert.notEqual(mail.id, intent.id);
+      },
+    });
+    assert.equal(
+      (
+        await pool.query("SELECT state FROM booking_email_outbox WHERE id=$1", [
+          intent.id,
+        ])
+      ).rows[0].state,
+      "superseded",
+    );
+  } finally {
+    await pool.query("DELETE FROM system_settings WHERE key='smtp'");
+    invalidateSettings();
+  }
+});
+
+test("commit failure removes public verification intent and booking together", async () => {
+  const host = await newUser();
+  const page = await newPage(host.token);
+  const first = (await slots(page.slug, 5))[0];
+  assert.ok(first);
+  // A deferred fixture fails after the handler has enqueued verification, at
+  // COMMIT. It exists only in this isolated marker-verified test database.
+  await pool.query(`CREATE FUNCTION fixture_booking_mail_commit_failure() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN IF NEW.email='rollback-mail@example.invalid' THEN RAISE EXCEPTION 'synthetic booking commit failure'; END IF; RETURN NEW; END $$;
+    CREATE CONSTRAINT TRIGGER fixture_booking_mail_commit_failure AFTER INSERT ON bookings
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fixture_booking_mail_commit_failure()`);
+  await pool.query(
+    `INSERT INTO system_settings(key,value) VALUES('smtp',$1::jsonb)
+    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,
+    [
+      JSON.stringify({
+        host: "127.0.0.1",
+        port: 1,
+        secure: false,
+        user: "",
+        from: "fixture@example.invalid",
+      }),
+    ],
+  );
+  invalidateSettings();
+  try {
+    const r = await book(page.slug, first, {
+      email: "rollback-mail@example.invalid",
+    });
+    assert.equal(r.status, 500, r.raw.body);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM bookings WHERE email='rollback-mail@example.invalid'",
+        )
+      ).rows[0].n,
+      0,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM booking_email_outbox WHERE booking_id IN (SELECT id FROM bookings WHERE email='rollback-mail@example.invalid')",
+        )
+      ).rows[0].n,
+      0,
+    );
+  } finally {
+    await pool.query(
+      "DROP TRIGGER fixture_booking_mail_commit_failure ON bookings; DROP FUNCTION fixture_booking_mail_commit_failure(); DELETE FROM system_settings WHERE key='smtp'",
+    );
+    invalidateSettings();
+  }
 });

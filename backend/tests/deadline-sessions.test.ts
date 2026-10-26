@@ -381,6 +381,7 @@ test("each session carries its deadline, its number of all your sessions and the
     estimate_minutes: 240,
   });
   const filed = await call(me.token, "PUT", `/items/${t.id}/project`, {
+    version: t.version,
     project_id: project.body.id,
   });
   assert.equal(filed.status, 200, filed.raw.body);
@@ -509,6 +510,7 @@ test("a task's sessions can be read on their own, and reading them makes no plan
     estimate_minutes: 240,
   });
   await call(me.token, "PUT", `/items/${t.id}/project`, {
+    version: t.version,
     project_id: project.body.id,
   });
   await session(me.token, t.id, local(-1, 9, 15));

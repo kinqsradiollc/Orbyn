@@ -314,6 +314,8 @@ export const reviewChange = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("link.remove"),
     kind: z.enum(["depends_on", "doc_task", "project"]),
+    /** Legacy proposals remain readable, but project unlink requires a captured version to apply. */
+    version: z.number().int().positive().optional(),
     from_id: id,
     to_id: id,
     title,

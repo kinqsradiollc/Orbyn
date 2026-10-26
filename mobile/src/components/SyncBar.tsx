@@ -21,12 +21,19 @@ export function SyncBar({
 }) {
   const waiting = outbox.entries.filter((e) => e.state === "pending").length;
   const needs = outbox.entries.filter((e) => e.state === "failed").length;
-  if (!waiting && !needs && !outbox.offline) return null;
-  const text = needs
-    ? `${needs} ${needs === 1 ? "change needs" : "changes need"} you`
-    : waiting
-      ? `${outbox.offline ? "Offline · " : ""}${waiting} ${waiting === 1 ? "change" : "changes"} ${outbox.sending ? "sending…" : "waiting to sync"}`
-      : "Offline · showing what was saved on this phone";
+  const attention = needs > 0 || !!outbox.recovery || !!outbox.storageError;
+  if (!waiting && !attention && !outbox.offline) return null;
+  const text = outbox.storageError
+    ? "Saved changes need attention"
+    : outbox.recovery
+      ? outbox.recovery.count > 0
+        ? `${outbox.recovery.count} saved ${outbox.recovery.count === 1 ? "change" : "changes"} held · review`
+        : "Saved changes held · review"
+      : needs
+        ? `${needs} ${needs === 1 ? "change needs" : "changes need"} you`
+        : waiting
+          ? `${outbox.offline ? "Offline · " : ""}${waiting} ${waiting === 1 ? "change" : "changes"} ${outbox.sending ? "sending…" : "waiting to sync"}`
+          : "Offline · showing what was saved on this phone";
   return (
     <Pressable
       accessibilityRole="button"
@@ -34,16 +41,16 @@ export function SyncBar({
       onPress={onOpen}
       style={({ pressed }) => [
         s.bar,
-        needs > 0 && s.needs,
+        attention && s.needs,
         pressed && { opacity: 0.8 },
       ]}
     >
       <Icon
-        name={outbox.offline ? "cloudOff" : needs ? "alert" : "refreshCw"}
+        name={attention ? "alert" : outbox.offline ? "cloudOff" : "refreshCw"}
         size={15}
-        color={needs ? colors.danger : colors.accent}
+        color={attention ? colors.danger : colors.accent}
       />
-      <Text style={[s.text, needs > 0 && s.needsText]}>{text}</Text>
+      <Text style={[s.text, attention && s.needsText]}>{text}</Text>
       <Icon name="chevronRight" size={15} color={colors.muted} />
     </Pressable>
   );

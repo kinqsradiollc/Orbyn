@@ -31,6 +31,8 @@ export const EXCLUSION_REASONS = {
   caldav: "CalDAV for calendar apps, signed in with a personal API key.",
   editor_sync:
     "Binary synchronization and capability-negotiated document editor transport are interactive client protocols; connected agents use typed page capabilities instead.",
+  planner_sync:
+    "Whole-account snapshot reconciliation is an interactive planner protocol; connected agents use scoped query and fetch capabilities instead of mirroring the client cache.",
   stream: "Long-lived event streams (subscriptions/listen arrives in phase 6).",
   mcp: "The MCP address itself.",
   device:
@@ -381,6 +383,7 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "GET /items/reconcile": "planner_sync",
   "GET /docs/:id/content": "editor_sync",
   "PUT /docs/:id/content": "editor_sync",
   "GET /agent-channels/slack": "credentials",

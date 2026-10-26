@@ -26,7 +26,7 @@ import {
   type QuickAddCreated,
   type QuickAddResult,
 } from "@orbyn/core";
-import { pool, reader, transaction } from "../../db/pool.js";
+import { pool, reader, readTransaction, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
@@ -146,6 +146,47 @@ const scoreOf = (i: ScoreRow, now: Date, slot: number) => {
 };
 
 export async function itemRoutes(app: FastifyInstance) {
+  // Authoritative full reconciliation. Bounded pages share one primary snapshot;
+  // deltas remain an optimization between periodic reconciliations, not a
+  // commit-ordered change stream. No user-supplied filter may narrow this set.
+  app.get("/items/reconcile", async (r) => {
+    const u = await authenticate(r);
+    return readTransaction(
+      async (db) => {
+        // Transaction start precedes the first item page. Clients overlap this
+        // timestamp when resuming legacy deltas; it is not a lossless watermark.
+        const at = (
+          await db.query<{ at: Date }>("SELECT transaction_timestamp() AS at")
+        ).rows[0].at;
+        const items: (ScoreRow & Record<string, unknown>)[] = [];
+        let offset = 0;
+        let slot: number | null = null;
+        for (;;) {
+          const page = (
+            await db.query<ScoreRow & Record<string, unknown>>(
+              `SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM}
+           WHERE ${visibleItems()}
+           ORDER BY i.created_at DESC, i.id LIMIT 500 OFFSET $2`,
+              [u.id, offset],
+            )
+          ).rows;
+          if (
+            slot === null &&
+            page.some((i) => i.kind === "task" && !isClosed(i.status))
+          )
+            slot = await largestFreeMinutes(db, u.id, at);
+          items.push(
+            ...page.map((i) => ({ ...i, score: scoreOf(i, at, slot ?? 0) })),
+          );
+          if (page.length < 500) break;
+          offset += page.length;
+        }
+        return { items, updated_after: at.toISOString() };
+      },
+      { primary: true, isolation: "repeatable read" },
+    );
+  });
+
   app.get("/items", async (r) => {
     const u = await authenticate(r);
     const q = itemsQuery.parse(r.query);

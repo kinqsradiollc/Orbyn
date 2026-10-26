@@ -1,4 +1,10 @@
-import type { Queryable } from "../db/pool.js";
+import type { Db } from "../db/pool.js";
+import type { UserRow } from "../lib/auth.js";
+import { audit } from "../lib/audit.js";
+import {
+  restoreDerivedItemPlacement,
+  type ItemPlacementRestore,
+} from "../modules/items/service.js";
 
 /**
  * Keeping what an agent deleted, so Undo can bring it back: before a
@@ -148,15 +154,31 @@ export type Snapshot = {
   relink: { table: string; column: string; value: string; ids: string[] }[];
   /** Deleted tasks, so sync stops reporting them gone. */
   items: string[];
+  /** Task versions before a project/stage deletion; its derived change increments each once. */
+  placementVersions?: Record<string, number>;
 };
 
 /** Copy what deleting `ids` (of one kind) would take away. */
 export async function snapshot(
-  db: Queryable,
+  db: Db,
   kind: SnapshotKind,
   ids: string[],
 ): Promise<Snapshot> {
   const spec: Spec = SNAPSHOT_SPECS[kind];
+  if (kind === "project" || kind === "stage") {
+    // Capture and deletion share a transaction. Hold parent and task locks so
+    // the expected +1 can only be the deletion's derived change, not a newer unfile.
+    await db.query(
+      kind === "project"
+        ? "SELECT id FROM projects WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE"
+        : "SELECT p.id FROM projects p WHERE p.id IN (SELECT project_id FROM project_stages WHERE id=ANY($1::uuid[])) ORDER BY p.id FOR UPDATE",
+      [ids],
+    );
+    await db.query(
+      `SELECT id FROM items WHERE kind='task' AND ${kind === "project" ? "project_id" : "stage_id"}=ANY($1::uuid[]) ORDER BY id FOR UPDATE`,
+      [ids],
+    );
+  }
   const main = spec.tree
     ? (
         await db.query<{ row: Record<string, unknown> }>(
@@ -198,16 +220,20 @@ export async function snapshot(
     if (data.length) rows.push({ table, data });
   }
   const relink: Snapshot["relink"] = [];
+  const placementVersions: Record<string, number> = {};
   const pointAt = async (table: string, column: string, values: string[]) => {
     const found = (
-      await db.query<{ id: string; value: string }>(
-        `SELECT id::text, ${column}::text AS value FROM ${table}
+      await db.query<{ id: string; value: string; version?: number }>(
+        `SELECT id::text, ${column}::text AS value ${table === "items" && (column === "project_id" || column === "stage_id") ? ", version" : ""} FROM ${table}
           WHERE ${column} = ANY ($1::uuid[])`,
         [values],
       )
     ).rows;
     const by = new Map<string, string[]>();
-    for (const f of found) by.set(f.value, [...(by.get(f.value) ?? []), f.id]);
+    for (const f of found) {
+      by.set(f.value, [...(by.get(f.value) ?? []), f.id]);
+      if (f.version !== undefined) placementVersions[f.id] = f.version;
+    }
     for (const [value, list] of by)
       relink.push({ table, column, value, ids: list });
   };
@@ -218,7 +244,12 @@ export async function snapshot(
       ?.data.map((s) => String(s.id));
     if (stages?.length) await pointAt("items", "stage_id", stages);
   }
-  return { rows, relink, items: kind === "item" ? all : [] };
+  return {
+    rows,
+    relink,
+    items: kind === "item" ? all : [],
+    ...(Object.keys(placementVersions).length ? { placementVersions } : {}),
+  };
 }
 
 /**
@@ -226,8 +257,10 @@ export async function snapshot(
  * rows that no longer fit (what they pointed at is gone) are left out.
  */
 export async function restoreSnapshot(
-  db: Queryable,
+  db: Db,
   s: Snapshot,
+  actor: UserRow,
+  undoVersions?: Map<string, number>,
 ): Promise<boolean> {
   const [main, ...children] = s.rows;
   if (!main || !TABLES.has(main.table)) return false;
@@ -262,13 +295,64 @@ export async function restoreSnapshot(
       }
     }
   }
+  const placement = new Map<string, ItemPlacementRestore>();
   for (const r of s.relink) {
     if (!RELINKS.has(`${r.table}.${r.column}`)) continue;
+    if (
+      r.table === "items" &&
+      (r.column === "project_id" || r.column === "stage_id")
+    ) {
+      for (const id of r.ids) {
+        const before = s.placementVersions?.[id];
+        const target = placement.get(id) ?? {
+          id,
+          ...(typeof before === "number" &&
+          Number.isSafeInteger(before) &&
+          before > 0 &&
+          before < Number.MAX_SAFE_INTEGER
+            ? { expectedVersion: before + 1 }
+            : {}),
+        };
+        target[r.column] = r.value;
+        placement.set(id, target);
+      }
+      continue;
+    }
     await db.query(
       `UPDATE ${r.table} SET ${r.column} = $1::uuid
         WHERE id = ANY ($2::uuid[]) AND ${r.column} IS NULL`,
       [r.value, r.ids],
     );
+  }
+  if (placement.size) {
+    const carried = new Map<string, number>();
+    for (const id of placement.keys()) {
+      const version = undoVersions?.get(`item:${id}`);
+      if (version !== undefined) carried.set(id, version);
+    }
+    const result = await restoreDerivedItemPlacement(
+      db,
+      actor,
+      [...placement.values()],
+      carried,
+    );
+    for (const [id, version] of carried)
+      undoVersions?.set(`item:${id}`, version);
+    if (result.preserved)
+      await audit(
+        {
+          actorId: actor.id,
+          action: "agent.snapshot_placement_preserved",
+          targetType: "user",
+          targetId: actor.id,
+          details: {
+            preserved: result.preserved,
+            restored: result.restored,
+            reason: "legacy_or_changed_placement",
+          },
+        },
+        db,
+      );
   }
   if (s.items.length)
     await db.query(

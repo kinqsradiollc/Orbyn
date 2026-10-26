@@ -36,6 +36,10 @@ for (const platform of ["desktop", "mobile"] as const) {
         visit(source);
         assert.ok(initializer);
         const tokenRef = { current: "starting-session" };
+        const session = { token: tokenRef.current, generation: 0 };
+        class SessionStorageError extends Error {
+          generation = -1;
+        }
         let failures = 0,
           clears = 0,
           maintenance = 0;
@@ -49,6 +53,8 @@ for (const platform of ["desktop", "mobile"] as const) {
           ).outputText,
           {
             tokenRef,
+            session,
+            SessionStorageError,
             setBusy: () => {},
             setError: (value: string) => {
               if (value) failures++;
@@ -61,8 +67,12 @@ for (const platform of ["desktop", "mobile"] as const) {
             checkMaintenance: async () => {
               maintenance++;
             },
-            clearSession: async () => {
+            clearSession: async (expectedToken: string) => {
+              if (session.token !== expectedToken) return false;
+              session.token = "";
+              session.generation++;
               clears++;
+              return true;
             },
             resetSession: () => {},
           },
@@ -72,7 +82,11 @@ for (const platform of ["desktop", "mobile"] as const) {
           reject = no;
         });
         const pending = act(() => response);
-        if (switched) tokenRef.current = "new-session";
+        if (switched) {
+          tokenRef.current = "new-session";
+          session.token = "new-session";
+          session.generation++;
+        }
         reject(Object.assign(new Error("fixture failure"), { status }));
         await pending;
         assert.equal(failures, switched ? 0 : 1);

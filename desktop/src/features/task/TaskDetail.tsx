@@ -158,6 +158,11 @@ export function TaskDetail({
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [context, setContext] = useState<ItemContext | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [placementRetry, setPlacementRetry] = useState<{
+    project_id: string | null;
+    stage_id?: string | null;
+    version: number;
+  } | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [newStep, setNewStep] = useState("");
@@ -289,8 +294,13 @@ export function TaskDetail({
   }) => {
     contextRead.current += 1;
     try {
-      const confirmed = await client.setItemProject(item.id, input);
+      const version = (detail ?? item).version;
+      const confirmed = await client.setItemProject(item.id, {
+        ...input,
+        version,
+      });
       if (!mounted.current) return;
+      setPlacementRetry(null);
       setDetail((was) =>
         was
           ? {
@@ -301,6 +311,12 @@ export function TaskDetail({
             }
           : was,
       );
+    } catch (error) {
+      if (mounted.current && (error as HttpError).status === 409) {
+        setPlacementRetry({ ...input, version: (detail ?? item).version });
+        setRetry((value) => value + 1);
+      }
+      throw error;
     } finally {
       if (mounted.current) setContextRetry((n) => n + 1);
     }
@@ -820,6 +836,35 @@ export function TaskDetail({
                         ))}
                     </Select>
                   )}
+                </div>
+              )}
+              {placementRetry && (
+                <div role="status">
+                  <p>
+                    Task changed. Review its current placement before retrying
+                    your saved choice:{" "}
+                    {projects.find((p) => p.id === placementRetry.project_id)
+                      ?.name ?? "No project"}
+                    {placementRetry.stage_id !== undefined &&
+                      ` / ${projects.flatMap((p) => p.stages).find((stage) => stage.id === placementRetry.stage_id)?.name ?? "No stage"}`}
+                    .
+                  </p>
+                  <button
+                    type="button"
+                    disabled={
+                      locked ||
+                      contextLoading ||
+                      current.version <= placementRetry.version
+                    }
+                    onClick={() =>
+                      void blockAction(() => moveToProject(placementRetry))
+                    }
+                  >
+                    Retry saved move
+                  </button>
+                  <button type="button" onClick={() => setPlacementRetry(null)}>
+                    Dismiss
+                  </button>
                 </div>
               )}
               {context?.came_from && onOpenDoc && (

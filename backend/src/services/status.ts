@@ -1,6 +1,6 @@
 // Status service: `node dist/services/status.js` (Compose `status`).
 // Probes every component on a schedule and serves the public status report.
-import { buildStatusService } from "../app.js";
+import { buildStatusService } from "./status-app.js";
 import { env } from "../config/env.js";
 import { startProber } from "../modules/status/prober.js";
 import { startService } from "./http.js";

@@ -199,18 +199,24 @@ test("tasks join a project and a stage, and counts follow", async () => {
   const b = await newTask("Draft the email");
 
   const filed = await call("PUT", `/items/${a.id}/project`, {
+    version: a.version,
     project_id: p.id,
     stage_id: planning.id,
   });
   assert.equal(filed.statusCode, 200);
   const kept = await call("PUT", `/items/${a.id}/project`, {
+    version: filed.json().item.version,
     project_id: p.id,
   });
   assert.equal(kept.statusCode, 200, kept.body);
   assert.equal(kept.json().item.stage_id, planning.id);
   assert.equal(
-    (await call("PUT", `/items/${b.id}/project`, { project_id: p.id }))
-      .statusCode,
+    (
+      await call("PUT", `/items/${b.id}/project`, {
+        version: b.version,
+        project_id: p.id,
+      })
+    ).statusCode,
     200,
   );
 
@@ -233,6 +239,7 @@ test("a stage from another project is refused", async () => {
   const two = (await call("POST", "/projects", { name: "Two" })).json();
   const task = await newTask("Stray");
   const bad = await call("PUT", `/items/${task.id}/project`, {
+    version: task.version,
     project_id: one.id,
     stage_id: two.stages[0].id,
   });
@@ -844,7 +851,10 @@ test("a near project deadline sends one planning notice per local day", async ()
 test("deleting a project leaves its tasks behind, unfiled", async () => {
   const p = (await call("POST", "/projects", { name: "Temporary" })).json();
   const task = await newTask("Outlives the project");
-  await call("PUT", `/items/${task.id}/project`, { project_id: p.id });
+  await call("PUT", `/items/${task.id}/project`, {
+    version: task.version,
+    project_id: p.id,
+  });
 
   assert.equal((await call("DELETE", `/projects/${p.id}`)).statusCode, 204);
   assert.equal((await call("GET", `/projects/${p.id}`)).statusCode, 404);

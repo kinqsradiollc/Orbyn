@@ -545,6 +545,13 @@ export const projectUpdate = z
 /** Move a task into a project, a stage, or out of both. */
 export const projectAssign = z
   .object({
+    version: z
+      .number({
+        error:
+          "Reload the task or update Orbyn before moving it. An item version is required.",
+      })
+      .int()
+      .positive(),
     project_id: z.uuid().nullable(),
     stage_id: z.uuid().nullable().optional(),
   })

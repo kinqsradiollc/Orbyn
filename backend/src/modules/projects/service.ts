@@ -18,6 +18,7 @@ import { visibleProjects } from "../../lib/visibility.js";
 import { coverLetGo, requireCoverPicture } from "../../lib/page-file-access.js";
 
 import type { QueryResultRow } from "pg";
+import { clearDerivedItemPlacement } from "../items/service.js";
 /**
  * The projects service: which projects someone can see, reading one or a
  * list, and checking a change is theirs to make. The REST routes, the
@@ -39,12 +40,13 @@ export type Owned = { id: string; user_id: string; team_id: string | null };
 export async function requireProject(
   db: Db,
   id: string,
-  u: UserRow,
+  u: Pick<UserRow, "id" | "role">,
   permission: "items:read" | "items:write",
+  lock: "update" | "key-share" = "update",
 ): Promise<Owned> {
   const row = (
     await db.query<Owned>(
-      "SELECT id, user_id, team_id FROM projects WHERE id = $1 FOR UPDATE",
+      `SELECT id, user_id, team_id FROM projects WHERE id = $1 ${lock === "key-share" ? "FOR KEY SHARE" : "FOR UPDATE"}`,
       [id],
     )
   ).rows[0];
@@ -200,6 +202,7 @@ export async function createProject(
 export async function deleteProject(db: Db, u: UserRow, id: string) {
   await actAs(db, u.id);
   const row = await requireProject(db, id, u, "items:write");
+  await clearDerivedItemPlacement(db, u, id);
   await db.query("DELETE FROM projects WHERE id = $1", [id]);
   await announceProjects(db, row);
   return row;
@@ -286,6 +289,17 @@ export async function updateProject(
     // Stages given without an id are new; ones left out are removed, and
     // the tasks that sat in them fall back to the project with no stage.
     const keep = body.stages.filter((s) => s.id).map((s) => s.id!);
+    const removed = await db.query<{ id: string }>(
+      `SELECT id FROM project_stages WHERE project_id = $1
+         AND NOT (id = ANY($2::uuid[])) ORDER BY id FOR UPDATE`,
+      [id, keep],
+    );
+    await clearDerivedItemPlacement(
+      db,
+      u,
+      id,
+      removed.rows.map((stage) => stage.id),
+    );
     await db.query(
       `DELETE FROM project_stages
         WHERE project_id = $1 AND NOT (id = ANY($2::uuid[]))`,

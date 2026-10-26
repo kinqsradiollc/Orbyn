@@ -85,7 +85,7 @@ before(async () => {
     method: "PUT",
     url: `/items/${task.id}/project`,
     headers: { authorization: `Bearer ${token}` },
-    payload: { project_id: projectId },
+    payload: { version: task.version, project_id: projectId },
   });
   await post("/work-records", {
     kind: "decision",

@@ -482,6 +482,14 @@ export async function clipRoutes(app: FastifyInstance) {
         .join("\n");
       const item = await transaction(async (db) => {
         const teamId = await place(db, u, { ...c, folder_id: null });
+        const stage = c.project_id
+          ? ((
+              await db.query<{ id: string }>(
+                `SELECT id FROM project_stages WHERE project_id = $1 ORDER BY position LIMIT 1`,
+                [c.project_id],
+              )
+            ).rows[0]?.id ?? null)
+          : null;
         const made = await mutate(db, u, {
           operation: "create",
           data: itemData.parse({
@@ -489,24 +497,14 @@ export async function clipRoutes(app: FastifyInstance) {
             notes,
             due_at: result.due_at,
             team_id: teamId,
+            ...(c.project_id
+              ? { project_id: c.project_id, stage_id: stage }
+              : {}),
             ...(c.type === "read_later" && result.reading_minutes
               ? { estimate_minutes: result.reading_minutes }
               : {}),
           }),
         });
-        if (made && c.project_id) {
-          const stage = (
-            await db.query<{ id: string }>(
-              `SELECT id FROM project_stages WHERE project_id = $1
-                ORDER BY position LIMIT 1`,
-              [c.project_id],
-            )
-          ).rows[0]?.id;
-          await db.query(
-            "UPDATE items SET project_id = $2, stage_id = $3 WHERE id = $1",
-            [made.id, c.project_id, stage ?? null],
-          );
-        }
         return made;
       });
       if (item) result.made = { kind: "task", id: item.id, title: taskTitle };

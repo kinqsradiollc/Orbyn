@@ -58,8 +58,10 @@ function subscription() {
       setUser: (value: unknown) => {
         state.user = value;
       },
-      setItems: (value: unknown) => {
-        state.items = value;
+      itemStore: {
+        reset: () => {
+          state.items = [];
+        },
       },
       setNotices: (value: unknown) => {
         state.notices = value;

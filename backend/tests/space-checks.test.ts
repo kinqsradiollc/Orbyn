@@ -163,6 +163,11 @@ test("a task goes into a project in its own space", async () => {
   assert.equal(
     (
       await owner.call("PUT", `/items/${teamTaskId}/project`, {
+        version: (
+          await pool.query("SELECT version FROM items WHERE id=$1", [
+            teamTaskId,
+          ])
+        ).rows[0].version,
         project_id: projectId,
       })
     ).statusCode,
@@ -171,6 +176,11 @@ test("a task goes into a project in its own space", async () => {
   assert.equal(
     (
       await owner.call("PUT", `/items/${personalTaskId}/project`, {
+        version: (
+          await pool.query("SELECT version FROM items WHERE id=$1", [
+            personalTaskId,
+          ])
+        ).rows[0].version,
         project_id: teamProjectId,
       })
     ).statusCode,
@@ -179,6 +189,11 @@ test("a task goes into a project in its own space", async () => {
   assert.equal(
     (
       await owner.call("PUT", `/items/${teamTaskId}/project`, {
+        version: (
+          await pool.query("SELECT version FROM items WHERE id=$1", [
+            teamTaskId,
+          ])
+        ).rows[0].version,
         project_id: teamProjectId,
       })
     ).statusCode,

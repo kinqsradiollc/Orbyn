@@ -5,7 +5,7 @@ import type { Db } from "../../db/pool.js";
 import { digest } from "../../lib/auth.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
-import { emailEnabled, sendEmail } from "../../worker/channels/email.js";
+import { queueBookingEmail } from "../../worker/booking-email.js";
 import { mutate, recordDeletions } from "../items/service.js";
 import { availableSlots, pageTimeZone, type PageRow } from "./availability.js";
 import { pageFor } from "./pages.js";
@@ -127,19 +127,18 @@ export async function manageLink(db: Db, booking: BookingRow) {
   return appLink(`/book/manage/${token}`);
 }
 
-/** Email the booker. Best effort: a mail outage never undoes a booking step. */
+/** Save mail with the booking; the notifier sends only committed intents. */
 async function mailBooker(
+  db: Db,
   booking: BookingRow,
   subject: string,
   lines: string[],
 ) {
-  if (!(await emailEnabled())) return;
-  await sendEmail({
-    id: randomUUID(),
+  await queueBookingEmail(db, booking.id, {
     destination: booking.email,
     title: subject,
     body: lines.filter(Boolean).join("\n\n"),
-  }).catch(() => {});
+  });
 }
 
 export function eventTitle(
@@ -295,7 +294,7 @@ export async function confirm(
     },
   );
   const link = await manageLink(db, booking);
-  await mailBooker(booking, `Confirmed: ${page.title}`, [
+  await mailBooker(db, booking, `Confirmed: ${page.title}`, [
     `Hi ${booking.name},`,
     `You're booked for ${page.title} on ${whenLabel(booking.start_at, booking.end_at, booking.timezone)}.`,
     page.confirmation_message,
@@ -340,7 +339,7 @@ export async function awaitApproval(
     },
   );
   const link = await manageLink(db, booking);
-  await mailBooker(booking, `Request received: ${page.title}`, [
+  await mailBooker(db, booking, `Request received: ${page.title}`, [
     `Hi ${booking.name},`,
     `Your request for ${whenLabel(booking.start_at, booking.end_at, booking.timezone)} is waiting for the host to approve it. We'll email you when they decide.`,
     `To change or cancel it: ${link}`,
@@ -389,7 +388,7 @@ export async function decline(
       reason,
     },
   );
-  await mailBooker(booking, `Not available: ${page.title}`, [
+  await mailBooker(db, booking, `Not available: ${page.title}`, [
     `Hi ${booking.name},`,
     `Sorry, the host can't take ${whenLabel(booking.start_at, booking.end_at, booking.timezone)}.`,
     reason ? `Their note: ${reason}` : "",
@@ -453,7 +452,7 @@ export async function cancel(
   );
   const when = whenLabel(booking.start_at, booking.end_at, booking.timezone);
   if (by.actor === "host")
-    await mailBooker(booking, `Cancelled: ${page.title}`, [
+    await mailBooker(db, booking, `Cancelled: ${page.title}`, [
       `Hi ${booking.name},`,
       `Your booking for ${when} was cancelled by the host.`,
       reason ? `Their note: ${reason}` : "",
@@ -472,7 +471,7 @@ export async function cancel(
       null,
       effectiveHosts(page, booking),
     );
-    await mailBooker(booking, `Cancelled: ${page.title}`, [
+    await mailBooker(db, booking, `Cancelled: ${page.title}`, [
       `Hi ${booking.name},`,
       `Your booking for ${when} is cancelled.`,
       reopened
@@ -579,7 +578,7 @@ export async function reschedule(
       effectiveHosts(page, booking),
     );
   const link = await manageLink(db, booking);
-  await mailBooker(booking, `Rescheduled: ${page.title}`, [
+  await mailBooker(db, booking, `Rescheduled: ${page.title}`, [
     `Hi ${booking.name},`,
     `${by.actor === "host" ? "The host moved your booking" : "Your booking is moved"} to ${whenLabel(start, end, booking.timezone)}.`,
     ...place(page),

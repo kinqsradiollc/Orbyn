@@ -134,6 +134,20 @@ Re-enabling reuses their event identities. Existing jobs, apply receipts and
 published history are preserved. Workers never create a missing personal
 destination; only the signed-in person's explicit open can create a generation.
 
+## Architecture configuration upgrades
+
+When deploying the architecture consolidation candidate, merge the
+[architecture environment settings](environment.md#architecture-consolidation-settings)
+into the private `.env.production` and the target server's `.env` before rollout.
+Keep existing secrets unchanged. `BOOKING_EMAIL_DELIVERY_ENABLED` defaults to
+`true`; `ASSISTANT_ADMISSION_REVISION=1` matches the initial policy seeded by
+migration 294, not every future policy revision. Keep
+`ASSISTANT_CONVERSATION_ENABLED=false` until that target's opt-in cutover is
+approved and qualified. Apply migrations and stop/fence incompatible producers
+and claimers as described in [operations](operations.md#assistant-admission-policy).
+Neither editing a private file nor validating Compose activates these settings
+in running services.
+
 ## Going live on your domain
 
 The shortest path from a fresh server to a working site, with the details in the sections below.

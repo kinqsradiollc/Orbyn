@@ -221,6 +221,17 @@ export const SWEEP_RULES: SweepRule[] = [
     min: 7,
   },
   {
+    key: "booking_email_outbox",
+    label: "Booking email delivery records",
+    detail:
+      "Settled delivery receipts and encrypted mail, including uncertain or failed delivery awaiting operator reconciliation. Pending and in-flight work is retained.",
+    table: "booking_email_outbox",
+    where: `${olderThan("settled_at")} AND state IN ('sent','superseded','uncertain','failed')`,
+    days: 90,
+    configurable: true,
+    min: 7,
+  },
+  {
     key: "item_deadline_moves",
     label: "Task deadline changes",
     detail:

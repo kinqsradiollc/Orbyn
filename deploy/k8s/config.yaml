@@ -65,6 +65,8 @@ data:
   # AI providers are added by admins in the app and stored in the database.
 
   # Outbound email for reminders (notifier). The password lives in the Secret.
+  BOOKING_EMAIL_DELIVERY_ENABLED: "true" # false pauses delivery, retaining intents
+  ASSISTANT_ADMISSION_REVISION: "1" # coordinate with persisted policy before claiming
   SMTP_HOST: "smtp.example.com" # placeholder
   SMTP_PORT: "587"
   SMTP_SECURE: "false" # "true" for implicit TLS on port 465

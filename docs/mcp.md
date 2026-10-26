@@ -496,12 +496,13 @@ Version-checked edits to one page, all or none, in Orbyn Markdown (orbyn://spec/
 
 ### `link`
 
-Links or unlinks: depends_on (task waits on task), task_doc (task and its page line), task_project, doc_project, doc_folder, or related (a plain link between a page or task and a page, task or project, shown in backlinks on both sides). Unlinking removes no content; Undo takes it back.
+Links dependencies, task source lines, project/folder placement or related records. Unlink keeps content; Undo restores the link.
 
 | Argument            | Type                                                                             | Notes                                                                 |
 | ------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | `action` (required) | `link`, `unlink`                                                                 |                                                                       |
 | `kind` (required)   | `depends_on`, `task_doc`, `task_project`, `doc_project`, `doc_folder`, `related` |                                                                       |
+| `version`           | integer                                                                          | task_project: expected version; legacy omission expires.              |
 | `from` (required)   | string                                                                           |                                                                       |
 | `to` (required)     | string                                                                           | The task, page, project or folder id it links to.                     |
 | `stage_id`          | id                                                                               |                                                                       |
@@ -1118,15 +1119,21 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 
 ## Versioning and deprecation
 
-- Tools only change by adding. A tool is never renamed, an argument never changes its type or becomes required, and an answer only gains fields.
-- A new argument is always optional, and leaving it out behaves as before.
+- Tools change by adding, with the sole task_project version-omission exception announced below. Tool names and argument types stay stable; answers only gain fields.
+- A new argument is optional and omission retains its behavior, except for the announced task_project concurrency cutover below.
+- Exception announced 2026-10-26: link task_project version omission is deprecated for one deployment-wide 90-day window. Its fixed database deadline starts with migration 290; omission uses the locked current row version during that window, so it does not protect the caller against stale placement. At the deadline callers must supply their last-read version. REST placement already requires version.
 - A tool that is going away is marked "Deprecated:" at the start of its description, with what to use instead, at least 90 days before it is removed. Removals are listed here and in the changelog first.
 - Error codes and their meaning never change; new codes may be added.
 - Every change to a tool, resource or prompt shows in docs/mcp-catalog.json, which CI compares with the code, and in this changelog. The catalog's version is the date of its last change.
 
-Catalog version: `2026-09-28`.
+Catalog version: `2026-10-26`.
 
 ## Changelog
+
+### 2026-10-26
+
+- Task project concurrency cutover: link task_project accepts optional version now, retaining the caller's expected version whenever supplied. Versionless calls have a deployment-wide 90-day grace period from migration 290, then fail with INVALID and instructions to fetch and send version. During the grace period only, omission uses the current locked row version through canonical placement. REST remains version-required.
+- Operators must announce the deployment's persisted deadline to affected clients, monitor the content-free legacy use count/last-use timestamp, and retire every older server that ignores this policy before cutover. All replicas share the original system_settings deadline. Restart, configuration changes, migration reruns and rollback must not reset it or restore a versionless writer after expiry; retain the policy row. Missing or corrupt policy refuses legacy writes while explicit-version requests remain available.
 
 ### 2026-09-28
 
@@ -1181,4 +1188,4 @@ Catalog version: `2026-09-28`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 271 of the app's signed-in routes are covered by tools, 326 are never for agents, and 0 are still to come.
+Routes: 271 of the app's signed-in routes are covered by tools, 327 are never for agents, and 0 are still to come.
