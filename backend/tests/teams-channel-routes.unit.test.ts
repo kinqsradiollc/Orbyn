@@ -43,8 +43,11 @@ test("Teams HTTP boundary requires app sessions, strict input and bounded reques
   let configured = true,
     rejected = false,
     captures = 0;
-  const binding = (value: { userId: string; sessionId: string }) =>
+  let serviceCalls = 0;
+  const binding = (value: { userId: string; sessionId: string }) => {
+    serviceCalls++;
     assert.deepEqual(value, { userId, sessionId });
+  };
   const connection = {
     id,
     display_name: "Fixture",
@@ -128,17 +131,16 @@ test("Teams HTTP boundary requires app sessions, strict input and bounded reques
     token?: string,
     payload?: object,
     remoteAddress = `10.75.0.${address++}`,
+    keyed = false,
   ) =>
     app.inject({
       method,
       url,
       remoteAddress,
-      headers: token
-        ? {
-            authorization: `Bearer ${token}`,
-            "idempotency-key": "must-not-replay-oauth",
-          }
-        : {},
+      headers: {
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(keyed ? { "idempotency-key": "must-not-replay-oauth" } : {}),
+      },
       ...(payload ? { payload } : {}),
     });
   const confirm = {
@@ -176,6 +178,48 @@ test("Teams HTTP boundary requires app sessions, strict input and bounded reques
         (await call(method, url, "expired", payload)).statusCode,
         401,
       );
+      const before = serviceCalls;
+      for (const token of [undefined, "expired", "ok_fixture", "session"]) {
+        // Unsupported keyed writes must reach neither the OAuth service nor
+        // receipt storage, including repeated requests with the same key.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const keyed = await call(
+            method,
+            url,
+            token,
+            payload,
+            undefined,
+            true,
+          );
+          const live = token === "ok_fixture" || token === "session";
+          assert.equal(
+            keyed.statusCode,
+            method === "GET"
+              ? token === "session"
+                ? 200
+                : token === "ok_fixture"
+                  ? 403
+                  : 401
+              : live
+                ? 409
+                : 401,
+            keyed.body,
+          );
+          assert.equal(keyed.headers["idempotent-replay"], undefined);
+          if (method !== "GET") {
+            if (live) {
+              assert.equal(keyed.headers["idempotency-outcome"], "unsupported");
+              assert.doesNotMatch(
+                keyed.body,
+                /authorization_url|link_token|access_token/,
+              );
+            }
+            assert.equal(serviceCalls, before);
+          } else if (token === "session") {
+            assert.equal(keyed.headers["cache-control"], "no-store");
+          }
+        }
+      }
       const ok = await call(method, url, "session", payload);
       assert.equal(ok.statusCode, 200, ok.body);
       assert.equal(ok.headers["cache-control"], "no-store");
