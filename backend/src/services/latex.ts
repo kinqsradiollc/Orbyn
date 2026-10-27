@@ -1,6 +1,6 @@
 import { env } from "../config/env.js";
-import { buildPdfService } from "../modules/docs/pdf-service.js";
-import { renderLatexSnapshot } from "../modules/docs/latex-renderer.js";
+import { buildPdfService } from "../modules/documents/pdf-service.js";
+import { renderLatexSnapshot } from "../modules/documents/latex-renderer.js";
 
 // Internal compiler: no database/provider credentials and no public port.
 const app = buildPdfService({

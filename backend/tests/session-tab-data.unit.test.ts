@@ -7,7 +7,7 @@ import ts from "typescript";
 /** Execute the actual storage subscription callback, without a browser layout claim. */
 function subscription() {
   const path = new URL(
-    "../../desktop/src/hooks/usePlanner.ts",
+    "../../desktop/src/features/planner/usePlanner.ts",
     import.meta.url,
   );
   const source = ts.createSourceFile(

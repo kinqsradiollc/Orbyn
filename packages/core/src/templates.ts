@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { docContent } from "./schemas.js";
-import { isValidRrule } from "./time.js";
-import type { DocBlock } from "./docs.js";
+import { isValidRrule } from "./planner/time.js";
+import type { DocBlock } from "./documents/docs.js";
 
 /**
  * Project templates: how a person or a team runs a kind of project — sprint

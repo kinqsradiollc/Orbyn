@@ -63,7 +63,7 @@ async function desktopDiagram(
     ts.transpileModule(
       readFileSync(
         new URL(
-          "../../desktop/src/features/docs/RichBlocks.tsx",
+          "../../desktop/src/features/documents/editor/RichBlocks.tsx",
           import.meta.url,
         ),
         "utf8",

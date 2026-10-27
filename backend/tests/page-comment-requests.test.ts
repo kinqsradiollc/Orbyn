@@ -8,23 +8,23 @@ const { migrate } = await import("../src/db/migrate.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 const { addComment, deleteComment, resolveComment } =
-  await import("../src/modules/docs/comments.js");
+  await import("../src/modules/documents/comments.js");
 const { createPageCommentRequest } =
-  await import("../src/modules/docs/comment-requests.js");
+  await import("../src/modules/documents/comment-requests.js");
 const {
   maintainedPageContext,
   applyMaintainedPageReply,
   applyMaintainedPageUpdate,
-} = await import("../src/modules/docs/maintenance.js");
+} = await import("../src/modules/documents/maintenance.js");
 const {
   queueMaintainedPageRun,
   claimMaintainedPageRun,
   guardMaintainedPageRun,
   stageMaintainedPageRun,
   expireMaintainedPageRuns,
-} = await import("../src/modules/docs/maintenance-runs.js");
+} = await import("../src/modules/documents/maintenance-runs.js");
 const { pageCommentMessages } =
-  await import("../src/modules/docs/maintenance-model.js");
+  await import("../src/modules/documents/maintenance-model.js");
 const { scanMaintainedPages } =
   await import("../src/worker/maintained-page-scan.js");
 const people: string[] = [];

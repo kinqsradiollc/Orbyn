@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, type TextStyle } from "react-native";
 import { parseLookIcon } from "@orbyn/core";
-import { fileLink } from "../screens/docs/RichBlocks";
+import { fileLink } from "../features/documents/editor/RichBlocks";
 import { colors } from "../theme";
 import { session } from "../lib/session";
 import { Icon, type IconName } from "./Icon";

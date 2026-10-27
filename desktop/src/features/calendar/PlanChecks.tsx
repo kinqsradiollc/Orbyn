@@ -11,7 +11,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Select } from "../../components/Select";
-import { errorText } from "../../lib/planning";
+import { errorText } from "../planner/planning";
 import "./plan-checks.css";
 import { DateField } from "../../components/DateField";
 

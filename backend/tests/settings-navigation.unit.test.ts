@@ -220,7 +220,7 @@ function settingsFixture() {
           return { settingsExitAllowed: () => true };
         if (name === "../../lib/theme")
           return { useTheme: () => ["system", () => {}] };
-        if (name === "../docs/reading")
+        if (name === "../documents/editor/reading")
           return { readsFirst: () => false, setReadsFirst() {} };
         if (name.endsWith(".css")) return {};
         return new Proxy(

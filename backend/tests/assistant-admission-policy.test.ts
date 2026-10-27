@@ -13,9 +13,9 @@ const {
 const { initialAssistantRun } = await import("../src/modules/ai/agent/run.js");
 const { claimAssistantJob } = await import("../src/modules/ai/agent/runner.js");
 const { claimMaintainedPageRun } =
-  await import("../src/modules/docs/maintenance-runs.js");
+  await import("../src/modules/documents/maintenance-runs.js");
 const { claimScheduledAgenda } =
-  await import("../src/modules/docs/agenda-summary-runs.js");
+  await import("../src/modules/documents/agenda-summary-runs.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 const owners: string[] = [];

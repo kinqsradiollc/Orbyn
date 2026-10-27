@@ -135,7 +135,7 @@ for (const [feature, file, boundary] of [
 test("small review actions and metadata wrap on both clients; gallery cells fit their page", () => {
   const review = read("desktop/src/features/review/review.css");
   const views = read("desktop/src/features/views/views.css");
-  const mobile = read("mobile/src/screens/ReviewSheet.tsx");
+  const mobile = read("mobile/src/features/review/ReviewSheet.tsx");
   assert.match(review, /\.review-actions\s*\{[^}]*flex-wrap: wrap/);
   assert.match(review, /\.review-rows\s*\{[^}]*table-layout: fixed/);
   assert.match(views, /minmax\(min\(200px, 100%\), 1fr\)/);

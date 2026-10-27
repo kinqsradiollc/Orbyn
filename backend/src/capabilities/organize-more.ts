@@ -9,14 +9,14 @@ import {
 } from "@orbyn/core";
 import type { z } from "zod";
 import { pool } from "../db/pool.js";
-import { announceDocChange } from "../modules/docs/live.js";
+import { announceDocChange } from "../modules/documents/live.js";
 import {
   extractLines,
   mergePages,
   setAliases,
   setFolds,
   setLook,
-} from "../modules/docs/structure.js";
+} from "../modules/documents/structure.js";
 import { linkMentionIn } from "../modules/links/more.js";
 import { removePageSource } from "../modules/sources/service.js";
 import {
@@ -35,7 +35,7 @@ import { actionChange, entryOf, quoted, seeDoc, seeProject } from "./shared.js";
 import type { UndoOp } from "./undo.js";
 import { afterSave } from "./write-docs.js";
 import { iconValue, seeCoverPicture } from "./looks.js";
-import { saveDoc } from "../modules/docs/service.js";
+import { saveDoc } from "../modules/documents/service.js";
 import {
   actorOf,
   cantWait,

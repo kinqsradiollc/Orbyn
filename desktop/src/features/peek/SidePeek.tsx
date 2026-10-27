@@ -22,9 +22,13 @@ import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import { hasHigherDialog } from "../../lib/dialogLayers";
 import { formatDateTime } from "../../lib/format";
-import { ItemFacts } from "../../components/ItemFacts";
-import { BlockView } from "../docs/DocBlocks";
-import { LinkPillProvider, openObject, useLinkPills } from "../docs/DocLinks";
+import { ItemFacts } from "../tasks/ItemFacts";
+import { BlockView } from "../documents/editor/DocBlocks";
+import {
+  LinkPillProvider,
+  openObject,
+  useLinkPills,
+} from "../documents/editor/DocLinks";
 import "./peek.css";
 
 type Loaded =

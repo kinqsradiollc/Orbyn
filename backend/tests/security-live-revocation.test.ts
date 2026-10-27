@@ -6,7 +6,7 @@ import "./setup.js";
 const { pool, closeDatabase } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { streamDocChanges, announceDocChange, closeLive } =
-  await import("../src/modules/docs/live.js");
+  await import("../src/modules/documents/live.js");
 await migrate();
 after(async () => {
   await closeLive();
@@ -53,7 +53,8 @@ test("existing document stream stops releasing notifications after access revoca
 
 test("authenticated CRDT SSE closes a revoked session and retains the authorized reader", async () => {
   const { buildApp } = await import("../src/app.js");
-  const { announceCrdtUpdate } = await import("../src/modules/docs/live.js");
+  const { announceCrdtUpdate } =
+    await import("../src/modules/documents/live.js");
   const { get } = await import("node:http");
   const { createHash } = await import("node:crypto");
   const app = await buildApp();

@@ -16,9 +16,9 @@ const { saveAgentRoutine } =
 const { startAssistantAutomation } =
   await import("../src/modules/ai/agent/run.js");
 const { createMaintainedPageBinding, updateMaintainedPageBinding } =
-  await import("../src/modules/docs/maintenance.js");
+  await import("../src/modules/documents/maintenance.js");
 const { queueMaintainedPageRun } =
-  await import("../src/modules/docs/maintenance-runs.js");
+  await import("../src/modules/documents/maintenance-runs.js");
 const owners: string[] = [];
 const teams: string[] = [];
 const provider = randomUUID();
@@ -302,7 +302,7 @@ test("routine admissions retain selected-entry authority after source-job cleanu
 test("maintained-page guards retain selected-entry authority during delivery rollback", async () => {
   const { env } = await import("../src/config/env.js");
   const { claimMaintainedPageRun, guardMaintainedPageRun } =
-    await import("../src/modules/docs/maintenance-runs.js");
+    await import("../src/modules/documents/maintenance-runs.js");
   const previous = env.ASSISTANT_CONVERSATION_ENABLED;
   try {
     for (const deliveryEnabled of [true, false]) {

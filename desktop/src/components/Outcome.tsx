@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleCheck, CircleX } from "lucide-react";
 import type { HttpError } from "@orbyn/core";
 import { session } from "../lib/session";
-import { errorText } from "../lib/planning";
+import { errorText } from "../features/planner/planning";
 
 export type Outcome = { ok: boolean; text: string } | null;
 

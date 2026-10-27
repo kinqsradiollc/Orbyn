@@ -14,8 +14,8 @@ import {
   type DocBlock,
   type DocHeadingLevel,
 } from "@orbyn/core";
-import { docToDocx } from "../src/modules/docs/docx.js";
-import { docToPdf } from "../src/modules/docs/pdf.js";
+import { docToDocx } from "../src/modules/documents/docx.js";
+import { docToPdf } from "../src/modules/documents/pdf.js";
 import { docxToMarkdown, readZip } from "../src/modules/imports/docx.js";
 
 const levels = [1, 2, 3, 4, 5, 6] as const;

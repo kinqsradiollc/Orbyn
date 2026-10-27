@@ -22,7 +22,7 @@ import {
   type ItemStep,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { errorText, minutesLabel, nextUp } from "../../lib/planning";
+import { errorText, minutesLabel, nextUp } from "../planner/planning";
 import { useFocusSession } from "./useFocusSession";
 import "./focus.css";
 import { useModalFocus } from "../../hooks/useModalFocus";

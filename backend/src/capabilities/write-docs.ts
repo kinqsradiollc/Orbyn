@@ -19,8 +19,8 @@ import {
   proposeChanges,
   saveDoc,
   type ProposedChange,
-} from "../modules/docs/service.js";
-import { announceDocChange } from "../modules/docs/live.js";
+} from "../modules/documents/service.js";
+import { announceDocChange } from "../modules/documents/live.js";
 import { usePageTemplateById } from "../modules/templates/pages.js";
 import { ensureProfile } from "../modules/agent-context/service.js";
 import { syncSavedPages } from "../modules/study/service.js";
@@ -28,7 +28,7 @@ import {
   rewriteAgenda,
   todaysAgendaIfWritten,
   writeAgendaOn,
-} from "../modules/docs/agenda.js";
+} from "../modules/documents/agenda.js";
 import { cleanTitle } from "./format.js";
 import { readMarkdown } from "./doc-markdown.js";
 import { docId, projectId, teamFilter } from "./common.js";

@@ -66,13 +66,13 @@ live external provider's availability. See [verification](verification.md).
 
 ## Contract owners
 
-| Contract                                                       | Source                                                                                |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Feed, source visibility, replies, read state and work controls | `backend/src/modules/assistant-workspace/`                                            |
-| Interactive jobs and orchestration                             | `backend/src/modules/ai/`                                                             |
-| Shared retained-entry and reply schemas                        | `packages/core/src/assistant-conversation.ts`, `packages/core/src/schemas.ts`         |
-| Web UI                                                         | `desktop/src/features/assistant/`                                                     |
-| Mobile UI                                                      | `mobile/src/screens/AssistantScreen.tsx`, `mobile/src/components/AssistantDrawer.tsx` |
+| Contract                                                       | Source                                                                                                   |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Feed, source visibility, replies, read state and work controls | `backend/src/modules/assistant-workspace/`                                                               |
+| Interactive jobs and orchestration                             | `backend/src/modules/ai/`                                                                                |
+| Shared retained-entry and reply schemas                        | `packages/core/src/assistant/assistant-conversation.ts`, `packages/core/src/schemas.ts`                  |
+| Web UI                                                         | `desktop/src/features/assistant/`                                                                        |
+| Mobile UI                                                      | `mobile/src/features/assistant/AssistantScreen.tsx`, `mobile/src/features/assistant/AssistantDrawer.tsx` |
 
 See the [API contract](api.md#retained-assistant-conversations),
 [architecture](architecture.md#assistant-conversations-and-execution) and

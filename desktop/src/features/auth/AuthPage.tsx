@@ -2,7 +2,7 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { ArrowRight, KeyRound, Orbit } from "lucide-react";
 import { MINIMUM_AGE } from "@orbyn/core";
 import { client } from "../../lib/api";
-import type { AuthMode } from "../../hooks/usePlanner";
+import type { AuthMode } from "../planner/usePlanner";
 
 type Props = {
   initialMode?: AuthMode;

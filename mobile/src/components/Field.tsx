@@ -12,7 +12,7 @@ import { Pressable } from "../motion";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
-import { clockDisplay, clockText } from "../lib/planning";
+import { clockDisplay, clockText } from "../features/planner/planning";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 

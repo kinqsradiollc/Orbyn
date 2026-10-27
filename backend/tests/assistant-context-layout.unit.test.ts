@@ -25,7 +25,10 @@ test("both surfaces send the contextual prompt, not just the action label", asyn
     "utf8",
   );
   const mobile = await readFile(
-    new URL("../../mobile/src/screens/AssistantScreen.tsx", import.meta.url),
+    new URL(
+      "../../mobile/src/features/assistant/AssistantScreen.tsx",
+      import.meta.url,
+    ),
     "utf8",
   );
   assert.ok(desktop.includes('suggest("prompt" in s ? s.prompt : s.title)'));

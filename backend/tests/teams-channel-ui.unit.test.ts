@@ -36,7 +36,7 @@ function fixture(app: "desktop" | "mobile", state: any) {
     new URL(
       app === "desktop"
         ? "../../desktop/src/features/settings/TeamsChannel.tsx"
-        : "../../mobile/src/screens/TeamsChannel.tsx",
+        : "../../mobile/src/features/connections/TeamsChannel.tsx",
       import.meta.url,
     ),
     "utf8",

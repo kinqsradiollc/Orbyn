@@ -17,7 +17,7 @@ import { audit } from "../../lib/audit.js";
 import type { UserRow } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
 import { Params, visibleDocs } from "../../lib/visibility.js";
-import { createDoc } from "../docs/service.js";
+import { createDoc } from "../documents/service.js";
 
 /**
  * Agents start warm (H8): the person's "About me for agents" page and each

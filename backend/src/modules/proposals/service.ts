@@ -43,7 +43,7 @@ import {
   restoreDocVersion,
   saveDoc,
   trashDoc,
-} from "../docs/service.js";
+} from "../documents/service.js";
 import { createProject, deleteProject } from "../projects/service.js";
 import { applyProject } from "../ai/project-proposal.js";
 import { assistantProposalSourcesVisible } from "../../lib/assistant-proposal-visibility.js";
@@ -74,7 +74,7 @@ export async function firstParty(r: FastifyRequest) {
  * Proposals: changes waiting for a person's approval (the Review inbox).
  * The built-in assistant proposes as it always has (its actions, drafted
  * project, session change and decision links); outside agents propose
- * typed changes (packages/core/src/review.ts) when a change is risky,
+ * typed changes (packages/core/src/tasks/review.ts) when a change is risky,
  * reaches outside Orbyn, or their connection may only suggest.
  *
  * This is the one place a proposal is applied, for both. Applying re-runs

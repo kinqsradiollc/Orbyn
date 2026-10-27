@@ -5,7 +5,7 @@ import { client } from "../../lib/api";
 import { createPortal } from "react-dom";
 import { useModalFocus } from "../../hooks/useModalFocus";
 import { Select } from "../../components/Select";
-import { errorText } from "../../lib/planning";
+import { errorText } from "../planner/planning";
 
 /** Monday 00:00 of this week, or `back` weeks earlier. */
 const mondayOf = (back: number) => {

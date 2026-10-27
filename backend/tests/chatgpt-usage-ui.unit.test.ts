@@ -19,7 +19,7 @@ async function mount(app: "desktop" | "mobile") {
   const path =
     app === "desktop"
       ? "desktop/src/features/settings/ChatgptUsage.tsx"
-      : "mobile/src/screens/settings/ChatgptUsage.tsx";
+      : "mobile/src/features/settings/ChatgptUsage.tsx";
   const compiled = ts.transpileModule(
     await readFile(new URL(`../../${path}`, import.meta.url), "utf8"),
     {

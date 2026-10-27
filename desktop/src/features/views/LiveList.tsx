@@ -15,7 +15,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Popover } from "../../components/Popover";
-import { OPEN_LINK_EVENT, usePageActions } from "../docs/DocLinks";
+import { OPEN_LINK_EVENT, usePageActions } from "../documents/editor/DocLinks";
 import "./views.css";
 
 /** Something to open, asked of the app the way link pills ask. */

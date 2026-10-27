@@ -12,7 +12,10 @@ function load(name: string) {
   runInNewContext(
     ts.transpileModule(
       readFileSync(
-        new URL(`../../mobile/src/lib/${name}.ts`, import.meta.url),
+        new URL(
+          `../../mobile/src/features/connections/${name}.ts`,
+          import.meta.url,
+        ),
         "utf8",
       ),
       {

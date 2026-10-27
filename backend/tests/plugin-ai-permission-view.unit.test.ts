@@ -82,16 +82,16 @@ function fixture(native: boolean, initial = view) {
     react: hooks,
     "@orbyn/core": core,
     "../../lib/api": { client },
-    "../lib/api": { client },
+    "../../lib/api": { client },
     "./SettingsEditor": { SettingsEditor: "settings-editor" },
     "react-native": { Text: "text", View: "view" },
-    "../styles": { shared: {} },
-    "../components/Field": { Field: "field", NumberInput: "number" },
-    "../components/Button": { Button: "button" },
-    "../components/SmallAction": { SmallAction: "button" },
+    "../../styles": { shared: {} },
+    "../../components/Field": { Field: "field", NumberInput: "number" },
+    "../../components/Button": { Button: "button" },
+    "../../components/SmallAction": { SmallAction: "button" },
   };
   const path = native
-    ? "../../mobile/src/screens/PluginAiPermission.tsx"
+    ? "../../mobile/src/features/connections/PluginAiPermission.tsx"
     : "../../desktop/src/features/settings/PluginAiPermission.tsx";
   const source = ts.transpileModule(
     readFileSync(new URL(path, import.meta.url), "utf8"),

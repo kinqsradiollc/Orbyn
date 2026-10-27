@@ -295,7 +295,11 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
         };
       if (name === "../../lib/errors")
         return { errorText: (error: Error) => error.message };
-      if (name === "../../components/ItemFacts")
+      if (
+        name === "../../components/ItemFacts" ||
+        name === "../tasks/ItemFacts" ||
+        name === "./ItemFacts"
+      )
         return { ItemFacts: () => null };
       return {};
     },
@@ -433,7 +437,7 @@ test("task drawer leaves Escape and Tab to a higher command dialog", () => {
     "TaskDetail.tsx",
     readFileSync(
       new URL(
-        "../../desktop/src/features/task/TaskDetail.tsx",
+        "../../desktop/src/features/tasks/TaskDetail.tsx",
         import.meta.url,
       ),
       "utf8",

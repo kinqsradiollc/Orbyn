@@ -2,7 +2,7 @@ import { exportConversationPages } from "../assistant-workspace/conversation-exp
 import { Readable } from "node:stream";
 import { pageFile, safeFileName, type DocBlock } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
-import { zipStream, type ZipEntry } from "../docs/zip.js";
+import { zipStream, type ZipEntry } from "../documents/zip.js";
 import { linkPrivacy } from "../links/privacy.js";
 import { exportData } from "./portability.js";
 import { fetchOriginal } from "../imports/originals.js";

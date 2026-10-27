@@ -24,7 +24,7 @@ import {
   type Team,
   type User,
 } from "@orbyn/core";
-import { readsFirst, setReadsFirst } from "../docs/reading";
+import { readsFirst, setReadsFirst } from "../documents/editor/reading";
 import { useTheme, type ThemeChoice } from "../../lib/theme";
 import { PlanningSettings } from "./PlanningSettings";
 import { TagSettings } from "./TagSettings";

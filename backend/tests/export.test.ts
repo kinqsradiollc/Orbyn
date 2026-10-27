@@ -12,7 +12,7 @@ import "./setup.js";
 
 const { startTestPdfService } = await import("./helpers/pdf-service.js");
 const { renderPdfSnapshot } =
-  await import("../src/modules/docs/pdf-renderer.js");
+  await import("../src/modules/documents/pdf-renderer.js");
 let beforePdfPrint: (() => Promise<void>) | undefined;
 const pdfService = await startTestPdfService(async (options) => {
   const before = beforePdfPrint;
@@ -98,7 +98,7 @@ before(async () => {
 });
 
 after(async () => {
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   await app.close();
   await pdfService.close();
@@ -359,7 +359,7 @@ test("text after a bold run starts where the bold run ends", async () => {
   // Bold letters are wider than regular ones. Measuring them with the
   // regular table left the next run overlapping backwards, which ate the
   // space: "stays unchanged until" came out as "unchangeduntil".
-  const { docToPdf } = await import("../src/modules/docs/pdf.js");
+  const { docToPdf } = await import("../src/modules/documents/pdf.js");
   const body = docToPdf("T", [
     { type: "paragraph", text: "stays **unchanged** until", id: "p" },
   ]).toString("latin1");
@@ -378,7 +378,7 @@ test("text after a bold run starts where the bold run ends", async () => {
 });
 
 test("punctuation a document actually uses survives into the PDF", async () => {
-  const { docToPdf } = await import("../src/modules/docs/pdf.js");
+  const { docToPdf } = await import("../src/modules/documents/pdf.js");
   const body = docToPdf("T", [
     { type: "bullet", text: "first", id: "b" },
     { type: "paragraph", text: "an — em dash … and “curly quotes”", id: "p" },
@@ -394,7 +394,7 @@ test("punctuation a document actually uses survives into the PDF", async () => {
 });
 
 test("bold, italic and code are drawn in the fonts they claim", async () => {
-  const { docToPdf } = await import("../src/modules/docs/pdf.js");
+  const { docToPdf } = await import("../src/modules/documents/pdf.js");
   const body = docToPdf("T", [
     { type: "paragraph", text: "a **b** and *i* and `c`", id: "p" },
   ]).toString("latin1");

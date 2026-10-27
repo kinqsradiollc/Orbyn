@@ -138,11 +138,11 @@ async function routeFixture(
       PAGE_KEPT_OUT: "Disabled",
     },
     "../../lib/visibility.js": { readableDocs: () => "TRUE" },
-    "../docs/service.js": {},
+    "../documents/service.js": {},
     "../links/privacy.js": {
       linkPrivacy: async () => ({ value: (value: any) => value }),
     },
-    "../docs/ranges.js": {},
+    "../documents/ranges.js": {},
   };
   runInNewContext(
     ts.transpileModule(source, {
@@ -316,8 +316,8 @@ for (const platform of ["desktop", "mobile"] as const) {
     const exports: any = {};
     const path =
       platform === "desktop"
-        ? "desktop/src/features/docs/DocChat.tsx"
-        : "mobile/src/screens/docs/DocAsk.tsx";
+        ? "desktop/src/features/documents/collaboration/DocChat.tsx"
+        : "mobile/src/features/documents/editor/DocAsk.tsx";
     const source = readFileSync(
       new URL(`../../${path}`, import.meta.url),
       "utf8",
@@ -347,7 +347,7 @@ for (const platform of ["desktop", "mobile"] as const) {
           if (name === "react") return hooks;
           if (name === "@orbyn/core") return core;
           if (name === "react-native") return native;
-          if (name === "../../lib/api")
+          if (name === "../../../lib/api")
             return {
               client: {
                 askDoc: async (...args: any[]) => {
@@ -359,10 +359,10 @@ for (const platform of ["desktop", "mobile"] as const) {
                 },
               },
             };
-          if (name === "../../lib/session") return { session };
-          if (name === "../../lib/errors")
+          if (name === "../../../lib/session") return { session };
+          if (name === "../../../lib/errors")
             return { errorText: (error: any) => error.message };
-          if (name === "../../theme")
+          if (name === "../../../theme")
             return {
               colors: {},
               fonts: {},
@@ -476,7 +476,7 @@ test("DOM excerpt capture supports rendered multi-block text and exact textarea 
     const exports: any = {};
     const source = readFileSync(
       new URL(
-        "../../desktop/src/features/docs/doc-excerpt.ts",
+        "../../desktop/src/features/documents/source/doc-excerpt.ts",
         import.meta.url,
       ),
       "utf8",

@@ -6,8 +6,8 @@ import ts from "typescript";
 const sources = await Promise.all(
   [
     "../../desktop/src/features/admin/AdminAi.tsx",
-    "../../mobile/src/screens/AdminAi.tsx",
-    "../../packages/api-client/src/client.ts",
+    "../../mobile/src/features/admin/AdminAi.tsx",
+    "../../packages/api-client/src/endpoints/assistant.ts",
   ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),
 );
 const trees = sources.map((source, index) =>
@@ -222,11 +222,12 @@ for (const platform of ["web", "mobile"] as const)
   });
 test("API client retains legacy probe calls and sends explicit generation when supplied", () => {
   const method = extract(trees[2], (n) =>
-    ts.isMethodDeclaration(n) && n.name.getText(trees[2]) === "testAiProvider"
+    ts.isFunctionDeclaration(n) &&
+    n.name?.getText(trees[2]) === "callTestAiProvider"
       ? n.getText(trees[2])
       : undefined,
   );
-  const callback = evaluate(`({${method}}).testAiProvider`, {});
+  const callback = evaluate(`(${method.replace(/^export\s+/, "")})`, {});
   for (const model of [undefined, "chosen-model"])
     for (const revision of [undefined, "7"]) {
       let request: any;

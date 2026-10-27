@@ -9,7 +9,7 @@ for (const platform of ["desktop", "mobile"] as const) {
     for (const switched of [false, true]) {
       test(`${platform}: ${status} mutation error belongs only to its starting session (switch=${switched})`, async () => {
         const path = new URL(
-          `../../${platform}/src/hooks/usePlanner.ts`,
+          `../../${platform}/src/features/planner/usePlanner.ts`,
           import.meta.url,
         );
         const source = ts.createSourceFile(

@@ -61,7 +61,7 @@ after(async () => {
   await pool.query(
     "UPDATE agent_activity SET reported_at = now() WHERE reported_at IS NULL",
   );
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   assert.deepEqual(network.calls, []);
   network.restore();

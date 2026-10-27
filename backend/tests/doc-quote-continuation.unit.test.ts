@@ -75,7 +75,7 @@ test("empty quoted lines remain explicit paragraph boundaries", () => {
 });
 
 test("Word quote export uses one paragraph and only explicit hard breaks", async () => {
-  const { docToDocx } = await import("../src/modules/docs/docx.js");
+  const { docToDocx } = await import("../src/modules/documents/docx.js");
   const { readZip } = await import("../src/modules/imports/docx.js");
   const blocks = parseDoc("> First\n> second  \n> third");
   const files = readZip(
@@ -93,7 +93,7 @@ test("Word quote export uses one paragraph and only explicit hard breaks", async
 });
 
 test("Word quote import prefixes every hard-broken line and retains literal callout text", async () => {
-  const { docToDocx } = await import("../src/modules/docs/docx.js");
+  const { docToDocx } = await import("../src/modules/documents/docx.js");
   const { docxToMarkdown } = await import("../src/modules/imports/docx.js");
   const source = [
     { type: "quote" as const, text: "First second  \nthird" },

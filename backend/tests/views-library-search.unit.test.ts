@@ -42,7 +42,7 @@ test("blank library queries preserve order and references without mutating defin
 test("both clients wire library search separately from selected rows and view filters", () => {
   for (const path of [
     "desktop/src/features/views/ViewsView.tsx",
-    "mobile/src/screens/views/ViewsSheet.tsx",
+    "mobile/src/features/views/ViewsSheet.tsx",
   ]) {
     const source = readFileSync(
       new URL(`../../${path}`, import.meta.url),

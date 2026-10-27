@@ -23,7 +23,7 @@ import { pool, reader, transaction, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { visibleItems, visibleProjects } from "../../lib/visibility.js";
-import { createDoc } from "../docs/service.js";
+import { createDoc } from "../documents/service.js";
 import { enqueueMemory } from "../memory/service.js";
 
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";

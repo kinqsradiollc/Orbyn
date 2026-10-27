@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const sourceDigest = createHash("sha256")
   .update(await readFile(`${root}scripts/mermaid-runtime.mjs`))
-  .update(await readFile(`${root}packages/core/src/mermaid.ts`))
+  .update(await readFile(`${root}packages/core/src/documents/mermaid.ts`))
   .update(await readFile(fileURLToPath(import.meta.url)))
   .update(await readFile(`${root}package.json`))
   .update(await readFile(`${root}mobile/package.json`))
@@ -14,7 +14,7 @@ const sourceDigest = createHash("sha256")
   .digest("hex");
 const result = await build({
   entryPoints: [`${root}scripts/mermaid-runtime.mjs`],
-  alias: { "@orbyn/core": `${root}packages/core/src/mermaid.ts` },
+  alias: { "@orbyn/core": `${root}packages/core/src/documents/mermaid.ts` },
   bundle: true,
   minify: true,
   format: "iife",

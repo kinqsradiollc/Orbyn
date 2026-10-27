@@ -37,7 +37,7 @@ test("web connection help is optional and keeps the developer route available", 
 
 function mobileHelp(open: boolean) {
   // Locate the hook by its binding so adding unrelated state cannot change this fixture.
-  const source = read("mobile/src/screens/ConnectedAgents.tsx");
+  const source = read("mobile/src/features/connections/ConnectedAgents.tsx");
   const ast = ts.createSourceFile(
     "ConnectedAgents.tsx",
     source,
@@ -122,7 +122,7 @@ function mobileHelp(open: boolean) {
                   Switch: "Switch",
                   TextInput: "TextInput",
                 }
-              : name === "../theme"
+              : name === "../../theme"
                 ? {
                     colors: {},
                     fonts: {},
@@ -130,9 +130,9 @@ function mobileHelp(open: boolean) {
                     controls: { tap: 44 },
                     themed: (factory: any) => factory(),
                   }
-                : name === "../styles"
+                : name === "../../styles"
                   ? { shared: {} }
-                  : name === "../lib/api"
+                  : name === "../../lib/api"
                     ? { client: {} }
                     : stubs,
     },

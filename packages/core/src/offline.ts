@@ -1,4 +1,4 @@
-import type { PlannedFeed, TodayList } from "./today.js";
+import type { PlannedFeed, TodayList } from "./planner/today.js";
 import type { Item, Notice, Tag, TaskList, Team, User } from "./types.js";
 
 // Offline-first support: the app keeps the last planner data it loaded so it

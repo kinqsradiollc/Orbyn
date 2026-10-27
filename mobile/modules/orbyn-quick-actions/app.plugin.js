@@ -2,7 +2,7 @@
  * Config plugin for the app icon's quick actions (long-press the icon):
  * New task, Today's agenda, Scan notes and Ask assistant. Each opens an
  * orbyn:// link that the app already handles (see parseAppLink in
- * packages/core/src/app-links.ts, whose QUICK_ACTIONS this list must match;
+ * packages/core/src/workspace/app-links.ts, whose QUICK_ACTIONS this list must match;
  * a backend test checks that it does).
  *
  * - iOS: static UIApplicationShortcutItems in Info.plist, each carrying its

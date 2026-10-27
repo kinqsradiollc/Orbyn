@@ -8,7 +8,7 @@ import {
   preparePageLeave,
   usePaneLeaveGuard,
 } from "../../app/page-commands";
-import { errorText } from "../../lib/planning";
+import { errorText } from "../planner/planning";
 import { newId } from "@orbyn/core";
 import { Plus, Users } from "lucide-react";
 import type { Team } from "@orbyn/core";

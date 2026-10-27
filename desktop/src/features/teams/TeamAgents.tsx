@@ -7,7 +7,7 @@ import {
   type TeamAgentsView,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { timeAgo } from "../../lib/tasks";
+import { timeAgo } from "../tasks/tasks";
 import { Select } from "../../components/Select";
 import "./team-agents.css";
 import { useSettingsRead } from "../settings/useSettingsRead";

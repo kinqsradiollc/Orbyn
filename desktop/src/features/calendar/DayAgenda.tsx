@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { Users } from "lucide-react";
 import { dayHeading, type Item } from "@orbyn/core";
 import { usePlanning } from "../../app/planning";
-import { progressOf } from "../../lib/tasks";
+import { progressOf } from "../tasks/tasks";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
 import { firstDay, isAllDay, isMultiDay, lastDay, timeLabel } from "./dates";

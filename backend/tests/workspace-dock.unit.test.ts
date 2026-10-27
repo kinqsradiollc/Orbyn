@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 const require = createRequire(import.meta.url);
 const source = readFileSync(
-  new URL("../../desktop/src/components/WorkspaceDock.tsx", import.meta.url),
+  new URL("../../desktop/src/app/chrome/WorkspaceDock.tsx", import.meta.url),
   "utf8",
 );
 function fixture(saved: string | null = null) {
@@ -332,7 +332,7 @@ test("capture loss restores uncommitted resize and compact tabs retain coarse ta
   assert.equal(f.states[0], 400);
   assert.equal(f.writes.length, 0);
   const css = readFileSync(
-    new URL("../../desktop/src/components/workspace-dock.css", import.meta.url),
+    new URL("../../desktop/src/app/chrome/workspace-dock.css", import.meta.url),
     "utf8",
   );
   assert.match(css, /min-height: 32px/);
@@ -367,7 +367,7 @@ test("a budget-forced desktop overlay is a right sheet; fullscreen is phone-only
   assert.equal(tree.props.style["--workspace-dock-preferred-width"], "520px");
   assert.equal(tree.props.style.width, undefined);
   const css = readFileSync(
-    new URL("../../desktop/src/components/workspace-dock.css", import.meta.url),
+    new URL("../../desktop/src/app/chrome/workspace-dock.css", import.meta.url),
     "utf8",
   );
   assert.match(css, /inset: 0 0 0 auto/);
@@ -397,7 +397,7 @@ test("dock and page tab bars share one chrome height", () => {
     "utf8",
   );
   const dockCss = readFileSync(
-    new URL("../../desktop/src/components/workspace-dock.css", import.meta.url),
+    new URL("../../desktop/src/app/chrome/workspace-dock.css", import.meta.url),
     "utf8",
   );
   assert.match(appCss, /--workspace-chrome-height: 56px/);

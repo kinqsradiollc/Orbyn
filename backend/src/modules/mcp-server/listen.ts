@@ -27,7 +27,7 @@ import {
 import { readTransaction } from "../../db/pool.js";
 import { policy, type Principal } from "../../capabilities/policy.js";
 import { onLive, type LiveEvent } from "../presence/live.js";
-import { watchDoc } from "../docs/live.js";
+import { watchDoc } from "../documents/live.js";
 import { McpAuthError, resolveCaller, type Caller } from "./auth.js";
 import { detailed, readTasks, ownTaskIds } from "./tasks.js";
 

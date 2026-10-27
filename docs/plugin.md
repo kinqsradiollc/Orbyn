@@ -93,7 +93,7 @@ still requires explicit owner consent and a configured managed provider.
 
 Owning source is `backend/src/modules/plugin/` (`routes.ts`,
 `inference-contract.ts`, `inference-broker.ts`, `inference-worker.ts`,
-`provider-policy.ts`) and the shared schemas in `packages/core/src/plugin-ai.ts`.
+`provider-policy.ts`) and the shared schemas in `packages/core/src/connections/plugin-ai.ts`.
 Focused fixtures and CI establish only the cases they execute. Live external
 provider renewal, actual host integration and installed-native consent UI require
 separate qualification; this guide is not an acceptance receipt.

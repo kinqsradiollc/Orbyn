@@ -42,7 +42,7 @@ test("writing replaces prose in place and yields to links, selections, source an
     transformSync(
       readFileSync(
         new URL(
-          "../../desktop/src/features/docs/DocBlockActions.tsx",
+          "../../desktop/src/features/documents/editor/DocBlockActions.tsx",
           import.meta.url,
         ),
         "utf8",
@@ -57,7 +57,7 @@ test("writing replaces prose in place and yields to links, selections, source an
       module: actions,
       exports: actions.exports,
       require: (name: string) =>
-        name === "../../components/Popover"
+        name === "../../../components/Popover"
           ? { Popover: () => null }
           : require(name),
     },
@@ -67,7 +67,7 @@ test("writing replaces prose in place and yields to links, selections, source an
     transformSync(
       readFileSync(
         new URL(
-          "../../desktop/src/features/docs/DocWritingBlock.tsx",
+          "../../desktop/src/features/documents/editor/DocWritingBlock.tsx",
           import.meta.url,
         ),
         "utf8",
@@ -221,8 +221,8 @@ test("writing replaces prose in place and yields to links, selections, source an
 
 test("both structured parents offer direct Note insertion without flattening containers", () => {
   for (const path of [
-    "desktop/src/features/docs/StructuredDocEditor.tsx",
-    "mobile/src/screens/docs/StructuredDocEditor.tsx",
+    "desktop/src/features/documents/editor/StructuredDocEditor.tsx",
+    "mobile/src/features/documents/editor/StructuredDocEditor.tsx",
   ]) {
     const source = readFileSync(
       new URL(`../../${path}`, import.meta.url),
@@ -239,7 +239,7 @@ test("both structured parents offer direct Note insertion without flattening con
 test("narrow writing corrections retain full titles and Viewing page information", () => {
   const mobile = readFileSync(
     new URL(
-      "../../mobile/src/screens/docs/StructuredDocEditor.tsx",
+      "../../mobile/src/features/documents/editor/StructuredDocEditor.tsx",
       import.meta.url,
     ),
     "utf8",
@@ -251,7 +251,10 @@ test("narrow writing corrections retain full titles and Viewing page information
   );
   assert.match(mobile, /session.title \|\| "Untitled"/);
   const legacy = readFileSync(
-    new URL("../../desktop/src/features/docs/DocEditor.tsx", import.meta.url),
+    new URL(
+      "../../desktop/src/features/documents/editor/LegacyDocEditor.tsx",
+      import.meta.url,
+    ),
     "utf8",
   );
   assert.match(
@@ -262,8 +265,8 @@ test("narrow writing corrections retain full titles and Viewing page information
 
 test("format transitions finish inline editing only after draft save guards", () => {
   for (const client of [
-    "desktop/src/features/docs",
-    "mobile/src/screens/docs",
+    "desktop/src/features/documents/editor",
+    "mobile/src/features/documents/editor",
   ]) {
     const source = readFileSync(
       new URL(`../../${client}/StructuredDocEditor.tsx`, import.meta.url),

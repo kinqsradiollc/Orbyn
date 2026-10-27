@@ -6,7 +6,7 @@ import { Copy, ExternalLink, UserRound } from "lucide-react";
 import type { Profile } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
-import { copyText } from "../../lib/planning";
+import { copyText } from "../planner/planning";
 
 /** Your public profile page: a handle and a short bio, listing your booking pages. */
 export function ProfileCard({ report }: { report: (e: unknown) => void }) {

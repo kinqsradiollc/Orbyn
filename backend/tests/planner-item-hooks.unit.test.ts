@@ -7,7 +7,7 @@ import ts from "typescript";
 type Platform = "desktop" | "mobile";
 function source(platform: Platform) {
   const file = new URL(
-    `../../${platform}/src/hooks/usePlanner.ts`,
+    `../../${platform}/src/features/planner/usePlanner.ts`,
     import.meta.url,
   );
   return ts.createSourceFile(

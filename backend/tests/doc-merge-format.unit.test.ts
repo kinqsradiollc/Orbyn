@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as core from "@orbyn/core";
 const sourceText = readFileSync(
-  new URL("../src/modules/docs/structure.ts", import.meta.url),
+  new URL("../src/modules/documents/structure.ts", import.meta.url),
   "utf8",
 );
 const ast = ts.createSourceFile(

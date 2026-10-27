@@ -11,7 +11,7 @@ test("shared task empty state names the state and next action directly", () => {
   assert.equal(emptyPlans.body, "Add a task or event.");
   for (const path of [
     "desktop/src/features/tasks/TasksView.tsx",
-    "mobile/src/screens/TasksScreen.tsx",
+    "mobile/src/features/tasks/TasksScreen.tsx",
   ]) {
     assert.match(read(path), /Add task/);
     assert.match(read(path), /Search tasks/);
@@ -62,7 +62,7 @@ test("Home agent rows open activity and optional guide and characters retain dis
     /\{guideOpen && \(\s*<div className="home-companions-guide">/,
   );
   assert.match(web, /\{guideOpen && expanded && \(/);
-  const mobile = read("mobile/src/components/HomeCompanions.tsx");
+  const mobile = read("mobile/src/features/home/HomeCompanions.tsx");
   assert.match(mobile, /accessibilityLabel=\{`Open \$\{agent.name\} work`\}/);
   assert.match(mobile, /setOpenLane\([\s\S]*?setAgentsOpen\(true\)/);
   assert.match(mobile, /accessibilityState=\{\{ expanded: guideOpen \}\}/);

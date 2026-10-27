@@ -3,7 +3,7 @@ import { SlidersHorizontal } from "lucide-react";
 import { TEAM_POLICY_TEXT, type TeamPolicies as Policies } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
-import "../publish/publish.css";
+import "../public-pages/publish.css";
 import { useSettingsRead } from "../settings/useSettingsRead";
 import { usePaneLeaveGuard } from "../../app/page-commands";
 

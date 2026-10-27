@@ -36,7 +36,8 @@ function menu(platform: "ios" | "android" | "web", reducedMotion = false) {
             if (cleanup) cleanups.push(cleanup);
           },
         };
-      if (name === "../lib/session") return { session };
+      if (name === "../lib/session" || name === "../../lib/session")
+        return { session };
       if (name === "react-native")
         return {
           Animated: { View: "AnimatedView" },
@@ -149,7 +150,7 @@ test("Android section selection executes immediately without a second dismissal 
 
 test("Admin navigation retains permission guards and detail resets on both clients", () => {
   const web = read("desktop/src/features/admin/AdminView.tsx");
-  const mobile = read("mobile/src/screens/AdminSheet.tsx");
+  const mobile = read("mobile/src/features/admin/AdminSheet.tsx");
   assert.ok(web.includes('aria-label="Admin sections"'));
   assert.ok(web.includes('className="admin-section-picker"'));
   for (const permission of [
@@ -170,7 +171,7 @@ test("Admin navigation retains permission guards and detail resets on both clien
 
 test("budget disclosures preserve validation and bounded menu labels can wrap", () => {
   const web = read("desktop/src/features/admin/AdminAi.tsx");
-  const mobile = read("mobile/src/screens/AdminAi.tsx");
+  const mobile = read("mobile/src/features/admin/AdminAi.tsx");
   assert.ok(web.includes('className="card ai-budget"'));
   assert.ok(mobile.includes('title="Night-shift budget"'));
   for (const source of [web, mobile]) {

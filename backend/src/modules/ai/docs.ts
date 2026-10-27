@@ -19,9 +19,9 @@ import { requireAssistantAllowed, requireTeam } from "../../lib/teams.js";
 import { completePageFeature } from "./providers/feature-call.js";
 import { docKeptOut, PAGE_KEPT_OUT } from "../../lib/assistant-off.js";
 import { readableDocs } from "../../lib/visibility.js";
-import { proposeChanges } from "../docs/service.js";
+import { proposeChanges } from "../documents/service.js";
 import { linkPrivacy, readableLinks } from "../links/privacy.js";
-import { carryRanges } from "../docs/ranges.js";
+import { carryRanges } from "../documents/ranges.js";
 
 /**
  * The assistant, inside a page.

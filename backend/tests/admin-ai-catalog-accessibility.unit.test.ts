@@ -39,13 +39,14 @@ const { SmallAction } = compile(
   ),
   (path) => {
     if (path === "react-native") return nativeWeb;
-    if (path === "../motion") return { PressableScale: nativeWeb.Pressable };
-    if (path === "../theme") return theme;
+    if (path === "../motion" || path === "../../motion")
+      return { PressableScale: nativeWeb.Pressable };
+    if (path === "../theme" || path === "../../theme") return theme;
     return require(path);
   },
 );
 const source = readFileSync(
-  new URL("../../mobile/src/screens/AdminAi.tsx", import.meta.url),
+  new URL("../../mobile/src/features/admin/AdminAi.tsx", import.meta.url),
   "utf8",
 );
 const tree = ts.createSourceFile(

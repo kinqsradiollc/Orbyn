@@ -20,7 +20,7 @@ import { replyToAsk, settleAsk } from "../followthrough/asks.js";
 import { reviewDoc } from "../followthrough/memory.js";
 import { deleteProof, proofItem } from "../followthrough/proof.js";
 import { createRecord, respondToRecord } from "../work-records/service.js";
-import { decideSuggestion, deleteComment } from "../docs/comments.js";
+import { decideSuggestion, deleteComment } from "../documents/comments.js";
 import { removeProjectLink, updateProject } from "../projects/service.js";
 import {
   bookingAction,
@@ -42,7 +42,7 @@ import {
 } from "../planner/routines.js";
 import { loadTemplate, proposeFromTemplate } from "../templates/service.js";
 import { applyProject } from "../ai/project-proposal.js";
-import { untrashDoc } from "../docs/service.js";
+import { untrashDoc } from "../documents/service.js";
 import { deleteField } from "../views/fields.js";
 import { removeMilestone } from "../projects/milestones.js";
 import { setAssistantOff } from "../projects/assistant.js";

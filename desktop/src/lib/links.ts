@@ -1,6 +1,6 @@
 import { appPath, appUrl, type LinkTarget } from "@orbyn/core";
 import { apiBase } from "./api";
-import { copyText } from "./planning";
+import { copyText } from "../features/planner/planning";
 
 /**
  * Where a link to a page, task or project points. In a browser that is this

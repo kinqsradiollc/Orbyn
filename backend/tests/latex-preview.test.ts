@@ -6,7 +6,8 @@ const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { env } = await import("../src/config/env.js");
-const { buildPdfService } = await import("../src/modules/docs/pdf-service.js");
+const { buildPdfService } =
+  await import("../src/modules/documents/pdf-service.js");
 const bytes = Buffer.from("%PDF-1.7\nsynthetic compiler fixture");
 let render: () => Promise<Buffer> = async () => bytes;
 const compiler = buildPdfService({

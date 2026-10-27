@@ -36,7 +36,7 @@ import { loadPrefs } from "../planner/calendar.js";
 import { readRecord, updateRecord } from "../work-records/service.js";
 import { listGoals, saveGoal, goalWork } from "./goals.js";
 import { listAgentRoutines, saveAgentRoutine } from "./routines.js";
-import { listComments, resolveComment } from "../docs/comments.js";
+import { listComments, resolveComment } from "../documents/comments.js";
 import {
   habitPlan,
   applyHabitPlan,

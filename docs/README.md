@@ -36,7 +36,7 @@ provider consent or external service setup describe those conditions in their gu
 | Architecture and data flow           | [Architecture](architecture.md)                                                        | `backend/src/app.ts`, shared packages and owning modules              |
 | HTTP contract                        | [API](api.md), [OpenAPI](openapi.yaml)                                                 | Backend routes and shared schemas                                     |
 | Assistant chats and automation       | [Assistant](assistant.md), [conversation API](api.md#retained-assistant-conversations) | `backend/src/modules/assistant-workspace/`, `backend/src/modules/ai/` |
-| Changelog, image drafts and LinkedIn | [Admin Publishing](admin-publishing.md)                                                | `backend/src/modules/publishing/`, web admin UI                       |
+| Changelog, image drafts and LinkedIn | [Admin Publishing](admin-publishing.md)                                                | `backend/src/modules/social-publishing/`, web admin UI                |
 | MCP connector                        | [MCP](mcp.md), [catalog](mcp-catalog.json), [runbook](runbooks/agents.md)              | `backend/src/modules/mcp-server/`, `backend/src/capabilities/`        |
 | Plugin service                       | [Plugin](plugin.md)                                                                    | `backend/src/modules/plugin/`                                         |
 | Mobile app                           | [Mobile](mobile.md)                                                                    | `mobile/package.json`, app configuration and screens                  |

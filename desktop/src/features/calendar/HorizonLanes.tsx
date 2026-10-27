@@ -14,7 +14,7 @@ import {
   type PlannerPrefs,
 } from "@orbyn/core";
 import { Select } from "../../components/Select";
-import { minutesLabel, spanLabel } from "../../lib/planning";
+import { minutesLabel, spanLabel } from "../planner/planning";
 import type { PlanTuning } from "./usePlanTuning";
 import "./horizon.css";
 

@@ -39,7 +39,7 @@ import {
   makeLineTasks,
   pageTags,
   type EventRow,
-} from "../docs/service.js";
+} from "../documents/service.js";
 import {
   readableDocs,
   visibleItems,

@@ -12,7 +12,7 @@ runInNewContext(
   ts.transpileModule(
     readFileSync(
       new URL(
-        "../../mobile/src/lib/chatgpt-account-directory.ts",
+        "../../mobile/src/features/connections/chatgpt-account-directory.ts",
         import.meta.url,
       ),
       "utf8",

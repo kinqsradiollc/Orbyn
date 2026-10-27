@@ -26,7 +26,7 @@ const { env } = await import("../src/config/env.js");
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { zip } = await import("../src/modules/docs/zip.js");
+const { zip } = await import("../src/modules/documents/zip.js");
 const { limiter, strikes } =
   await import("../src/modules/mcp-server/routes.js");
 
@@ -123,7 +123,7 @@ before(async () => {
 
 after(async () => {
   globalThis.fetch = realFetch;
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   await app.close();
   await pool.end();

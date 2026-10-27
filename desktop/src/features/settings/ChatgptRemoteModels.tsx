@@ -3,7 +3,7 @@ import { ChatgptUsage } from "./ChatgptUsage";
 import { useId, useState } from "react";
 import { CHATGPT_USAGE_URL, chatgptExecutorDeviceLabel } from "@orbyn/core";
 import { Select } from "../../components/Select";
-import { useChatgptRemote } from "../../hooks/useChatgptRemote";
+import { useChatgptRemote } from "../connections/useChatgptRemote";
 
 /** Manage a verified catalog from an owned device without transferring its credentials. */
 export function ChatgptRemoteModels({ userId }: { userId: string }) {

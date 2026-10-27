@@ -10,7 +10,7 @@ const { migrate } = await import("../src/db/migrate.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 const { beginChatTurn } = await import("../src/modules/ai/chats.js");
-const { closeLive } = await import("../src/modules/docs/live.js");
+const { closeLive } = await import("../src/modules/documents/live.js");
 
 const app = await buildApp();
 const h = helpers(app);

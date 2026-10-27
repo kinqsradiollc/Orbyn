@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
-const path = "../../desktop/src/features/docs/StructuredDocEditor.tsx";
+const path =
+  "../../desktop/src/features/documents/editor/StructuredDocEditor.tsx";
 const source = readFileSync(new URL(path, import.meta.url), "utf8");
 const ast = ts.createSourceFile(
   path,

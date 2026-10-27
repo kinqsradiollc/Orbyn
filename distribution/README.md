@@ -12,7 +12,7 @@ The files marked _generated_ come from the capability registry (`npm run mcp:cat
 | `gemini/` (generated)                  | A Gemini CLI extension: `gemini-extension.json` and `GEMINI.md` (the skill)                                                       | Owner: its own public repo         |
 | `directory/`                           | Material for Anthropic's Connectors Directory and OpenAI's apps directory: checklist, test cases, annotations audit, privacy text | Owner submits                      |
 
-One-click install links for Cursor, VS Code, Goose and LM Studio are in the app (Settings → Connected agents → "Or add Orbyn in one click", on the web and in the mobile app) and come from `agentInstallLinks()` in `packages/core/src/agents.ts`. They carry only the address, never a key.
+One-click install links for Cursor, VS Code, Goose and LM Studio are in the app (Settings → Connected agents → "Or add Orbyn in one click", on the web and in the mobile app) and come from `agentInstallLinks()` in `packages/core/src/assistant/agents.ts`. They carry only the address, never a key.
 
 ## The owner's steps
 

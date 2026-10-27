@@ -15,7 +15,7 @@ function menus() {
     "react/jsx-runtime": require("react/jsx-runtime"),
     "lucide-react": require("lucide-react"),
     "@orbyn/core": core,
-    "../../components/Popover": {
+    "../../../components/Popover": {
       Popover: ({ children }: any) =>
         React.createElement("div", null, children),
     },
@@ -24,7 +24,7 @@ function menus() {
     transformSync(
       readFileSync(
         new URL(
-          "../../desktop/src/features/docs/DocBlockMenu.tsx",
+          "../../desktop/src/features/documents/editor/DocBlockMenu.tsx",
           import.meta.url,
         ),
         "utf8",

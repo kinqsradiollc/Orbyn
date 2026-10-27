@@ -10,7 +10,7 @@ import {
 import {
   renderHtmlSnapshot,
   renderPdfSnapshot,
-} from "../src/modules/docs/pdf-renderer.js";
+} from "../src/modules/documents/pdf-renderer.js";
 import { readPdf } from "../src/modules/imports/pdf.js";
 import { mermaidFixtures } from "./helpers/mermaid-fixtures.js";
 

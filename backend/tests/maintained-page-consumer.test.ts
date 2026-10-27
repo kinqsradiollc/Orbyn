@@ -10,7 +10,7 @@ const { migrate } = await import("../src/db/migrate.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 const { createMaintainedPageBinding } =
-  await import("../src/modules/docs/maintenance.js");
+  await import("../src/modules/documents/maintenance.js");
 const {
   queueMaintainedPageRun,
   claimMaintainedPageRun,
@@ -19,11 +19,11 @@ const {
   stageMaintainedPageRun,
   decideMaintainedPageRun,
   PAGE_RUN_LEASE_MS,
-} = await import("../src/modules/docs/maintenance-runs.js");
+} = await import("../src/modules/documents/maintenance-runs.js");
 const { processMaintainedPageRun } =
   await import("../src/worker/maintained-pages.js");
 const { resolveMaintainedPageModel } =
-  await import("../src/modules/docs/maintenance-model.js");
+  await import("../src/modules/documents/maintenance-model.js");
 const { default: Fastify } = await import("fastify");
 const loggerApp = Fastify({ logger: false });
 const log = loggerApp.log;
@@ -284,7 +284,7 @@ for (const mode of ["reply", "changed", "review"] as const) {
     );
     if (mode === "review") {
       const { listMaintainedPageRuns } =
-        await import("../src/modules/docs/maintenance-runs.js");
+        await import("../src/modules/documents/maintenance-runs.js");
       const list = await transaction((db) =>
         listMaintainedPageRuns(db, f.user, f.doc.id),
       );
@@ -993,7 +993,7 @@ test("page and chat jobs serialize Overnight work for the same person", async ()
   const { claimAssistantJob } =
     await import("../src/modules/ai/agent/runner.js");
   const { releaseMaintainedPageRun } =
-    await import("../src/modules/docs/maintenance-runs.js");
+    await import("../src/modules/documents/maintenance-runs.js");
   const page = await transaction((db) =>
     claimMaintainedPageRun(db, "overnight", time, f.run.id),
   );

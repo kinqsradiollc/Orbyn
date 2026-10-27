@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 const source = readFileSync(
-  new URL("../../desktop/src/components/SidebarResizer.tsx", import.meta.url),
+  new URL("../../desktop/src/app/chrome/SidebarResizer.tsx", import.meta.url),
   "utf8",
 );
 function load(saved: string | null = null) {
@@ -51,7 +51,7 @@ test("drag widths snap to the same icon rail; resizer remains reachable in rail 
   assert.equal(boundedSidebarWidth(700), 400);
   assert.equal(boundedSidebarWidth(200, 100), 72);
   const sidebar = readFileSync(
-    new URL("../../desktop/src/components/Sidebar.tsx", import.meta.url),
+    new URL("../../desktop/src/app/chrome/Sidebar.tsx", import.meta.url),
     "utf8",
   );
   assert.match(sidebar, /\{onResize && <SidebarResizer/);
@@ -62,7 +62,7 @@ test("drag widths snap to the same icon rail; resizer remains reachable in rail 
 
 test("rail starts compact and offers labels on hover and focus", () => {
   const sidebar = readFileSync(
-    new URL("../../desktop/src/components/Sidebar.tsx", import.meta.url),
+    new URL("../../desktop/src/app/chrome/Sidebar.tsx", import.meta.url),
     "utf8",
   );
   assert.equal(load().savedSidebarWidth(), 72);

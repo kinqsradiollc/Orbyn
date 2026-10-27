@@ -53,7 +53,7 @@ function fixture(
   };
   const source = readFileSync(
     new URL(
-      `../../mobile/src/${name === "SyncSheet" ? "screens" : "components"}/${name}.tsx`,
+      `../../mobile/src/${name === "SyncSheet" ? "features/settings" : "components"}/${name}.tsx`,
       import.meta.url,
     ),
     "utf8",

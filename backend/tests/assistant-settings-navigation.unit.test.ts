@@ -61,7 +61,9 @@ test("mobile Assistant settings dispatches the actual Settings destination and r
 });
 
 test("mobile Assistant drawer names its settings action independently of the agent identity", () => {
-  const drawer = source("../../mobile/src/components/AssistantDrawer.tsx");
+  const drawer = source(
+    "../../mobile/src/features/assistant/AssistantDrawer.tsx",
+  );
   const labels: string[] = [];
   function visit(node: ts.Node) {
     if (

@@ -6,7 +6,7 @@ import {
   chatgptExecutorChallenge,
   chatgptExecutorFinish,
   chatgptExecutorCatalog,
-} from "../../packages/core/src/chatgpt-executors.js";
+} from "../../packages/core/src/connections/chatgpt-executors.js";
 const binding = {
   user_id: randomUUID(),
   connection_id: randomUUID(),

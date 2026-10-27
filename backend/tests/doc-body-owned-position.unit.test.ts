@@ -27,18 +27,18 @@ const modules: Record<string, unknown> = {
     TextInput: "TextInput",
     StyleSheet: { create: (x: unknown) => x },
   },
-  "../../motion": { Pressable: "Pressable" },
+  "../../../motion": { Pressable: "Pressable" },
   "@orbyn/core": core,
-  "./DocLatexPreview": { DocLatexNote: "DocLatexNote" },
-  "../../hooks/usePaneWidth": {
+  "../source/DocLatexPreview": { DocLatexNote: "DocLatexNote" },
+  "../../../hooks/usePaneWidth": {
     usePaneWidth: () => ({ width: 390, onLayout: () => {} }),
   },
   "./Inline": { Inline: "Inline" },
   "./MathView": { MathView: "MathView" },
   "./RichBlocks": rich,
-  "../views/LiveList": { LiveList: "LiveList" },
-  "../../components/Icon": { Icon: "Icon" },
-  "../../theme": {
+  "../../views/LiveList": { LiveList: "LiveList" },
+  "../../../components/Icon": { Icon: "Icon" },
+  "../../../theme": {
     inputFontSize: 16,
     colors: {},
     fonts: {},
@@ -47,7 +47,10 @@ const modules: Record<string, unknown> = {
   },
 };
 const source = readFileSync(
-  new URL("../../mobile/src/screens/docs/DocBody.tsx", import.meta.url),
+  new URL(
+    "../../mobile/src/features/documents/editor/DocBody.tsx",
+    import.meta.url,
+  ),
   "utf8",
 );
 const exports: {

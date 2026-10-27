@@ -17,9 +17,9 @@ const { migrate } = await import("../src/db/migrate.js");
 const { pool, transaction } = await import("../src/db/pool.js");
 const { buildApp } = await import("../src/app.js");
 const { readVersionedDoc, saveVersionedDoc } =
-  await import("../src/modules/docs/content-format.js");
-const { addToPage } = await import("../src/modules/docs/service.js");
-const { closeLive } = await import("../src/modules/docs/live.js");
+  await import("../src/modules/documents/content-format.js");
+const { addToPage } = await import("../src/modules/documents/service.js");
+const { closeLive } = await import("../src/modules/documents/live.js");
 
 const app = await buildApp();
 let owner: UserRow, stranger: UserRow;

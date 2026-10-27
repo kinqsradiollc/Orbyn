@@ -15,10 +15,10 @@ import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import { DateField } from "../../components/DateField";
 import { Select } from "../../components/Select";
-import { ProposalReview } from "../../components/ProposalReview";
-import type { TurnState } from "../../hooks/useAssistant";
+import { ProposalReview } from "../review/ProposalReview";
+import type { TurnState } from "../assistant/useAssistant";
 import { errorText } from "../../lib/errors";
-import { deviceTimeZone } from "../../lib/planning";
+import { deviceTimeZone } from "../planner/planning";
 
 type Mode = "manual" | "assistant";
 

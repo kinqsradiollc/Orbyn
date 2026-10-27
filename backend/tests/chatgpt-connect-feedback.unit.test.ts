@@ -61,7 +61,7 @@ test("web does not silently request a desktop while native Settings uses local s
   assert.doesNotMatch(web, /window\.location\.href\s*=\s*request\.launch_url/);
   const native = await readFile(
     new URL(
-      "../../mobile/src/screens/settings/ChatgptModelsSection.tsx",
+      "../../mobile/src/features/settings/ChatgptModelsSection.tsx",
       import.meta.url,
     ),
     "utf8",

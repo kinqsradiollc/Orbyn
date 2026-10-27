@@ -326,7 +326,9 @@ const mobileModules = {
     StyleSheet: { create: (x: any) => x, hairlineWidth: 1 },
   },
   "../motion": { Pressable: "Pressable" },
+  "../../motion": { Pressable: "Pressable" },
   "../styles": { shared: { input: {}, body: {}, small: {} } },
+  "../../styles": { shared: { input: {}, body: {}, small: {} } },
   "../theme": {
     colors: {
       text: "text",
@@ -340,12 +342,27 @@ const mobileModules = {
     fonts: { medium: "medium" },
     themed: (fn: any) => fn(),
   },
+  "../../theme": {
+    colors: {
+      text: "text",
+      textSoft: "soft",
+      faint: "faint",
+      accent: "accent",
+      border: "border",
+    },
+    controls: { tap: 44 },
+    radii: { input: 8 },
+    fonts: { medium: "medium" },
+    themed: (fn: any) => fn(),
+  },
   "./Icon": { Icon: "Icon" },
+  "../../components/Icon": { Icon: "Icon" },
   "./Sheet": { Sheet: "Sheet" },
+  "../../components/Sheet": { Sheet: "Sheet" },
 };
 const mobile = () =>
   renderer(
-    "../../mobile/src/components/ProviderPicker.tsx",
+    "../../mobile/src/features/connections/ProviderPicker.tsx",
     "ProviderPicker",
     mobileModules,
   );

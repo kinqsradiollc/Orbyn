@@ -10,7 +10,7 @@ import { useModalFocus } from "../../hooks/useModalFocus";
 import { MessageCircleQuestion } from "lucide-react";
 import { dateLabel, type TaskAsk } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { errorText } from "../../lib/planning";
+import { errorText } from "../planner/planning";
 import { DateField } from "../../components/DateField";
 
 const when = (iso: string | null) => (iso ? dateLabel(iso) : "no set date");

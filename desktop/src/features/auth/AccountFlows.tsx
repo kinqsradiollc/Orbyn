@@ -3,7 +3,7 @@ import { ArrowRight, MailCheck, Orbit } from "lucide-react";
 import type { AuthResponse } from "@orbyn/core";
 import { session } from "../../lib/session";
 import { client } from "../../lib/api";
-import { errorText } from "../../lib/planning";
+import { errorText } from "../planner/planning";
 
 /** Serialize an account form and keep its receipts with the initiating session/link. */
 function useAccountRequest(scope = "") {

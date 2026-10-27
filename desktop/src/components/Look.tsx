@@ -48,14 +48,14 @@ import {
 } from "@orbyn/core";
 import { client } from "../lib/api";
 import { session } from "../lib/session";
-import { errorText } from "../lib/planning";
+import { errorText } from "../features/planner/planning";
 import { useModalFocus } from "../hooks/useModalFocus";
 import { useConfirm } from "./Confirm";
 import {
   fileLink,
   isPicture,
   scaledPicture,
-} from "../features/docs/RichBlocks";
+} from "../features/documents/editor/RichBlocks";
 import { FilePicker } from "./FilePicker";
 import "./look.css";
 

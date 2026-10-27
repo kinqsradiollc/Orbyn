@@ -20,8 +20,8 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { session } from "../../lib/session";
-import { timeAgo } from "../../lib/tasks";
-import { openObject } from "../docs/DocLinks";
+import { timeAgo } from "../tasks/tasks";
+import { openObject } from "../documents/editor/DocLinks";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { NightShift } from "./NightShift";
 import { ReminderNudges } from "./ReminderNudges";

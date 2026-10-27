@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { routeDocumentDownload as web } from "../../desktop/src/features/docs/document-download.js";
-import { routeDocumentDownload as expo } from "../../mobile/src/screens/docs/document-download.js";
+import { routeDocumentDownload as web } from "../../desktop/src/features/documents/editor/document-download.js";
+import { routeDocumentDownload as expo } from "../../mobile/src/features/documents/editor/document-download.js";
 for (const [platform, route] of [
   ["web", web],
   ["Expo", expo],
@@ -62,10 +62,10 @@ for (const [platform, route] of [
 }
 test("all four document Download owners connect the guarded source handle and retain the authoritative version", () => {
   for (const file of [
-    "desktop/src/features/docs/DocEditor.tsx",
-    "desktop/src/features/docs/StructuredDocEditor.tsx",
-    "mobile/src/screens/docs/DocEditor.tsx",
-    "mobile/src/screens/docs/StructuredDocEditor.tsx",
+    "desktop/src/features/documents/editor/LegacyDocEditor.tsx",
+    "desktop/src/features/documents/editor/StructuredDocEditor.tsx",
+    "mobile/src/features/documents/editor/LegacyDocEditor.tsx",
+    "mobile/src/features/documents/editor/StructuredDocEditor.tsx",
   ]) {
     const source = readFileSync(
       new URL(`../../${file}`, import.meta.url),

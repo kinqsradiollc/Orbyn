@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadPublishedMedia } from "../src/modules/publish/media.js";
+import { loadPublishedMedia } from "../src/modules/public-pages/media.js";
 import { env } from "../src/config/env.js";
 
 const file = {

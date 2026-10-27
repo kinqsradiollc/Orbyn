@@ -10,12 +10,15 @@ const read = (path: string) =>
 /** Load the real UI helper in an isolated DOM harness, without a backend app dependency. */
 const context: Record<string, unknown> = { exports: {} };
 runInNewContext(
-  ts.transpileModule(read("desktop/src/features/docs/doc-layout.ts"), {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2022,
+  ts.transpileModule(
+    read("desktop/src/features/documents/library/doc-layout.ts"),
+    {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
     },
-  }).outputText,
+  ).outputText,
   context,
 );
 const { docRailLayout, observeDocLayout } = context.exports as {
@@ -138,8 +141,10 @@ test("Docs window fallback measures initially and removes its resize listener", 
 });
 
 test("Docs container state stacks rails and anchored comments without reserving old height", () => {
-  const source = read("desktop/src/features/docs/DocEditor.tsx");
-  const css = read("desktop/src/features/docs/docs.css");
+  const source = read(
+    "desktop/src/features/documents/editor/LegacyDocEditor.tsx",
+  );
+  const css = read("desktop/src/features/documents/editor/docs.css");
   assert.ok(source.includes("observeDocLayout(el, setLayoutWidth)"));
   assert.ok(source.includes('railLayout.narrow ? " is-narrow"'));
   assert.ok(source.includes("showsOutline(outline) && railLayout.outline"));
@@ -159,7 +164,9 @@ test("Docs container state stacks rails and anchored comments without reserving 
     css,
     /\.doc-layout\.is-narrow\.has-info \.page-info\s*\{\s*order: -1;/,
   );
-  const mobile = read("mobile/src/screens/docs/DocEditor.tsx");
+  const mobile = read(
+    "mobile/src/features/documents/editor/LegacyDocEditor.tsx",
+  );
   assert.ok(mobile.includes("visible={infoOpen}"));
   assert.match(
     mobile,

@@ -20,7 +20,7 @@ async function mount(app: "desktop" | "mobile") {
   const path =
     app === "desktop"
       ? "desktop/src/features/settings/ManagedAiUsage.tsx"
-      : "mobile/src/screens/settings/ManagedAiUsage.tsx";
+      : "mobile/src/features/settings/ManagedAiUsage.tsx";
   const compiled = ts.transpileModule(
     await readFile(new URL(`../../${path}`, import.meta.url), "utf8"),
     {

@@ -180,7 +180,7 @@ before(async () => {
 });
 
 after(async () => {
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   await app.close();
   await pool.end();
@@ -1031,7 +1031,7 @@ test("a task finished elsewhere moves its pages on, so an old copy can't reopen 
 
 test("a tick on one page moves the other pages showing the task, and they hear it", async () => {
   const { streamDocChanges, watcherCount } =
-    await import("../src/modules/docs/live.js");
+    await import("../src/modules/documents/live.js");
   const me = await newUser();
   const { doc, item } = await linkedLine(me.token, "Book the venue");
   // A second page with a line tied to the same task.

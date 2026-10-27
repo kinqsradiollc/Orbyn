@@ -12,7 +12,7 @@ const {
   createMaintainedPageBinding,
   maintainedPageContext,
   applyMaintainedPageUpdate,
-} = await import("../src/modules/docs/maintenance.js");
+} = await import("../src/modules/documents/maintenance.js");
 const users: string[] = [];
 const teams: string[] = [];
 before(() => migrate());
@@ -76,7 +76,7 @@ test("structured maintenance edits only the selected nested leaf and preserves c
     },
   ];
   const { saveVersionedDoc } =
-    await import("../src/modules/docs/content-format.js");
+    await import("../src/modules/documents/content-format.js");
   await transaction((db) =>
     saveVersionedDoc(
       db,

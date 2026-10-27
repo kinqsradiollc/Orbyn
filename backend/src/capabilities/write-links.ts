@@ -13,7 +13,7 @@ import {
   visibleProjects,
   visibleTemplates,
 } from "../lib/visibility.js";
-import { createDoc, saveDoc } from "../modules/docs/service.js";
+import { createDoc, saveDoc } from "../modules/documents/service.js";
 import { mutate, setItemPlacement } from "../modules/items/service.js";
 import { taskProjectExpectedVersion } from "../lib/task-project-compat.js";
 import { createProject } from "../modules/projects/service.js";

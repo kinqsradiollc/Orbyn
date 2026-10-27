@@ -25,8 +25,8 @@ import {
 } from "@orbyn/core";
 import { StatusPill } from "../../components/StatusPill";
 import { ProgressBar } from "../../components/ProgressBar";
-import { ItemFacts } from "../../components/ItemFacts";
-import { isOverdue, progressOf, stepsLabel } from "../../lib/tasks";
+import { ItemFacts } from "./ItemFacts";
+import { isOverdue, progressOf, stepsLabel } from "./tasks";
 import { CARD_MIME, carries, edgeScroll, startDrag } from "../../lib/drag";
 
 type Props = {

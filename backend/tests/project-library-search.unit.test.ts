@@ -66,7 +66,10 @@ test("both project clients retain open/create/manage actions while using shared 
     "utf8",
   );
   const mobile = readFileSync(
-    new URL("../../mobile/src/screens/docs/ProjectsSheet.tsx", import.meta.url),
+    new URL(
+      "../../mobile/src/features/projects/ProjectsSheet.tsx",
+      import.meta.url,
+    ),
     "utf8",
   );
   for (const source of [web, mobile]) {

@@ -61,7 +61,7 @@ test("actual source editor exports only on request and preserves source/HTML on 
   const code = transformSync(
     readFileSync(
       new URL(
-        "../../desktop/src/features/docs/DocSourcePreview.tsx",
+        "../../desktop/src/features/documents/source/DocSourcePreview.tsx",
         import.meta.url,
       ),
       "utf8",
@@ -70,25 +70,28 @@ test("actual source editor exports only on request and preserves source/HTML on 
   ).code;
   const mocks: any = {
     "@orbyn/core": core,
-    "../../components/LatexHtmlPreview": {
+    "../../../components/LatexHtmlPreview": {
       LatexHtmlPreview: ({ source }: any) =>
         React.createElement("iframe", {
           title: "HTML result",
           "data-source": source,
         }),
     },
-    "../../components/Select": {
+    "../../../components/Select": {
       Select: ({ children, ...props }: any) =>
         React.createElement("select", props, children),
     },
     "./DocLatexPreview": { useDocLatexPreview: () => null },
-    "./DocBlocks": { BlockView: () => null },
-    "./RichBlocks": { FootnoteContext: React.createContext(null) },
-    "./doc-navigation": { DocNavigationContext: React.createContext(null) },
-    "../../hooks/useModalFocus": {
+    "../source/DocLatexPreview": { useDocLatexPreview: () => null },
+    "../editor/DocBlocks": { BlockView: () => null },
+    "../editor/RichBlocks": { FootnoteContext: React.createContext(null) },
+    "../library/doc-navigation": {
+      DocNavigationContext: React.createContext(null),
+    },
+    "../../../hooks/useModalFocus": {
       useModalFocus: () => ({ ref: React.useRef(null), id: "test-focus" }),
     },
-    "../../lib/session": { session: { get: () => account } },
+    "../../../lib/session": { session: { get: () => account } },
   };
   class ResizeObserver {
     observe() {}

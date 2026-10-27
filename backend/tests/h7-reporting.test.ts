@@ -158,7 +158,7 @@ before(async () => {
 after(async () => {
   await pool.query("DELETE FROM system_settings WHERE key='smtp'");
   invalidateSettings();
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   network.restore();
   await app.close();

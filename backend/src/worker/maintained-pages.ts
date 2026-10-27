@@ -1,5 +1,5 @@
 import { ChatgptDeviceDeferred } from "../modules/ai/providers/user-choice.js";
-import { deferUndispatchedPrivatePage } from "../modules/docs/maintenance-inference.js";
+import { deferUndispatchedPrivatePage } from "../modules/documents/maintenance-inference.js";
 import { refuseSecrets } from "../capabilities/write.js";
 import { syncSavedPages } from "../modules/study/service.js";
 import type { FastifyBaseLogger } from "fastify";
@@ -20,8 +20,8 @@ import {
   resolveMaintainedPageModel,
   PageModelUnavailable,
   type PageModel,
-} from "../modules/docs/maintenance-model.js";
-import { MaintainedPageReviewRequired } from "../modules/docs/maintenance.js";
+} from "../modules/documents/maintenance-model.js";
+import { MaintainedPageReviewRequired } from "../modules/documents/maintenance.js";
 import {
   claimMaintainedPageRun,
   guardMaintainedPageRun,
@@ -35,7 +35,7 @@ import {
   releaseMaintainedPageRun,
   type PageRun,
   PageRunBudgetExceeded,
-} from "../modules/docs/maintenance-runs.js";
+} from "../modules/documents/maintenance-runs.js";
 
 /** One scoped consumer iteration; provider calls hold no database transaction. */
 export async function processMaintainedPageRun(
@@ -49,7 +49,7 @@ export async function processMaintainedPageRun(
     resolveModel?: (
       userId: string,
       origin: MaintainedPageModelOrigin,
-      parent?: import("../modules/docs/maintenance-inference.js").PageInferenceContext,
+      parent?: import("../modules/documents/maintenance-inference.js").PageInferenceContext,
     ) => Promise<PageModel>;
     request?: typeof complete;
     heartbeatMs?: number;

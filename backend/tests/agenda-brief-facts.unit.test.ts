@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Day } from "../src/modules/docs/agenda.js";
+import type { Day } from "../src/modules/documents/agenda.js";
 import { agendaBriefFacts } from "../src/modules/ai/agenda-brief.js";
 const now = new Date("2026-10-05T09:00:00Z");
 const base: Day = {

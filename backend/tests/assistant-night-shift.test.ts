@@ -832,7 +832,7 @@ async function pagePerson() {
     )
   ).rows[0];
   const { createMaintainedPageBinding } =
-    await import("../src/modules/docs/maintenance.js");
+    await import("../src/modules/documents/maintenance.js");
   const binding = await transaction(async (db) =>
     createMaintainedPageBinding(
       db,

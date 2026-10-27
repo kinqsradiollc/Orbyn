@@ -1,5 +1,5 @@
 import { session } from "../../lib/session";
-import { errorText } from "../../lib/planning";
+import { errorText } from "../planner/planning";
 import { SettingsEditor } from "../settings/SettingsEditor";
 import {
   preparePaneDrafts,
@@ -37,9 +37,9 @@ import {
   type User,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import type { Planner } from "../../hooks/usePlanner";
+import type { Planner } from "../planner/usePlanner";
 import { EmptyState } from "../../components/EmptyState";
-import { ItemRow } from "../../components/ItemRow";
+import { ItemRow } from "../tasks/ItemRow";
 import { RoleBadge } from "../../components/RoleBadge";
 import { Popover } from "../../components/Popover";
 import { TeamPlanning } from "./TeamPlanning";

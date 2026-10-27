@@ -3,7 +3,7 @@ import { Check, Circle, ChevronDown } from "lucide-react";
 import { AI_PROVIDERS, type AiProvider, type AiSettings } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { client } from "../../lib/api";
-import { useEmbeddingModelCatalog } from "../../hooks/useEmbeddingModelCatalog";
+import { useEmbeddingModelCatalog } from "../settings/useEmbeddingModelCatalog";
 
 /**
  * Search by meaning's own setup, apart from the assistant: off by default.

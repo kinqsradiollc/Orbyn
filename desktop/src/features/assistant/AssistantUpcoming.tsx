@@ -36,7 +36,7 @@ import {
   CHANGE_KIND_LABELS,
   checkinStatusLabel,
   dayLabel,
-} from "../../lib/assistant-labels";
+} from "./assistant-labels";
 
 const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 

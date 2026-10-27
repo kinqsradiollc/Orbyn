@@ -1,5 +1,5 @@
 import { agendaPrivateSummaryText } from "@orbyn/core";
-import { useAgendaPrivateSettings } from "../../hooks/useAgendaPrivateSettings";
+import { useAgendaPrivateSettings } from "../planner/useAgendaPrivateSettings";
 /** Explicit scheduled use is separate from morning emails and interactive requests. */
 export function AgendaPrivateSettings({ userId }: { userId: string }) {
   const { data, error, busy, canEnable, enablementMessage, save, refresh } =

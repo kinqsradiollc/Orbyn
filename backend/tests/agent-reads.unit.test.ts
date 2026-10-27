@@ -12,7 +12,7 @@ import {
   withoutSources,
   type DocBlock,
 } from "@orbyn/core";
-import { zip } from "../src/modules/docs/zip.js";
+import { zip } from "../src/modules/documents/zip.js";
 import { splitPages } from "../src/capabilities/long-docs.js";
 import { sourceUrl } from "../src/capabilities/citations.js";
 

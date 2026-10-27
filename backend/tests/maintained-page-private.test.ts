@@ -9,9 +9,9 @@ const { migrate } = await import("../src/db/migrate.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 const { createMaintainedPageBinding } =
-  await import("../src/modules/docs/maintenance.js");
+  await import("../src/modules/documents/maintenance.js");
 const { queueMaintainedPageRun } =
-  await import("../src/modules/docs/maintenance-runs.js");
+  await import("../src/modules/documents/maintenance-runs.js");
 const { processMaintainedPageRun } =
   await import("../src/worker/maintained-pages.js");
 const { claimChatgptInference, finishChatgptInference } =
@@ -245,7 +245,7 @@ test("private page consumer sends selected blocks with an output limit and appli
   assert.ok(JSON.stringify(a.payload).includes("Authorized selected source."));
   assert.ok(!JSON.stringify(a.payload).includes("Human unselected secret"));
   const { deferUndispatchedPrivatePage } =
-    await import("../src/modules/docs/maintenance-inference.js");
+    await import("../src/modules/documents/maintenance-inference.js");
   const reserved = (
     await pool.query(
       "SELECT lease_token,reserved_tokens FROM assistant_page_runs WHERE id=$1",
@@ -482,7 +482,7 @@ for (const kind of ["source", "provider", "model"] as const) {
 test("native page resume uses PostgreSQL precision while injected clocks stay deterministic", async (t) => {
   const f = await fixture(true);
   const { claimMaintainedPageRun, releaseMaintainedPageRun } =
-    await import("../src/modules/docs/maintenance-runs.js");
+    await import("../src/modules/documents/maintenance-runs.js");
   const clock = new Date();
   await pool.query(
     "UPDATE assistant_page_runs SET retry_after=$2::timestamptz+interval '0.0005 seconds' WHERE id=$1",
@@ -589,7 +589,7 @@ test("private Overnight page charges only the parent budget and resumes its own 
 test("private page approval remains bound to its waiting card and applies offline without another model call", async () => {
   const f = await fixture();
   const { decideMaintainedPageRun } =
-    await import("../src/modules/docs/maintenance-runs.js");
+    await import("../src/modules/documents/maintenance-runs.js");
   await pool.query(
     "UPDATE agent_grants SET trust='ask' WHERE user_id=$1 AND kind='assistant'",
     [f.owner],

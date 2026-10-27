@@ -1,6 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { dueDateOf, type MemberWorkload } from "@orbyn/core";
-import { minutesLabel } from "../../lib/planning";
+import { minutesLabel } from "../planner/planning";
 
 /** The team's tasks that can't get enough time before they're due, soonest first. */
 export function AtRiskList({ workload }: { workload: MemberWorkload[] }) {

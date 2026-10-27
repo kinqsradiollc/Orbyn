@@ -55,14 +55,14 @@ import {
   progressText,
   stepLabel,
   traceLines,
-} from "../../lib/assistant-labels";
+} from "./assistant-labels";
 import { TurnChanges } from "./TurnChanges";
 import { ReminderNudge } from "./ReminderNudge";
-import { ProposalReview } from "../../components/ProposalReview";
+import { ProposalReview } from "../review/ProposalReview";
 import { AssistantUpcoming } from "./AssistantUpcoming";
 import { SavedConversationHistory } from "./SavedConversationHistory";
 import { client } from "../../lib/api";
-import type { Assistant } from "../../hooks/useAssistant";
+import type { Assistant } from "./useAssistant";
 import "./assistant.css";
 import { CopyMessage, UserMessage } from "./ConversationMessage";
 import { ConversationDetails } from "./ConversationDetails";

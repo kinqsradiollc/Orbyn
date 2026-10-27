@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import type { HttpError, PublicProfile } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { errorText, minutesLabel } from "../../lib/planning";
+import { errorText, minutesLabel } from "../planner/planning";
 import { Message } from "./bookingUi";
 import { PublicShell } from "./PublicShell";
 

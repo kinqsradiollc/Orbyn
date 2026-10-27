@@ -56,7 +56,7 @@ function row() {
   const module = { exports: {} as any };
   const source =
     readFileSync(
-      new URL("../../mobile/src/screens/AdminAi.tsx", import.meta.url),
+      new URL("../../mobile/src/features/admin/AdminAi.tsx", import.meta.url),
       "utf8",
     ) + "\nexport {ProviderRow};";
   const code = transformSync(source, {
@@ -67,7 +67,10 @@ function row() {
   const pickerModule = { exports: {} as any };
   const pickerCode = transformSync(
     readFileSync(
-      new URL("../../mobile/src/components/ModelPicker.tsx", import.meta.url),
+      new URL(
+        "../../mobile/src/features/connections/ModelPicker.tsx",
+        import.meta.url,
+      ),
       "utf8",
     ),
     { loader: "tsx", format: "cjs", jsx: "automatic" },
@@ -85,13 +88,13 @@ function row() {
         View: "View",
         StyleSheet: { create: (v: any) => v, hairlineWidth: 1 },
       };
-    if (name === "../lib/api") return { client };
-    if (name === "../lib/session") return { session: { token: "account" } };
-    if (name === "../components/ModelPicker")
+    if (name === "../../lib/api") return { client };
+    if (name === "../../lib/session") return { session: { token: "account" } };
+    if (name === "../../components/ModelPicker")
       return { ModelPicker: "ModelPicker" };
-    if (name === "../theme")
+    if (name === "../theme" || name === "../../theme")
       return { colors: {}, fonts: {}, radii: {}, themed: (fn: any) => fn() };
-    if (name === "../styles") return { shared: {} };
+    if (name === "../../styles") return { shared: {} };
     return components;
   };
   vm.runInNewContext(code, {

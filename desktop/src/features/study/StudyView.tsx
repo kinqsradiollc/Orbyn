@@ -28,11 +28,11 @@ import {
   type DocBlock,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { deviceTimeZone } from "../../lib/planning";
+import { deviceTimeZone } from "../planner/planning";
 import { useConfirm } from "../../components/Confirm";
 import { Select } from "../../components/Select";
 import { ReviewSession } from "./ReviewSession";
-import { ImportButton, useImports } from "../docs/Uploads";
+import { ImportButton, useImports } from "../documents/library/Uploads";
 import "./study.css";
 import { errorText } from "../../lib/errors";
 import { EmptyState } from "../../components/EmptyState";

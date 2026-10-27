@@ -9,13 +9,13 @@ import {
   footnoteNumbers,
   docToHtml,
 } from "@orbyn/core";
-import { docToDocx } from "../src/modules/docs/docx.js";
+import { docToDocx } from "../src/modules/documents/docx.js";
 import {
   docxToMarkdown,
   readZip,
   NotAWordFile,
 } from "../src/modules/imports/docx.js";
-import { zip } from "../src/modules/docs/zip.js";
+import { zip } from "../src/modules/documents/zip.js";
 
 const date = new Date("2026-10-06T00:00:00Z");
 const type =

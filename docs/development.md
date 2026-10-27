@@ -17,6 +17,17 @@ and owning modules before choosing commands or dependencies.
 | Deployment          | Compose, nginx, PgBouncer and optional Kubernetes in `compose.yaml` and `deploy/` |
 | Supporting services | Python OCR, SQL migrations and shell deployment helpers                           |
 
+For feature paths across backend, web, mobile and shared code, start with the
+[code map](architecture.md#find-the-code). Both clients group feature-specific
+screens, hooks and helpers in `src/features/`; app shell and platform infrastructure
+retain separate owners. Documents are subdivided by editor, source, library,
+collaboration, metadata and history.
+
+For source moves, rebase actual import specifiers and inventoried asset/path
+references. Runtime strings such as decimal separators, hostname delimiters and
+relative paths inside imported document content are data, not module specifiers.
+Check moved expressions as well as compiler/module resolution.
+
 Shared packages do not import application code. Clients consume `@orbyn/core`
 and `@orbyn/api-client`; backend authority checks remain at the effect boundary.
 Shared schemas belong in core and transport in api-client. API errors, optimistic
@@ -70,6 +81,12 @@ upstream-pin check.
 classification, failed/cancelled selected jobs and unexpected skips cannot pass
 the gate. Intentional docs-lane skips are not application test passes. Required
 branch statuses are a repository setting; YAML does not configure them.
+
+The selection job also runs `python3 scripts/check-code-organization.py`. This
+checks retired source directories, literal relative TypeScript imports and
+dependency directions between applications and shared packages. Its disposable
+positive/negative fixtures run with the existing `.github/tests` suite. It does
+not resolve computed runtime imports or establish native behavior.
 
 [`scripts/check-tool-sources.py`](../scripts/check-tool-sources.py) verifies
 retained snapshot hashes, executable bits and gitlink pins in the selection job.

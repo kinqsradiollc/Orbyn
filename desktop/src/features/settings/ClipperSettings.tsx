@@ -5,7 +5,7 @@ import { client } from "../../lib/api";
 import { useConfirm } from "../../components/Confirm";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { useSettingsRead } from "./useSettingsRead";
-import { copyText } from "../../lib/planning";
+import { copyText } from "../planner/planning";
 import { SettingsSection } from "./SettingsSection";
 
 /**

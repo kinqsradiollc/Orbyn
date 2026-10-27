@@ -32,7 +32,7 @@ process.env.FILES_SECRET ??= "test-files-secret-0123456789abcdef";
 const { buildApp, buildMcpService, buildRealtimeService } =
   await import("../src/app.js");
 const { pool, readPool } = await import("../src/db/pool.js");
-const { announceDocChange } = await import("../src/modules/docs/live.js");
+const { announceDocChange } = await import("../src/modules/documents/live.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
 const { limiter, strikes } =

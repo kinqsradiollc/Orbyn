@@ -14,7 +14,7 @@ import {
 } from "@orbyn/core";
 
 process.env.FILES_SECRET ??= "test-secret-for-imports-0123456789";
-const { zip } = await import("../src/modules/docs/zip.js");
+const { zip } = await import("../src/modules/documents/zip.js");
 const { docxToMarkdown } = await import("../src/modules/imports/docx.js");
 const { readPdf, singlePage } = await import("../src/modules/imports/pdf.js");
 const { uploadToken, readUploadToken, isService, serviceKey } =

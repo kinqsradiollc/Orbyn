@@ -3,7 +3,7 @@ import {
   saveAiProviderChoice,
 } from "./ai-provider-choice.js";
 import { pool } from "../../db/pool.js";
-import { readScheduledAgendaSummary } from "../docs/agenda-summary-runs.js";
+import { readScheduledAgendaSummary } from "../documents/agenda-summary-runs.js";
 import { readCompletedChatgptUsage } from "./chatgpt-usage.js";
 import {
   readAgendaPrivatePermission,

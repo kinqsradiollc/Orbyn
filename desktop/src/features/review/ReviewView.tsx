@@ -12,7 +12,7 @@ import {
 import type { ReviewInbox, ReviewItem } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { onLive } from "../../lib/live";
-import { timeAgo } from "../../lib/tasks";
+import { timeAgo } from "../tasks/tasks";
 import { EmptyState } from "../../components/EmptyState";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { useConfirm } from "../../components/Confirm";

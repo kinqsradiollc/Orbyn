@@ -1,6 +1,6 @@
 // Private bounded document renderer. No database or provider credentials are required.
 import { env } from "../config/env.js";
-import { buildPdfService } from "../modules/docs/pdf-service.js";
+import { buildPdfService } from "../modules/documents/pdf-service.js";
 
 const app = buildPdfService({
   key: env.DOC_PDF_KEY,

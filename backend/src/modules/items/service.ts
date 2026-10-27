@@ -24,7 +24,7 @@ import type { QueryResult } from "pg";
 import { pool, type Db, type Queryable } from "../../db/pool.js";
 import { requireTeam } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
-import { followTaskState } from "../docs/task-lines.js";
+import { followTaskState } from "../documents/task-lines.js";
 import { openAsk } from "../followthrough/asks.js";
 import {
   isOccurrence,

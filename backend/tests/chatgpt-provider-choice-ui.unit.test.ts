@@ -8,7 +8,7 @@ async function fixture(app: "desktop" | "mobile") {
   const base =
     app === "desktop"
       ? "desktop/src/features/settings"
-      : "mobile/src/screens/settings";
+      : "mobile/src/features/settings";
   const compiled = ts.transpileModule(
     await readFile(
       new URL(`../../${base}/AiProviderChoice.tsx`, import.meta.url),

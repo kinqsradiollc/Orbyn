@@ -53,7 +53,7 @@ before(async () => {
   otherToken = await register("Stranger");
 });
 after(async () => {
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   await app.close();
   await pool.end();
@@ -311,7 +311,7 @@ test("an identical edit on both sides is not a conflict", () => {
 
 test("a change to a document reaches the people watching it", async () => {
   const { announceDocChange, streamDocChanges, watcherCount } =
-    await import("../src/modules/docs/live.js");
+    await import("../src/modules/documents/live.js");
   const docId = randomUUID();
   const written: string[] = [];
   // Stands in for the HTTP response: we only care what goes down the wire.
@@ -347,7 +347,7 @@ test("a change to a document reaches the people watching it", async () => {
 
 test("the live stream keeps the CORS headers Fastify set", async () => {
   const { streamDocChanges, closeLive } =
-    await import("../src/modules/docs/live.js");
+    await import("../src/modules/documents/live.js");
   let sent: Record<string, string> = {};
   // Writing to the raw socket goes around Fastify, so a header it set has to
   // be carried over by hand or the stream is unreadable from any other

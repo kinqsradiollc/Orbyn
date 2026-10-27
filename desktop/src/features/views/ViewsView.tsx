@@ -75,7 +75,7 @@ import { useConfirm } from "../../components/Confirm";
 import { useToast } from "../../components/Toast";
 import { usePlanning } from "../../app/planning";
 import { webOrigin } from "../../lib/links";
-import { copyText } from "../../lib/planning";
+import { copyText } from "../planner/planning";
 import { TaskBoard } from "../tasks/TaskBoard";
 import { applyEdit, type CellEdit, type TaskActions } from "./edits";
 import { ViewFilters } from "./ViewFilters";

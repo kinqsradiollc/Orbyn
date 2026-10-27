@@ -131,7 +131,7 @@ async function fixture(platform: "desktop" | "mobile") {
   const module = load(
     platform === "desktop"
       ? "desktop/src/features/settings/SettingsSection.tsx"
-      : "mobile/src/screens/settings/SettingsSection.tsx",
+      : "mobile/src/features/settings/SettingsSection.tsx",
   );
   const root = createRoot(dom.window.document.querySelector("main")!);
   const render = async (node: React.ReactNode) => {
@@ -375,7 +375,7 @@ test("automation customization is categorized separately from external connectio
     read("desktop/src/features/settings/ConnectionsSettings.tsx"),
     /<AgentWarmStart\b/,
   );
-  const mobile = ast("mobile/src/screens/SettingsScreen.tsx");
+  const mobile = ast("mobile/src/features/settings/SettingsScreen.tsx");
   const groups = nodes(
     mobile,
     (node) =>
@@ -392,12 +392,12 @@ test("automation customization is categorized separately from external connectio
   assert.match(assistantGroup.getText(mobile), /<AgentWarmStartCards\b/);
   assert.doesNotMatch(connections.getText(mobile), /<AgentWarmStartCards\b/);
   assert.match(
-    read("mobile/src/screens/ConnectionsSheet.tsx"),
+    read("mobile/src/features/connections/ConnectionsSheet.tsx"),
     /<ConnectedAgentsCard\b/,
   );
   for (const path of [
     "desktop/src/features/settings/AgentContext.tsx",
-    "mobile/src/screens/AgentContext.tsx",
+    "mobile/src/features/connections/AgentContext.tsx",
   ])
     assert.match(read(path), /title="Background & overnight"/);
 });
@@ -405,7 +405,7 @@ test("automation customization is categorized separately from external connectio
 test("reconnect-required grants expose sign-in recovery and suppress restoration on both clients", () => {
   for (const path of [
     "desktop/src/features/settings/ConnectedAgents.tsx",
-    "mobile/src/screens/ConnectedAgents.tsx",
+    "mobile/src/features/connections/ConnectedAgents.tsx",
   ]) {
     const source = ast(path);
     const expressions = nodes(source, (node) => ts.isJsxExpression(node));

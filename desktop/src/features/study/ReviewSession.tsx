@@ -8,8 +8,8 @@ import {
   type StudyCard,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { Inline } from "../docs/DocBlocks";
-import { ImageBlock } from "../docs/RichBlocks";
+import { Inline } from "../documents/editor/DocBlocks";
+import { ImageBlock } from "../documents/editor/RichBlocks";
 import { errorText } from "../../lib/errors";
 import { session as authSession } from "../../lib/session";
 import { useElementWidth } from "../../hooks/useElementWidth";

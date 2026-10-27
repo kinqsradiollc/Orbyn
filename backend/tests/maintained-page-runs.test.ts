@@ -11,7 +11,7 @@ const { assistantPrincipal } =
 const { replaceAssistantBudget } =
   await import("../src/modules/assistant-workspace/budgets.js");
 const { createMaintainedPageBinding, updateMaintainedPageBinding } =
-  await import("../src/modules/docs/maintenance.js");
+  await import("../src/modules/documents/maintenance.js");
 const {
   queueMaintainedPageRun,
   claimMaintainedPageRun,
@@ -24,7 +24,7 @@ const {
   PAGE_RUN_LEASE_MS,
   expireMaintainedPageRuns,
   failMaintainedPageRun,
-} = await import("../src/modules/docs/maintenance-runs.js");
+} = await import("../src/modules/documents/maintenance-runs.js");
 const people: string[] = [];
 const time = new Date("2026-10-05T09:00:00Z");
 const later = (ms: number) => new Date(time.getTime() + ms);

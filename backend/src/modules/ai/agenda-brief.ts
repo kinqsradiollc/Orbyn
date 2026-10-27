@@ -1,5 +1,5 @@
-import { captureAgendaAiSnapshot } from "../docs/agenda-ai-snapshot.js";
-import type { Day } from "../docs/agenda.js";
+import { captureAgendaAiSnapshot } from "../documents/agenda-ai-snapshot.js";
+import type { Day } from "../documents/agenda.js";
 import { transaction } from "../../db/pool.js";
 import { readAiProviderChoice } from "../auth/ai-provider-choice.js";
 import { ProviderError } from "./providers/adapters.js";
@@ -9,7 +9,7 @@ import { privateProviderFailureMessage } from "./providers/user-choice.js";
 
 /**
  * The hosted assistant's opening sentences for today's agenda page. Kept
- * apart from modules/docs/agenda.ts so the calendar-only pages, and agents'
+ * apart from modules/documents/agenda.ts so the calendar-only pages, and agents'
  * create_doc agenda, never load an AI provider: only the worker's morning
  * page and the app's "Rewrite" pass {@link briefFor} in.
  */
@@ -20,7 +20,7 @@ Write two or three short sentences, in plain text, speaking to them as "you": ho
 /** Only server-captured facts are sent by scheduled Agenda work. */
 export function agendaSummaryMessages(
   facts: ReturnType<
-    typeof import("../docs/agenda-ai-facts.js").agendaBriefFacts
+    typeof import("../documents/agenda-ai-facts.js").agendaBriefFacts
   >,
 ) {
   return [
@@ -42,7 +42,7 @@ export function cleanAgendaSummary(text: string) {
   return clean.length >= 20 ? clean.slice(0, 600) : null;
 }
 
-export { agendaBriefFacts } from "../docs/agenda-ai-facts.js";
+export { agendaBriefFacts } from "../documents/agenda-ai-facts.js";
 
 /**
  * The assistant's few sentences about the day, or null when no provider is

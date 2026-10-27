@@ -12,7 +12,7 @@ import {
   type StudyCard,
 } from "@orbyn/core";
 import { Params, scopeFor, visibleDocs } from "../lib/visibility.js";
-import { createDoc } from "../modules/docs/service.js";
+import { createDoc } from "../modules/documents/service.js";
 import {
   applyRevision,
   examRow,

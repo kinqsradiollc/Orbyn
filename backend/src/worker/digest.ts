@@ -1,4 +1,4 @@
-import { maintainedPageNightProgress } from "../modules/docs/maintenance-night.js";
+import { maintainedPageNightProgress } from "../modules/documents/maintenance-night.js";
 import { visibleNightLeftovers } from "../lib/assistant-leftovers.js";
 import { assistantJobSourcesVisible } from "../lib/assistant-job-sources.js";
 import { randomUUID } from "node:crypto";
@@ -30,7 +30,7 @@ import { LIVE_CARDS } from "../modules/study/service.js";
 import { appLink } from "../modules/booking/service.js";
 import { emailEnabled, sendEmail } from "./channels/email.js";
 import { chatFor, postChat } from "../modules/chat/channel.js";
-import { createDoc } from "../modules/docs/service.js";
+import { createDoc } from "../modules/documents/service.js";
 
 /** "9:00 am" in the person's zone. */
 function clockOf(iso: string, tz: string) {

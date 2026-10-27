@@ -6,7 +6,7 @@ import React from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
-import { docToDocx } from "../src/modules/docs/docx.js";
+import { docToDocx } from "../src/modules/documents/docx.js";
 import { readZip, docxToMarkdown } from "../src/modules/imports/docx.js";
 import { parseDoc } from "@orbyn/core";
 import {
@@ -23,7 +23,10 @@ function webInline() {
   const source = ts.createSourceFile(
     "DocBlocks.tsx",
     readFileSync(
-      new URL("../../desktop/src/features/docs/DocBlocks.tsx", import.meta.url),
+      new URL(
+        "../../desktop/src/features/documents/editor/DocBlocks.tsx",
+        import.meta.url,
+      ),
       "utf8",
     ),
     ts.ScriptTarget.Latest,
@@ -83,7 +86,10 @@ test("actual mobile Inline consumes the same hard/soft breaks as web", () => {
   const source = ts.createSourceFile(
     "Inline.tsx",
     readFileSync(
-      new URL("../../mobile/src/screens/docs/Inline.tsx", import.meta.url),
+      new URL(
+        "../../mobile/src/features/documents/editor/Inline.tsx",
+        import.meta.url,
+      ),
       "utf8",
     ),
     ts.ScriptTarget.Latest,

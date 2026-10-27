@@ -6,7 +6,7 @@ import ts from "typescript";
 
 function refresh(platform: "desktop" | "mobile", variable = "refreshUser") {
   const path = new URL(
-    `../../${platform}/src/hooks/usePlanner.ts`,
+    `../../${platform}/src/features/planner/usePlanner.ts`,
     import.meta.url,
   );
   const source = ts.createSourceFile(

@@ -14,8 +14,8 @@ import { InlineDetails } from "./InlineDetails";
 import { colors, fonts, radii, themed } from "../theme";
 import { Pressable } from "../motion";
 import { saveFile } from "../lib/download";
-import { openObject } from "../screens/docs/links";
-import { DocNavigationContext } from "../screens/docs/doc-navigation";
+import { openObject } from "../features/documents/editor/links";
+import { DocNavigationContext } from "../features/documents/library/doc-navigation";
 
 /** Full local Mermaid preview; source stays available when parsing fails. */
 export function MermaidDiagram({ text }: { text: string }) {

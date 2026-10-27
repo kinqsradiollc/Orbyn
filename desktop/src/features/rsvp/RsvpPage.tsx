@@ -17,7 +17,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { useNoIndex } from "../../hooks/useNoIndex";
-import { deviceTimeZone, errorText } from "../../lib/planning";
+import { deviceTimeZone, errorText } from "../planner/planning";
 import { Message } from "../booking/bookingUi";
 import "../booking/booking.css";
 import "./rsvp.css";

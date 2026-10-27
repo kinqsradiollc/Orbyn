@@ -3,8 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { docToHtml, type DocBlock } from "@orbyn/core";
 import { createMathHtml } from "../src/lib/math-html.js";
-import { openPdfBrowser } from "../src/modules/docs/pdf-browser.js";
-import { renderPdfSnapshot } from "../src/modules/docs/pdf-renderer.js";
+import { openPdfBrowser } from "../src/modules/documents/pdf-browser.js";
+import { renderPdfSnapshot } from "../src/modules/documents/pdf-renderer.js";
 import { mermaidFixtures } from "../tests/helpers/mermaid-fixtures.js";
 
 const executable = process.env.PDF_TEST_CHROME;

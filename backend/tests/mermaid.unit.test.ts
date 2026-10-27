@@ -38,7 +38,10 @@ test("the bundled renderer matches the current security source", () => {
     )
     .update(
       readFileSync(
-        new URL("../../packages/core/src/mermaid.ts", import.meta.url),
+        new URL(
+          "../../packages/core/src/documents/mermaid.ts",
+          import.meta.url,
+        ),
       ),
     )
     .update(

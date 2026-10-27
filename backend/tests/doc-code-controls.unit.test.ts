@@ -29,8 +29,8 @@ function mount(
   const source = readFileSync(
     new URL(
       platform === "desktop"
-        ? "../../desktop/src/features/docs/RichBlocks.tsx"
-        : "../../mobile/src/screens/docs/RichBlocks.tsx",
+        ? "../../desktop/src/features/documents/editor/RichBlocks.tsx"
+        : "../../mobile/src/features/documents/editor/RichBlocks.tsx",
       import.meta.url,
     ),
     "utf8",

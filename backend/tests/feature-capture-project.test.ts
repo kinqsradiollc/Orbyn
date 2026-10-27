@@ -106,7 +106,7 @@ after(async () => {
   ]);
   await pool.query("DELETE FROM ai_providers WHERE id=$1", [providerId]);
   await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [owners]);
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   await app.close();
   await pool.end();

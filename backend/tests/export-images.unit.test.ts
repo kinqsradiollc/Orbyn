@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { DocBlock } from "@orbyn/core";
 import type { Queryable } from "../src/db/pool.js";
-import { exportImages } from "../src/modules/docs/export-images.js";
+import { exportImages } from "../src/modules/documents/export-images.js";
 
 const id = "11111111-1111-4111-8111-111111111111";
 const png = Buffer.from(

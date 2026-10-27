@@ -25,12 +25,12 @@ import {
   writableOwned,
 } from "../../lib/visibility.js";
 import { hasVectors, semanticOn } from "../search/vectors.js";
-import { announceDocChange } from "../docs/live.js";
+import { announceDocChange } from "../documents/live.js";
 import { loadPrefs } from "../planner/calendar.js";
-import { requireDoc, snapshot } from "../docs/service.js";
+import { requireDoc, snapshot } from "../documents/service.js";
 import { linkPrivacy, readableLinks } from "./privacy.js";
 import { actAs } from "../../lib/actor.js";
-import { writeDocLeafEdits } from "../docs/leaf-edits.js";
+import { writeDocLeafEdits } from "../documents/leaf-edits.js";
 
 /**
  * More about links (D4b): the hover card a link opens (LNK-07), the pages

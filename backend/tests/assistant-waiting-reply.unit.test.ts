@@ -349,7 +349,10 @@ test("restart uses server feed as authority and never automatically replays an a
 test("platform hooks delegate complete answer and reconnect flow with authoritative session adapters", async () => {
   for (const platform of ["desktop", "mobile"]) {
     const source = await readFile(
-      new URL(`../../${platform}/src/hooks/useAssistant.ts`, import.meta.url),
+      new URL(
+        `../../${platform}/src/features/assistant/useAssistant.ts`,
+        import.meta.url,
+      ),
       "utf8",
     );
     assert.match(source, /waitingReply\.answer\(question, trimmed\)/);
@@ -372,7 +375,10 @@ test("platform hooks delegate complete answer and reconnect flow with authoritat
 for (const platform of ["desktop", "mobile"] as const) {
   test(`${platform}: actual ask callback uses live session at dispatch and settlement, with duplicate and retry preservation`, async () => {
     const source = await readFile(
-      new URL(`../../${platform}/src/hooks/useAssistant.ts`, import.meta.url),
+      new URL(
+        `../../${platform}/src/features/assistant/useAssistant.ts`,
+        import.meta.url,
+      ),
       "utf8",
     );
     const ast = ts.createSourceFile(
@@ -640,7 +646,10 @@ for (const platform of ["desktop", "mobile"] as const) {
   for (const replaced of [false, true])
     test(`${platform}: actual openChat captures cannot lose a late failed answer (newer target=${replaced})`, async () => {
       const source = await readFile(
-        new URL(`../../${platform}/src/hooks/useAssistant.ts`, import.meta.url),
+        new URL(
+          `../../${platform}/src/features/assistant/useAssistant.ts`,
+          import.meta.url,
+        ),
         "utf8",
       );
       const ast = ts.createSourceFile(
@@ -811,7 +820,7 @@ for (const platform of ["desktop", "mobile"] as const) {
         new URL(
           platform === "desktop"
             ? "../../desktop/src/features/assistant/AssistantView.tsx"
-            : "../../mobile/src/screens/AssistantScreen.tsx",
+            : "../../mobile/src/features/assistant/AssistantScreen.tsx",
           import.meta.url,
         ),
         "utf8",

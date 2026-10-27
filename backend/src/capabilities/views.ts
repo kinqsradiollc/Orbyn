@@ -40,7 +40,7 @@ import {
 
 /**
  * save_view: an agent makes or changes a saved view, the same row and the
- * same definition the app's Views screen shows (packages/core/src/views.ts)
+ * same definition the app's Views screen shows (packages/core/src/views/views.ts)
  * and query runs. Personal views are the person's own; team views are
  * shared with the team.
  */

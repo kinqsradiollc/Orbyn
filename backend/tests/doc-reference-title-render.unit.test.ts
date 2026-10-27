@@ -22,8 +22,11 @@ test("real web and mobile Inline bodies display authorized reference titles", ()
     parseDoc('[guide]: https://example.test/guide "Read <guide> & notes"'),
   );
   for (const [path, names] of [
-    ["../../desktop/src/features/docs/DocBlocks.tsx", ["Inline", "Pieces"]],
-    ["../../mobile/src/screens/docs/Inline.tsx", ["Inline"]],
+    [
+      "../../desktop/src/features/documents/editor/DocBlocks.tsx",
+      ["Inline", "Pieces"],
+    ],
+    ["../../mobile/src/features/documents/editor/Inline.tsx", ["Inline"]],
   ] as const) {
     const source = ts.createSourceFile(
       "Inline.tsx",
@@ -104,8 +107,11 @@ test("real web and mobile Inline bodies display authorized reference titles", ()
 
 test("object pill titles require a currently resolved target on both clients", () => {
   for (const [path, name] of [
-    ["../../desktop/src/features/docs/DocLinks.tsx", "LinkPillView"],
-    ["../../mobile/src/screens/docs/links.tsx", "LinkPillText"],
+    [
+      "../../desktop/src/features/documents/editor/DocLinks.tsx",
+      "LinkPillView",
+    ],
+    ["../../mobile/src/features/documents/editor/links.tsx", "LinkPillText"],
   ] as const) {
     const source = ts.createSourceFile(
       "Pill.tsx",
@@ -188,7 +194,7 @@ test("object pill titles require a currently resolved target on both clients", (
 });
 
 test("mobile object pills use the editor's guarded app-link handler", () => {
-  const path = "../../mobile/src/screens/docs/links.tsx";
+  const path = "../../mobile/src/features/documents/editor/links.tsx";
   const source = ts.createSourceFile(
     path,
     readFileSync(new URL(path, import.meta.url), "utf8"),
@@ -263,7 +269,7 @@ test("mobile object pills use the editor's guarded app-link handler", () => {
 });
 
 test("web object pills use the editor's guarded app-link handler", () => {
-  const path = "../../desktop/src/features/docs/DocLinks.tsx";
+  const path = "../../desktop/src/features/documents/editor/DocLinks.tsx";
   const source = ts.createSourceFile(
     path,
     readFileSync(new URL(path, import.meta.url), "utf8"),

@@ -22,7 +22,12 @@ import { session } from "../../lib/session";
 import { useRemote } from "../../hooks/useRemote";
 import { usePlanning } from "../../app/planning";
 import { OutcomeNote, useAction } from "../../components/Outcome";
-import { dayKey, ESTIMATES, minutesLabel, spanLabel } from "../../lib/planning";
+import {
+  dayKey,
+  ESTIMATES,
+  minutesLabel,
+  spanLabel,
+} from "../planner/planning";
 import { addDays, rangeTitle, startOfWeek } from "../calendar/dates";
 import { AtRiskList } from "./AtRiskList";
 import { TeamCapacity } from "./TeamCapacity";

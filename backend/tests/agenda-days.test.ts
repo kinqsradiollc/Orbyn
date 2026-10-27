@@ -15,7 +15,7 @@ const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { rewriteAgenda, todaysAgenda } =
-  await import("../src/modules/docs/agenda.js");
+  await import("../src/modules/documents/agenda.js");
 const {
   addDays,
   agendaDay,

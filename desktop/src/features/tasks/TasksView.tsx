@@ -64,12 +64,12 @@ import { client } from "../../lib/api";
 import { ProgressDialog } from "../followthrough/ProgressDialog";
 import "../followthrough/followthrough.css";
 import { EmptyState } from "../../components/EmptyState";
-import { ItemRow } from "../../components/ItemRow";
+import { ItemRow } from "./ItemRow";
 import { Popover } from "../../components/Popover";
 import { usePlanning } from "../../app/planning";
 import { usePlanned } from "../../app/planned";
 import { usePrefs } from "../../app/prefs";
-import { statusCounts } from "../../lib/tasks";
+import { statusCounts } from "./tasks";
 import {
   byScore,
   errorText,
@@ -78,7 +78,7 @@ import {
   sizeOf,
   type DueFilter,
   type Size,
-} from "../../lib/planning";
+} from "../planner/planning";
 import { TaskBoard } from "./TaskBoard";
 import { DateField } from "../../components/DateField";
 

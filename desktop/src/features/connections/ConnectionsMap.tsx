@@ -9,7 +9,7 @@ import {
 import { createPortal } from "react-dom";
 import { useModalFocus } from "../../hooks/useModalFocus";
 import { client } from "../../lib/api";
-import { openObject, peekObject } from "../docs/DocLinks";
+import { openObject, peekObject } from "../documents/editor/DocLinks";
 import "./connections.css";
 
 /**

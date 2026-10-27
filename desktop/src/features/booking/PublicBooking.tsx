@@ -24,7 +24,7 @@ import {
   errorText,
   minutesLabel,
   timeZones,
-} from "../../lib/planning";
+} from "../planner/planning";
 import { Message, accentStyle, whenLabel } from "./bookingUi";
 import { ManageBooking } from "./ManageBooking";
 import { SlotPicker } from "./SlotPicker";

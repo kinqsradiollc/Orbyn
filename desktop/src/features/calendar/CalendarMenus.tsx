@@ -28,7 +28,7 @@ import {
   type TimeBlock,
 } from "@orbyn/core";
 import { Popover } from "../../components/Popover";
-import { joinable, spanLabel } from "../../lib/planning";
+import { joinable, spanLabel } from "../planner/planning";
 
 const shortDay = (iso: string) =>
   new Date(iso).toLocaleDateString([], {

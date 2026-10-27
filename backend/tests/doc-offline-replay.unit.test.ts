@@ -98,8 +98,16 @@ function fixture(
       },
       subscribeSession: () => () => {},
     },
+    "../../../lib/session": {
+      session: {
+        token: "fixture-account",
+        userId: "fixture-owner",
+        generation: 1,
+      },
+      subscribeSession: () => () => {},
+    },
     "./errors": { errorText: (e: unknown) => String(e) },
-    "./pageCache": { rememberPage: async () => {} },
+    "../features/documents/library/pageCache": { rememberPage: async () => {} },
   };
   const exports: {
     run?: (op: core.OutboxOp) => Promise<unknown>;

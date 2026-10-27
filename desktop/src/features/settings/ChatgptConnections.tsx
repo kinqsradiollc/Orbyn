@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { MoreHorizontal, Plus, RefreshCw, Sparkles } from "lucide-react";
 import { CHATGPT_USAGE_URL, type ChatgptDesktopCommand } from "@orbyn/core";
 import { Select } from "../../components/Select";
-import { chatgptStore, useChatgptConnection } from "../../lib/chatgpt";
+import { chatgptStore, useChatgptConnection } from "../connections/chatgpt";
 import { SettingsSection } from "./SettingsSection";
 import { ChatgptRemoteModels } from "./ChatgptRemoteModels";
 import { Popover } from "../../components/Popover";

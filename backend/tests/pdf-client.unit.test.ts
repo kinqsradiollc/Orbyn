@@ -5,8 +5,8 @@ import { env } from "../src/config/env.js";
 import {
   exportRenderedPdf,
   exportRenderedHtml,
-} from "../src/modules/docs/pdf-client.js";
-import { buildPdfService } from "../src/modules/docs/pdf-service.js";
+} from "../src/modules/documents/pdf-client.js";
+import { buildPdfService } from "../src/modules/documents/pdf-service.js";
 
 const key = "client-test-private-renderer-key-at-least-32-characters";
 const html = "<!doctype html><html><p>Authorized content</p></html>";

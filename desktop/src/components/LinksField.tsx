@@ -1,6 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { Plus, X } from "lucide-react";
-import "./event-fields.css";
+import "../features/calendar/event-fields.css";
 
 /** A web link on an item, as edited. */
 export type LinkDraft = { url: string; title: string };

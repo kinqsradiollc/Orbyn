@@ -9,7 +9,7 @@ import {
   type PendingQueue,
 } from "@orbyn/core";
 import { client } from "./api";
-import { deviceTimeZone } from "./planning";
+import { deviceTimeZone } from "../features/planner/planning";
 import { sendGlanceToWatch } from "../../modules/orbyn-watch";
 import {
   androidPending,

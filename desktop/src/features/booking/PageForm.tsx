@@ -41,7 +41,7 @@ import {
   deviceTimeZone,
   minutesLabel,
   timeZones,
-} from "../../lib/planning";
+} from "../planner/planning";
 import { RemindersField } from "./RemindersField";
 import {
   DEFAULT_COLOR,

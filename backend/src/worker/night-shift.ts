@@ -1,6 +1,6 @@
 import type { UserRow } from "../lib/auth.js";
-import { maintainedPageContext } from "../modules/docs/maintenance.js";
-import { queueMaintainedPageRun } from "../modules/docs/maintenance-runs.js";
+import { maintainedPageContext } from "../modules/documents/maintenance.js";
+import { queueMaintainedPageRun } from "../modules/documents/maintenance-runs.js";
 import {
   claimReflectionSources,
   pendingReflectionSources,

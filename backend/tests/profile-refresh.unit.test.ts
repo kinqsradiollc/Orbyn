@@ -33,7 +33,10 @@ function mount(me: () => Promise<unknown>) {
     useEffect: (fn: () => (() => void) | void) => effects.push(fn),
   };
   const source = readFileSync(
-    new URL("../../desktop/src/hooks/usePlanner.ts", import.meta.url),
+    new URL(
+      "../../desktop/src/features/planner/usePlanner.ts",
+      import.meta.url,
+    ),
     "utf8",
   );
   const compiled = ts.transpileModule(source, {

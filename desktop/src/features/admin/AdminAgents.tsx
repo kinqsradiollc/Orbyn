@@ -11,7 +11,7 @@ import {
 import { client } from "../../lib/api";
 import { useConfirm } from "../../components/Confirm";
 import { OutcomeNote, useAction } from "../../components/Outcome";
-import { timeAgo } from "../../lib/tasks";
+import { timeAgo } from "../tasks/tasks";
 import "./agents-admin.css";
 
 type Report = (e: unknown) => void;
