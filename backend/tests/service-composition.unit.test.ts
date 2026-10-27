@@ -160,7 +160,7 @@ for (const name of Object.keys(expected) as Array<keyof typeof expected>) {
     }
     let called = false;
     const app = {};
-    imports["./http.js"] = {
+    imports[name === "status" ? "./http-shared.js" : "./http.js"] = {
       createService: async (
         service: string,
         routes: Array<{ routeName: string }>,
@@ -206,7 +206,15 @@ for (const name of Object.keys(expected) as Array<keyof typeof expected>) {
     });
     const inputs = Object.keys(result.metafile!.inputs);
     assert.ok(inputs.includes(`backend/src/services/${name}-app.ts`));
-    assert.ok(inputs.includes("backend/src/services/http.ts"));
+    assert.ok(inputs.includes("backend/src/services/http-shared.ts"));
+    assert.equal(
+      inputs.includes("backend/src/services/http.ts"),
+      name !== "status",
+    );
+    assert.equal(
+      inputs.includes("backend/src/lib/idempotency.ts"),
+      name !== "status",
+    );
     assert.ok(inputs.includes("backend/src/config/env.ts"));
     assert.ok(!inputs.includes("backend/src/app.ts"));
     assert.deepEqual(
@@ -345,3 +353,108 @@ for (const name of [
     } else assert.deepEqual(order, ["build", "listen"]);
   });
 }
+
+test("application HTTP compatibility wrapper supplies the canonical installer for every non-status service", async () => {
+  const installer = () => {};
+  const calls: unknown[][] = [];
+  const shared = {
+    createService: async (...args: unknown[]) => {
+      calls.push(args);
+      return "fixture-app";
+    },
+  };
+  const module = {
+    exports: {} as { createService: (...args: unknown[]) => Promise<unknown> },
+  };
+  runInNewContext(
+    transformSync(read("services/http.ts"), {
+      loader: "ts",
+      format: "cjs",
+      target: "es2022",
+    }).code,
+    {
+      module,
+      exports: module.exports,
+      require(path: string) {
+        if (path === "./http-shared.js") return shared;
+        if (path === "../lib/idempotency.js") return { idempotency: installer };
+        throw new Error(`Unexpected HTTP compatibility dependency ${path}`);
+      },
+    },
+  );
+  for (const name of [
+    "api",
+    "ai",
+    "assistant-background",
+    "assistant-overnight",
+    "files",
+    "realtime",
+    "mcp",
+    "plugin",
+    "all",
+    "status",
+  ]) {
+    const modules = [() => {}];
+    assert.equal(
+      await module.exports.createService(name, modules),
+      "fixture-app",
+    );
+    const args = calls.at(-1)!;
+    assert.equal(args[0], name);
+    assert.equal(args[1], modules);
+    assert.equal(args[2], name === "status" ? undefined : installer);
+  }
+});
+
+test("shared HTTP shell fails closed without application guards and installs them before owned routes", async (t) => {
+  const { createService } = await import("../src/services/http-shared.js");
+  const { pool } = await import("../src/db/pool.js");
+  t.mock.method(pool, "query", async () => ({ rows: [], rowCount: 0 }));
+  for (const name of [
+    "api",
+    "ai",
+    "assistant-background",
+    "assistant-overnight",
+    "files",
+    "realtime",
+    "mcp",
+    "plugin",
+    "all",
+  ] as const) {
+    await assert.rejects(
+      createService(name, []),
+      /require an idempotency installer/,
+    );
+  }
+  const order: string[] = [];
+  const app = await createService(
+    "api",
+    [
+      async (app) => {
+        order.push("module");
+        app.post("/composition-proof", async () => {
+          order.push("handler");
+          return { changed: true };
+        });
+      },
+    ],
+    (app) => {
+      order.push("installer");
+      app.addHook("preHandler", async (_request, reply) => {
+        order.push("guard");
+        return reply.code(409).send({ message: "guarded" });
+      });
+    },
+  );
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/composition-proof",
+      payload: {},
+    });
+    assert.equal(response.statusCode, 409, response.body);
+    assert.deepEqual(order, ["installer", "module", "guard"]);
+  } finally {
+    await app.close();
+  }
+});
