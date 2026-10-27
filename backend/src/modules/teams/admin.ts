@@ -186,6 +186,13 @@ export async function removeMember(
     id,
     userId,
   ]);
+  // Team host assignments end with membership. Rejoining does not silently
+  // reinstate a former co-host; a current manager must assign them again.
+  await db.query(
+    `DELETE FROM booking_hosts h USING booking_pages p
+     WHERE h.page_id = p.id AND p.team_id = $1 AND h.user_id = $2`,
+    [id, userId],
+  );
   await announceAuthChange(db, { users: [userId], reason: "team_left" });
   await audit(
     {

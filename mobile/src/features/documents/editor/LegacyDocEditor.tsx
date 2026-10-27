@@ -1949,7 +1949,7 @@ export function LegacyDocEditor({
           if (!currentPage() || !writeAllowed.current) return;
           const { file, upload_path } = await client.createPageFile(doc.id, {
             name: f.name.slice(0, 300) || "File",
-            bytes: f.size ?? body.size,
+            bytes: body.size,
             mime,
             ...(f.width && f.height
               ? { width: f.width, height: f.height }

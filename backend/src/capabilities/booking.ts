@@ -157,6 +157,7 @@ export const getBookings = defineCapability({
   access: "read",
   toolset: "booking",
   mode: "read",
+  readConsistency: "primary",
   tier: "R",
   async run(ctx, a) {
     const me = ctx.principal.user.id;

@@ -175,7 +175,14 @@ export async function assertAssistantReplayTargets(
       case "instructions":
         return `CASE WHEN r.id='personal' THEN ${personal} ELSE ${team(id)} END`;
       case "booking":
-        return `EXISTS(SELECT 1 FROM bookings x JOIN booking_pages bp ON bp.id=x.page_id WHERE x.id=${id} AND ${personal} AND (bp.owner_id=${user} OR EXISTS(SELECT 1 FROM booking_hosts h WHERE h.page_id=bp.id AND h.user_id=${user})) AND NOT EXISTS(SELECT 1 FROM unnest(x.item_ids) item_id WHERE NOT ${item("item_id")}))`;
+        return `EXISTS(SELECT 1 FROM bookings x JOIN booking_pages bp ON bp.id=x.page_id
+          WHERE x.id=${id} AND (
+            (bp.team_id IS NULL AND ${personal} AND (bp.owner_id=${user}
+              OR EXISTS(SELECT 1 FROM booking_hosts h WHERE h.page_id=bp.id AND h.user_id=${user})))
+            OR (bp.team_id IS NOT NULL AND ${team("bp.team_id")} AND
+              (bp.owner_id=${user} OR EXISTS(SELECT 1 FROM booking_hosts h WHERE h.page_id=bp.id AND h.user_id=${user})
+                OR EXISTS(SELECT 1 FROM team_members manager WHERE manager.team_id=bp.team_id AND manager.user_id=${user} AND manager.role IN ('owner','admin'))))
+          ) AND NOT EXISTS(SELECT 1 FROM unnest(x.item_ids) item_id WHERE NOT ${item("item_id")}))`;
       case "import":
         return `EXISTS(SELECT 1 FROM imports x WHERE x.id=${id} AND x.user_id=${user} AND (${personal} OR x.project_team_id=ANY(${teamIds}::uuid[])) AND (x.project_id IS NULL OR ${project("x.project_id")}) AND (x.doc_id IS NULL OR ${doc("x.doc_id")}))`;
       case "draft":

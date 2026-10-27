@@ -84,9 +84,9 @@ Challenge ownership includes the exact Orbyn session. Challenges expire after te
 minutes and can be consumed once; at most five unconsumed, unexpired challenges
 may exist per user. Challenge start, completion and disconnect allow ten requests
 per minute per address. A verified registration cannot be silently linked to a
-second Orbyn account. These routes return `Cache-Control: no-store` and bypass the
-general 24-hour idempotency response cache so every operation checks its current
-session. Invalid proof is `400`; missing/foreign challenge or connection is `404`;
+second Orbyn account. These routes return `Cache-Control: no-store` and reject
+`Idempotency-Key`, so every operation checks its current session. Invalid proof
+is `400`; missing/foreign challenge or connection is `404`;
 expired, consumed, changed-registration or conflicting-owner proof is `409`;
 malformed fields and unexpected fields are `422`. No email-based linking occurs.
 Access and refresh tokens are rejected, and identity tokens are never stored.
@@ -1117,6 +1117,8 @@ Kept in Orbyn's own file store (the `files` service, on its own `page_files` vol
 for as long as a page shows them; never a third-party store. Each person has `PAGE_FILES_QUOTA_MB` of space
 and a file is at most `PAGE_FILES_MAX_MB`. Pictures are PNG, JPEG, GIF and WebP; files are PDF,
 Word, Excel, PowerPoint, text, CSV and Markdown, checked by their first bytes.
+Send the size of the bytes being uploaded as `bytes`; the upload cannot exceed
+that reservation.
 
 | Method and path          | Body / result                                                                                                                                                                            |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -3008,6 +3010,15 @@ admins and hosts see and act on its bookings. A page moves into a team when an o
 that team saves it with the `team_id`, and back to its owner with `team_id: null` (the owner
 only). Pages without a team work as before.
 
+When a team host leaves or is removed from a page, their existing personal
+calendar event remains on their calendar. While they are not a current host,
+later booking changes do not update it, so it and its reminders may be out of
+date. For a round-robin booking whose assigned host is no longer a host on the page,
+confirmation, approval or rescheduling picks a current host who is free at the
+requested time, following routing and then the usual fair selection. If no
+current host is free, the change returns `409` and the booking is left as it
+was. Rejoining a team alone does not restore a removed co-host assignment.
+
 **Reminders for bookers.** `remind_before_minutes` (up to 3 values, 10 to 10080; a day and an hour
 before by default) emails the booker before a confirmed booking, with its manage link. Each value
 goes once per booking and start time (a moved booking is reminded again for its new time), only
@@ -3285,11 +3296,37 @@ says what to re-read; `by` is the device that caused it, so it can skip its own.
 
 ## Idempotency keys
 
-Any write can carry `Idempotency-Key` (8–100 letters, digits, `-`, `_`). The first answer is kept
-for a day; the same key again gets it back with `Idempotent-Replay: true`, a repeat that arrives
-while the first is still running gets `409`, and the key used for a different request gets `422`.
-Keys belong to the credentials they came with. `POST /items` also accepts an `id` made on the
-device: sending it again answers `200` with the same item.
+The supported writes below accept `Idempotency-Key` (8–100 letters, digits,
+`-`, `_`). The key belongs to the credential and identifies the exact request,
+including its body, query and relevant representation headers. The server keeps
+a successful answer for a day and returns it with `Idempotent-Replay: true` only
+after checking current authentication and, for an answer with content, access.
+A completed bodyless deletion can be acknowledged after authentication even
+though its deleted resource is gone. A different request with the same key gets
+`422`; a request still in progress gets `409`.
+
+Supported writes are item create, update, delete and progress updates; page
+create and save; project, project-link, team and view creation; capture; habit
+create, update and delete; host booking actions and notes; and the two imports
+below. Other
+writes, including sign-in and credential issuance, reject an idempotency key
+before making the change. Send those requests without a key and do not retry
+them automatically after an uncertain delivery.
+
+If a saved answer can no longer be authorized or recovered safely, the server
+returns `409` without repeating the change. Refresh and reconcile the existing
+result before deciding what to do; do not simply send it again under a new key.
+After the security upgrade, receipts created before the upgrade are held this
+way because their old response bodies are removed. `POST /items` also accepts an
+`id` made on the device: sending it again answers `200` with the same item.
+
+An unsuccessful keyed response may include `Idempotency-Outcome`. `in-flight`
+means to retry the exact request with the same key later. `unsafe`, `mismatch`
+and `unsupported` require reconciliation; they do not prove that a new key is
+safe. For item and page saves only, `version-conflict` confirms that the owning
+transaction rolled back and its pending receipt was removed. A client may then
+resolve that version conflict and make a new attempt with a new key. Other
+errors, including an absent outcome header, do not provide that guarantee.
 
 For task imports (`POST /me/import`) and page imports (`POST /imports/pages`),
 replays recheck the live account and current target-team write permission. The

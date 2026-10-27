@@ -581,6 +581,21 @@ test("hosts track every booking in one inbox", async () => {
   assert.ok(
     lines.some((l) => l.includes("Rita Moreno") && l.includes("Wants pricing")),
   );
+  const formulaGuest = await book(page.slug, local(10, 10), {
+    name: "=1+1",
+    email: "formula@example.invalid",
+    note: 'Normal, "quoted" note',
+  });
+  assert.equal(formulaGuest.status, 201, formulaGuest.raw.body);
+  const safeCsv = await call(
+    host.token,
+    "GET",
+    "/bookings/export.csv?view=all",
+  );
+  assert.equal(safeCsv.status, 200, safeCsv.raw.body);
+  assert.ok(safeCsv.raw.body.includes(",'=1+1,formula@example.invalid,"));
+  assert.ok(safeCsv.raw.body.includes('"Normal, ""quoted"" note"'));
+  assert.ok(safeCsv.raw.body.includes(",Rita Moreno,rita@example.com,"));
   assert.equal((await call(null, "GET", "/bookings/export.csv")).status, 401);
 });
 
@@ -699,5 +714,252 @@ test("commit failure removes public verification intent and booking together", a
       "DROP TRIGGER fixture_booking_mail_commit_failure ON bookings; DROP FUNCTION fixture_booking_mail_commit_failure(); DELETE FROM system_settings WHERE key='smtp'",
     );
     invalidateSettings();
+  }
+});
+
+test("removed team hosts and page owners lose booking authority without affecting personal pages", async () => {
+  const owner = await newUser();
+  const host = await newUser();
+  const manager = await newUser();
+  const team = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO teams(name,created_by) VALUES('Booking membership fixture',$1) RETURNING id",
+      [owner.id],
+    )
+  ).rows[0].id;
+  await pool.query(
+    `INSERT INTO team_members(team_id,user_id,role)
+     VALUES($1,$2,'owner'),($1,$3,'member'),($1,$4,'admin')`,
+    [team, owner.id, host.id, manager.id],
+  );
+  const page = await newPage(owner.token, {
+    team_id: team,
+    co_hosts: [{ user_id: host.id, required: true }],
+  });
+  const personal = await newPage(owner.token, {
+    co_hosts: [{ user_id: host.id, required: true }],
+  });
+  const booked = await book(page.slug, local(7, 10));
+  assert.equal(booked.status, 201, booked.raw.body);
+  const bookingId = booked.body.id;
+  assert.equal(
+    (await call(host.token, "GET", `/bookings/${bookingId}`)).status,
+    200,
+  );
+  assert.equal(
+    (await call(owner.token, "DELETE", `/teams/${team}/members/${host.id}`))
+      .status,
+    204,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM booking_hosts WHERE page_id=$1 AND user_id=$2",
+        [page.id, host.id],
+      )
+    ).rowCount,
+    0,
+  );
+
+  // Legacy assignments must be harmless even when removal did not prune them.
+  await pool.query(
+    "INSERT INTO booking_hosts(page_id,user_id,required) VALUES($1,$2,true)",
+    [page.id, host.id],
+  );
+  for (const who of [host, owner]) {
+    if (who === owner) {
+      // A current team manager can remove the original page owner too.
+      await pool.query(
+        "UPDATE team_members SET role='owner' WHERE team_id=$1 AND user_id=$2",
+        [team, manager.id],
+      );
+      assert.equal(
+        (
+          await call(
+            manager.token,
+            "DELETE",
+            `/teams/${team}/members/${owner.id}`,
+          )
+        ).status,
+        204,
+      );
+    }
+    const pages = await call(who.token, "GET", "/booking-pages");
+    assert.equal(pages.status, 200);
+    assert.ok(!pages.body.some((p: Json) => p.id === page.id));
+    assert.ok(pages.body.some((p: Json) => p.id === personal.id));
+    const listed = await call(
+      who.token,
+      "GET",
+      `/bookings?view=all&page_id=${page.id}`,
+    );
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.rows.length, 0);
+    const stats = await call(
+      who.token,
+      "GET",
+      `/bookings/stats?page_id=${page.id}`,
+    );
+    assert.equal(stats.status, 200);
+    assert.equal(stats.body.confirmed, 0);
+    assert.ok(!stats.body.pages.some((p: Json) => p.page_id === page.id));
+    for (const url of [
+      `/booking-pages/${page.id}/bookings`,
+      `/bookings/${bookingId}`,
+      `/bookings/${bookingId}/slots?timezone=${encodeURIComponent(TZ)}&days=1`,
+    ])
+      assert.equal((await call(who.token, "GET", url)).status, 404, url);
+    const exported = await call(
+      who.token,
+      "GET",
+      `/bookings/export.csv?view=all&page_id=${page.id}`,
+    );
+    assert.equal(exported.status, 200);
+    assert.ok(!exported.raw.body.includes("sam@example.com"));
+    for (const [url, method, body] of [
+      [`/booking-pages/${page.id}`, "PUT", { title: "Forbidden" }],
+      [`/booking-pages/${page.id}`, "DELETE", undefined],
+      [`/bookings/${bookingId}/approve`, "POST", {}],
+      [`/bookings/${bookingId}/decline`, "POST", { reason: "No" }],
+      [`/bookings/${bookingId}/cancel`, "POST", { reason: "No" }],
+      [`/bookings/${bookingId}/reschedule`, "POST", { start_at: local(8, 10) }],
+      [`/bookings/${bookingId}/note`, "PUT", { host_note: "No" }],
+      [`/bookings/${bookingId}/no-show`, "PUT", { no_show: true }],
+      [`/booking-pages/${page.id}/bookings/${bookingId}/cancel`, "POST", {}],
+    ] as const)
+      assert.equal((await call(who.token, method, url, body)).status, 404, url);
+  }
+  assert.equal(
+    (await call(manager.token, "GET", `/bookings/${bookingId}`)).status,
+    200,
+  );
+  assert.equal(
+    (
+      await call(manager.token, "PUT", `/booking-pages/${page.id}`, {
+        title: "Still managed",
+      })
+    ).status,
+    200,
+  );
+  // Existing personal cohosts and owners retain their independent authority.
+  assert.equal(
+    (await call(host.token, "GET", `/booking-pages/${personal.id}/bookings`))
+      .status,
+    200,
+  );
+  assert.equal(
+    (
+      await call(owner.token, "PUT", `/booking-pages/${personal.id}`, {
+        title: "Still personal",
+      })
+    ).status,
+    200,
+  );
+
+  const current = await call(manager.token, "GET", "/booking-pages");
+  assert.deepEqual(current.body.find((p: Json) => p.id === page.id).hosts, []);
+  assert.deepEqual(
+    await slots(page.slug, 9),
+    [],
+    "a page without live hosts offers no slots",
+  );
+
+  // Rejoining does not revive the cohost assignment removed by the real path.
+  await pool.query(
+    "DELETE FROM booking_hosts WHERE page_id=$1 AND user_id=$2",
+    [page.id, host.id],
+  );
+  await pool.query(
+    "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'member')",
+    [team, host.id],
+  );
+  assert.equal(
+    (await call(host.token, "GET", `/bookings/${bookingId}`)).status,
+    404,
+  );
+  assert.equal(
+    (
+      await call(manager.token, "PUT", `/booking-pages/${page.id}`, {
+        co_hosts: [{ user_id: host.id, required: true }],
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await call(host.token, "GET", `/bookings/${bookingId}`)).status,
+    200,
+  );
+  const next = await book(page.slug, local(9, 10));
+  assert.equal(next.status, 201, next.raw.body);
+  const recipients = (
+    await pool.query<{ user_id: string }>(
+      "SELECT user_id FROM items WHERE id=ANY((SELECT item_ids FROM bookings WHERE id=$1)::uuid[])",
+      [next.body.id],
+    )
+  ).rows.map((r) => r.user_id);
+  assert.deepEqual(
+    recipients,
+    [host.id],
+    "new calendar entries exclude the removed owner",
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM notifications WHERE ref=$1 AND user_id=$2 AND kind='booking'",
+        [next.body.id, owner.id],
+      )
+    ).rowCount,
+    0,
+  );
+});
+
+test("a booking transaction holds host membership until its work finishes", async () => {
+  const owner = await newUser();
+  const host = await newUser();
+  const team = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO teams(name,created_by) VALUES('Booking lock fixture',$1) RETURNING id",
+      [owner.id],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'owner'),($1,$3,'member')",
+    [team, owner.id, host.id],
+  );
+  const page = await newPage(owner.token, {
+    team_id: team,
+    co_hosts: [{ user_id: host.id, required: true }],
+  });
+  const { pageById } = await import("../src/modules/booking/pages.js");
+  const booking = await pool.connect();
+  const removal = await pool.connect();
+  try {
+    await booking.query("BEGIN");
+    const held = await pageById(booking, page.id, true);
+    assert.ok(held?.hosts.some((entry) => entry.user_id === host.id));
+    await removal.query("BEGIN");
+    await removal.query("SET LOCAL lock_timeout = '150ms'");
+    await assert.rejects(
+      removal.query(
+        "DELETE FROM team_members WHERE team_id=$1 AND user_id=$2",
+        [team, host.id],
+      ),
+      (error: unknown) => (error as { code?: string }).code === "55P03",
+    );
+    await removal.query("ROLLBACK");
+    await booking.query("COMMIT");
+    await removal.query("BEGIN");
+    await removal.query(
+      "DELETE FROM team_members WHERE team_id=$1 AND user_id=$2",
+      [team, host.id],
+    );
+    await removal.query("COMMIT");
+    const after = await pageById(pool, page.id);
+    assert.ok(!after?.hosts.some((entry) => entry.user_id === host.id));
+  } finally {
+    await booking.query("ROLLBACK").catch(() => {});
+    await removal.query("ROLLBACK").catch(() => {});
+    booking.release();
+    removal.release();
   }
 });

@@ -139,6 +139,8 @@ export async function createService(
       "RateLimit-Remaining",
       "RateLimit-Reset",
       "Retry-After",
+      "Idempotent-Replay",
+      "Idempotency-Outcome",
     ],
   };
   const mcpCors = {

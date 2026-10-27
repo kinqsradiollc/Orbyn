@@ -49,6 +49,7 @@ const { env } = await import("../src/config/env.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { sweepPageFiles } =
   await import("../src/modules/page-files/store-routes.js");
+const { claimToken } = await import("../src/modules/imports/tokens.js");
 const { runSweep } = await import("../src/lib/sweep.js");
 const { linkMarkdown } = await import("@orbyn/core");
 
@@ -848,6 +849,73 @@ const upload = (path: string, body: Buffer, type = "image/png") =>
     headers: { "content-type": type, "content-length": String(body.length) },
     payload: body,
   });
+
+test("upload reservations bound new and previously issued links", async () => {
+  const doc = await page(me, "Reserved upload size");
+  const usage = (await call(me, "GET", "/files/usage")).json();
+  const filler = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO page_files (user_id, doc_id, name, mime, kind, bytes, status)
+       VALUES ($1, $2, 'filler.txt', 'text/plain', 'file', $3, 'ready') RETURNING id`,
+      [me.id, doc.id, usage.quota_bytes - usage.used_bytes - 2],
+    )
+  ).rows[0].id;
+  const reserve = async () => {
+    const response = await call(me, "POST", `/docs/${doc.id}/files`, {
+      name: "small.txt",
+      mime: "text/plain",
+      bytes: 1,
+    });
+    assert.equal(response.statusCode, 201, response.body);
+    return response.json();
+  };
+  const current = await reserve();
+  const older = await reserve();
+  assert.equal(
+    (await call(me, "GET", "/files/usage")).json().used_bytes,
+    usage.quota_bytes,
+  );
+
+  // New links reject an oversized body before consuming the one-use claim.
+  assert.equal(
+    (await upload(current.upload_path, Buffer.from("ab"), "text/plain"))
+      .statusCode,
+    413,
+  );
+  assert.equal(
+    (await upload(current.upload_path, Buffer.from("a"), "text/plain"))
+      .statusCode,
+    201,
+  );
+
+  // A signed link issued before this change may still carry 64 KiB of slack.
+  const legacy = claimToken("page-upload", {
+    f: older.file.id,
+    u: me.id,
+    e: Math.floor(Date.now() / 1000) + 600,
+    m: 1 + 64 * 1024,
+    t: "text/plain",
+  });
+  assert.equal(
+    (await upload(`/files/p/${legacy}`, Buffer.from("ab"), "text/plain"))
+      .statusCode,
+    413,
+  );
+  const stored = (
+    await pool.query("SELECT status, bytes FROM page_files WHERE id = $1", [
+      older.file.id,
+    ])
+  ).rows[0];
+  assert.equal(stored.status, "failed");
+  assert.equal(Number(stored.bytes), 1);
+  assert.ok(
+    (await call(me, "GET", "/files/usage")).json().used_bytes <=
+      usage.quota_bytes,
+  );
+  await pool.query("DELETE FROM page_files WHERE id = ANY($1::uuid[])", [
+    [filler, current.file.id, older.file.id],
+  ]);
+});
 
 test("pictures in pages: an upload link used once, a short-lived link to show it, a quota", async () => {
   const doc = await page(me, "With a picture", [], { team_id: teamId });

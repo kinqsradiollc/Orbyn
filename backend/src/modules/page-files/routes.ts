@@ -191,8 +191,8 @@ export async function pageFileRoutes(app: FastifyInstance) {
         f: row.id,
         u: u.id,
         e: expires,
-        // A little over what was promised, never more than the limit.
-        m: Math.min(maxBytes, d.bytes + 64 * 1024),
+        // Never allow an upload to exceed the bytes reserved against quota.
+        m: d.bytes,
         t: mime!,
       });
       reply.code(201);

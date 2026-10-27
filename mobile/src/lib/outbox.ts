@@ -39,7 +39,8 @@ import { rememberPage } from "../features/documents/library/pageCache";
 const KEY = "orbyn-outbox-v2";
 const LEGACY_KEY = "orbyn-outbox-v1";
 type Recovery = { raw: string; reason: string };
-type Saved = { version: 2; entries: OwnedOutboxEntry[]; recovery: Recovery[] };
+type Saved = { version: 3; entries: OwnedOutboxEntry[]; recovery: Recovery[] };
+type Dispatch = NonNullable<NonNullable<OutboxEntry["delivery"]>["request"]>;
 type State = {
   entries: OutboxEntry[];
   syncedAt: string | null;
@@ -117,6 +118,51 @@ const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown): value is string =>
   typeof value === "string" && !!value;
+const REQUEST_HEADERS = ["accept", "x-orbyn-doc-formats", "x-orbyn-ticks-from"];
+function matchesOperation(request: Dispatch, op: OutboxOp) {
+  if (op.type === "doc.save" && !object(op.save)) return false;
+  const path = request.path.split("?")[0];
+  const expected: Record<OutboxOp["type"], [string, string]> = {
+    "item.create": ["POST", "/items"],
+    "item.update": ["PUT", `/items/${"id" in op ? op.id : ""}`],
+    "item.delete": ["DELETE", `/items/${"id" in op ? op.id : ""}`],
+    "item.post": ["POST", `/items/${"id" in op ? op.id : ""}/updates`],
+    "habit.create": ["POST", "/planner/habits"],
+    "habit.update": ["PUT", `/planner/habits/${"id" in op ? op.id : ""}`],
+    "habit.delete": ["DELETE", `/planner/habits/${"id" in op ? op.id : ""}`],
+    "booking.approve": ["POST", `/bookings/${"id" in op ? op.id : ""}/approve`],
+    "booking.decline": ["POST", `/bookings/${"id" in op ? op.id : ""}/decline`],
+    "booking.cancel": ["POST", `/bookings/${"id" in op ? op.id : ""}/cancel`],
+    "booking.reschedule": [
+      "POST",
+      `/bookings/${"id" in op ? op.id : ""}/reschedule`,
+    ],
+    "booking.note": ["PUT", `/bookings/${"id" in op ? op.id : ""}/note`],
+    "doc.save": ["PUT", `/docs/${op.type === "doc.save" ? op.save.id : ""}`],
+  };
+  const match = expected[op.type];
+  return !!match && request.method === match[0] && path === match[1];
+}
+function validDispatch(value: unknown, op: OutboxOp): value is Dispatch {
+  if (
+    !object(value) ||
+    !text(value.server) ||
+    !text(value.path) ||
+    !["POST", "PUT", "DELETE"].includes(String(value.method)) ||
+    (value.body !== undefined && typeof value.body !== "string") ||
+    !object(value.headers) ||
+    Object.entries(value.headers).some(
+      ([key, v]) => !REQUEST_HEADERS.includes(key) || typeof v !== "string",
+    )
+  )
+    return false;
+  try {
+    if (value.body !== undefined) JSON.parse(value.body as string);
+  } catch {
+    return false;
+  }
+  return matchesOperation(value as Dispatch, op);
+}
 function validEntry(value: unknown): value is OwnedOutboxEntry {
   if (
     !object(value) ||
@@ -155,6 +201,12 @@ function validEntry(value: unknown): value is OwnedOutboxEntry {
   )
     return false;
   const op = value.op;
+  if (
+    object(value.delivery) &&
+    value.delivery.request !== undefined &&
+    !validDispatch(value.delivery.request, op as OutboxOp)
+  )
+    return false;
   switch (op.type) {
     case "item.create":
       return object(op.input) && typeof op.input.title === "string";
@@ -198,7 +250,7 @@ function validEntry(value: unknown): value is OwnedOutboxEntry {
   }
 }
 function decode(raw: string | null): Saved {
-  const empty: Saved = { version: 2, entries: [], recovery: [] };
+  const empty: Saved = { version: 3, entries: [], recovery: [] };
   if (!raw) return empty;
   let value: unknown;
   try {
@@ -207,11 +259,16 @@ function decode(raw: string | null): Saved {
     value = null;
   }
   // Never downgrade or overwrite a format this binary does not understand.
-  if (object(value) && value.version !== undefined && value.version !== 2)
+  if (
+    object(value) &&
+    value.version !== undefined &&
+    value.version !== 2 &&
+    value.version !== 3
+  )
     throw new Error("These saved changes need a newer version of Orbyn.");
   if (
     object(value) &&
-    value.version === 2 &&
+    (value.version === 2 || value.version === 3) &&
     Array.isArray(value.entries) &&
     value.entries.every(validEntry) &&
     Array.isArray(value.recovery) &&
@@ -225,7 +282,23 @@ function decode(raw: string | null): Saved {
       ),
     ).size === value.entries.length
   )
-    return value as Saved;
+    return {
+      version: 3,
+      entries: (value.entries as OwnedOutboxEntry[]).map((entry) =>
+        (entry.delivery && !entry.delivery.request) ||
+        (value.version === 2 &&
+          (entry.attempts > 0 || entry.state === "failed" || entry.uncertain))
+          ? {
+              ...entry,
+              state: "failed",
+              uncertain: true,
+              error:
+                "This saved change may already be applied. Its original request is unavailable; check the result before making a new change.",
+            }
+          : entry,
+      ),
+      recovery: value.recovery as Recovery[],
+    };
   return {
     ...empty,
     recovery: [{ raw, reason: "Unrecognized saved changes" }],
@@ -349,12 +422,22 @@ function current(owner: Owner) {
 function assertCurrent(owner: Owner) {
   if (!current(owner)) throw changed();
 }
-class UncertainDeliveryError extends Error {}
+class UncertainDeliveryError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message);
+  }
+}
+class VersionConflictError extends Error {
+  status = 409;
+}
 class PendingDeliveryError extends Error {
   status = 503;
 }
 const RECEIPT_WINDOW_MS = 23 * 60 * 60_000;
-async function sealDelivery(key: string, owner: Owner) {
+async function sealDelivery(key: string, owner: Owner, request: Dispatch) {
   const hash = await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
     owner.token,
@@ -368,6 +451,8 @@ async function sealDelivery(key: string, owner: Owner) {
     const age = Date.now() - Date.parse(entry.delivery.started_at);
     if (
       entry.delivery.credential_hash !== hash ||
+      !entry.delivery.request ||
+      JSON.stringify(entry.delivery.request) !== JSON.stringify(request) ||
       age < 0 ||
       age >= RECEIPT_WINDOW_MS
     )
@@ -384,6 +469,7 @@ async function sealDelivery(key: string, owner: Owner) {
         delivery: {
           credential_hash: hash,
           started_at: new Date().toISOString(),
+          request,
         },
       },
       owner,
@@ -392,7 +478,21 @@ async function sealDelivery(key: string, owner: Owner) {
   assertCurrent(owner);
 }
 function ownedClient(owner: Owner, key: string) {
-  return new OrbynClient({
+  let refusal: Error | undefined;
+  class DeliveryClient extends OrbynClient {
+    override async request<T>(
+      path: string,
+      options: Parameters<OrbynClient["request"]>[1] = {},
+    ): Promise<T> {
+      refusal = undefined;
+      try {
+        return await super.request<T>(path, options);
+      } catch (error) {
+        throw refusal ?? error;
+      }
+    }
+  }
+  return new DeliveryClient({
     baseUrl: client.baseUrl,
     getToken: () => {
       assertCurrent(owner);
@@ -403,7 +503,33 @@ function ownedClient(owner: Owner, key: string) {
       assertCurrent(owner);
       const write = !!args[1]?.method && args[1].method !== "GET";
       if (write) {
-        await sealDelivery(key, owner);
+        const url = String(args[0]);
+        if (!url.startsWith(client.baseUrl))
+          throw new UncertainDeliveryError(
+            "The saved request belongs to another server.",
+          );
+        const input = args[1]!;
+        const headers = new Headers(input.headers);
+        const request: Dispatch = {
+          server: client.baseUrl,
+          path: url.slice(client.baseUrl.length),
+          method: input.method as Dispatch["method"],
+          ...(input.body === undefined ? {} : { body: String(input.body) }),
+          headers: Object.fromEntries(
+            REQUEST_HEADERS.flatMap((name) => {
+              const value = headers.get(name);
+              return value === null ? [] : [[name, value]];
+            }),
+          ),
+        };
+        const entry = saved!.entries.find(
+          (e) => e.owner_id === owner.userId && e.key === key,
+        );
+        if (!entry || !validDispatch(request, entry.op))
+          throw new UncertainDeliveryError(
+            "The saved request does not match this change.",
+          );
+        await sealDelivery(key, owner, request);
         client.noteExternalMutation();
       }
       const response = await fetch(...args);
@@ -413,23 +539,30 @@ function ownedClient(owner: Owner, key: string) {
         response.status >= 400 &&
         response.status < 500
       ) {
-        if (response.status === 409) {
-          const body = await response
-            .clone()
-            .json()
-            .catch(() => null);
-          assertCurrent(owner);
-          if (
-            body?.message === "That change is still being made. Try again soon."
-          )
-            throw new PendingDeliveryError(body.message);
-        }
-        // A definite rejection can be attempted after reauthentication. An
-        // unknown/network outcome keeps its original credential namespace.
+        const outcome = response.headers.get("Idempotency-Outcome");
         const entry = saved!.entries.find(
           (e) => e.owner_id === owner.userId && e.key === key,
         );
-        if (entry) await bump(entry, { delivery: undefined }, owner);
+        if (outcome === "in-flight") {
+          refusal = new PendingDeliveryError(
+            "That change is still being made. Try again soon.",
+          );
+          return response;
+        }
+        // Only explicit route-specific proof can permit a new version attempt.
+        if (outcome === "version-conflict" && response.status === 409) {
+          if (entry)
+            await bump(entry, { delivery: undefined, uncertain: false }, owner);
+          refusal = new VersionConflictError(
+            "This change met a newer version.",
+          );
+          return response;
+        }
+        if (entry) await bump(entry, { uncertain: true }, owner);
+        refusal = new UncertainDeliveryError(
+          "This change may already be saved. Check the result before retrying.",
+          response.status,
+        );
       }
       return response;
     },
@@ -485,7 +618,12 @@ function acknowledge(entry: OutboxEntry, owner: Owner, result: unknown) {
         "The server returned another task. Review this change before retrying.",
       );
     saved!.entries = saved!.entries.map((pending) => {
-      if (pending.owner_id !== owner.userId || pending.delivery) return pending;
+      if (
+        pending.owner_id !== owner.userId ||
+        pending.delivery ||
+        pending.uncertain
+      )
+        return pending;
       if (
         pending.op.type === "item.update" &&
         pending.op.id === created.id &&
@@ -538,6 +676,44 @@ async function sendCommand(
 ): Promise<unknown> {
   assertCurrent(owner);
   const client = ownedClient(owner, key);
+  const pending = saved!.entries.find(
+    (e) => e.owner_id === owner.userId && e.key === key,
+  );
+  const delivery = pending?.delivery;
+  if (pending?.uncertain && !delivery?.request)
+    throw new UncertainDeliveryError(
+      "This change may already be saved. Its original request is unavailable; check the result before retrying.",
+    );
+  if (delivery) {
+    const request = delivery.request;
+    if (!request || !validDispatch(request, op))
+      throw new UncertainDeliveryError(
+        "This change may already be saved. Its original request is unavailable; check the result before retrying.",
+      );
+    if (request.server !== client.baseUrl)
+      throw new UncertainDeliveryError(
+        "This change was sent to another server. Check its result there before retrying.",
+      );
+    // Recheck current page authority, but never merge a dispatched request into
+    // a new version: the receipt identifies its exact original body and URL.
+    if (op.type === "doc.save") {
+      if (op.save.document) await client.getDocForEditor(op.save.id);
+      else await client.getDoc(op.save.id);
+      assertCurrent(owner);
+    }
+    const result = await client.once(key, () =>
+      client.request<Doc>(request.path, {
+        method: request.method,
+        ...(request.body === undefined
+          ? {}
+          : { body: JSON.parse(request.body) }),
+        headers: request.headers,
+      }),
+    );
+    assertCurrent(owner);
+    if (op.type === "doc.save") void rememberPage(result);
+    return result;
+  }
   switch (op.type) {
     case "item.create":
       return client.once(key, () => client.createItem(op.input));
@@ -690,7 +866,11 @@ export async function run<T>(op: OutboxOp): Promise<T | null> {
         {
           state: "failed",
           error: errorText(error),
-          uncertain: error instanceof UncertainDeliveryError,
+          uncertain:
+            error instanceof UncertainDeliveryError ||
+            !!saved!.entries.find(
+              (e) => e.owner_id === owner.userId && e.key === key,
+            )?.delivery,
         },
         owner,
       );
@@ -772,7 +952,7 @@ export function flush(): Promise<void> {
           }
           if (
             entry.op.type === "doc.save" &&
-            status(error) === 409 &&
+            error instanceof VersionConflictError &&
             entry.attempts < 3
           ) {
             const attempts = entry.attempts + 1;
@@ -787,12 +967,22 @@ export function flush(): Promise<void> {
             );
             continue;
           }
-          if (entry.op.type === "item.update" && status(error) === 409) {
+          if (
+            entry.op.type === "item.update" &&
+            error instanceof VersionConflictError
+          ) {
             if (await settle(entry, owner)) sent = true;
             if (pausedGeneration === owner.sessionGeneration) return;
             continue;
           }
-          if (entry.op.type === "item.delete" && status(error) === 404) {
+          if (
+            entry.op.type === "item.delete" &&
+            status(error) === 404 &&
+            !(error instanceof UncertainDeliveryError) &&
+            !saved!.entries.find(
+              (e) => e.owner_id === owner.userId && e.key === entry.key,
+            )?.delivery
+          ) {
             remove(entry, owner);
             await persistStrict();
             continue;
@@ -802,7 +992,11 @@ export function flush(): Promise<void> {
             {
               state: "failed",
               error: errorText(error),
-              uncertain: error instanceof UncertainDeliveryError,
+              uncertain:
+                error instanceof UncertainDeliveryError ||
+                !!saved!.entries.find(
+                  (e) => e.owner_id === owner.userId && e.key === entry.key,
+                )?.delivery,
             },
             owner,
           );
@@ -863,12 +1057,21 @@ async function settle(entry: OutboxEntry, owner: Owner): Promise<boolean> {
       );
       return false;
     }
-    await client.once(`${entry.key}-merged`, () =>
-      client.updateItem(op.id, body, op.scope ?? {}),
+    // Persist the new operation identity before its first request. A lost
+    // merged response must replay this body, not recompute a second merge.
+    await bump(
+      entry,
+      {
+        key: `${entry.key}-merged`,
+        op: { ...op, base: theirs, body },
+        delivery: undefined,
+        uncertain: false,
+        state: "pending",
+        error: undefined,
+      },
+      owner,
     );
-    remove(entry, owner);
-    await persistStrict();
-    return true;
+    return false;
   } catch (e) {
     if (!current(owner)) return false;
     if (status(e) === 401) {
@@ -919,6 +1122,11 @@ export async function resolve(
     cancelRetry();
     set({ sending: false });
     await persistStrict();
+  } else if (entry.uncertain || entry.delivery) {
+    // Manual retry can ask for the original receipt, never create a second
+    // mutation from an unknown outcome. Drop and deliberately recreate only
+    // after reconciling the server's result.
+    await bump(entry, { state: "pending", error: undefined }, owner);
   } else if (
     choice === "mine" &&
     entry.op.type === "item.update" &&

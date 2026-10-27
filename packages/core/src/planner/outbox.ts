@@ -71,8 +71,19 @@ export type OutboxEntry = {
   queued_at: string;
   attempts: number;
   /** Persisted before dispatch. Receipts are scoped to these credentials and expire. */
-  delivery?: { credential_hash: string; started_at: string };
-  /** Unknown outcome: inspect before explicitly retrying with a new key. */
+  delivery?: {
+    credential_hash: string;
+    started_at: string;
+    /** Exact first dispatch, persisted before sending; contains no credentials. */
+    request?: {
+      server: string;
+      path: string;
+      method: "POST" | "PUT" | "DELETE";
+      body?: string;
+      headers: Record<string, string>;
+    };
+  };
+  /** Unknown outcome: keep its request/key until the result is reconciled. */
   uncertain?: boolean;
   /** Waiting to be sent, or refused and waiting for the person. */
   state: "pending" | "failed";
@@ -198,6 +209,7 @@ export function queueChange(
         e.state === "pending" &&
         !sendingKeys.has(e.key) &&
         !e.delivery &&
+        !e.uncertain &&
         e.op.type === "doc.save" &&
         e.op.save.id === op.save.id &&
         !!e.op.save.document === !!op.save.document,

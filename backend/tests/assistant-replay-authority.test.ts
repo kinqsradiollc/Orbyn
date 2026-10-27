@@ -566,6 +566,71 @@ test("team and team instruction receipts use effective membership, not owner mem
     /cached result.*held/i,
   );
 });
+test("cached team-booking targets require current host or manager membership", async () => {
+  const owner = await fixture();
+  const host = await fixture();
+  const manager = await fixture();
+  const team = randomUUID();
+  teams.push(team);
+  await pool.query(
+    "INSERT INTO teams(id,name) VALUES($1,'Replay booking team')",
+    [team],
+  );
+  await pool.query(
+    "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'owner'),($1,$3,'member'),($1,$4,'admin')",
+    [team, owner.user.id, host.user.id, manager.user.id],
+  );
+  const page = (
+    await pool.query(
+      "INSERT INTO booking_pages(owner_id,team_id,slug,title) VALUES($1,$2,$3,'Private booking') RETURNING id",
+      [owner.user.id, team, `replay-${randomUUID()}`],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO booking_hosts(page_id,user_id,required) VALUES($1,$2,true)",
+    [page, host.user.id],
+  );
+  const booking = (
+    await pool.query(
+      "INSERT INTO bookings(page_id,start_at,end_at,name,email) VALUES($1,now(),now()+interval '1 hour','Guest','guest@example.test') RETURNING id",
+      [page],
+    )
+  ).rows[0].id;
+  const answer = {
+    structured: {},
+    markdown: "",
+    targets: [`booking:${booking}`],
+    outcome: "ok" as const,
+  };
+  for (const user of [owner.user, host.user, manager.user])
+    await assertAssistantReplayTargets(
+      pool,
+      await assistantPrincipal(user),
+      answer,
+    );
+
+  // A current principal has Personal access even after leaving the team. A
+  // stale page owner or legacy host row must not revive the team receipt.
+  await pool.query(
+    "DELETE FROM team_members WHERE team_id=$1 AND user_id=ANY($2::uuid[])",
+    [team, [owner.user.id, host.user.id]],
+  );
+  for (const user of [owner.user, host.user])
+    await assert.rejects(
+      assertAssistantReplayTargets(
+        pool,
+        await assistantPrincipal(user),
+        answer,
+      ),
+      /cached result.*held/i,
+    );
+  await assertAssistantReplayTargets(
+    pool,
+    await assistantPrincipal(manager.user),
+    answer,
+  );
+});
+
 test("restoring cached target access permits the same original answer without repeating work", async () => {
   const f = await fixture();
   await pool.query(
