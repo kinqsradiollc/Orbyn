@@ -1,7 +1,7 @@
 import { Select } from "../../components/Select";
 import { useId, useState } from "react";
 import { Plus, X } from "lucide-react";
-import { alertLabel } from "../../components/EventFields";
+import { alertLabel } from "../calendar/EventFields";
 
 /** Offered reminder times, in minutes before the meeting (10 to 10080). */
 const PRESETS = [10, 30, 60, 120, 1440, 2880, 10080];

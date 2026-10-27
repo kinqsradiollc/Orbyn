@@ -10,7 +10,7 @@ import {
 } from "@orbyn/core";
 import { env } from "../config/env.js";
 import { Params, scopeFor, visibleDocs } from "../lib/visibility.js";
-import { createDoc, saveDoc } from "../modules/docs/service.js";
+import { createDoc, saveDoc } from "../modules/documents/service.js";
 import { importsEnabled, serviceKey } from "../modules/imports/tokens.js";
 import { pageFileLimits, usedBytes } from "../modules/page-files/service.js";
 import { docId } from "./common.js";

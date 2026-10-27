@@ -1,643 +1,194 @@
 import {
-  versionedDocRead,
-  versionedDocSave,
-  parseVersionedDocContent,
+  type AccountPrefsInput,
+  type AgendaPrivatePermissionInput,
+  type AgentIdentityInput,
+  type AgentInboxKind,
+  type AgentKeyInput,
+  type AgentRoutineInput,
+  type AgentRoutineUpdate,
+  type AgentRuleInput,
+  type AgentSettingsUpdate,
+  type AgentToolset,
+  type AgentTrustInput,
+  type AiProviderKind,
+  type AiProviderOptions,
+  type ApprovalScopes,
+  type AssistantActionRule,
+  type AssistantActivityLane,
+  type AssistantBudgetView,
+  type AssistantHandoffLane,
+  automationAgentIdentity,
+  type AutomationAgentIdentity,
+  type AutomationAgentIdentityInput,
+  type AutomationAgentLane,
+  type BlockDuplicateInput,
+  type BlockInput,
+  type BlockOnDayInput,
+  type BlockRescheduleInput,
+  type BlockUpdate,
+  type Booking,
+  type BookingPageInput,
+  type BookingPageUpdate,
+  type BookingRequest,
+  type BookingView,
+  type CalendarFeedSettingsInput,
+  type CalendarSubscriptionInput,
+  type CalendarSubscriptionUpdate,
+  type CaptureAssistInput,
+  type CaptureRequest,
+  type ChatgptCatalogDefaultUpdate,
+  type ChatgptCatalogPublication,
+  type ChatgptCatalogSelection,
+  type ChatgptConnectionFinish,
+  type ChatgptConnectionStart,
+  type ChatgptExecutorFinish,
+  type ChatgptExecutorStart,
+  type ChatgptLeaseRenewal,
+  type ChatgptLeaseStart,
+  type ChatScope,
+  type ChatTurn,
+  type ClipInput,
+  type Credentials,
+  type CustomFieldInput,
+  type CustomFieldUpdate,
+  type Doc,
+  type DocAiAction,
+  type DocAskSelection,
+  type DocBlock,
   docContainerBlocks,
   docEditorUpdate,
   type DocEditorUpdate,
-  type VersionedDocContent,
-} from "@orbyn/core";
-import {
-  teamsInstallationId,
-  teamsChannelStatus,
-  teamsChannelPermission,
-  teamsInstallationStart,
-  teamsInstallationRequest,
-  teamsInstallationConfirm,
-  teamsConversationChallenge,
-  teamsChannelConnection,
-  teamsChannelDisconnect,
-} from "@orbyn/core";
-import {
-  agendaPrivatePermission,
-  agendaPrivatePermissionInput,
-  agendaPrivateSummary,
-  type AgendaPrivatePermissionInput,
-  type AgendaBriefOutcome,
-  pluginAiPermissionInput,
-  pluginAiPermissionView,
-  type PluginAiPermissionInput,
-  type MaintainedPageBinding,
-  type MaintainedPageRunSummary,
-  type MaintainedPageBindingInput,
-  type MaintainedPageBindingUpdate,
-  assistantActivityLane,
-  assistantConversationHome,
-  assistantConversationDestination,
-  assistantConversationLocation,
-  assistantConversationDetails,
-  assistantSavedHistory,
-  assistantSavedHistoryQuery,
-  assistantConversationAnswer,
-  assistantConversationAnswerInput,
-  assistantConversationQuery,
-  assistantConversationPage,
-  assistantConversationReadInput,
-  assistantConversationPreferences,
-  assistantConversationMuteInput,
-  assistantWorkControls,
-  assistantWorkControlsInput,
-  assistantProfiles,
-  assistantRulesInput,
-  assistantRulesSnapshot,
-  assistantBudgetLane,
-  assistantBudgetUpdate,
-  assistantBudgetView,
-  assistantBudgets,
-  assistantHandoff,
-  assistantHandoffInput,
-  assistantHandoffSource,
-  assistantHandoffLane,
-  type AssistantHandoffLane,
-  type AssistantBudgetView,
-  type AssistantActionRule,
-  assistantActivityQuery,
-  assistantActivityPage,
-  type AssistantActivityLane,
-  chatgptExecutorStart,
-  chatgptExecutorList,
-  chatgptExecutorFinish,
-  chatgptExecutorChallenge,
-  chatgptExecutorEnrolled,
-  chatgptLeaseStart,
-  chatgptLeaseChallenge,
-  chatgptLeaseFinish,
-  chatgptExecutorLease,
-  chatgptLeaseRenewal,
-  chatgptCatalogPublication,
-  chatgptCatalogReceipt,
-  chatgptCatalogSelection,
-  chatgptCatalogRead,
-  chatgptCatalogDefaultUpdate,
-  chatgptModelPreference,
-  type ChatgptExecutorStart,
-  type ChatgptExecutorFinish,
-  type ChatgptLeaseStart,
-  type ChatgptLeaseRenewal,
-  type ChatgptCatalogPublication,
-  type ChatgptCatalogSelection,
-  type ChatgptCatalogDefaultUpdate,
-  chatgptConnectionStart,
-  chatgptConnectionRefreshIdentity,
-  chatgptConnectionFinish,
-  chatgptConnectionChallenge,
-  chatgptConnection,
-  chatgptConnectionList,
-  slackChannelStatus,
-  slackChannelConnection,
-  slackInstallationStart,
-  slackInstallationId,
-  slackInstallationRequest,
-  slackInstallationConfirm,
-  slackChannelPermission,
-  slackChannelDisconnect,
-  type ChatgptConnectionStart,
-  chatgptConnectRequestStart,
-  aiProviderChoice,
-  aiProviderChoiceInput,
-  chatgptUsageSummary,
-  chatgptInferenceAssignment,
-  chatgptInferencePublication,
-  chatgptConnectRequestState,
-  type ChatgptConnectionFinish,
-  HttpError,
-  type AgentGrant,
-  type AgentToolset,
-  type AgentTrustInput,
-  type AgentInboxKind,
-  type AgentInboxSettings,
-  type AgentQuestion,
-  type AgentRule,
-  type AgentRuleInput,
-  type AgentContextSettings,
-  type PersonalAgentSettings,
-  type NightShiftSettings,
-  type OvernightNight,
-  type OvernightRun,
-  type ReminderNudgeSettings,
-  type Goal,
-  type GoalCheckin,
+  type DocKind,
+  type EditScope,
+  type EventNoteRef,
+  type ExportFormat,
+  type FavouriteKind,
+  type FieldTarget,
+  type FieldValue,
+  type FirstRunInput,
+  type FocusSession,
+  type FocusState,
+  type FrameInput,
+  type FrameUpdate,
   type GoalInput,
   type GoalUpdate,
-  type AgentRoutine,
-  type AgentRoutineInput,
-  type AgentRoutineUpdate,
-  type ApprovalScopes,
-  type AssistantIdea,
-  type AgentIdentityInput,
-  automationAgentIdentity,
-  type AutomationAgentLane,
-  type AutomationAgentIdentity,
-  type AutomationAgentIdentityInput,
-  type NewAgentWake,
-  type ProposalStatus,
-  type McpCatalog,
-  type AgendaDay,
-  type CaptureRequest,
-  type CaptureResult,
-  type LinkPreview,
-  type DocTag,
-  type PageTemplate,
+  type HabitCheckInInput,
+  type HabitInput,
+  type HabitPlanInput,
+  type HabitUpdate,
+  HttpError,
+  type ImportCreateInput,
+  type InviteBookingRequest,
+  type ItemInput,
+  type ItemPositionInput,
+  type ItemSort,
+  type LegalDoc,
+  type LegalSettingsUpdate,
+  type ListInput,
+  type ListUpdate,
+  type LookInput,
+  type MaintainedPageBindingInput,
+  type MaintainedPageBindingUpdate,
+  type MaintenanceInput,
+  type MilestoneInput,
+  type MilestoneUpdate,
+  type NightShiftSettings,
+  type OAuthConsentInput,
+  type OAuthRequest,
+  type ObjectRef,
+  type OpenInviteInput,
+  type Page,
+  type PageFileInput,
+  type PageImportInput,
   type PageTemplateFromDoc,
   type PageTemplateInput,
   type PageTemplateUpdate,
   type PageTemplateUse,
-  type ItemSessions,
-  type ItemContext,
-  type PlannedFeed,
-  type TodayList,
-  type AdminOverview,
-  type AdminAnalytics,
-  type AdminUserDetail,
-  type Announcement,
-  type LegalAdminView,
-  type AdminStorage,
-  type ImportCapabilities,
-  type ImportCreateInput,
-  type ImportJob,
-  type Rating,
-  type RevisionPlan,
-  type StudyCard,
-  type StudyOverview,
-  type AiFeatureProvider,
-  type SuggestedCard,
-  type LegalDoc,
-  type LegalDocument,
-  type LegalSettingsUpdate,
-  type LegalSummary,
-  type PrivacyView,
-  type RequestLogRow,
-  type RequestSummary,
-  type SweepView,
-  type AdminDatabaseTable,
-  type AdminDatabaseTableDetail,
-  type AdminDatabaseRows,
-  type Doc,
-  type DocInfo,
-  type TrashedDoc,
-  type DocBlock,
-  type DocKind,
-  type DocComment,
-  type DocAiAction,
-  type DocAnswer,
-  type DocAskSelection,
-  docAskSelection,
-  type DocSuggestion,
-  type ExportFormat,
+  parseVersionedDocContent,
+  type PersonalAgentSettings,
+  type PlaceInput,
+  type PlaceUpdate,
+  type PlanApplyInput,
+  type PlannerPrefsInput,
+  type PlanPreviewInput,
+  type PlanTuneInput,
+  type PluginAiPermissionInput,
+  type PresenceHeartbeat,
+  type PresenceSettings,
+  type ProfileInput,
+  type ProjectChatInput,
+  type ProjectStatus,
   type Proposed,
-  type SearchHit,
-  type FindHit,
-  type LinkedHereList,
-  type LinkOption,
-  type LinkPill,
-  type ObjectRef,
-  resolveRefs,
-  type HeadingOption,
-  type LinkCard,
-  type RelatedPage,
-  type UnlinkedMention,
-  type PageFile,
-  type PageFileInput,
-  type PageFileLink,
-  type PageFilesUsage,
-  type PageFileUpload,
-  type DocSummary,
-  type EventNoteRef,
-  type DocVersion,
-  type DocVersionChanges,
-  type Favourite,
-  type FavouriteKind,
-  type StarredItem,
-  type AccountPrefs,
-  type AccountPrefsInput,
-  type CoverPicture,
-  type HomeSummary,
-  type Look,
-  type LookInput,
-  type ConnectionMap,
-  type TeamPolicies,
-  type RecordingSummary,
-  type ClipKey,
-  type ClipDestinations,
-  type ClipInput,
-  type ClipResult,
-  type CustomField,
-  type CustomFieldInput,
-  type CustomFieldUpdate,
-  type FieldDate,
-  type FieldTarget,
-  type FieldValue,
-  type SavedView,
+  type PublishInput,
+  type Rating,
+  type ReauthInput,
+  type ReminderNudgeSettings,
+  type ReviewApproveInput,
   type SavedViewInput,
   type SavedViewUpdate,
-  type TargetFields,
+  type SessionCheckInInput,
+  type Status,
+  type SystemRole,
+  type SystemSettingsUpdate,
+  type TagInput,
+  type TagUpdate,
+  type TeamAgentAccess,
+  type TeamPolicies,
+  type TeamRole,
+  type TemplateInput,
+  type TemplateUpdate,
+  type UpdateAiChatInput,
+  type VersionedDocContent,
+  versionedDocRead,
   type ViewDefinitionInput,
-  type ViewResult,
-  type Folder,
-  type Project,
-  type ProjectLink,
-  type ProjectPlanning,
-  type ProjectSession,
-  type ProjectActivity,
-  type ProjectCheckpoint,
-  type ProjectSnapshot,
+  type WebhookInput,
+  type WebhookUpdate,
+  type WhatIfInput,
   type WorkRecord,
   type WorkRecordInput,
   type WorkRecordUpdate,
-  type ProjectStatus,
-  type AiModelList,
-  type AiEmbeddingModelList,
-  type AiProvider,
-  type AiProviderOptions,
-  type ManagedAiUsageSummary,
-  type AiProviderKind,
-  type AiProvidersResponse,
-  type AiSettings,
-  type AiTestResult,
-  type AdminUser,
-  type AuditEntry,
-  type AuthResponse,
-  type Session,
-  type TwoFactorStatus,
-  type TwoFactorSetup,
-  type TwoFactorEnabled,
-  type ImportSummary,
-  type ChatChannel,
-  type Passkey,
-  type InboxInfo,
-  type ChatTurn,
-  type ChatScope,
-  type Credentials,
-  type Item,
-  type ItemDetail,
-  type ItemPositionInput,
-  type ItemSyncPage,
-  type InviteBookingRequest,
-  type OpenInvite,
-  type OpenInviteInput,
-  type Profile,
-  type ProfileInput,
-  type PublicInvite,
-  type PublicProfile,
-  type Status,
-  type ItemInput,
-  type Notice,
-  type Page,
-  type Proposal,
-  type StatusReport,
-  type Maintenance,
-  type MaintenanceInput,
-  type SystemSettingsUpdate,
-  type SystemSettingsView,
-  type UpdateInfo,
-  type VersionInfo,
-  type SystemRole,
-  type Team,
-  type TeamDetail,
-  type TeamMember,
-  type TeamRole,
-  type User,
-  type ApiKey,
-  type AgentActivity,
-  type ReviewApplied,
-  type ReviewApproveInput,
-  type ReviewInbox,
-  type ReviewItem,
-  type AgentKeyInput,
-  type AgentSettings,
-  type AgentSettingsUpdate,
-  type AgentsOverview,
-  type NewAgentKey,
-  type TeamAgentAccess,
-  type TeamAgentsView,
-  type AdminAgentClient,
-  type AdminAgentUsage,
-  type OAuthCheck,
-  type OAuthConsentInput,
-  type OAuthRedirect,
-  type OAuthRequest,
-  type ReauthInput,
-  type Reauthenticated,
-  type BlockDuplicateInput,
-  type BlockRescheduleInput,
-  type PlanApplied,
-  type PlanApplyInput,
-  type BlockInput,
-  type BlockOnDayInput,
-  type BlockUpdate,
-  type Booking,
-  type BookingPage,
-  type BookingPageInput,
-  type BookingPageUpdate,
-  type BookingReceipt,
-  type BookingRequest,
-  type BookingDetail,
-  type BookingStats,
-  type BookingView,
-  type ManagedBooking,
-  type CalendarFeed,
-  type CalendarFeedSettings,
-  type CalendarFeedSettingsInput,
-  type CalendarSearch,
-  type CalendarSubscription,
-  type CalendarSubscriptionInput,
-  type CalendarSubscriptionUpdate,
-  type CalendarView,
-  type EditScope,
-  type QuickAddCreated,
-  type QuickAddResult,
-  type RsvpView,
-  type UserAvailability,
-  type EstimateModel,
-  type PlannerLearning,
-  type UpNext,
-  type Frame,
-  type FrameInput,
-  type FrameUpdate,
-  type Habit,
-  type HabitBlock,
-  type HabitInput,
-  type HabitCheckInInput,
-  type HabitPlan,
-  type HabitPlanInput,
-  type HabitUpdate,
-  type ItemSort,
-  type ListInput,
-  type ListUpdate,
-  type MeetingSlot,
-  type MemberAvailability,
-  type MemberWorkload,
-  type TeamAnalytics,
-  type NewApiKey,
-  type NewWebhook,
-  type Place,
-  type PlaceInput,
-  type PlaceUpdate,
-  type Plan,
-  type PlannerAnalytics,
-  type PlannerPrefs,
-  type PlannerPrefsInput,
-  type PlannerReview,
-  type PlanPreviewInput,
-  type PlanStaleness,
-  type PlanTuneInput,
-  type PublicBookingPage,
-  type Tag,
-  type TagInput,
-  type TagUpdate,
-  type TaskList,
-  type TimeBlock,
-  type Webhook,
-  type WebhookInput,
-  type WebhookTestResult,
-  type WebhookUpdate,
-  type DevicePresence,
-  type DocViewer,
-  type FocusCurrent,
-  type FocusSession,
-  type FocusState,
-  type FocusSummary,
-  type ActivitySummary,
-  type MemberPresence,
-  type PresenceHeartbeat,
-  type PresenceSettings,
-  type TeamCapacity,
-  type ProjectTemplate,
-  type TemplateInput,
-  type TemplateUpdate,
-  type AttentionCheck,
-  type FadingDoc,
-  type ItemProof,
-  type PlanReality,
-  type ProgressReport,
-  type ReentryBrief,
-  type TaskAsk,
-  type TeamAttention,
-  type WhatIfInput,
-  type WhatIfResult,
-  type ExperimentEvidence,
-  type SessionCheckIn,
-  type SessionCheckInInput,
-  type SessionCheckedIn,
-  type ProjectMilestone,
-  type MilestoneInput,
-  type MilestoneUpdate,
-  type PageMention,
-  type OriginalsOverview,
-  type ProjectChatInput,
-  type ProjectChatSummary,
-  type AiChat,
-  type AiChatSummary,
-  type ChatTraceEntry,
-  type UpdateAiChatInput,
-  type CaptureAssistInput,
-  type CaptureAssistResult,
-  type FirstRunInput,
-  type FirstRunResult,
-  type PageImportInput,
-  type PagesImportSummary,
-  type PublishInput,
-  type PublishState,
-  type TeamChangesPage,
 } from "@orbyn/core";
-
-/** News from `GET /events`: re-read what it names. */
-export type LiveNews = {
-  kind: "changed" | "focus" | "presence" | "doc_presence";
-  /**
-   * What a "changed" is about: pages, projects, lists and folders
-   * (organize), templates, work records, the Review inbox, or items.
-   * Absent on older news, which means anything may have changed.
-   */
-  area?:
-    | "assistant"
-    | "items"
-    | "docs"
-    | "projects"
-    | "organize"
-    | "templates"
-    | "records"
-    | "review";
-  user?: string;
-  team?: string;
-  doc?: string;
-  by?: string;
-};
-
-/**
- * What a document's stream says beyond its version: `trashed` when someone
- * moved it to Trash, so an editor that has it open can let it go.
- */
-export type DocNews = {
-  trashed: boolean;
-  /** Permanently forgotten from private Memory. */
-  forgotten?: boolean;
-  /** Only the page's tags changed; its words and version are as they were. */
-  tags: boolean;
-  /** Only a field value changed (the Info panel reads it afresh). */
-  fields?: boolean;
-  /** Who made the change, so an editor can skip its own saves ("" when unknown). */
-  by: string;
-};
-
-/** "?scope=this&occurrence=…" for edits to part of a repeating item. */
-const scopeQuery = (o: { scope?: EditScope; occurrence?: string }) => {
-  if (!o.scope || o.scope === "all") return "";
-  const q = new URLSearchParams({ scope: o.scope });
-  if (o.occurrence) q.set("occurrence", o.occurrence);
-  return `?${q}`;
-};
-
-/** After a write, reads ask for the primary database for this long. */
-const READ_YOUR_WRITES_MS = 5000;
-/** Pause before retrying a read that failed while a server copy restarted. */
-const RETRY_DELAY_MS = 300;
-/** How many unchanged-response bodies to remember for conditional GETs. */
-const MAX_CACHED = 100;
-/** Polling an assistant turn: first check, longest gap, and how long to wait in all. */
-const CHAT_POLL_MS = 1200;
-const CHAT_POLL_MAX_MS = 4000;
-const CHAT_WAIT_MS = 15 * 60_000;
-/** The longest a run may wait for a person's answer or approval while polled. */
-const CHAT_WAITING_MAX_MS = 2 * 60 * 60_000;
-
-/** An error named "AbortError", thrown when a caller's AbortSignal stops a poll. */
-export function abortError(): Error {
-  const error = new Error("The request was stopped.");
-  error.name = "AbortError";
-  return error;
-}
-
-/** Whether `error` came from an AbortSignal stopping the request. */
-export function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
-
-/** Wait `ms`, rejecting early with an AbortError when `signal` aborts. */
-function pause(ms: number, signal?: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    if (signal?.aborted) return reject(abortError());
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(abortError());
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-export type AssistantWaiting =
-  | { kind: "person"; id: string; question: string; choices: string[] }
-  | {
-      kind: "approval";
-      id: string;
-      question: string;
-      detail: string;
-      steps: unknown[];
-      summary: string;
-      change_kinds?: string[];
-      automation_kind?: "goal" | "routine";
-      automation_id?: string;
-    };
-
-export type AssistantRunProgress = {
-  job_id: string;
-  state: "running" | "waiting" | "done";
-  label?: string;
-  step?: number;
-  waiting?: AssistantWaiting | null;
-};
-
-type ChatJob =
-  | { state: "running"; progress?: { label?: string; step?: number } }
-  | {
-      state: "waiting";
-      progress?: { label?: string; step?: number };
-      waiting: AssistantWaiting | null;
-    }
-  | {
-      state: "done";
-      proposal?: Proposal;
-      answer?: string;
-      assistant_run?: Record<string, unknown>;
-      chat_id?: string;
-      turn_id?: string;
-      trace?: ChatTraceEntry[];
-    }
-  | { state: "failed"; status?: number; message: string };
-
-export type ChatResult = {
-  proposal: Proposal;
-  chat_id: string;
-  turn_id: string;
-  trace: ChatTraceEntry[];
-  answer?: string;
-  assistant_run?: Record<string, unknown>;
-};
-
-/** What to say when a proxy answered instead of Orbyn (no JSON body). */
-function proxyMessage(status: number): string {
-  if (status === 504 || status === 524)
-    return "That took too long to answer. Try again, or ask for less at once.";
-  // The status goes to the console with the rest (errorDetail), not here.
-  if (status >= 500)
-    return "Orbyn is briefly unavailable. Try again in a moment.";
-  return "Orbyn sent a reply it couldn't read. Try again.";
-}
-
-export type TokenSource = () =>
-  string | null | undefined | Promise<string | null | undefined>;
-
-export type OrbynClientOptions = {
-  /** API origin, for example `http://localhost:8008` or `/api`. */
-  baseUrl: string;
-  /** Returns the current session token, or nothing when signed out. */
-  getToken?: TokenSource;
-  /** Per-request timeout. Defaults to 120s to outlast the assistant's 85s deadline. */
-  timeoutMs?: number;
-  /** Override fetch (tests, custom agents). Defaults to the global fetch. */
-  fetch?: typeof fetch;
-  /**
-   * Fetch used for streaming reads, which need a readable `response.body`.
-   * React Native's built-in fetch has no body stream, so the phone passes
-   * `expo/fetch` here; everywhere else the ordinary fetch already does.
-   */
-  streamFetch?: typeof fetch;
-};
-
-export type RequestOptions = {
-  signal?: AbortSignal;
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  body?: unknown;
-  /** Send without the Authorization header even if a token exists. */
-  anonymous?: boolean;
-  /** Resolve with the body text instead of parsing JSON (CSV exports). */
-  raw?: boolean;
-  /** Send once: a retry with the same key gets the first answer back. */
-  idempotencyKey?: string;
-  /** Extra request headers. */
-  headers?: Record<string, string>;
-  /** Fetch live state without conditional or platform response caching. */
-  fresh?: boolean;
-};
-
-/**
- * Small typed wrapper over the Orbyn HTTP API. Every method resolves with the
- * parsed JSON body and rejects with an `HttpError` carrying the server status.
- */
+import {
+  AssistantRunProgress,
+  DocNews,
+  LiveNews,
+  MAX_CACHED,
+  OrbynClientOptions,
+  pause,
+  proxyMessage,
+  READ_YOUR_WRITES_MS,
+  RequestOptions,
+  RETRY_DELAY_MS,
+  TokenSource,
+} from "./client-contracts.js";
+import * as account from "./endpoints/account.js";
+import * as administration from "./endpoints/administration.js";
+import * as assistant from "./endpoints/assistant.js";
+import * as booking from "./endpoints/booking.js";
+import * as capture from "./endpoints/capture.js";
+import * as connections from "./endpoints/connections.js";
+import * as documents from "./endpoints/documents.js";
+import * as notifications from "./endpoints/notifications.js";
+import * as planner from "./endpoints/planner.js";
+import * as projects from "./endpoints/projects.js";
+import * as publishing from "./endpoints/publishing.js";
+import * as search from "./endpoints/search.js";
+import * as study from "./endpoints/study.js";
+import * as tasks from "./endpoints/tasks.js";
+import * as teams from "./endpoints/teams.js";
+import * as views from "./endpoints/views.js";
+import * as workspace from "./endpoints/workspace.js";
+export { abortError, isAbortError } from "./client-contracts.js";
+export type {
+  AssistantRunProgress,
+  AssistantWaiting,
+  ChatResult,
+  DocNews,
+  LiveNews,
+  OrbynClientOptions,
+  RequestOptions,
+  TokenSource,
+} from "./client-contracts.js";
 export class OrbynClient {
   readonly baseUrl: string;
   private readonly getToken: TokenSource;
@@ -942,68 +493,36 @@ export class OrbynClient {
       turnId?: string;
     } = {},
   ) {
-    return this.reminderActionReceipt(card.id).then((previous) =>
-      this.request<{
-        id: string;
-        message: string;
-        undone: boolean;
-        generation: number;
-      }>("/me/assistant/reminder-actions", {
-        method: "POST",
-        body: {
-          card,
-          action,
-          options,
-          generation: previous
-            ? previous.generation + (previous.undone ? 1 : 0)
-            : 0,
-        },
-      }),
+    return assistant.callPerformReminderAction.call(
+      this,
+      card,
+      action,
+      options,
     );
   }
   reminderActionReceipt(nudgeId: string) {
-    return this.request<{
-      id: string;
-      message: string;
-      undone: boolean;
-      generation: number;
-    } | null>(`/me/assistant/reminder-actions/nudges/${nudgeId}`, {
-      fresh: true,
-    });
+    return assistant.callReminderActionReceipt.call(this, nudgeId);
   }
   undoReminderAction(id: string) {
-    return this.request<void>(`/me/assistant/reminder-actions/${id}/undo`, {
-      method: "POST",
-      body: {},
-    });
+    return assistant.callUndoReminderAction.call(this, id);
   }
 
   // ---- health ----
   publishingList() {
-    return this.request<import("@orbyn/core").PublishingListEntry[]>(
-      "/admin/publishing",
-    );
+    return publishing.callPublishingList.call(this);
   }
   publishingGet(id: string) {
-    return this.request<import("@orbyn/core").PublishingDraft>(
-      `/admin/publishing/${id}`,
-    );
+    return publishing.callPublishingGet.call(this, id);
   }
   publishingCreate() {
-    return this.request<import("@orbyn/core").PublishingDraft>(
-      "/admin/publishing",
-      { method: "POST" },
-    );
+    return publishing.callPublishingCreate.call(this);
   }
   publishingSave(
     id: string,
     version: number,
     content: import("@orbyn/core").PublishingContent,
   ) {
-    return this.request<import("@orbyn/core").PublishingDraft>(
-      `/admin/publishing/${id}`,
-      { method: "PUT", body: { version, content } },
-    );
+    return publishing.callPublishingSave.call(this, id, version, content);
   }
   publishingAction(
     id: string,
@@ -1011,178 +530,126 @@ export class OrbynClient {
     action: "publish" | "cancel" | "release" | "unrelease" | "delete" | "reset",
     at?: string,
   ) {
-    return this.request<import("@orbyn/core").PublishingDraft | null>(
-      `/admin/publishing/${id}/${at ? "schedule" : action}`,
-      { method: "POST", body: { version, ...(at ? { at } : {}) } },
-    );
+    return publishing.callPublishingAction.call(this, id, version, action, at);
   }
   publishingSuggest(
     content: import("@orbyn/core").PublishingContent,
     instruction: string,
   ) {
-    return this.request<{ text: string }>("/admin/publishing/suggest", {
-      method: "POST",
-      body: { content, instruction },
-    });
+    return publishing.callPublishingSuggest.call(this, content, instruction);
   }
   publishingConnection() {
-    return this.request<import("@orbyn/core").PublishingConnection>(
-      "/admin/publishing/linkedin",
-    );
+    return publishing.callPublishingConnection.call(this);
   }
   publishingConnect() {
-    return this.request<{ url: string }>("/admin/publishing/linkedin/connect", {
-      method: "POST",
-    });
+    return publishing.callPublishingConnect.call(this);
   }
   publishingDisconnect() {
-    return this.request<void>("/admin/publishing/linkedin", {
-      method: "DELETE",
-    });
+    return publishing.callPublishingDisconnect.call(this);
   }
   publishedUpdates() {
-    return this.request<import("@orbyn/core").PublishedUpdate[]>(
-      "/changelog/updates",
-      { anonymous: true },
-    );
+    return publishing.callPublishedUpdates.call(this);
   }
 
   health() {
-    return this.request<{ status: string }>("/health", { anonymous: true });
+    return administration.callHealth.call(this);
   }
 
   /** The public uptime report; no sign-in needed. */
   // ---- system: settings, maintenance, version ----
   /** Live settings and where each comes from (database or .env). */
   getSystemSettings() {
-    return this.request<SystemSettingsView>("/admin/settings");
+    return administration.callGetSystemSettings.call(this);
   }
   updateSystemSettings(body: SystemSettingsUpdate) {
-    return this.request<SystemSettingsView>("/admin/settings", {
-      method: "PUT",
-      body,
-    });
+    return tasks.callUpdateSystemSettings.call(this, body);
   }
   /** Sends a test email with the saved SMTP settings (to the admin by default). */
   sendTestEmail(to?: string) {
-    return this.request<{ sent: true; to: string }>(
-      "/admin/settings/test-email",
-      { method: "POST", body: to ? { to } : {} },
-    );
+    return account.callSendTestEmail.call(this, to);
   }
   /** Public: whether maintenance mode is on, for banners (no sign-in needed). */
   getMaintenance() {
-    return this.request<Maintenance>("/maintenance", { anonymous: true });
+    return administration.callGetMaintenance.call(this);
   }
   setMaintenance(body: MaintenanceInput) {
-    return this.request<Maintenance>("/admin/maintenance", {
-      method: "PUT",
-      body,
-    });
+    return administration.callSetMaintenance.call(this, body);
   }
   /** Public: the build the server is running. */
   getVersion() {
-    return this.request<VersionInfo>("/version", { anonymous: true });
+    return administration.callGetVersion.call(this);
   }
   /** The running version against the newest commit on GitHub. */
   getUpdates() {
-    return this.request<UpdateInfo>("/admin/updates");
+    return tasks.callGetUpdates.call(this);
   }
 
   getStatus() {
-    return this.request<StatusReport>("/status", { anonymous: true });
+    return administration.callGetStatus.call(this);
   }
 
   // ---- auth ----
   register(input: Credentials) {
-    return this.request<AuthResponse>("/auth/register", {
-      method: "POST",
-      body: input,
-      anonymous: true,
-    });
+    return account.callRegister.call(this, input);
   }
   login(input: Pick<Credentials, "email" | "password"> & { code?: string }) {
-    return this.request<AuthResponse>("/auth/login", {
-      method: "POST",
-      body: input,
-      anonymous: true,
-    });
+    return account.callLogin.call(this, input);
   }
   logout() {
-    return this.request<void>("/auth/logout", { method: "POST" });
+    return account.callLogout.call(this);
   }
   /** Where you're signed in. */
   listSessions() {
-    return this.request<Session[]>("/me/sessions");
+    return tasks.callListSessions.call(this);
   }
   /** Sign out one other device. */
   revokeSession(id: string) {
-    return this.request<void>(`/me/sessions/${id}`, { method: "DELETE" });
+    return account.callRevokeSession.call(this, id);
   }
   /** Sign out everywhere except here. */
   revokeOtherSessions() {
-    return this.request<{ signed_out: number }>("/me/sessions/revoke-others", {
-      method: "POST",
-    });
+    return account.callRevokeOtherSessions.call(this);
   }
   // ---- two-step verification ----
   getTwoFactor() {
-    return this.request<TwoFactorStatus>("/me/2fa");
+    return account.callGetTwoFactor.call(this);
   }
   /** Begin setup: returns the secret and otpauth URI to add to an app. */
   setupTwoFactor() {
-    return this.request<TwoFactorSetup>("/me/2fa/setup", { method: "POST" });
+    return account.callSetupTwoFactor.call(this);
   }
   /** Confirm with a code; returns the one-time recovery codes. */
   enableTwoFactor(code: string) {
-    return this.request<TwoFactorEnabled>("/me/2fa/enable", {
-      method: "POST",
-      body: { code },
-    });
+    return account.callEnableTwoFactor.call(this, code);
   }
   disableTwoFactor(password: string) {
-    return this.request<void>("/me/2fa/disable", {
-      method: "POST",
-      body: { password },
-    });
+    return account.callDisableTwoFactor.call(this, password);
   }
   // ---- passkeys ----
   listPasskeys() {
-    return this.request<Passkey[]>("/me/passkeys");
+    return tasks.callListPasskeys.call(this);
   }
   passkeyRegisterOptions() {
-    return this.request<unknown>("/me/passkeys/options", { method: "POST" });
+    return account.callPasskeyRegisterOptions.call(this);
   }
   registerPasskey(response: unknown, name: string) {
-    return this.request<{ ok: boolean }>("/me/passkeys", {
-      method: "POST",
-      body: { response, name },
-    });
+    return account.callRegisterPasskey.call(this, response, name);
   }
   deletePasskey(id: string) {
-    return this.request<void>(`/me/passkeys/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
+    return account.callDeletePasskey.call(this, id);
   }
   /** Sign-in step 1: options + an opaque handle to send back. */
   passkeyLoginOptions(email?: string) {
-    return this.request<{ handle: string; options: unknown }>(
-      "/auth/passkey/options",
-      { method: "POST", body: { email }, anonymous: true },
-    );
+    return account.callPasskeyLoginOptions.call(this, email);
   }
   /** Sign-in step 2: the assertion, returns a session. */
   passkeyLogin(handle: string, response: unknown) {
-    return this.request<AuthResponse>("/auth/passkey", {
-      method: "POST",
-      body: { handle, response },
-      anonymous: true,
-    });
+    return account.callPasskeyLogin.call(this, handle, response);
   }
   // ---- import / export ----
   /** Your planner data as a JSON archive to keep. */
   exportData() {
-    return this.request<unknown>("/me/export");
+    return account.callExportData.call(this);
   }
   /**
    * Everything, pages included, as a .zip: every page as Markdown in its
@@ -1190,13 +657,7 @@ export class OrbynClient {
    * file. Comes back as a blob with the name the server chose.
    */
   async exportArchive() {
-    const response = await this.raw("/me/export.zip");
-    const disposition = response.headers.get("content-disposition") ?? "";
-    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
-    return {
-      blob: await response.blob(),
-      name: named ?? "orbyn-export.zip",
-    };
+    return account.callExportArchive.call(this);
   }
   /** Bring items in from an Orbyn export or a CSV. Dry run by default. */
   importData(input: {
@@ -1204,74 +665,56 @@ export class OrbynClient {
     data: string;
     dry_run?: boolean;
   }) {
-    return this.request<ImportSummary>("/me/import", {
-      method: "POST",
-      body: input,
-    });
+    return account.callImportData.call(this, input);
   }
   // ---- chat delivery ----
   getChat() {
-    return this.request<ChatChannel>("/me/chat");
+    return assistant.callGetChat.call(this);
   }
   setChat(kind: "slack" | "discord", url: string) {
-    return this.request<ChatChannel>("/me/chat", {
-      method: "PUT",
-      body: { kind, url },
-    });
+    return assistant.callSetChat.call(this, kind, url);
   }
   disableChat() {
-    return this.request<void>("/me/chat", { method: "DELETE" });
+    return assistant.callDisableChat.call(this);
   }
   /** Post a test message to the connected chat webhook. */
   testChat() {
-    return this.request<void>("/me/chat/test", { method: "POST" });
+    return assistant.callTestChat.call(this);
   }
   // ---- email to task ----
   getInbox() {
-    return this.request<InboxInfo>("/me/inbox");
+    return account.callGetInbox.call(this);
   }
   /** Turn on email-to-task, or roll to a fresh address. */
   rotateInbox() {
-    return this.request<InboxInfo>("/me/inbox/rotate", { method: "POST" });
+    return account.callRotateInbox.call(this);
   }
   disableInbox() {
-    return this.request<void>("/me/inbox", { method: "DELETE" });
+    return account.callDisableInbox.call(this);
   }
   /** Confirm an email address from a verification link (signed in or not). */
   verifyEmail(token: string) {
-    return this.request<void>("/auth/verify-email", {
-      method: "POST",
-      body: { token },
-      anonymous: true,
-    });
+    return account.callVerifyEmail.call(this, token);
   }
   /** Re-send the confirmation email to the signed-in, unconfirmed user. */
   resendVerification() {
-    return this.request<void>("/auth/resend-verification", { method: "POST" });
+    return account.callResendVerification.call(this);
   }
   /** Ask for a password-reset link. Always succeeds, whoever the email is. */
   forgotPassword(email: string) {
-    return this.request<void>("/auth/forgot-password", {
-      method: "POST",
-      body: { email },
-      anonymous: true,
-    });
+    return account.callForgotPassword.call(this, email);
   }
   /** Set a new password from a reset link and sign in. */
   resetPassword(token: string, password: string) {
-    return this.request<AuthResponse>("/auth/reset-password", {
-      method: "POST",
-      body: { token, password },
-      anonymous: true,
-    });
+    return account.callResetPassword.call(this, token, password);
   }
 
   // ---- profile ----
   me(options: Pick<RequestOptions, "fresh" | "signal"> = {}) {
-    return this.request<User>("/me", options);
+    return account.callMe.call(this, options);
   }
   updatePreferences(input: { email_reminders: boolean }) {
-    return this.request<User>("/me", { method: "PUT", body: input });
+    return tasks.callUpdatePreferences.call(this, input);
   }
 
   // ---- items ----
@@ -1291,21 +734,7 @@ export class OrbynClient {
       parent_id?: string;
     } = {},
   ) {
-    const q = new URLSearchParams();
-    if (params.limit !== undefined) q.set("limit", String(params.limit));
-    if (params.offset !== undefined) q.set("offset", String(params.offset));
-    for (const key of [
-      "team_id",
-      "q",
-      "list_id",
-      "tag_id",
-      "assignee_id",
-      "sort",
-      "parent_id",
-    ] as const)
-      if (params[key]) q.set(key, params[key]!);
-    const suffix = q.size ? `?${q}` : "";
-    return this.request<Item[]>(`/items${suffix}`);
+    return tasks.callListItems.call(this, params);
   }
   /**
    * Incremental sync: items changed after `updated_after` (or after a
@@ -1322,47 +751,23 @@ export class OrbynClient {
     },
     options: Pick<RequestOptions, "headers" | "fresh" | "signal"> = {},
   ) {
-    const q = new URLSearchParams();
-    // Without either, GET /items is the ordinary list, not a sync page.
-    if (!params.updated_after && !params.cursor)
-      throw new Error("syncItems needs updated_after or cursor");
-    if (params.updated_after) q.set("updated_after", params.updated_after);
-    if (params.cursor) q.set("cursor", params.cursor);
-    if (params.include_deleted) q.set("include_deleted", "1");
-    if (params.limit !== undefined) q.set("limit", String(params.limit));
-    if (params.team_id) q.set("team_id", params.team_id);
-    return this.request<ItemSyncPage>(`/items?${q}`, options);
+    return tasks.callSyncItems.call(this, params, options);
   }
   /** One primary, repeatable-read planner snapshot; later deltas are best effort. */
   reconcileItems() {
-    return this.request<{ items: Item[]; updated_after: string }>(
-      "/items/reconcile",
-      {
-        fresh: true,
-        headers: { "x-orbyn-consistency": "primary" },
-      },
-    );
+    return tasks.callReconcileItems.call(this);
   }
   /** Move an item in its manual order (doesn't change its version). */
   moveItem(id: string, input: ItemPositionInput) {
-    return this.request<Item>(`/items/${id}/position`, {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callMoveItem.call(this, id, input);
   }
   /** Add minutes worked (focus timer). */
   logTime(itemId: string, minutes: number) {
-    return this.request<ItemDetail>(`/items/${itemId}/time`, {
-      method: "POST",
-      body: { minutes },
-    });
+    return tasks.callLogTime.call(this, itemId, minutes);
   }
   /** Remove one occurrence of a repeating item. */
   skipOccurrence(itemId: string, occurrence: string) {
-    return this.request<ItemDetail>(`/items/${itemId}/skip`, {
-      method: "POST",
-      body: { occurrence },
-    });
+    return tasks.callSkipOccurrence.call(this, itemId, occurrence);
   }
 
   // ---- lists and tags ----
@@ -1372,40 +777,22 @@ export class OrbynClient {
    * page's content. `brief` says whether the assistant wrote one.
    */
   rewriteAgenda(timezone?: string) {
-    return this.request<
-      Doc & { brief: boolean; briefing?: AgendaBriefOutcome }
-    >("/ai/agenda/today", {
-      method: "POST",
-      body: timezone ? { timezone } : {},
-    });
+    return planner.callRewriteAgenda.call(this, timezone);
   }
   /** Read explicit scheduled-plan permission, independently of email/digest preferences. */
   async agendaPrivatePermission(signal?: AbortSignal) {
-    return agendaPrivatePermission.parse(
-      await this.request("/ai/agenda/private-permission", {
-        signal,
-        fresh: true,
-      }),
-    );
+    return planner.callAgendaPrivatePermission.call(this, signal);
   }
   /** Grant/revoke only the reviewed current account/device/model selection. */
   async setAgendaPrivatePermission(
     input: AgendaPrivatePermissionInput,
     signal?: AbortSignal,
   ) {
-    return agendaPrivatePermission.parse(
-      await this.request("/ai/agenda/private-permission", {
-        method: "PUT",
-        signal,
-        body: agendaPrivatePermissionInput.parse(input),
-      }),
-    );
+    return planner.callSetAgendaPrivatePermission.call(this, input, signal);
   }
   /** Read private scheduled summary status without exposing execution context. */
   async agendaPrivateSummary(signal?: AbortSignal) {
-    return agendaPrivateSummary.parse(
-      await this.request("/ai/agenda/private-summary", { signal, fresh: true }),
-    );
+    return planner.callAgendaPrivateSummary.call(this, signal);
   }
   /**
    * Today's agenda document, written on first ask each day (a POST: asking
@@ -1413,10 +800,7 @@ export class OrbynClient {
    * one in settings.
    */
   agendaToday(timezone?: string) {
-    return this.request<Doc>("/agenda/today", {
-      method: "POST",
-      body: timezone ? { timezone } : {},
-    });
+    return planner.callAgendaToday.call(this, timezone);
   }
   /**
    * One day's agenda, for stepping back and forward. Reading never writes:
@@ -1425,23 +809,15 @@ export class OrbynClient {
    * writes it.
    */
   async agendaOn(date: string, timezone?: string) {
-    const day = await this.request<AgendaDay>(`/agenda/${date}`);
-    if (day.doc || date !== day.today) return day;
-    return { ...day, doc: await this.writeAgenda(date, timezone) };
+    return planner.callAgendaOn.call(this, date, timezone);
   }
   /** Write one day's agenda from the calendar (or get the one written). */
   writeAgenda(date: string, timezone?: string) {
-    return this.request<Doc>(`/agenda/${date}`, {
-      method: "POST",
-      body: timezone ? { timezone } : {},
-    });
+    return planner.callWriteAgenda.call(this, date, timezone);
   }
   /** Tell the server the device's zone; adopted unless you picked one. */
   reportTimeZone(timezone: string) {
-    return this.request<{ adopted: boolean; timezone: string }>(
-      "/me/timezone",
-      { method: "POST", body: { timezone } },
-    );
+    return planner.callReportTimeZone.call(this, timezone);
   }
   /**
    * The note for an event, created from a template the first time. For a
@@ -1449,10 +825,7 @@ export class OrbynClient {
    * own note; without it, the series' note.
    */
   itemNote(itemId: string, occurrence?: string | null) {
-    return this.request<Doc>(`/items/${itemId}/note`, {
-      method: "POST",
-      ...(occurrence ? { body: { occurrence } } : {}),
-    });
+    return tasks.callItemNote.call(this, itemId, occurrence);
   }
   /**
    * The notes these events have, to mark them (`eventNoteFor` finds an
@@ -1463,73 +836,41 @@ export class OrbynClient {
     itemIds: string[],
     range: { from?: string; to?: string } = {},
   ): Promise<EventNoteRef[]> {
-    const ids = [...new Set(itemIds)];
-    // The server takes 200 events at a time.
-    const chunks: string[][] = [];
-    for (let i = 0; i < ids.length; i += 200)
-      chunks.push(ids.slice(i, i + 200));
-    const found = await Promise.all(
-      chunks.map((chunk) =>
-        this.request<EventNoteRef[]>(
-          `/docs/event-notes?${new URLSearchParams({
-            items: chunk.join(","),
-            ...(range.from ? { from: range.from } : {}),
-            ...(range.to ? { to: range.to } : {}),
-          })}`,
-        ),
-      ),
-    );
-    return found.flat();
+    return documents.callEventNotes.call(this, itemIds, range);
   }
   /**
    * Turn a page's open checklist lines into tasks: every one that isn't a
    * task yet, or only the lines named in `blockIds` ("Make task").
    */
   docToTasks(id: string, blockIds?: string[]) {
-    return this.request<{
-      created: number;
-      items: Item[];
-      /** The document as it now stands, with the new lines tied to tasks. */
-      doc: Doc | null;
-    }>(`/docs/${id}/tasks`, {
-      method: "POST",
-      ...(blockIds?.length ? { body: { block_ids: blockIds } } : {}),
-    });
+    return documents.callDocToTasks.call(this, id, blockIds);
   }
 
   // Projects
   listProjects() {
-    return this.request<Project[]>("/projects");
+    return projects.callListProjects.call(this);
   }
   getProject(id: string) {
-    return this.request<Project>(`/projects/${id}`);
+    return projects.callGetProject.call(this, id);
   }
   listProjectLinks(id: string) {
-    return this.request<ProjectLink[]>(`/projects/${id}/links`);
+    return projects.callListProjectLinks.call(this, id);
   }
   addProjectLink(id: string, input: { url: string; title?: string }) {
-    return this.request<ProjectLink>(`/projects/${id}/links`, {
-      method: "POST",
-      body: input,
-    });
+    return projects.callAddProjectLink.call(this, id, input);
   }
   removeProjectLink(id: string, linkId: string) {
-    return this.request<void>(`/projects/${id}/links/${linkId}`, {
-      method: "DELETE",
-    });
+    return projects.callRemoveProjectLink.call(this, id, linkId);
   }
   /** Mark a project visit and return the prior visit for cross-device catch-up. */
   visitProject(id: string) {
-    return this.request<{ since_at: string | null; visited_at: string }>(
-      `/projects/${id}/visit`,
-      { method: "POST" },
-    );
+    return projects.callVisitProject.call(this, id);
   }
   projectPlanning(id: string) {
-    return this.request<ProjectPlanning>(`/projects/${id}/planning`);
+    return projects.callProjectPlanning.call(this, id);
   }
   projectSessions(id: string) {
-    return this.request<ProjectSession[]>(`/projects/${id}/sessions`);
+    return projects.callProjectSessions.call(this, id);
   }
   /** Preview a project plan using only tasks assigned to the signed-in person. */
   /**
@@ -1537,257 +878,134 @@ export class OrbynClient {
    * team tasks you take on with it: they become yours and are planned too.
    */
   planProject(id: string, timezone?: string, claimItemIds: string[] = []) {
-    return this.request<Plan>(`/projects/${id}/plan`, {
-      method: "POST",
-      body: {
-        timezone,
-        ...(claimItemIds.length ? { claim_item_ids: claimItemIds } : {}),
-      },
-    });
+    return projects.callPlanProject.call(this, id, timezone, claimItemIds);
   }
   /** Recent changes to a project, with private task and note content omitted. */
   projectActivity(id: string, limit = 100) {
-    return this.request<ProjectActivity[]>(
-      `/projects/${id}/activity?limit=${Math.max(1, Math.min(200, limit))}`,
-    );
+    return projects.callProjectActivity.call(this, id, limit);
   }
   /**
    * Keep a project out of the assistant (or let it back in). Owners and
    * admins of a team project, or the owner of a personal one.
    */
   setProjectAssistant(id: string, off: boolean) {
-    return this.request<Project>(`/projects/${id}/assistant`, {
-      method: "PUT",
-      body: { off },
-    });
+    return assistant.callSetProjectAssistant.call(this, id, off);
   }
   /** A project's milestones, soonest first, rolled up for you. */
   projectMilestones(id: string) {
-    return this.request<ProjectMilestone[]>(`/projects/${id}/milestones`);
+    return projects.callProjectMilestones.call(this, id);
   }
   createMilestone(projectId: string, input: MilestoneInput) {
-    return this.request<ProjectMilestone>(`/projects/${projectId}/milestones`, {
-      method: "POST",
-      body: input,
-    });
+    return projects.callCreateMilestone.call(this, projectId, input);
   }
   updateMilestone(projectId: string, id: string, input: MilestoneUpdate) {
-    return this.request<ProjectMilestone>(
-      `/projects/${projectId}/milestones/${id}`,
-      { method: "PUT", body: input },
-    );
+    return projects.callUpdateMilestone.call(this, projectId, id, input);
   }
   deleteMilestone(projectId: string, id: string) {
-    return this.request<void>(`/projects/${projectId}/milestones/${id}`, {
-      method: "DELETE",
-    });
+    return projects.callDeleteMilestone.call(this, projectId, id);
   }
   /** Put a task in a milestone of its project, or take it out (null). */
   setItemMilestone(itemId: string, milestoneId: string | null) {
-    return this.request<Item>(`/items/${itemId}/milestone`, {
-      method: "PUT",
-      body: { milestone_id: milestoneId },
-    });
+    return projects.callSetItemMilestone.call(this, itemId, milestoneId);
   }
   /** Your saved chats with the assistant about a project, newest first. */
   projectChats(projectId: string) {
-    return this.request<AiChatSummary[]>(`/ai/projects/${projectId}/chats`);
+    return assistant.callProjectChats.call(this, projectId);
   }
   async aiProviderChoice(signal?: AbortSignal) {
-    return aiProviderChoice.parse(
-      await this.request("/ai/provider-choice", { fresh: true, signal }),
-    );
+    return assistant.callAiProviderChoice.call(this, signal);
   }
   /** Completed Orbyn request measurements, not account-wide ChatGPT quota. */
   managedAiUsage(signal?: AbortSignal) {
-    return this.request<ManagedAiUsageSummary>("/ai/usage", {
-      signal,
-      fresh: true,
-    });
+    return assistant.callManagedAiUsage.call(this, signal);
   }
   async chatgptUsage(signal?: AbortSignal) {
-    return chatgptUsageSummary.parse(
-      await this.request("/ai/connections/chatgpt/usage", {
-        fresh: true,
-        signal,
-      }),
-    );
+    return connections.callChatgptUsage.call(this, signal);
   }
   async saveAiProviderChoice(input: unknown, signal?: AbortSignal) {
-    return aiProviderChoice.parse(
-      await this.request("/ai/provider-choice", {
-        method: "PUT",
-        body: aiProviderChoiceInput.parse(input),
-        signal,
-      }),
-    );
+    return assistant.callSaveAiProviderChoice.call(this, input, signal);
   }
   async startChatgptConnectRequest(signal?: AbortSignal) {
-    return chatgptConnectRequestStart.parse(
-      await this.request("/ai/connections/chatgpt/connect-requests", {
-        method: "POST",
-        body: {},
-        signal,
-      }),
-    );
+    return connections.callStartChatgptConnectRequest.call(this, signal);
   }
   /** Teams OAuth identity review is separate from personal conversation linking and DM consent. */
   async teamsChannel(signal?: AbortSignal) {
-    return teamsChannelStatus.parse(
-      await this.request("/agent-channels/teams", { fresh: true, signal }),
-    );
+    return connections.callTeamsChannel.call(this, signal);
   }
   async startTeamsInstallation(signal?: AbortSignal) {
-    return teamsInstallationStart.parse(
-      await this.request("/agent-channels/teams/installations", {
-        method: "POST",
-        body: {},
-        signal,
-      }),
-    );
+    return teams.callStartTeamsInstallation.call(this, signal);
   }
   async teamsInstallation(id: string, signal?: AbortSignal) {
-    const requestId = teamsInstallationId.parse(id);
-    return teamsInstallationRequest.parse(
-      await this.request(`/agent-channels/teams/installations/${requestId}`, {
-        fresh: true,
-        signal,
-      }),
-    );
+    return teams.callTeamsInstallation.call(this, id, signal);
   }
   async confirmTeamsInstallation(
     id: string,
     input: unknown,
     signal?: AbortSignal,
   ) {
-    const requestId = teamsInstallationId.parse(id);
-    return teamsConversationChallenge.parse(
-      await this.request(
-        `/agent-channels/teams/installations/${requestId}/confirm`,
-        { method: "POST", body: teamsInstallationConfirm.parse(input), signal },
-      ),
-    );
+    return teams.callConfirmTeamsInstallation.call(this, id, input, signal);
   }
   async restartTeamsConversationLink(input: unknown, signal?: AbortSignal) {
-    return teamsConversationChallenge.parse(
-      await this.request("/agent-channels/teams/conversation-link", {
-        method: "POST",
-        body: teamsChannelDisconnect.parse(input),
-        signal,
-      }),
-    );
+    return teams.callRestartTeamsConversationLink.call(this, input, signal);
   }
   async setTeamsDmPermission(input: unknown, signal?: AbortSignal) {
-    return teamsChannelConnection.parse(
-      await this.request("/agent-channels/teams/permission", {
-        method: "PUT",
-        body: teamsChannelPermission.parse(input),
-        signal,
-      }),
-    );
+    return teams.callSetTeamsDmPermission.call(this, input, signal);
   }
   async disconnectTeams(input: unknown, signal?: AbortSignal) {
-    return teamsChannelConnection.parse(
-      await this.request("/agent-channels/teams/disconnect", {
-        method: "POST",
-        body: teamsChannelDisconnect.parse(input),
-        signal,
-      }),
-    );
+    return teams.callDisconnectTeams.call(this, input, signal);
   }
   /** Read this owner's Slack mapping; installation and messages require separate consent. */
   async slackChannel(signal?: AbortSignal) {
-    return slackChannelStatus.parse(
-      await this.request("/agent-channels/slack", { fresh: true, signal }),
-    );
+    return connections.callSlackChannel.call(this, signal);
   }
   async startSlackInstallation(signal?: AbortSignal) {
-    return slackInstallationStart.parse(
-      await this.request("/agent-channels/slack/installations", {
-        method: "POST",
-        body: {},
-        signal,
-      }),
-    );
+    return connections.callStartSlackInstallation.call(this, signal);
   }
   async slackInstallation(id: string, signal?: AbortSignal) {
-    const requestId = slackInstallationId.parse(id);
-    return slackInstallationRequest.parse(
-      await this.request(`/agent-channels/slack/installations/${requestId}`, {
-        fresh: true,
-        signal,
-      }),
-    );
+    return connections.callSlackInstallation.call(this, id, signal);
   }
   async confirmSlackInstallation(
     id: string,
     input: unknown,
     signal?: AbortSignal,
   ) {
-    const requestId = slackInstallationId.parse(id);
-    return slackChannelConnection.parse(
-      await this.request(
-        `/agent-channels/slack/installations/${requestId}/confirm`,
-        { method: "POST", body: slackInstallationConfirm.parse(input), signal },
-      ),
+    return connections.callConfirmSlackInstallation.call(
+      this,
+      id,
+      input,
+      signal,
     );
   }
   async setSlackDmPermission(input: unknown, signal?: AbortSignal) {
-    return slackChannelConnection.parse(
-      await this.request("/agent-channels/slack/permission", {
-        method: "PUT",
-        body: slackChannelPermission.parse(input),
-        signal,
-      }),
-    );
+    return connections.callSetSlackDmPermission.call(this, input, signal);
   }
   async disconnectSlack(input: unknown, signal?: AbortSignal) {
-    return slackChannelConnection.parse(
-      await this.request("/agent-channels/slack/disconnect", {
-        method: "POST",
-        body: slackChannelDisconnect.parse(input),
-        signal,
-      }),
-    );
+    return connections.callDisconnectSlack.call(this, input, signal);
   }
   async chatgptConnectRequest(id: string, signal?: AbortSignal) {
-    return chatgptConnectRequestState.parse(
-      await this.request(`/ai/connections/chatgpt/connect-requests/${id}`, {
-        fresh: true,
-        signal,
-      }),
-    );
+    return connections.callChatgptConnectRequest.call(this, id, signal);
   }
   async claimChatgptInference(executorId: string, signal?: AbortSignal) {
-    const result = await this.request(
-      "/ai/connections/chatgpt/inference/claim",
-      { method: "POST", body: { executor_id: executorId }, signal },
-    );
-    return result === null ? null : chatgptInferenceAssignment.parse(result);
+    return connections.callClaimChatgptInference.call(this, executorId, signal);
   }
   finishChatgptInference(publication: unknown, signal?: AbortSignal) {
-    return this.request("/ai/connections/chatgpt/inference/result", {
-      method: "POST",
-      body: chatgptInferencePublication.parse(publication),
+    return connections.callFinishChatgptInference.call(
+      this,
+      publication,
       signal,
-    });
+    );
   }
   pendingChatgptConnectRequests(signal?: AbortSignal) {
-    return this.request<{ id: string; expires_at: string }[]>(
-      "/ai/connections/chatgpt/connect-requests/pending",
-      { fresh: true, signal },
-    );
+    return connections.callPendingChatgptConnectRequests.call(this, signal);
   }
   claimChatgptConnectRequest(id: string) {
-    return this.request(
-      `/ai/connections/chatgpt/connect-requests/${id}/claim`,
-      { method: "POST", body: {} },
-    );
+    return connections.callClaimChatgptConnectRequest.call(this, id);
   }
   finishChatgptConnectRequest(id: string, connectionId: string | null) {
-    return this.request(
-      `/ai/connections/chatgpt/connect-requests/${id}/finish`,
-      { method: "POST", body: { connection_id: connectionId } },
+    return connections.callFinishChatgptConnectRequest.call(
+      this,
+      id,
+      connectionId,
     );
   }
   /** Start a session-bound identity proof; plan credentials stay in the device runtime. */
@@ -1795,30 +1013,14 @@ export class OrbynClient {
     input: ChatgptConnectionStart = {},
     signal?: AbortSignal,
   ) {
-    const result = await this.request<unknown>(
-      "/ai/connections/chatgpt/challenges",
-      {
-        method: "POST",
-        body: chatgptConnectionStart.parse(input),
-        signal,
-      },
-    );
-    return chatgptConnectionChallenge.parse(result);
+    return connections.callStartChatgptConnection.call(this, input, signal);
   }
   /** Submit only an ID token for verification, never plan access or refresh credentials. */
   async finishChatgptConnection(
     input: ChatgptConnectionFinish,
     signal?: AbortSignal,
   ) {
-    const result = await this.request<unknown>(
-      "/ai/connections/chatgpt/complete",
-      {
-        method: "POST",
-        body: chatgptConnectionFinish.parse(input),
-        signal,
-      },
-    );
-    return chatgptConnection.parse(result);
+    return connections.callFinishChatgptConnection.call(this, input, signal);
   }
   /** Verified identity metadata for the signed-in person; no cached account catalog. */
   /** Enroll the credential-owning device using public proof metadata only. */
@@ -1826,71 +1028,37 @@ export class OrbynClient {
     input: ChatgptExecutorStart,
     signal?: AbortSignal,
   ) {
-    return chatgptExecutorChallenge.parse(
-      await this.request<unknown>(
-        "/ai/connections/chatgpt/executors/challenges",
-        { method: "POST", body: chatgptExecutorStart.parse(input), signal },
-      ),
-    );
+    return connections.callBeginChatgptExecutor.call(this, input, signal);
   }
   async finishChatgptExecutor(
     input: ChatgptExecutorFinish,
     signal?: AbortSignal,
   ) {
-    return chatgptExecutorEnrolled.parse(
-      await this.request<unknown>(
-        "/ai/connections/chatgpt/executors/complete",
-        { method: "POST", body: chatgptExecutorFinish.parse(input), signal },
-      ),
-    );
+    return connections.callFinishChatgptExecutor.call(this, input, signal);
   }
   async beginChatgptExecutorLease(
     input: ChatgptLeaseStart,
     signal?: AbortSignal,
   ) {
-    return chatgptLeaseChallenge.parse(
-      await this.request<unknown>("/ai/connections/chatgpt/leases/challenges", {
-        method: "POST",
-        body: chatgptLeaseStart.parse(input),
-        signal,
-      }),
-    );
+    return connections.callBeginChatgptExecutorLease.call(this, input, signal);
   }
   async finishChatgptExecutorLease(
     input: ChatgptExecutorFinish,
     signal?: AbortSignal,
   ) {
-    return chatgptExecutorLease.parse(
-      await this.request<unknown>("/ai/connections/chatgpt/leases/complete", {
-        method: "POST",
-        body: chatgptLeaseFinish.parse(input),
-        signal,
-      }),
-    );
+    return connections.callFinishChatgptExecutorLease.call(this, input, signal);
   }
   async renewChatgptExecutorLease(
     input: ChatgptLeaseRenewal,
     signal?: AbortSignal,
   ) {
-    return chatgptExecutorLease.parse(
-      await this.request<unknown>("/ai/connections/chatgpt/leases/heartbeat", {
-        method: "POST",
-        body: chatgptLeaseRenewal.parse(input),
-        signal,
-      }),
-    );
+    return connections.callRenewChatgptExecutorLease.call(this, input, signal);
   }
   async publishChatgptModels(
     input: ChatgptCatalogPublication,
     signal?: AbortSignal,
   ) {
-    return chatgptCatalogReceipt.parse(
-      await this.request<unknown>("/ai/connections/chatgpt/catalog", {
-        method: "POST",
-        body: chatgptCatalogPublication.parse(input),
-        signal,
-      }),
-    );
+    return publishing.callPublishChatgptModels.call(this, input, signal);
   }
   /** Always refresh executor presence; a cached list cannot authorize a default. */
   async chatgptModels(
@@ -1898,52 +1066,23 @@ export class OrbynClient {
     signal?: AbortSignal,
     includeCapabilities = false,
   ) {
-    const selection = chatgptCatalogSelection.parse(input);
-    const query = new URLSearchParams(selection);
-    if (includeCapabilities) query.set("include_capabilities", "1");
-    const result = chatgptCatalogRead.parse(
-      await this.request<unknown>(`/models?${query}`, { fresh: true, signal }),
+    return connections.callChatgptModels.call(
+      this,
+      input,
+      signal,
+      includeCapabilities,
     );
-    if (
-      result.executor_id !== selection.executor_id ||
-      result.binding.connection_id !== selection.connection_id
-    )
-      throw new Error("The ChatGPT catalog selection changed.");
-    return result;
   }
   async selectChatgptDefault(
     input: ChatgptCatalogDefaultUpdate,
     signal?: AbortSignal,
   ) {
-    const value = chatgptCatalogDefaultUpdate.parse(input);
-    const result = chatgptModelPreference.parse(
-      await this.request<unknown>("/models/default", {
-        method: "PUT",
-        body: value,
-        signal,
-      }),
-    );
-    if (
-      JSON.stringify(result.binding) !==
-        JSON.stringify(value.preference.binding) ||
-      result.version !== value.preference.version + 1 ||
-      result.model !== value.preference.model
-    )
-      throw new Error("The ChatGPT default response changed.");
-    return result;
+    return connections.callSelectChatgptDefault.call(this, input, signal);
   }
 
   /** Discover owned devices without provider credentials or signing keys. */
   async chatgptExecutors(signal?: AbortSignal) {
-    return chatgptExecutorList.parse(
-      await this.request<unknown>(
-        "/ai/connections/chatgpt/executors?details=device",
-        {
-          signal,
-          fresh: true,
-        },
-      ),
-    );
+    return connections.callChatgptExecutors.call(this, signal);
   }
 
   /** Verify replacement identity only; access/refresh credentials are never sent. */
@@ -1951,33 +1090,19 @@ export class OrbynClient {
     input: { connection_id: string; id_token: string },
     signal?: AbortSignal,
   ) {
-    const value = chatgptConnectionRefreshIdentity.parse(input);
-    const result = chatgptConnection.parse(
-      await this.request<unknown>("/ai/connections/chatgpt/refresh-identity", {
-        method: "POST",
-        body: value,
-        signal,
-      }),
+    return connections.callVerifyChatgptRefreshIdentity.call(
+      this,
+      input,
+      signal,
     );
-    if (result.id !== value.connection_id)
-      throw new Error("The ChatGPT registration changed.");
-    return result;
   }
 
   async chatgptConnections(signal?: AbortSignal) {
-    return chatgptConnectionList.parse(
-      await this.request<unknown>("/ai/connections/chatgpt", {
-        signal,
-        fresh: true,
-      }),
-    );
+    return connections.callChatgptConnections.call(this, signal);
   }
   /** Disconnect a registration and invalidate pending sign-in attempts. */
   revokeChatgptConnection(id: string) {
-    return this.request<void>(
-      `/ai/connections/chatgpt/${encodeURIComponent(id)}`,
-      { method: "DELETE" },
-    );
+    return connections.callRevokeChatgptConnection.call(this, id);
   }
   /** Your saved assistant chats, pinned first and then most recently used. */
   aiChats(
@@ -1989,113 +1114,73 @@ export class OrbynClient {
       conversation_only?: boolean;
     } = {},
   ) {
-    const query = new URLSearchParams();
-    if (options.search) query.set("search", options.search);
-    if (options.project_id) query.set("project_id", options.project_id);
-    if (options.kind) query.set("kind", options.kind);
-    if (options.conversation_only !== undefined)
-      query.set("conversation_only", String(options.conversation_only));
-    if (options.limit) query.set("limit", String(options.limit));
-    const suffix = query.size ? `?${query.toString()}` : "";
-    return this.request<AiChatSummary[]>(`/ai/chats${suffix}`);
+    return assistant.callAiChats.call(this, options);
   }
   projectChat(id: string) {
-    return this.request<AiChat>(`/ai/chats/${id}`);
+    return assistant.callProjectChat.call(this, id);
   }
   aiChat(id: string, signal?: AbortSignal) {
-    return this.request<AiChat>(`/ai/chats/${id}`, { signal, fresh: true });
+    return assistant.callAiChat.call(this, id, signal);
   }
   /** Save a project chat after a reply; the same id updates the same chat. */
   saveProjectChat(id: string, input: ProjectChatInput) {
-    return this.request<ProjectChatSummary>(`/ai/chats/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return assistant.callSaveProjectChat.call(this, id, input);
   }
   updateAiChat(id: string, input: UpdateAiChatInput) {
-    return this.request<AiChatSummary>(`/ai/chats/${id}`, {
-      method: "PATCH",
-      body: input,
-    });
+    return assistant.callUpdateAiChat.call(this, id, input);
   }
   saveChatAsNote(id: string) {
-    return this.request<{ id: string; title: string }>(
-      `/ai/chats/${id}/save-note`,
-      { method: "POST" },
-    );
+    return assistant.callSaveChatAsNote.call(this, id);
   }
   deleteProjectChat(id: string) {
-    return this.request<void>(`/ai/chats/${id}`, { method: "DELETE" });
+    return assistant.callDeleteProjectChat.call(this, id);
   }
   listGoals() {
-    return this.request<Goal[]>("/me/goals");
+    return projects.callListGoals.call(this);
   }
   createGoal(input: GoalInput) {
-    return this.request<Goal>("/me/goals", { method: "POST", body: input });
+    return projects.callCreateGoal.call(this, input);
   }
   updateGoal(id: string, input: GoalUpdate) {
-    return this.request<Goal>(`/me/goals/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return projects.callUpdateGoal.call(this, id, input);
   }
   deleteGoal(id: string) {
-    return this.request<{ deleted: boolean }>(`/me/goals/${id}`, {
-      method: "DELETE",
-    });
+    return projects.callDeleteGoal.call(this, id);
   }
   /** Current unfinished owned tasks linked to this goal, with unbooked effort. */
   goalWork(id: string) {
-    return this.request<{ id: string; remaining_minutes: number }[]>(
-      `/me/goals/${id}/work`,
-    );
+    return projects.callGoalWork.call(this, id);
   }
   goalCheckins(id: string) {
-    return this.request<GoalCheckin[]>(`/me/goals/${id}/checkins`);
+    return projects.callGoalCheckins.call(this, id);
   }
   listAgentRoutines() {
-    return this.request<AgentRoutine[]>("/me/agent-routines");
+    return assistant.callListAgentRoutines.call(this);
   }
   createAgentRoutine(input: AgentRoutineInput) {
-    return this.request<AgentRoutine>("/me/agent-routines", {
-      method: "POST",
-      body: input,
-    });
+    return assistant.callCreateAgentRoutine.call(this, input);
   }
   updateAgentRoutine(id: string, input: AgentRoutineUpdate) {
-    return this.request<AgentRoutine>(`/me/agent-routines/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return assistant.callUpdateAgentRoutine.call(this, id, input);
   }
   deleteAgentRoutine(id: string) {
-    return this.request<{ deleted: boolean }>(`/me/agent-routines/${id}`, {
-      method: "DELETE",
-    });
+    return assistant.callDeleteAgentRoutine.call(this, id);
   }
   assistantApprovalScopes() {
-    return this.request<ApprovalScopes>("/me/assistant/approval-scopes");
+    return assistant.callAssistantApprovalScopes.call(this);
   }
   setAssistantApprovalScopes(input: ApprovalScopes) {
-    return this.request<ApprovalScopes>("/me/assistant/approval-scopes", {
-      method: "PUT",
-      body: input,
-    });
+    return assistant.callSetAssistantApprovalScopes.call(this, input);
   }
   assistantIdeas() {
-    return this.request<AssistantIdea[]>("/me/assistant/ideas");
+    return assistant.callAssistantIdeas.call(this);
   }
   /** Checkpoints for the read-only project time machine, newest first. */
   projectCheckpoints(id: string, before?: string) {
-    const cursor = before ? `?before=${before}` : "";
-    return this.request<ProjectCheckpoint[]>(
-      `/projects/${id}/time-machine/checkpoints${cursor}`,
-    );
+    return projects.callProjectCheckpoints.call(this, id, before);
   }
   projectSnapshot(id: string, eventOrder: string) {
-    return this.request<ProjectSnapshot>(
-      `/projects/${id}/time-machine/${eventOrder}`,
-    );
+    return projects.callProjectSnapshot.call(this, id, eventOrder);
   }
   createProject(input: {
     name: string;
@@ -2104,7 +1189,7 @@ export class OrbynClient {
     deadline?: string | null;
     stages?: string[];
   }) {
-    return this.request<Project>("/projects", { method: "POST", body: input });
+    return projects.callCreateProject.call(this, input);
   }
   updateProject(
     id: string,
@@ -2123,13 +1208,10 @@ export class OrbynClient {
       icon?: string | null;
     },
   ) {
-    return this.request<Project>(`/projects/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return projects.callUpdateProject.call(this, id, input);
   }
   deleteProject(id: string) {
-    return this.request<void>(`/projects/${id}`, { method: "DELETE" });
+    return projects.callDeleteProject.call(this, id);
   }
   /**
    * Move a task into a project and stage, or pass null to unfile it. The
@@ -2143,10 +1225,7 @@ export class OrbynClient {
       stage_id?: string | null;
     },
   ) {
-    return this.request<{ ok: true; item: Item }>(`/items/${itemId}/project`, {
-      method: "PUT",
-      body: input,
-    });
+    return projects.callSetItemProject.call(this, itemId, input);
   }
   /**
    * What a task hangs off and what hangs off it: its project and stage, the
@@ -2154,7 +1233,7 @@ export class OrbynClient {
    * open).
    */
   itemContext(itemId: string) {
-    return this.request<ItemContext>(`/items/${itemId}/context`);
+    return tasks.callItemContext.call(this, itemId);
   }
 
   /** Promises, decisions, experiments and meeting outcomes visible to this user. */
@@ -2167,39 +1246,24 @@ export class OrbynClient {
       limit?: number;
     } = {},
   ) {
-    const q = new URLSearchParams();
-    if (params.source_item_id) q.set("source_item_id", params.source_item_id);
-    if (params.kind) q.set("kind", params.kind);
-    if (params.project_id) q.set("project_id", params.project_id);
-    if (params.owner_id) q.set("owner_id", params.owner_id);
-    if (params.limit) q.set("limit", String(params.limit));
-    return this.request<WorkRecord[]>(`/work-records?${q}`);
+    return projects.callListWorkRecords.call(this, params);
   }
   getWorkRecord(id: string) {
-    return this.request<WorkRecord>(`/work-records/${id}`);
+    return projects.callGetWorkRecord.call(this, id);
   }
   createWorkRecord(input: WorkRecordInput) {
-    return this.request<WorkRecord>("/work-records", {
-      method: "POST",
-      body: input,
-    });
+    return projects.callCreateWorkRecord.call(this, input);
   }
   updateWorkRecord(id: string, input: WorkRecordUpdate) {
-    return this.request<WorkRecord>(`/work-records/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return projects.callUpdateWorkRecord.call(this, id, input);
   }
   respondWorkRecord(id: string, decision: "accept" | "decline") {
-    return this.request<WorkRecord>(`/work-records/${id}/respond`, {
-      method: "POST",
-      body: { decision },
-    });
+    return projects.callRespondWorkRecord.call(this, id, decision);
   }
 
   // Comments on a document
   listDocComments(docId: string) {
-    return this.request<DocComment[]>(`/docs/${docId}/comments`);
+    return documents.callListDocComments.call(this, docId);
   }
   /**
    * `anchor` ties the remark to words in one block; without it, to the page.
@@ -2217,10 +1281,7 @@ export class OrbynClient {
       mentions?: string[];
     },
   ) {
-    return this.request<DocComment>(`/docs/${docId}/comments`, {
-      method: "POST",
-      body: { body, ...anchor },
-    });
+    return documents.callAddDocComment.call(this, docId, body, anchor);
   }
 
   /**
@@ -2239,79 +1300,50 @@ export class OrbynClient {
       quote?: string;
     },
   ) {
-    return this.request<DocSuggestion>(`/docs/${docId}/assist`, {
-      method: "POST",
-      body,
-    });
+    return documents.callAssistDoc.call(this, docId, body);
   }
   /** Ask a question about one page, answered from that page alone. */
   askDoc(docId: string, question: string, selection?: DocAskSelection) {
-    return this.request<DocAnswer>(`/docs/${docId}/ask`, {
-      method: "POST",
-      body: {
-        question,
-        ...(selection ? { selection: docAskSelection.parse(selection) } : {}),
-      },
-    });
+    return documents.callAskDoc.call(this, docId, question, selection);
   }
 
   // Proposed changes to a document
   listDocSuggestions(docId: string) {
-    return this.request<DocSuggestion[]>(`/docs/${docId}/suggestions`);
+    return documents.callListDocSuggestions.call(this, docId);
   }
   /** Propose changes. Anyone who can read the document may propose. */
   proposeDocChanges(docId: string, changes: Proposed[], note = "") {
-    return this.request<DocSuggestion[]>(`/docs/${docId}/suggestions`, {
-      method: "POST",
-      body: { changes, note },
-    });
+    return documents.callProposeDocChanges.call(this, docId, changes, note);
   }
   /** Take a proposal into the page, or leave it. Returns the page if taken. */
   decideDocSuggestion(docId: string, id: string, take: boolean) {
-    return this.request<{ doc: Doc | null }>(
-      `/docs/${docId}/suggestions/${id}`,
-      { method: "POST", body: { take } },
-    );
+    return documents.callDecideDocSuggestion.call(this, docId, id, take);
   }
   withdrawDocSuggestion(docId: string, id: string) {
-    return this.request<void>(`/docs/${docId}/suggestions/${id}`, {
-      method: "DELETE",
-    });
+    return documents.callWithdrawDocSuggestion.call(this, docId, id);
   }
 
   /** People who can be named in a comment on this document. */
   /** "Mentioned in": the pages that name you, newest first. */
   mentions(limit = 50) {
-    return this.request<PageMention[]>(`/me/mentions?limit=${limit}`);
+    return account.callMentions.call(this, limit);
   }
   /** "Keep the original": the setting, the space used, and the files. */
   originals() {
-    return this.request<OriginalsOverview>("/me/originals");
+    return documents.callOriginals.call(this);
   }
   setKeepOriginals(keep: boolean) {
-    return this.request<{ keep: boolean }>("/me/originals", {
-      method: "PUT",
-      body: { keep },
-    });
+    return documents.callSetKeepOriginals.call(this, keep);
   }
   /** A page's kept original, as a file to save. */
   async downloadOriginal(docId: string) {
-    const response = await this.raw(`/docs/${docId}/original`);
-    const disposition = response.headers.get("content-disposition") ?? "";
-    const star = /filename\*=UTF-8''([^;]+)/.exec(disposition)?.[1];
-    const plain = /filename="([^"]+)"/.exec(disposition)?.[1];
-    return {
-      blob: await response.blob(),
-      name: star ? decodeURIComponent(star) : (plain ?? "original"),
-    };
+    return documents.callDownloadOriginal.call(this, docId);
   }
   deleteOriginal(docId: string) {
-    return this.request<void>(`/docs/${docId}/original`, { method: "DELETE" });
+    return documents.callDeleteOriginal.call(this, docId);
   }
   docPeople(docId: string) {
-    return this.request<{ id: string; name: string; email: string }[]>(
-      `/docs/${docId}/people`,
-    );
+    return documents.callDocPeople.call(this, docId);
   }
   resolveDocComment(
     docId: string,
@@ -2319,40 +1351,33 @@ export class OrbynClient {
     resolved: boolean,
     expectedRevision?: number,
   ) {
-    return this.request<DocComment>(`/docs/${docId}/comments/${commentId}`, {
-      method: "PUT",
-      body: {
-        resolved,
-        ...(expectedRevision === undefined
-          ? {}
-          : { expected_revision: expectedRevision }),
-      },
-    });
+    return documents.callResolveDocComment.call(
+      this,
+      docId,
+      commentId,
+      resolved,
+      expectedRevision,
+    );
   }
   deleteDocComment(docId: string, commentId: string) {
-    return this.request<void>(`/docs/${docId}/comments/${commentId}`, {
-      method: "DELETE",
-    });
+    return documents.callDeleteDocComment.call(this, docId, commentId);
   }
 
   // Folders and favourites
   listFolders() {
-    return this.request<Folder[]>("/folders");
+    return documents.callListFolders.call(this);
   }
   createFolder(input: { name: string; team_id?: string | null }) {
-    return this.request<Folder>("/folders", { method: "POST", body: input });
+    return documents.callCreateFolder.call(this, input);
   }
   renameFolder(id: string, input: { name?: string; position?: number }) {
-    return this.request<Folder>(`/folders/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return documents.callRenameFolder.call(this, id, input);
   }
   deleteFolder(id: string) {
-    return this.request<void>(`/folders/${id}`, { method: "DELETE" });
+    return documents.callDeleteFolder.call(this, id);
   }
   listFavourites() {
-    return this.request<Favourite[]>("/favourites");
+    return documents.callListFavourites.call(this);
   }
   setFavourite(
     kind: FavouriteKind,
@@ -2360,73 +1385,56 @@ export class OrbynClient {
     starred: boolean,
     blockId?: string,
   ) {
-    return this.request<void>("/favourites", {
-      method: "PUT",
-      body: {
-        kind,
-        target_id: targetId,
-        starred,
-        ...(blockId ? { block_id: blockId } : {}),
-      },
-    });
+    return documents.callSetFavourite.call(
+      this,
+      kind,
+      targetId,
+      starred,
+      blockId,
+    );
   }
   /** The Starred group: every star with its live title (NAV-07). */
   listStarred() {
-    return this.request<StarredItem[]>("/starred");
+    return tasks.callListStarred.call(this);
   }
 
   // Choices that follow the account (NAV-08, NAV-09, SHR-08)
   getPrefs() {
-    return this.request<AccountPrefs>("/me/prefs");
+    return account.callGetPrefs.call(this);
   }
   savePrefs(input: AccountPrefsInput) {
-    return this.request<AccountPrefs>("/me/prefs", {
-      method: "PUT",
-      body: input,
-    });
+    return account.callSavePrefs.call(this, input);
   }
   resetPrefs() {
-    return this.request<void>("/me/prefs", { method: "DELETE" });
+    return account.callResetPrefs.call(this);
   }
 
   // Home (W1)
   /** Home's panels: active goals, next routine runs, today's brief and reflection. */
   getHome() {
-    return this.request<HomeSummary>("/me/home");
+    return account.callGetHome.call(this);
   }
   /** "How did today go?": a line under Reflection on today's agenda. */
   addReflection(text: string) {
-    return this.request<{ doc_id: string; reflection: string[] }>(
-      "/me/home/reflection",
-      { method: "POST", body: { text } },
-    );
+    return workspace.callAddReflection.call(this, text);
   }
 
   // Covers and icons (W6)
   /** A page's cover and icon; null takes one off. Its version stays. */
   setDocLook(docId: string, look: LookInput) {
-    return this.request<Look>(`/docs/${docId}/look`, {
-      method: "PUT",
-      body: look,
-    });
+    return documents.callSetDocLook.call(this, docId, look);
   }
   /** Your pictures, newest first, to choose a cover from. */
   myPictures() {
-    return this.request<CoverPicture[]>("/me/pictures");
+    return account.callMyPictures.call(this);
   }
 
   // Archiving and tidying the library (SRCH-03, ORG-03)
   archiveDoc(id: string, archived: boolean) {
-    return this.request<Doc>(`/docs/${id}/archive`, {
-      method: "PUT",
-      body: { archived },
-    });
+    return documents.callArchiveDoc.call(this, id, archived);
   }
   archiveFolder(id: string, archived: boolean) {
-    return this.request<{ id: string; archived_at: string | null }>(
-      `/folders/${id}/archive`,
-      { method: "PUT", body: { archived } },
-    );
+    return documents.callArchiveFolder.call(this, id, archived);
   }
   /** Move, archive or tag several pages at once. */
   bulkDocs(input: {
@@ -2435,130 +1443,94 @@ export class OrbynClient {
     archived?: boolean;
     tag_id?: string;
   }) {
-    return this.request<{
-      done: string[];
-      skipped: { id: string; reason: string }[];
-    }>("/docs/bulk", { method: "POST", body: input });
+    return documents.callBulkDocs.call(this, input);
   }
 
   /** The Connections map around a page or project (CNV-02). */
   connectionMap(kind: "doc" | "project", id: string, depth: 1 | 2 = 1) {
-    const q = new URLSearchParams({ kind, id, depth: String(depth) });
-    return this.request<ConnectionMap>(`/links/map?${q}`);
+    return documents.callConnectionMap.call(this, kind, id, depth);
   }
 
   /** A team's switches for publishing, the assistant and booking (OTH-04). */
   getTeamPolicies(teamId: string) {
-    return this.request<TeamPolicies>(`/teams/${teamId}/policies`);
+    return teams.callGetTeamPolicies.call(this, teamId);
   }
   setTeamPolicies(
     teamId: string,
     input: Partial<Pick<TeamPolicies, "publishing" | "assistant" | "booking">>,
   ) {
-    return this.request<TeamPolicies>(`/teams/${teamId}/policies`, {
-      method: "PUT",
-      body: input,
-    });
+    return teams.callSetTeamPolicies.call(this, teamId, input);
   }
 
   /** A recording's summary and action items, from the assistant (CAP-10). */
   summariseRecording(fileId: string, transcript?: string) {
-    return this.request<RecordingSummary>(`/ai/recordings/${fileId}/summary`, {
-      method: "POST",
-      body: transcript ? { transcript } : {},
-    });
+    return assistant.callSummariseRecording.call(this, fileId, transcript);
   }
 
   // The Orbyn Clipper (CAP-02)
   listClipKeys() {
-    return this.request<ClipKey[]>("/me/clip-keys");
+    return capture.callListClipKeys.call(this);
   }
   createClipKey(name?: string) {
-    return this.request<{ key: string; clip_key: ClipKey }>("/me/clip-keys", {
-      method: "POST",
-      body: name ? { name } : {},
-    });
+    return capture.callCreateClipKey.call(this, name);
   }
   deleteClipKey(id: string) {
-    return this.request<void>(`/me/clip-keys/${id}`, { method: "DELETE" });
+    return capture.callDeleteClipKey.call(this, id);
   }
   clipDestinations() {
-    return this.request<ClipDestinations>("/clips/destinations");
+    return capture.callClipDestinations.call(this);
   }
   clip(input: Partial<ClipInput> & Pick<ClipInput, "type" | "url">) {
-    return this.request<ClipResult>("/clips", { method: "POST", body: input });
+    return capture.callClip.call(this, input);
   }
 
   // Saved views (DATA-01) and your own fields (ORG-02)
   /** Every saved view you can see: yours and those shared with your teams. */
   listViews() {
-    return this.request<SavedView[]>("/views");
+    return views.callListViews.call(this);
   }
   createView(input: SavedViewInput) {
-    return this.request<SavedView>("/views", { method: "POST", body: input });
+    return views.callCreateView.call(this, input);
   }
   updateView(id: string, input: SavedViewUpdate) {
-    return this.request<SavedView>(`/views/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return views.callUpdateView.call(this, id, input);
   }
   deleteView(id: string) {
-    return this.request<void>(`/views/${id}`, { method: "DELETE" });
+    return views.callDeleteView.call(this, id);
   }
   /** Pin a view to your own sidebar, or unpin it. */
   pinView(id: string, pinned: boolean) {
-    return this.request<void>(`/views/${id}/pin`, {
-      method: "PUT",
-      body: { pinned },
-    });
+    return views.callPinView.call(this, id, pinned);
   }
   /** A saved view's rows, as you see them. */
   runView(id: string, limit?: number) {
-    return this.request<ViewResult>("/views/run", {
-      method: "POST",
-      body: limit ? { id, limit } : { id },
-    });
+    return views.callRunView.call(this, id, limit);
   }
   /** The rows of a definition that isn't saved (a live list, a view being built). */
   runDefinition(definition: ViewDefinitionInput, limit?: number) {
-    return this.request<ViewResult>("/views/run", {
-      method: "POST",
-      body: limit ? { definition, limit } : { definition },
-    });
+    return views.callRunDefinition.call(this, definition, limit);
   }
   /** A saved view as CSV text, with the file name the server chose. */
   async exportViewCsv(id: string) {
-    const response = await this.raw(`/views/${id}/export.csv`);
-    const disposition = response.headers.get("content-disposition") ?? "";
-    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
-    return { text: await response.text(), name: named ?? "View.csv" };
+    return views.callExportViewCsv.call(this, id);
   }
   /** Every field you can see, for pages and projects. */
   listFields() {
-    return this.request<CustomField[]>("/fields");
+    return views.callListFields.call(this);
   }
   createField(input: CustomFieldInput) {
-    return this.request<CustomField>("/fields", {
-      method: "POST",
-      body: input,
-    });
+    return views.callCreateField.call(this, input);
   }
   updateField(id: string, input: CustomFieldUpdate) {
-    return this.request<CustomField>(`/fields/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return views.callUpdateField.call(this, id, input);
   }
   /** Removes a field and clears it everywhere it was set. */
   deleteField(id: string) {
-    return this.request<void>(`/fields/${id}`, { method: "DELETE" });
+    return views.callDeleteField.call(this, id);
   }
   /** A page's or project's fields and values, for its Info panel. */
   targetFields(target: FieldTarget, id: string) {
-    return this.request<TargetFields>(
-      `/fields/values?${new URLSearchParams({ target, id })}`,
-    );
+    return views.callTargetFields.call(this, target, id);
   }
   /** Set one field on a page or project; null clears it. */
   setFieldValue(
@@ -2567,16 +1539,11 @@ export class OrbynClient {
     targetId: string,
     value: FieldValue,
   ) {
-    return this.request<{ field_id: string; value: FieldValue }>(
-      `/fields/${fieldId}/value`,
-      { method: "PUT", body: { target, target_id: targetId, value } },
-    );
+    return views.callSetFieldValue.call(this, fieldId, target, targetId, value);
   }
   /** Date fields shown on the calendar between two days (YYYY-MM-DD). */
   fieldDates(from: string, to: string) {
-    return this.request<FieldDate[]>(
-      `/fields/dates?${new URLSearchParams({ from, to })}`,
-    );
+    return views.callFieldDates.call(this, from, to);
   }
 
   /**
@@ -2597,10 +1564,7 @@ export class OrbynClient {
       limit?: number;
     } = {},
   ) {
-    const params = new URLSearchParams({ q });
-    for (const [k, v] of Object.entries(filter))
-      if (v !== undefined) params.set(k, String(v));
-    return this.request<SearchHit[]>(`/search?${params}`);
+    return search.callSearch.call(this, q, filter);
   }
 
   /**
@@ -2615,10 +1579,7 @@ export class OrbynClient {
       include_archived?: boolean;
     } = {},
   ) {
-    const params = new URLSearchParams({ q });
-    for (const [k, v] of Object.entries(filter))
-      if (v !== undefined) params.set(k, String(v));
-    return this.request<FindHit[]>(`/find?${params}`);
+    return search.callFind.call(this, q, filter);
   }
 
   /**
@@ -2626,22 +1587,17 @@ export class OrbynClient {
    * events, projects and people (dates are worked out by the app).
    */
   pickLinks(q: string, limit?: number) {
-    const params = new URLSearchParams({ q });
-    if (limit !== undefined) params.set("limit", String(limit));
-    return this.request<LinkOption[]>(`/links/pick?${params}`);
+    return documents.callPickLinks.call(this, q, limit);
   }
 
   /** Link pills as they stand now: live titles, ticks, deadlines, deletions. */
   resolveLinks(refs: ObjectRef[]) {
-    if (!refs.length) return Promise.resolve([] as LinkPill[]);
-    const params = new URLSearchParams({ refs: resolveRefs(refs) });
-    return this.request<LinkPill[]>(`/links/resolve?${params}`);
+    return documents.callResolveLinks.call(this, refs);
   }
 
   /** "Linked here": the places that link to a page, task, project or person. */
   linksHere(kind: "doc" | "task" | "event" | "project" | "person", id: string) {
-    const params = new URLSearchParams({ kind, id });
-    return this.request<LinkedHereList>(`/links/here?${params}`);
+    return documents.callLinksHere.call(this, kind, id);
   }
 
   /** A link's hover card: enough to tick, reschedule or open it (LNK-07). */
@@ -2650,15 +1606,12 @@ export class OrbynClient {
     id: string;
     block?: string;
   }) {
-    const params = new URLSearchParams({ kind: ref.kind, id: ref.id });
-    if (ref.block) params.set("block", ref.block);
-    return this.request<LinkCard>(`/links/card?${params}`);
+    return documents.callLinkCard.call(this, ref);
   }
 
   /** Pages that say this page's or project's name without linking to it (LNK-06). */
   unlinkedMentions(kind: "doc" | "project", id: string) {
-    const params = new URLSearchParams({ kind, id });
-    return this.request<UnlinkedMention[]>(`/links/mentions?${params}`);
+    return documents.callUnlinkedMentions.call(this, kind, id);
   }
 
   /** Make a mention a link, in the page it's in. */
@@ -2668,46 +1621,27 @@ export class OrbynClient {
     matched: string;
     target: { kind: "doc" | "project"; id: string };
   }) {
-    return this.request<{ doc_id: string; version: number }>(
-      "/links/mentions/link",
-      { method: "POST", body: input },
-    );
+    return workspace.callLinkMention.call(this, input);
   }
 
   /** Pages that read like this one, not linked either way yet (LNK-06). */
   relatedPages(docId: string) {
-    const params = new URLSearchParams({ kind: "doc", id: docId });
-    return this.request<RelatedPage[]>(`/links/related?${params}`);
+    return documents.callRelatedPages.call(this, docId);
   }
 
   /** A page's headings (and, with words, lines) for [[Page# (LNK-04). */
   pageHeadings(docId: string, q = "") {
-    const params = new URLSearchParams({ doc: docId, q });
-    return this.request<HeadingOption[]>(`/links/headings?${params}`);
+    return documents.callPageHeadings.call(this, docId, q);
   }
 
   /** Name a heading or line so a link can point at it. */
   anchorLine(docId: string, index: number, text: string, version?: number) {
-    return this.request<{ block_id: string }>(`/docs/${docId}/anchor`, {
-      method: "POST",
-      body: { index, text, ...(version === undefined ? {} : { version }) },
-    });
+    return documents.callAnchorLine.call(this, docId, index, text, version);
   }
 
   /** A heading's section of a page (or the page's first lines), to embed. */
   docSection(docId: string, block?: string | null) {
-    const params = new URLSearchParams();
-    if (block) params.set("block", block);
-    return this.request<{
-      doc_id: string;
-      title: string;
-      block_id: string | null;
-      missing: boolean;
-      more: boolean;
-      blocks: DocBlock[];
-      /** Authorized source-page definitions, including those outside the section. */
-      references?: [string, string, string?][];
-    }>(`/docs/${docId}/section${block ? `?${params}` : ""}`);
+    return documents.callDocSection.call(this, docId, block);
   }
 
   /** "Move to new page": these lines become a page, and a link takes their place. */
@@ -2715,37 +1649,25 @@ export class OrbynClient {
     docId: string,
     input: { block_ids: string[]; title?: string; version: number },
   ) {
-    return this.request<{ doc: Doc; source: Doc }>(`/docs/${docId}/extract`, {
-      method: "POST",
-      body: input,
-    });
+    return documents.callExtractToPage.call(this, docId, input);
   }
 
   /** "Merge into…": this page's lines go to the end of another. */
   mergeDoc(docId: string, into: string, version: number) {
-    return this.request<{ doc: Doc; relinked: number }>(
-      `/docs/${docId}/merge`,
-      { method: "POST", body: { into, version } },
-    );
+    return documents.callMergeDoc.call(this, docId, into, version);
   }
 
   /** The headings you folded on a page, on every device (EDT-14). */
   docFolds(docId: string) {
-    return this.request<{ block_ids: string[] }>(`/docs/${docId}/folds`);
+    return documents.callDocFolds.call(this, docId);
   }
   setDocFolds(docId: string, blockIds: string[]) {
-    return this.request<{ block_ids: string[] }>(`/docs/${docId}/folds`, {
-      method: "PUT",
-      body: { block_ids: blockIds },
-    });
+    return documents.callSetDocFolds.call(this, docId, blockIds);
   }
 
   /** A page's other names, such as a course code (LNK-03). */
   setDocAliases(docId: string, aliases: string[]) {
-    return this.request<{ aliases: string[] }>(`/docs/${docId}/aliases`, {
-      method: "PUT",
-      body: { aliases },
-    });
+    return documents.callSetDocAliases.call(this, docId, aliases);
   }
 
   // ---- pictures and files in pages (EDT-01) ----
@@ -2754,10 +1676,7 @@ export class OrbynClient {
    * (a path on this API's base URL, good for ten minutes and one upload).
    */
   createPageFile(docId: string, input: PageFileInput) {
-    return this.request<PageFileUpload>(`/docs/${docId}/files`, {
-      method: "POST",
-      body: input,
-    });
+    return documents.callCreatePageFile.call(this, docId, input);
   }
   /** Send a picture's or file's bytes to the link from `createPageFile`. */
   async uploadPageFile(
@@ -2765,35 +1684,37 @@ export class OrbynClient {
     file: Blob | ArrayBuffer | Uint8Array,
     contentType: string,
   ): Promise<void> {
-    return this.uploadImportFile(uploadPath, file, contentType);
+    return documents.callUploadPageFile.call(
+      this,
+      uploadPath,
+      file,
+      contentType,
+    );
   }
   /** A picture or file, with a link to show or download it for an hour. */
   pageFile(fileId: string) {
-    return this.request<PageFileLink>(`/docs/files/${fileId}`);
+    return documents.callPageFile.call(this, fileId);
   }
   /** The pictures and files on a page. */
   pageFiles(docId: string) {
-    return this.request<PageFile[]>(`/docs/${docId}/files`);
+    return documents.callPageFiles.call(this, docId);
   }
   /** Delete a picture or file for good. */
   deletePageFile(fileId: string) {
-    return this.request<void>(`/docs/files/${fileId}`, { method: "DELETE" });
+    return documents.callDeletePageFile.call(this, fileId);
   }
   /** How much of your space pictures and files take. */
   filesUsage() {
-    return this.request<PageFilesUsage>("/files/usage");
+    return workspace.callFilesUsage.call(this);
   }
   /** The full address of a path on this API (a file's link, say). */
   urlFor(path: string) {
-    return this.baseUrl + path;
+    return workspace.callUrlFor.call(this, path);
   }
 
   /** Something was opened: it leads the quick switcher's recent list. */
   recordRecent(kind: "doc" | "task" | "project", id: string) {
-    return this.request<void>("/recents", {
-      method: "POST",
-      body: { kind, id },
-    });
+    return workspace.callRecordRecent.call(this, kind, id);
   }
 
   /**
@@ -2806,14 +1727,7 @@ export class OrbynClient {
     format: ExportFormat,
     options: { version?: number } = {},
   ) {
-    const revision =
-      options.version === undefined ? "" : `&version=${options.version}`;
-    const response = await this.raw(
-      `/docs/${docId}/export?format=${format}${revision}`,
-    );
-    const disposition = response.headers.get("content-disposition") ?? "";
-    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
-    return { blob: await response.blob(), name: named ?? `document.${format}` };
+    return documents.callExportDoc.call(this, docId, format, options);
   }
 
   /** Compile an authorized document draft; source is retained by the owning editor. */
@@ -2822,28 +1736,13 @@ export class OrbynClient {
     input: { source: string; version: number },
     signal?: AbortSignal,
   ) {
-    const response = await this.raw(`/docs/${id}/latex/preview`, {
-      method: "POST",
-      body: input,
-      signal,
-    });
-    return response.blob();
+    return documents.callCompileDocLatex.call(this, id, input, signal);
   }
 
   // Documents
   /** Read full structured ownership with explicit format capability and fresh revision/visibility. */
   async getDocContent(id: string, options: { signal?: AbortSignal } = {}) {
-    id = versionedDocRead.shape.id.parse(id).toLowerCase();
-    const result = versionedDocRead.parse(
-      await this.request(`/docs/${id}/content`, {
-        fresh: true,
-        signal: options.signal,
-        headers: { "x-orbyn-doc-formats": "1,2" },
-      }),
-    );
-    if (result.id.toLowerCase() !== id)
-      throw new Error("Unexpected document identity.");
-    return result;
+    return documents.callGetDocContent.call(this, id, options);
   }
   /** Save the complete content tree once; unsupported structure must not fall back to flat writes. */
   async updateDocContent(
@@ -2852,24 +1751,13 @@ export class OrbynClient {
     document: VersionedDocContent,
     options: { signal?: AbortSignal; ticksFrom?: number } = {},
   ) {
-    id = versionedDocRead.shape.id.parse(id).toLowerCase();
-    const body = versionedDocSave.parse({ version, document });
-    const result = versionedDocRead.parse(
-      await this.request(`/docs/${id}/content`, {
-        method: "PUT",
-        body,
-        signal: options.signal,
-        headers: {
-          "x-orbyn-doc-formats": "1,2",
-          ...(options.ticksFrom !== undefined
-            ? { "x-orbyn-ticks-from": String(options.ticksFrom) }
-            : {}),
-        },
-      }),
+    return documents.callUpdateDocContent.call(
+      this,
+      id,
+      version,
+      document,
+      options,
     );
-    if (result.id.toLowerCase() !== id || result.version !== version + 1)
-      throw new Error("Unexpected saved document revision.");
-    return result;
   }
   /** Every page you can see, newest edit first, optionally narrowed. */
   listDocs(
@@ -2881,17 +1769,11 @@ export class OrbynClient {
       archived?: "include" | "only";
     } = {},
   ) {
-    const q = new URLSearchParams(
-      Object.entries(filter).flatMap(([k, v]) => (v ? [[k, v]] : [])),
-    ).toString();
-    return this.request<DocSummary[]>(`/docs${q ? `?${q}` : ""}`);
+    return documents.callListDocs.call(this, filter);
   }
   /** Private ownership and schedules for selected page blocks. */
   listPageMaintenanceRuns(docId: string) {
-    return this.request<MaintainedPageRunSummary[]>(
-      `/docs/${docId}/maintenance/runs`,
-      { fresh: true },
-    );
+    return documents.callListPageMaintenanceRuns.call(this, docId);
   }
   decidePageMaintenanceRun(
     docId: string,
@@ -2899,28 +1781,30 @@ export class OrbynClient {
     waitingId: string,
     approved: boolean,
   ) {
-    return this.request<{ state: "done" | "cancelled" }>(
-      `/docs/${docId}/maintenance/runs/${runId}/decision`,
-      { method: "POST", body: { waiting_id: waitingId, approved } },
+    return documents.callDecidePageMaintenanceRun.call(
+      this,
+      docId,
+      runId,
+      waitingId,
+      approved,
     );
   }
   listPageMaintenance(docId: string) {
-    return this.request<MaintainedPageBinding[]>(`/docs/${docId}/maintenance`);
+    return documents.callListPageMaintenance.call(this, docId);
   }
   createPageMaintenance(docId: string, body: MaintainedPageBindingInput) {
-    return this.request<MaintainedPageBinding>(`/docs/${docId}/maintenance`, {
-      method: "POST",
-      body,
-    });
+    return documents.callCreatePageMaintenance.call(this, docId, body);
   }
   updatePageMaintenance(
     docId: string,
     bindingId: string,
     body: MaintainedPageBindingUpdate,
   ) {
-    return this.request<MaintainedPageBinding>(
-      `/docs/${docId}/maintenance/${bindingId}`,
-      { method: "PUT", body },
+    return documents.callUpdatePageMaintenance.call(
+      this,
+      docId,
+      bindingId,
+      body,
     );
   }
   deletePageMaintenance(
@@ -2928,19 +1812,15 @@ export class OrbynClient {
     bindingId: string,
     expectedRevision: number,
   ) {
-    return this.request<{ ok: true }>(
-      `/docs/${docId}/maintenance/${bindingId}`,
-      {
-        method: "DELETE",
-        body: { expected_revision: expectedRevision },
-      },
+    return documents.callDeletePageMaintenance.call(
+      this,
+      docId,
+      bindingId,
+      expectedRevision,
     );
   }
   getDoc(id: string, options: Pick<RequestOptions, "fresh" | "signal"> = {}) {
-    return this.request<Doc>(`/docs/${id}`, {
-      ...options,
-      headers: { "x-orbyn-doc-formats": "1,2" },
-    });
+    return documents.callGetDoc.call(this, id, options);
   }
   /** Read metadata and complete editor ownership from one fresh authorized revision. */
   async getDocForEditor(id: string, options: { signal?: AbortSignal } = {}) {
@@ -3003,30 +1883,22 @@ export class OrbynClient {
   }
   /** A page's Info panel: what it belongs to, tags, links, versions. */
   docInfo(id: string) {
-    return this.request<DocInfo>(`/docs/${id}/info`);
+    return documents.callDocInfo.call(this, id);
   }
   /** Take a source off a page (H6b); the source stays for other pages. */
   removePageSource(docId: string, sourceId: string) {
-    return this.request<void>(`/docs/${docId}/sources/${sourceId}`, {
-      method: "DELETE",
-    });
+    return documents.callRemovePageSource.call(this, docId, sourceId);
   }
   /** Put exactly these tags (by id) on a page. */
   setDocTags(id: string, tags: string[]) {
-    return this.request<{ tags: DocTag[] }>(`/docs/${id}/tags`, {
-      method: "PUT",
-      body: { tags },
-    });
+    return documents.callSetDocTags.call(this, id, tags);
   }
   /**
    * Add tags to a page by name, as typing "#physics" in a line does; a name
    * with no tag yet makes one. `added` says which names were new to it.
    */
   addDocTags(id: string, names: string[]) {
-    return this.request<{ tags: DocTag[]; added: string[] }>(
-      `/docs/${id}/tags`,
-      { method: "POST", body: { names } },
-    );
+    return documents.callAddDocTags.call(this, id, names);
   }
   createDoc(input: {
     title?: string;
@@ -3040,7 +1912,7 @@ export class OrbynClient {
     /** Made inside this page (W5): its space's, it takes that page's folder. */
     parent_id?: string | null;
   }) {
-    return this.request<Doc>("/docs", { method: "POST", body: input });
+    return documents.callCreateDoc.call(this, input);
   }
   /** Create a page with complete ownership in one server transaction. */
   async createDocForEditor(
@@ -3078,13 +1950,7 @@ export class OrbynClient {
     },
     options: { ticksFrom?: number } = {},
   ) {
-    return this.request<Doc>(`/docs/${id}`, {
-      method: "PUT",
-      body: input,
-      ...(options.ticksFrom
-        ? { headers: { "X-Orbyn-Ticks-From": String(options.ticksFrom) } }
-        : {}),
-    });
+    return documents.callUpdateDoc.call(this, id, input, options);
   }
   /**
    * Move a page in the library's tree (W5): inside another page
@@ -3100,51 +1966,43 @@ export class OrbynClient {
       position?: number;
     },
   ) {
-    const { version } = await this.getDoc(id);
-    return this.updateDoc(id, { ...to, version });
+    return documents.callMoveDoc.call(this, id, to);
   }
   /** Move a page to Trash. It can be restored for `TRASH_DAYS` days. */
   deleteDoc(id: string) {
-    return this.request<void>(`/docs/${id}`, { method: "DELETE" });
+    return documents.callDeleteDoc.call(this, id);
   }
   /** Permanently forget a private Memory topic, including its source links. */
   forgetMemory(id: string) {
-    return this.request<{ forgotten: true }>(`/me/memory/${id}`, {
-      method: "DELETE",
-    });
+    return documents.callForgetMemory.call(this, id);
   }
   /** Pages in Trash, most recently deleted first. */
   listTrash() {
-    return this.request<TrashedDoc[]>("/docs/trash");
+    return documents.callListTrash.call(this);
   }
   /** Bring a page back from Trash, as it was. */
   restoreDoc(id: string) {
-    return this.request<Doc>(`/docs/${id}/restore`, { method: "POST" });
+    return documents.callRestoreDoc.call(this, id);
   }
   /** Delete a page in Trash for good. There is no undo. */
   deleteDocForever(id: string) {
-    return this.request<void>(`/docs/${id}/forever`, { method: "DELETE" });
+    return documents.callDeleteDocForever.call(this, id);
   }
 
   /** Past states of a document, newest first, without their content. */
   listDocVersions(id: string) {
-    return this.request<DocVersion[]>(`/docs/${id}/versions`);
+    return documents.callListDocVersions.call(this, id);
   }
   /** One past state, with its content. */
   getDocVersion(id: string, version: number) {
-    return this.request<Required<DocVersion>>(
-      `/docs/${id}/versions/${version}`,
-      { headers: { "x-orbyn-doc-formats": "1,2" } },
-    );
+    return documents.callGetDocVersion.call(this, id, version);
   }
   /**
    * One past state for "Show changes": the version, the one kept before it,
    * and the sittings since (null when too many were kept since), in one read.
    */
   getDocVersionChanges(id: string, version: number) {
-    return this.request<DocVersionChanges>(
-      `/docs/${id}/versions/${version}/changes`,
-    );
+    return documents.callGetDocVersionChanges.call(this, id, version);
   }
   /** Put a past state back; it becomes a new version on top. */
   async restoreDocVersion(id: string, version: number) {
@@ -3290,103 +2148,78 @@ export class OrbynClient {
    * the editor id, so a reader can skip its own echo.
    */
   sendDocUpdates(id: string, updates: string[]): Promise<void> {
-    return this.request<void>(`/docs/${id}/updates`, {
-      method: "POST",
-      body: { updates },
-      headers: { "X-Orbyn-Editor": this.editorId },
-    });
+    return documents.callSendDocUpdates.call(this, id, updates);
   }
 
   /** The page's CRDT updates past `since`, oldest first, as base64. */
   listDocUpdates(id: string, since: number) {
-    return this.request<{ updates: { seq: number; update: string }[] }>(
-      `/docs/${id}/updates?since=${since}`,
-    );
+    return documents.callListDocUpdates.call(this, id, since);
   }
 
   listLists() {
-    return this.request<TaskList[]>("/lists");
+    return tasks.callListLists.call(this);
   }
   createList(input: ListInput) {
-    return this.request<TaskList>("/lists", { method: "POST", body: input });
+    return tasks.callCreateList.call(this, input);
   }
   updateList(id: string, input: ListUpdate) {
-    return this.request<TaskList>(`/lists/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdateList.call(this, id, input);
   }
   deleteList(id: string) {
-    return this.request<void>(`/lists/${id}`, { method: "DELETE" });
+    return tasks.callDeleteList.call(this, id);
   }
   listTags() {
-    return this.request<Tag[]>("/tags");
+    return tasks.callListTags.call(this);
   }
   createTag(input: TagInput) {
-    return this.request<Tag>("/tags", { method: "POST", body: input });
+    return tasks.callCreateTag.call(this, input);
   }
   updateTag(id: string, input: TagUpdate) {
-    return this.request<Tag>(`/tags/${id}`, { method: "PUT", body: input });
+    return tasks.callUpdateTag.call(this, id, input);
   }
   deleteTag(id: string) {
-    return this.request<void>(`/tags/${id}`, { method: "DELETE" });
+    return tasks.callDeleteTag.call(this, id);
   }
 
   // ---- calendar, time blocks, planner ----
   /** Everything on the calendar in [from, to): occurrences, blocks, buffers and travel. */
   calendar(from: string, to: string) {
-    const q = new URLSearchParams({ from, to });
-    return this.request<CalendarView>(`/calendar?${q}`);
+    return planner.callCalendar.call(this, from, to);
   }
   listBlocks(from: string, to: string) {
-    const q = new URLSearchParams({ from, to });
-    return this.request<TimeBlock[]>(`/blocks?${q}`);
+    return tasks.callListBlocks.call(this, from, to);
   }
   /** Your sessions for one task, past ones too, with its deadline. Makes no plan. */
   itemSessions(itemId: string) {
-    return this.request<ItemSessions>(`/items/${itemId}/sessions`);
+    return tasks.callItemSessions.call(this, itemId);
   }
   createBlock(input: BlockInput) {
-    return this.request<TimeBlock>("/blocks", { method: "POST", body: input });
+    return planner.callCreateBlock.call(this, input);
   }
   /**
    * A session on a day (a task dropped on a calendar day): the first free
    * working time that day, or a 409 saying there's none.
    */
   createBlockOnDay(input: BlockOnDayInput) {
-    return this.request<TimeBlock>("/blocks", { method: "POST", body: input });
+    return planner.callCreateBlockOnDay.call(this, input);
   }
   updateBlock(id: string, input: BlockUpdate) {
-    return this.request<TimeBlock>(`/blocks/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdateBlock.call(this, id, input);
   }
   deleteBlock(id: string, expectedRevision?: number) {
-    return this.request<void>(`/blocks/${id}`, {
-      method: "DELETE",
-      ...(expectedRevision === undefined
-        ? {}
-        : { body: { expected_revision: expectedRevision } }),
-    });
+    return planner.callDeleteBlock.call(this, id, expectedRevision);
   }
   /** Sessions that ended in the last few days and wait for "how did it go?". */
   sessionCheckIns() {
-    return this.request<SessionCheckIn[]>("/blocks/check-ins");
+    return planner.callSessionCheckIns.call(this);
   }
   /** Say how a session went: done for today, need more, or skip. */
   checkInSession(id: string, input: SessionCheckInInput) {
-    return this.request<SessionCheckedIn>(`/blocks/${id}/check-in`, {
-      method: "POST",
-      body: input,
-    });
+    return planner.callCheckInSession.call(this, id, input);
   }
   /** Mark a session started (from its reminder, or while it's on). */
   startSession(id: string, from: "app" | "reminder" = "app") {
-    return this.request<{ id: string; item_id: string; started_at: string }>(
-      `/blocks/${id}/start`,
-      { method: "POST", body: { from } },
-    );
+    return account.callStartSession.call(this, id, from);
   }
   /**
    * Move a block to the next free working time of the same length, one that
@@ -3394,42 +2227,33 @@ export class OrbynClient {
    * only such a time will do (409 when there's none).
    */
   rescheduleBlock(id: string, input: BlockRescheduleInput = {}) {
-    return this.request<TimeBlock>(`/blocks/${id}/reschedule`, {
-      method: "POST",
-      body: input,
-    });
+    return planner.callRescheduleBlock.call(this, id, input);
   }
   /** Another block for the same task and length, at `start_at` or the next free time after it. */
   duplicateBlock(id: string, input: BlockDuplicateInput = {}) {
-    return this.request<TimeBlock>(`/blocks/${id}/duplicate`, {
-      method: "POST",
-      body: input,
-    });
+    return planner.callDuplicateBlock.call(this, id, input);
   }
   /** Where your set-aside time went over the last `days`. */
   getAnalytics(days = 30) {
-    return this.request<PlannerAnalytics>(`/planner/analytics?days=${days}`);
+    return planner.callGetAnalytics.call(this, days);
   }
   getPlannerPrefs() {
-    return this.request<PlannerPrefs>("/planner/prefs");
+    return planner.callGetPlannerPrefs.call(this);
   }
   updatePlannerPrefs(input: PlannerPrefsInput) {
-    return this.request<PlannerPrefs>("/planner/prefs", {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdatePlannerPrefs.call(this, input);
   }
   /** What the planner has learned about how long your tasks really take. */
   getEstimates() {
-    return this.request<EstimateModel>("/planner/estimates");
+    return planner.callGetEstimates.call(this);
   }
   /** Everything the planner has learned from your history. */
   getLearning() {
-    return this.request<PlannerLearning>("/planner/learning");
+    return planner.callGetLearning.call(this);
   }
   /** What to do now: the free time until your next event and tasks for it. */
   getUpNext() {
-    return this.request<UpNext>("/planner/next");
+    return planner.callGetUpNext.call(this);
   }
   /**
    * Today, planned and due in one list: events, your sessions, tasks due
@@ -3438,8 +2262,7 @@ export class OrbynClient {
    * (pass the device's) counts only while the account has none of its own.
    */
   today(timezone?: string) {
-    const q = timezone ? `?${new URLSearchParams({ timezone })}` : "";
-    return this.request<TodayList>(`/today${q}`);
+    return planner.callToday.call(this, timezone);
   }
   /**
    * Your planned time, task by task, with each task's status: some tasks
@@ -3447,153 +2270,91 @@ export class OrbynClient {
    * session in the window (`from`, `to`), whose sessions each lists.
    */
   planned(options: { item_ids?: string[]; from?: string; to?: string } = {}) {
-    const q = new URLSearchParams();
-    if (options.item_ids?.length) q.set("item_ids", options.item_ids.join(","));
-    if (options.from && options.to) {
-      q.set("from", options.from);
-      q.set("to", options.to);
-    }
-    const text = q.toString();
-    return this.request<PlannedFeed>(`/planned${text ? `?${text}` : ""}`);
+    return planner.callPlanned.call(this, options);
   }
   /** Email yourself a digest now, to preview it. */
   sendTestDigest(kind: "morning" | "evening" = "morning") {
-    return this.request<void>("/planner/digest/test", {
-      method: "POST",
-      body: { kind },
-    });
+    return planner.callSendTestDigest.call(this, kind);
   }
   listFrames() {
-    return this.request<Frame[]>("/planner/frames");
+    return tasks.callListFrames.call(this);
   }
   createFrame(input: FrameInput) {
-    return this.request<Frame>("/planner/frames", {
-      method: "POST",
-      body: input,
-    });
+    return planner.callCreateFrame.call(this, input);
   }
   updateFrame(id: string, input: FrameUpdate) {
-    return this.request<Frame>(`/planner/frames/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdateFrame.call(this, id, input);
   }
   deleteFrame(id: string) {
-    return this.request<void>(`/planner/frames/${id}`, { method: "DELETE" });
+    return planner.callDeleteFrame.call(this, id);
   }
   // ---- habits ----
   listHabits() {
-    return this.request<Habit[]>("/planner/habits");
+    return tasks.callListHabits.call(this);
   }
   createHabit(input: HabitInput) {
-    return this.request<Habit>("/planner/habits", {
-      method: "POST",
-      body: input,
-    });
+    return planner.callCreateHabit.call(this, input);
   }
   updateHabit(id: string, input: HabitUpdate) {
-    return this.request<Habit>(`/planner/habits/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdateHabit.call(this, id, input);
   }
   deleteHabit(id: string) {
-    return this.request<void>(`/planner/habits/${id}`, { method: "DELETE" });
+    return planner.callDeleteHabit.call(this, id);
   }
   /** Propose sessions for the active habits; nothing is saved. */
   planHabits(input: HabitPlanInput = {}) {
-    return this.request<HabitPlan>("/planner/habits/plan", {
-      method: "POST",
-      body: input,
-    });
+    return planner.callPlanHabits.call(this, input);
   }
   /** Save proposed sessions, skipping any that now clash. */
   applyHabitPlan(
     blocks: { habit_id: string; start_at: string; end_at: string }[],
   ) {
-    return this.request<HabitBlock[]>("/planner/habits/plan/apply", {
-      method: "POST",
-      body: { blocks },
-    });
+    return planner.callApplyHabitPlan.call(this, blocks);
   }
   /** Record a habit session, or undo it against its current version. */
   getHabitBlock(id: string) {
-    return this.request<{
-      id: string;
-      outcome: "done" | "skipped" | null;
-      outcome_at: string | null;
-      version: number;
-    }>(`/planner/habits/blocks/${id}`);
+    return planner.callGetHabitBlock.call(this, id);
   }
   checkInHabitBlock(id: string, input: HabitCheckInInput) {
-    return this.request<{
-      id: string;
-      outcome: "done" | "skipped" | null;
-      outcome_at: string | null;
-      version: number;
-    }>(`/planner/habits/blocks/${id}/check-in`, {
-      method: "POST",
-      body: input,
-    });
+    return planner.callCheckInHabitBlock.call(this, id, input);
   }
   deleteHabitBlock(id: string, version?: number) {
-    const query = version === undefined ? "" : `?version=${version}`;
-    return this.request<void>(`/planner/habits/blocks/${id}${query}`, {
-      method: "DELETE",
-    });
+    return planner.callDeleteHabitBlock.call(this, id, version);
   }
   /** Skip one date ("YYYY-MM-DD") of a frame. */
   skipFrame(id: string, date: string) {
-    return this.request<Frame>(`/planner/frames/${id}/skip`, {
-      method: "POST",
-      body: { date },
-    });
+    return planner.callSkipFrame.call(this, id, date);
   }
   /** Bring back a skipped date of a frame. */
   unskipFrame(id: string, date: string) {
-    return this.request<Frame>(`/planner/frames/${id}/unskip`, {
-      method: "POST",
-      body: { date },
-    });
+    return planner.callUnskipFrame.call(this, id, date);
   }
   listPlaces() {
-    return this.request<Place[]>("/planner/places");
+    return tasks.callListPlaces.call(this);
   }
   createPlace(input: PlaceInput) {
-    return this.request<Place>("/planner/places", {
-      method: "POST",
-      body: input,
-    });
+    return planner.callCreatePlace.call(this, input);
   }
   updatePlace(id: string, input: PlaceUpdate) {
-    return this.request<Place>(`/planner/places/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdatePlace.call(this, id, input);
   }
   deletePlace(id: string) {
-    return this.request<void>(`/planner/places/${id}`, { method: "DELETE" });
+    return planner.callDeletePlace.call(this, id);
   }
   /** A proposed plan; nothing is saved until `applyPlan`. */
   previewPlan(input: PlanPreviewInput = {}) {
-    return this.request<Plan>("/planner/preview", {
-      method: "POST",
-      body: input,
-    });
+    return assistant.callPreviewPlan.call(this, input);
   }
   getPlan(id: string) {
-    return this.request<Plan>(`/planner/plans/${id}`);
+    return planner.callGetPlan.call(this, id);
   }
   /** Tune a plan (tasks in or out, estimates, pinned blocks, keep-free, scope); returns the new plan that replaces it. */
   tunePlan(id: string, input: PlanTuneInput) {
-    return this.request<Plan>(`/planner/plans/${id}`, {
-      method: "PATCH",
-      body: input,
-    });
+    return planner.callTunePlan.call(this, id, input);
   }
   /** Whether the calendar or tasks changed since the plan was made. */
   planStale(id: string) {
-    return this.request<PlanStaleness>(`/planner/plans/${id}/stale`);
+    return planner.callPlanStale.call(this, id);
   }
   /**
    * Save a plan: its new sessions, and the late sessions to move before
@@ -3601,163 +2362,106 @@ export class OrbynClient {
    * omitted).
    */
   applyPlan(id: string, input: PlanApplyInput = {}) {
-    return this.request<PlanApplied>(`/planner/plans/${id}/apply`, {
-      method: "POST",
-      body: input,
-    });
+    return planner.callApplyPlan.call(this, id, input);
   }
   /** Unfinished blocks, tasks at risk, and blocks that clash with events. */
   plannerReview() {
-    return this.request<PlannerReview>("/planner/review");
+    return assistant.callPlannerReview.call(this);
   }
   /** A plan for unfinished work (all of it, or the given blocks). */
   rollForward(blockIds?: string[]) {
-    return this.request<Plan>("/planner/roll-forward", {
-      method: "POST",
-      body: blockIds ? { block_ids: blockIds } : {},
-    });
+    return planner.callRollForward.call(this, blockIds);
   }
   /**
    * Create (or replace) your private calendar subscription link, or with
    * `busy: true` the link that only shows when you're busy.
    */
   createCalendarFeed(options: { busy?: boolean } = {}) {
-    return this.request<CalendarFeed>("/me/calendar-feed", {
-      method: "POST",
-      body: options.busy ? { busy: true } : {},
-    });
+    return planner.callCreateCalendarFeed.call(this, options);
   }
   deleteCalendarFeed(options: { busy?: boolean } = {}) {
-    return this.request<void>(
-      `/me/calendar-feed${options.busy ? "?busy=1" : ""}`,
-      { method: "DELETE" },
-    );
+    return planner.callDeleteCalendarFeed.call(this, options);
   }
   /** Which feed links are on, and whether the feed includes time blocks. */
   calendarFeedSettings() {
-    return this.request<CalendarFeedSettings>("/me/calendar-feed");
+    return planner.callCalendarFeedSettings.call(this);
   }
   updateCalendarFeedSettings(input: CalendarFeedSettingsInput) {
-    return this.request<CalendarFeedSettings>("/me/calendar-feed", {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdateCalendarFeedSettings.call(this, input);
   }
 
   // ---- calendars from other apps (ICS links) ----
   listCalendarSubscriptions() {
-    return this.request<CalendarSubscription[]>("/me/calendar-subscriptions");
+    return tasks.callListCalendarSubscriptions.call(this);
   }
   createCalendarSubscription(input: CalendarSubscriptionInput) {
-    return this.request<CalendarSubscription>("/me/calendar-subscriptions", {
-      method: "POST",
-      body: input,
-    });
+    return planner.callCreateCalendarSubscription.call(this, input);
   }
   updateCalendarSubscription(id: string, input: CalendarSubscriptionUpdate) {
-    return this.request<CalendarSubscription>(
-      `/me/calendar-subscriptions/${id}`,
-      { method: "PUT", body: input },
-    );
+    return tasks.callUpdateCalendarSubscription.call(this, id, input);
   }
   deleteCalendarSubscription(id: string) {
-    return this.request<void>(`/me/calendar-subscriptions/${id}`, {
-      method: "DELETE",
-    });
+    return planner.callDeleteCalendarSubscription.call(this, id);
   }
   /** Fetch it now instead of waiting for the hourly refresh. */
   refreshCalendarSubscription(id: string) {
-    return this.request<CalendarSubscription>(
-      `/me/calendar-subscriptions/${id}/refresh`,
-      { method: "POST" },
-    );
+    return planner.callRefreshCalendarSubscription.call(this, id);
   }
 
   /** Events matching words, a year either side of today unless a range is given. */
   searchCalendar(q: string, range: { from?: string; to?: string } = {}) {
-    const params = new URLSearchParams({ q });
-    if (range.from) params.set("from", range.from);
-    if (range.to) params.set("to", range.to);
-    return this.request<CalendarSearch>(`/calendar/search?${params}`);
+    return search.callSearchCalendar.call(this, q, range);
   }
   /** Busy times of up to 10 people you share a team with (at most 31 days). */
   availability(userIds: string[], from: string, to: string) {
-    const q = new URLSearchParams({ user_ids: userIds.join(","), from, to });
-    return this.request<UserAvailability[]>(`/availability?${q}`);
+    return booking.callAvailability.call(this, userIds, from, to);
   }
 
   // ---- invitations (public: the invitee's private link) ----
   getRsvp(token: string) {
-    return this.request<RsvpView>(`/rsvp/${encodeURIComponent(token)}`, {
-      anonymous: true,
-    });
+    return booking.callGetRsvp.call(this, token);
   }
   answerRsvp(token: string, status: "accepted" | "declined" | "tentative") {
-    return this.request<RsvpView>(`/rsvp/${encodeURIComponent(token)}`, {
-      method: "POST",
-      body: { status },
-      anonymous: true,
-    });
+    return booking.callAnswerRsvp.call(this, token, status);
   }
 
   // ---- team time ----
   teamAvailability(teamId: string, from: string, to: string) {
-    const q = new URLSearchParams({ from, to });
-    return this.request<MemberAvailability[]>(
-      `/teams/${teamId}/availability?${q}`,
-    );
+    return booking.callTeamAvailability.call(this, teamId, from, to);
   }
   teamWorkload(teamId: string, from: string, to: string) {
-    const q = new URLSearchParams({ from, to });
-    return this.request<MemberWorkload[]>(`/teams/${teamId}/workload?${q}`);
+    return teams.callTeamWorkload.call(this, teamId, from, to);
   }
   /** Team owners' analytics: set-aside time per member, over `days`. */
   teamAnalytics(teamId: string, days = 30) {
-    return this.request<TeamAnalytics>(
-      `/teams/${teamId}/analytics?days=${days}`,
-    );
+    return teams.callTeamAnalytics.call(this, teamId, days);
   }
   suggestMeetingTimes(
     teamId: string,
     params: { from: string; to: string; duration: number; user_ids?: string[] },
   ) {
-    const q = new URLSearchParams({
-      from: params.from,
-      to: params.to,
-      duration: String(params.duration),
-    });
-    if (params.user_ids?.length) q.set("user_ids", params.user_ids.join(","));
-    return this.request<MeetingSlot[]>(`/teams/${teamId}/suggest?${q}`);
+    return booking.callSuggestMeetingTimes.call(this, teamId, params);
   }
 
   // ---- booking pages ----
   listBookingPages() {
-    return this.request<BookingPage[]>("/booking-pages");
+    return booking.callListBookingPages.call(this);
   }
   createBookingPage(input: BookingPageInput) {
-    return this.request<BookingPage>("/booking-pages", {
-      method: "POST",
-      body: input,
-    });
+    return booking.callCreateBookingPage.call(this, input);
   }
   updateBookingPage(id: string, input: BookingPageUpdate) {
-    return this.request<BookingPage>(`/booking-pages/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return booking.callUpdateBookingPage.call(this, id, input);
   }
   deleteBookingPage(id: string) {
-    return this.request<void>(`/booking-pages/${id}`, { method: "DELETE" });
+    return booking.callDeleteBookingPage.call(this, id);
   }
   /** One page's upcoming and recent bookings (older apps; prefer `bookings`). */
   listBookings(pageId: string) {
-    return this.request<Booking[]>(`/booking-pages/${pageId}/bookings`);
+    return booking.callListBookings.call(this, pageId);
   }
   cancelBooking(pageId: string, bookingId: string) {
-    return this.request<{ cancelled: boolean }>(
-      `/booking-pages/${pageId}/bookings/${bookingId}/cancel`,
-      { method: "POST" },
-    );
+    return booking.callCancelBooking.call(this, pageId, bookingId);
   }
 
   // ---- tracking bookings ----
@@ -3791,9 +2495,7 @@ export class OrbynClient {
     );
   }
   bookingStats(pageId?: string) {
-    return this.request<BookingStats>(
-      `/bookings/stats${pageId ? `?page_id=${pageId}` : ""}`,
-    );
+    return booking.callBookingStats.call(this, pageId);
   }
   /** The same bookings as CSV text, for spreadsheets. */
   exportBookingsCsv(
@@ -3809,86 +2511,48 @@ export class OrbynClient {
     id: string,
     params: { date?: string; days?: number; timezone: string },
   ) {
-    const q = new URLSearchParams({ timezone: params.timezone });
-    if (params.date) q.set("date", params.date);
-    if (params.days) q.set("days", String(params.days));
-    return this.request<
-      Pick<PublicBookingPage, "timezone" | "duration" | "slots">
-    >(`/bookings/${id}/slots?${q}`);
+    return booking.callGetBookingSlots.call(this, id, params);
   }
   getBooking(id: string) {
-    return this.request<BookingDetail>(`/bookings/${id}`);
+    return booking.callGetBooking.call(this, id);
   }
   approveBooking(id: string) {
-    return this.request<BookingDetail>(`/bookings/${id}/approve`, {
-      method: "POST",
-    });
+    return booking.callApproveBooking.call(this, id);
   }
   declineBooking(id: string, reason = "") {
-    return this.request<BookingDetail>(`/bookings/${id}/decline`, {
-      method: "POST",
-      body: { reason },
-    });
+    return booking.callDeclineBooking.call(this, id, reason);
   }
   /** Cancel as a host; the booker is emailed with your reason. */
   cancelBookingAsHost(id: string, reason = "") {
-    return this.request<BookingDetail>(`/bookings/${id}/cancel`, {
-      method: "POST",
-      body: { reason },
-    });
+    return booking.callCancelBookingAsHost.call(this, id, reason);
   }
   rescheduleBooking(id: string, startAt: string) {
-    return this.request<BookingDetail>(`/bookings/${id}/reschedule`, {
-      method: "POST",
-      body: { start_at: startAt },
-    });
+    return booking.callRescheduleBooking.call(this, id, startAt);
   }
   setBookingNoShow(id: string, noShow: boolean) {
-    return this.request<BookingDetail>(`/bookings/${id}/no-show`, {
-      method: "PUT",
-      body: { no_show: noShow },
-    });
+    return booking.callSetBookingNoShow.call(this, id, noShow);
   }
   setBookingNote(id: string, hostNote: string) {
-    return this.request<BookingDetail>(`/bookings/${id}/note`, {
-      method: "PUT",
-      body: { host_note: hostNote },
-    });
+    return booking.callSetBookingNote.call(this, id, hostNote);
   }
   /** Public: a booking from the booker's manage link. */
   getManagedBooking(token: string) {
-    return this.request<ManagedBooking>(
-      `/book/manage/${encodeURIComponent(token)}`,
-      { anonymous: true },
-    );
+    return booking.callGetManagedBooking.call(this, token);
   }
   /** Public: free times to move a booking to. */
   getRescheduleSlots(
     token: string,
     params: { date?: string; days?: number; timezone: string },
   ) {
-    const q = new URLSearchParams({ timezone: params.timezone });
-    if (params.date) q.set("date", params.date);
-    if (params.days) q.set("days", String(params.days));
-    return this.request<
-      Pick<PublicBookingPage, "timezone" | "duration" | "slots">
-    >(`/book/manage/${encodeURIComponent(token)}/slots?${q}`, {
-      anonymous: true,
-    });
+    return booking.callGetRescheduleSlots.call(this, token, params);
   }
   /** Public: move a booking from its manage link. */
   rescheduleByToken(token: string, startAt: string) {
-    return this.request<ManagedBooking>(
-      `/book/manage/${encodeURIComponent(token)}/reschedule`,
-      { method: "POST", body: { start_at: startAt }, anonymous: true },
-    );
+    return booking.callRescheduleByToken.call(this, token, startAt);
   }
   /** Public: cancel from the manage link. */
   cancelByManageToken(token: string, reason = "") {
-    return this.request<ManagedBooking>(
-      `/book/manage/${encodeURIComponent(token)}/cancel`,
-      { method: "POST", body: { reason }, anonymous: true },
-    );
+    return booking.callCancelByManageToken.call(this, token, reason);
   }
   /** Public: a booking page and its free times (no sign-in). Without a
    * `duration`, the page's first length is shown. */
@@ -3901,127 +2565,85 @@ export class OrbynClient {
       timezone: string;
     },
   ) {
-    const q = new URLSearchParams({ timezone: params.timezone });
-    if (params.duration) q.set("duration", String(params.duration));
-    if (params.date) q.set("date", params.date);
-    if (params.days) q.set("days", String(params.days));
-    return this.request<PublicBookingPage>(
-      `/book/${encodeURIComponent(slug)}?${q}`,
-      { anonymous: true },
-    );
+    return booking.callGetPublicBookingPage.call(this, slug, params);
   }
   /** Public: ask for a time on a booking page. */
   book(slug: string, input: BookingRequest) {
-    return this.request<BookingReceipt>(`/book/${encodeURIComponent(slug)}`, {
-      method: "POST",
-      body: input,
-      anonymous: true,
-    });
+    return booking.callBook.call(this, slug, input);
   }
   /** Public: the link from the confirmation email. */
   confirmBooking(token: string) {
-    return this.request<BookingReceipt>(
-      `/book/confirm/${encodeURIComponent(token)}`,
-      {
-        method: "POST",
-        anonymous: true,
-      },
-    );
+    return booking.callConfirmBooking.call(this, token);
   }
   /** Public: the cancel link from a booking email. */
   cancelBookingByToken(token: string) {
-    return this.request<{ cancelled: boolean }>(
-      `/book/cancel/${encodeURIComponent(token)}`,
-      { method: "POST", anonymous: true },
-    );
+    return booking.callCancelBookingByToken.call(this, token);
   }
 
   // ---- open invites ----
   listOpenInvites() {
-    return this.request<OpenInvite[]>("/open-invites");
+    return booking.callListOpenInvites.call(this);
   }
   /** A one-off link offering hand-picked windows; its `url` is the link to send. */
   createOpenInvite(input: OpenInviteInput) {
-    return this.request<OpenInvite>("/open-invites", {
-      method: "POST",
-      body: input,
-    });
+    return booking.callCreateOpenInvite.call(this, input);
   }
   getOpenInvite(id: string) {
-    return this.request<OpenInvite>(`/open-invites/${id}`);
+    return booking.callGetOpenInvite.call(this, id);
   }
   /** Withdraw an invite (a booking made from it is cancelled). */
   cancelOpenInvite(id: string) {
-    return this.request<void>(`/open-invites/${id}`, { method: "DELETE" });
+    return booking.callCancelOpenInvite.call(this, id);
   }
   /** Public: an open invite and its free times, from its link. */
   getPublicInvite(token: string, timezone: string) {
-    return this.request<PublicInvite>(
-      `/invite/${encodeURIComponent(token)}?${new URLSearchParams({ timezone })}`,
-      { anonymous: true },
-    );
+    return booking.callGetPublicInvite.call(this, token, timezone);
   }
   /** Public: pick a time from an open invite (booked at once). */
   bookInvite(token: string, input: InviteBookingRequest) {
-    return this.request<BookingReceipt>(
-      `/invite/${encodeURIComponent(token)}`,
-      { method: "POST", body: input, anonymous: true },
-    );
+    return booking.callBookInvite.call(this, token, input);
   }
 
   // ---- profile page ----
   getProfile() {
-    return this.request<Profile>("/me/profile");
+    return account.callGetProfile.call(this);
   }
   /** `handle: null` removes your page. */
   updateProfile(input: ProfileInput) {
-    return this.request<Profile>("/me/profile", { method: "PUT", body: input });
+    return tasks.callUpdateProfile.call(this, input);
   }
   /** Public: someone's profile page and their booking pages. */
   getPublicProfile(handle: string) {
-    return this.request<PublicProfile>(`/u/${encodeURIComponent(handle)}`, {
-      anonymous: true,
-    });
+    return account.callGetPublicProfile.call(this, handle);
   }
 
   // ---- API keys and webhooks ----
   /** Public: the OpenAPI description of the API, as YAML. */
   openApiSpec() {
-    return this.request<string>("/openapi.yaml", {
-      anonymous: true,
-      raw: true,
-    });
+    return connections.callOpenApiSpec.call(this);
   }
   listApiKeys() {
-    return this.request<ApiKey[]>("/me/api-keys");
+    return tasks.callListApiKeys.call(this);
   }
   /** The returned `key` is shown once. */
   createApiKey(name: string) {
-    return this.request<NewApiKey>("/me/api-keys", {
-      method: "POST",
-      body: { name },
-    });
+    return account.callCreateApiKey.call(this, name);
   }
   deleteApiKey(id: string) {
-    return this.request<void>(`/me/api-keys/${id}`, { method: "DELETE" });
+    return account.callDeleteApiKey.call(this, id);
   }
   // ---- Connected agents (MCP) ----
   /** Your connected agents, the MCP address, and until when old keys work there. */
   agents() {
-    return this.request<AgentsOverview>("/me/agents");
+    return assistant.callAgents.call(this);
   }
   /** The MCP server's public description, for the developer page. */
   developerCatalog() {
-    return this.request<McpCatalog>("/developers/mcp", { anonymous: true });
+    return connections.callDeveloperCatalog.call(this);
   }
   /** Review explicit managed AI consent for an owned plugin connection. */
   async pluginAiPermission(id: string, signal?: AbortSignal) {
-    return pluginAiPermissionView.parse(
-      await this.request<unknown>(`/me/agents/${id}/ai-permission`, {
-        fresh: true,
-        signal,
-      }),
-    );
+    return connections.callPluginAiPermission.call(this, id, signal);
   }
   /** Only the signed-in owner can enable or revoke provider-bound plugin AI. */
   async setPluginAiPermission(
@@ -4029,95 +2651,58 @@ export class OrbynClient {
     input: PluginAiPermissionInput,
     signal?: AbortSignal,
   ) {
-    return pluginAiPermissionView.parse(
-      await this.request<unknown>(`/me/agents/${id}/ai-permission`, {
-        method: "PUT",
-        body: pluginAiPermissionInput.parse(input),
-        signal,
-      }),
-    );
+    return connections.callSetPluginAiPermission.call(this, id, input, signal);
   }
   /** A connection's toolsets besides core (Settings → Connected agents). */
   setAgentToolsets(id: string, toolsets: AgentToolset[]) {
-    return this.request<AgentGrant>(`/me/agents/${id}/toolsets`, {
-      method: "PUT",
-      body: { toolsets },
-    });
+    return assistant.callSetAgentToolsets.call(this, id, toolsets);
   }
   /**
    * A connection's trust: full power, ask first or suggest only, per space,
    * and which ask-first items it may do alone (Settings → Connected agents).
    */
   setAgentTrust(id: string, input: AgentTrustInput) {
-    return this.request<AgentGrant>(`/me/agents/${id}/trust`, {
-      method: "PUT",
-      body: input,
-    });
+    return assistant.callSetAgentTrust.call(this, id, input);
   }
   /** What a connection is sent, its wake-up address and unread count (H0). */
   agentInbox(id: string) {
-    return this.request<AgentInboxSettings>(`/me/agents/${id}/inbox`);
+    return connections.callAgentInbox.call(this, id);
   }
   /** The kinds a connection is not sent ("Send to this agent" off). */
   setAgentInboxMutes(id: string, muted: AgentInboxKind[]) {
-    return this.request<AgentInboxSettings>(`/me/agents/${id}/inbox`, {
-      method: "PUT",
-      body: { muted },
-    });
+    return connections.callSetAgentInboxMutes.call(this, id, muted);
   }
   /** Sets the wake-up address; the signing secret comes back once. */
   setAgentWake(id: string, url: string) {
-    return this.request<NewAgentWake>(`/me/agents/${id}/wake`, {
-      method: "PUT",
-      body: { url },
-    });
+    return assistant.callSetAgentWake.call(this, id, url);
   }
   clearAgentWake(id: string) {
-    return this.request<AgentInboxSettings>(`/me/agents/${id}/wake`, {
-      method: "DELETE",
-    });
+    return assistant.callClearAgentWake.call(this, id);
   }
   /** Calls the wake-up address now and says what it answered. */
   testAgentWake(id: string) {
-    return this.request<{
-      ok: boolean;
-      status: number | null;
-      error: string | null;
-    }>(`/me/agents/${id}/wake/test`, { method: "POST" });
+    return assistant.callTestAgentWake.call(this, id);
   }
   /** The person's standing rules for their agents. */
   agentRules() {
-    return this.request<AgentRule[]>("/me/agent-rules");
+    return assistant.callAgentRules.call(this);
   }
   addAgentRule(input: AgentRuleInput) {
-    return this.request<AgentRule>("/me/agent-rules", {
-      method: "POST",
-      body: input,
-    });
+    return assistant.callAddAgentRule.call(this, input);
   }
   updateAgentRule(id: string, input: AgentRuleInput) {
-    return this.request<AgentRule>(`/me/agent-rules/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return assistant.callUpdateAgentRule.call(this, id, input);
   }
   deleteAgentRule(id: string) {
-    return this.request<void>(`/me/agent-rules/${id}`, { method: "DELETE" });
+    return assistant.callDeleteAgentRule.call(this, id);
   }
   /** "About me for agents" and each space's instructions (H8). */
   agentContext() {
-    return this.request<AgentContextSettings>("/me/agent-context");
+    return connections.callAgentContext.call(this);
   }
   /** Fresh, account-bound identity for one independent automation runtime. */
   async automationAgentIdentity(lane: AutomationAgentLane) {
-    const saved = await this.request<AutomationAgentIdentity>(
-      `/me/assistant/identity/${lane}`,
-      { fresh: true },
-    );
-    const checked = automationAgentIdentity.parse(saved);
-    if (checked.lane !== lane)
-      throw new Error("Agent identity belongs to another runtime.");
-    return checked;
+    return assistant.callAutomationAgentIdentity.call(this, lane);
   }
   async updateAutomationAgentIdentity(
     lane: AutomationAgentLane,
@@ -4138,7 +2723,7 @@ export class OrbynClient {
     return checked;
   }
   agentSettings(options?: Pick<RequestOptions, "fresh">) {
-    return this.request<PersonalAgentSettings>("/me/agent", options);
+    return assistant.callAgentSettings.call(this, options);
   }
   /** Keep mounted assistant surfaces current after a settings save in this client. */
   onAgentSettings(listener: (settings: PersonalAgentSettings) => void) {
@@ -4148,31 +2733,19 @@ export class OrbynClient {
     };
   }
   async assistantWorkControls() {
-    return assistantWorkControls.parse(
-      await this.request<unknown>("/me/assistant/work-controls", {
-        fresh: true,
-      }),
-    );
+    return assistant.callAssistantWorkControls.call(this);
   }
   async updateAssistantWorkControls(
     input: Partial<import("@orbyn/core").AssistantWorkControls>,
   ) {
-    return assistantWorkControls.parse(
-      await this.request<unknown>("/me/assistant/work-controls", {
-        method: "PATCH",
-        body: assistantWorkControlsInput.parse(input),
-      }),
-    );
+    return assistant.callUpdateAssistantWorkControls.call(this, input);
   }
   /** The person's optional night window and morning review preference. */
   nightShiftSettings() {
-    return this.request<NightShiftSettings>("/me/assistant/night-shift");
+    return account.callNightShiftSettings.call(this);
   }
   updateNightShiftSettings(input: NightShiftSettings) {
-    return this.request<NightShiftSettings>("/me/assistant/night-shift", {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdateNightShiftSettings.call(this, input);
   }
   async updateAgentSettings(input: AgentIdentityInput) {
     const token = await this.getToken();
@@ -4188,111 +2761,72 @@ export class OrbynClient {
   }
   /** Opens the About me page, making it first when there isn't one. */
   openAgentProfile() {
-    return this.request<{ doc_id: string; title: string; created: boolean }>(
-      "/me/agent-profile",
-      { method: "POST" },
-    );
+    return assistant.callOpenAgentProfile.call(this);
   }
   /** Changes a space's instructions for agents (null: Personal). */
   setAgentInstructions(teamId: string | null, text: string) {
-    return this.request<AgentContextSettings>(
-      teamId ? `/teams/${teamId}/agent-instructions` : "/me/agent-instructions",
-      { method: "PUT", body: { text } },
-    );
+    return assistant.callSetAgentInstructions.call(this, teamId, text);
   }
   /** Questions agents asked, waiting for an answer. */
   agentQuestions() {
-    return this.request<AgentQuestion[]>("/me/questions");
+    return assistant.callAgentQuestions.call(this);
   }
   /** Answers an agent's question (its card, or the push's buttons). */
   answerAgentQuestion(id: string, answer: string, via: "app" | "push" = "app") {
-    return this.request<AgentQuestion>(`/me/questions/${id}/answer`, {
-      method: "POST",
-      body: { answer, via },
-    });
+    return assistant.callAnswerAgentQuestion.call(this, id, answer, via);
   }
   /** A new agent key; the returned `key` is shown once. */
   createAgentKey(input: AgentKeyInput) {
-    return this.request<NewAgentKey>("/me/agent-keys", {
-      method: "POST",
-      body: input,
-    });
+    return assistant.callCreateAgentKey.call(this, input);
   }
   /** Revoke a connection (an agent key, or an old key's MCP access). */
   revokeAgent(id: string) {
-    return this.request<void>(`/me/agents/${id}`, { method: "DELETE" });
+    return assistant.callRevokeAgent.call(this, id);
   }
   /** Restore a connection Orbyn paused for misbehaving. */
   restoreAgent(id: string) {
-    return this.request<void>(`/me/agents/${id}/restore`, { method: "POST" });
+    return assistant.callRestoreAgent.call(this, id);
   }
   /** What one connection did, newest first. */
   agentActivity(id: string) {
-    return this.request<AgentActivity[]>(`/me/agents/${id}/activity`);
+    return assistant.callAgentActivity.call(this, id);
   }
   /** Undo one change an agent made directly (from its activity). */
   undoAgentChange(activityId: string) {
-    return this.request<{ undone: true; summary: string }>(
-      `/me/agents/activity/${activityId}/undo`,
-      { method: "POST" },
-    );
+    return assistant.callUndoAgentChange.call(this, activityId);
   }
   /** Undo a whole job of one agent (a plan, or one call's changes). */
   undoAgentJob(grantId: string, job: string) {
-    return this.request<{ undone: number }>(
-      `/me/agents/${grantId}/jobs/${encodeURIComponent(job)}/undo`,
-      { method: "POST" },
-    );
+    return assistant.callUndoAgentJob.call(this, grantId, job);
   }
   /**
    * What one assistant reply changed: the built-in assistant's activity for
    * `job` (a reply's `assistant_run.plan_job`), newest first.
    */
   async assistantJobChanges(job: string) {
-    const { grants } = await this.agents();
-    const grant = grants.find((g) => g.kind === "assistant");
-    if (!grant) return { grantId: null, changes: [] as AgentActivity[] };
-    const activity = await this.agentActivity(grant.id);
-    return {
-      grantId: grant.id,
-      changes: activity.filter((a) => a.job === job),
-    };
+    return assistant.callAssistantJobChanges.call(this, job);
   }
   /** Current authorized work evidence, independent of device presence. */
   async assistantProfiles(signal?: AbortSignal) {
-    return assistantProfiles.parse(
-      await this.request<unknown>("/me/assistant/profiles", {
-        fresh: true,
-        signal,
-      }),
-    );
+    return assistant.callAssistantProfiles.call(this, signal);
   }
   /** Owner-visible restrictions; saving requires the revision just read. */
   async assistantRules() {
-    return assistantRulesSnapshot.parse(
-      await this.request<unknown>("/me/assistant/rules", { fresh: true }),
-    );
+    return assistant.callAssistantRules.call(this);
   }
   async replaceAssistantRules(
     expectedRevision: number,
     rules: AssistantActionRule[],
   ) {
-    const body = assistantRulesInput.parse({
-      expected_revision: expectedRevision,
+    return assistant.callReplaceAssistantRules.call(
+      this,
+      expectedRevision,
       rules,
-    });
-    return assistantRulesSnapshot.parse(
-      await this.request<unknown>("/me/assistant/rules", {
-        method: "PUT",
-        body,
-      }),
     );
   }
   /** Durable per-agent work estimates and start limits. */
   async assistantBudgets() {
-    return assistantBudgets.parse(
-      await this.request<unknown>("/me/assistant/budgets", { fresh: true }),
-    );
+    return assistant.callAssistantBudgets.call(this);
   }
   async replaceAssistantBudget(
     lane: "background" | "overnight",
@@ -4304,19 +2838,7 @@ export class OrbynClient {
       | "per_run_token_limit"
     >,
   ) {
-    const parsedLane = assistantBudgetLane.parse(lane);
-    const body = assistantBudgetUpdate.parse({
-      expected_revision: value.revision,
-      daily_token_limit: value.daily_token_limit,
-      hourly_start_limit: value.hourly_start_limit,
-      per_run_token_limit: value.per_run_token_limit,
-    });
-    return assistantBudgetView.parse(
-      await this.request<unknown>(`/me/assistant/budgets/${parsedLane}`, {
-        method: "PUT",
-        body,
-      }),
-    );
+    return assistant.callReplaceAssistantBudget.call(this, lane, value);
   }
   async requestAssistantHandoff(value: {
     producer_job_id: string;
@@ -4325,62 +2847,26 @@ export class OrbynClient {
     title: string;
     instruction: string;
   }) {
-    return assistantHandoff.parse(
-      await this.request<unknown>("/me/assistant/handoffs", {
-        method: "POST",
-        body: assistantHandoffInput.parse(value),
-      }),
-    );
+    return assistant.callRequestAssistantHandoff.call(this, value);
   }
   async assistantHandoffSource(jobId: string) {
-    const result = await this.request<{ source: unknown; lane: unknown }>(
-      `/me/assistant/handoffs/source/${encodeURIComponent(jobId)}`,
-      { fresh: true },
-    );
-    return {
-      source: assistantHandoffSource.parse(result.source),
-      lane: assistantHandoffLane.parse(result.lane),
-    };
+    return assistant.callAssistantHandoffSource.call(this, jobId);
   }
   async assistantHandoff(id: string) {
-    return assistantHandoff.parse(
-      await this.request<unknown>(
-        `/me/assistant/handoffs/${encodeURIComponent(id)}`,
-        { fresh: true },
-      ),
-    );
+    return assistant.callAssistantHandoff.call(this, id);
   }
   // ---- The Review inbox ----
   async assistantConversation(signal?: AbortSignal) {
-    return assistantConversationHome.parse(
-      await this.request<unknown>("/me/assistant/conversation", {
-        fresh: true,
-        signal,
-      }),
-    );
+    return assistant.callAssistantConversation.call(this, signal);
   }
   async assistantConversationDeliveryPreferences() {
-    return assistantConversationPreferences.parse(
-      await this.request<unknown>("/me/assistant/conversation/preferences", {
-        fresh: true,
-      }),
-    );
+    return assistant.callAssistantConversationDeliveryPreferences.call(this);
   }
   async setAssistantConversationMuted(muted: boolean) {
-    return assistantConversationPreferences.parse(
-      await this.request<unknown>("/me/assistant/conversation/preferences", {
-        method: "PATCH",
-        body: assistantConversationMuteInput.parse({ muted }),
-      }),
-    );
+    return assistant.callSetAssistantConversationMuted.call(this, muted);
   }
   async openAssistantConversation(signal?: AbortSignal) {
-    return assistantConversationDestination.parse(
-      await this.request<unknown>("/me/assistant/conversation", {
-        method: "POST",
-        signal,
-      }),
-    );
+    return assistant.callOpenAssistantConversation.call(this, signal);
   }
   async assistantConversationFeed(
     destinationId: string,
@@ -4389,35 +2875,21 @@ export class OrbynClient {
     signal?: AbortSignal,
     through?: string,
   ) {
-    const query = assistantConversationQuery.parse({ after, limit, through });
-    const page = assistantConversationPage.parse(
-      await this.request<unknown>(
-        `/me/assistant/conversations/${encodeURIComponent(destinationId)}?${new URLSearchParams({ after: query.after, limit: String(query.limit), ...(query.through ? { through: query.through } : {}) })}`,
-        { fresh: true, signal },
-      ),
+    return assistant.callAssistantConversationFeed.call(
+      this,
+      destinationId,
+      after,
+      limit,
+      signal,
+      through,
     );
-    if (
-      page.destination.id !== destinationId ||
-      page.entries.length > limit ||
-      BigInt(page.cursor) < BigInt(after) ||
-      (through !== undefined && BigInt(page.cursor) > BigInt(through)) ||
-      page.entries.some((e) => BigInt(e.sequence) <= BigInt(after))
-    )
-      throw new Error(
-        "Conversation response does not match the requested stream.",
-      );
-    return page;
   }
   async assistantConversationForChat(chatId: string, signal?: AbortSignal) {
-    const value = await this.request<unknown>(
-      `/me/assistant/conversation/for-chat/${encodeURIComponent(chatId)}`,
-      { fresh: true, signal },
+    return assistant.callAssistantConversationForChat.call(
+      this,
+      chatId,
+      signal,
     );
-    if (value === null) return null;
-    const destination = assistantConversationDestination.parse(value);
-    if (destination.chat_id !== chatId)
-      throw new Error("Conversation does not match the requested chat.");
-    return destination;
   }
   async assistantSavedHistory(
     destinationId: string,
@@ -4426,63 +2898,38 @@ export class OrbynClient {
     version?: string,
     limit = 25,
   ) {
-    const query = assistantSavedHistoryQuery.parse({ before, version, limit });
-    const params = new URLSearchParams({ limit: String(query.limit) });
-    if (query.before !== undefined) params.set("before", String(query.before));
-    if (query.version) params.set("version", query.version);
-    const page = assistantSavedHistory.parse(
-      await this.request<unknown>(
-        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/history?${params}`,
-        { fresh: true },
-      ),
+    return assistant.callAssistantSavedHistory.call(
+      this,
+      destinationId,
+      chatId,
+      before,
+      version,
+      limit,
     );
-    if (
-      page.destination_id !== destinationId ||
-      page.chat_id !== chatId ||
-      (version && page.version !== version) ||
-      page.turns.length > limit ||
-      (before !== undefined && page.before !== null && page.before >= before)
-    )
-      throw new Error(
-        "Saved history does not match the requested conversation.",
-      );
-    return page;
   }
   async assistantConversationDetails(
     destinationId: string,
     entryId: string,
     signal?: AbortSignal,
   ) {
-    const details = assistantConversationDetails.parse(
-      await this.request<unknown>(
-        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/entries/${encodeURIComponent(entryId)}/details`,
-        { fresh: true, signal },
-      ),
+    return assistant.callAssistantConversationDetails.call(
+      this,
+      destinationId,
+      entryId,
+      signal,
     );
-    if (
-      details.destination_id !== destinationId ||
-      details.entry.id !== entryId
-    )
-      throw new Error("Details do not match the requested message.");
-    return details;
   }
   async assistantConversationEntry(
     destinationId: string,
     entryId: string,
     signal?: AbortSignal,
   ) {
-    const location = assistantConversationLocation.parse(
-      await this.request<unknown>(
-        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/entries/${encodeURIComponent(entryId)}`,
-        { fresh: true, signal },
-      ),
+    return assistant.callAssistantConversationEntry.call(
+      this,
+      destinationId,
+      entryId,
+      signal,
     );
-    if (
-      location.destination.id !== destinationId ||
-      location.entry_id !== entryId
-    )
-      throw new Error("Conversation entry does not match its destination.");
-    return location;
   }
   async answerAssistantConversationQuestion(
     destinationId: string,
@@ -4490,44 +2937,23 @@ export class OrbynClient {
     answer: string,
     turnId: string,
   ) {
-    const result = assistantConversationAnswer.parse(
-      await this.request<unknown>(
-        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/entries/${encodeURIComponent(entryId)}/answer`,
-        {
-          method: "POST",
-          body: assistantConversationAnswerInput.parse({
-            answer,
-            turn_id: turnId,
-          }),
-        },
-      ),
+    return assistant.callAnswerAssistantConversationQuestion.call(
+      this,
+      destinationId,
+      entryId,
+      answer,
+      turnId,
     );
-    if (
-      result.destination_id !== destinationId ||
-      result.reply_to_entry_id !== entryId ||
-      result.turn_id !== turnId
-    )
-      throw new Error("Answer receipt does not match the requested question.");
-    return result;
   }
   async acknowledgeAssistantConversation(
     destinationId: string,
     through: string,
   ) {
-    const destination = assistantConversationDestination.parse(
-      await this.request<unknown>(
-        `/me/assistant/conversations/${encodeURIComponent(destinationId)}/read`,
-        {
-          method: "POST",
-          body: assistantConversationReadInput.parse({ through }),
-        },
-      ),
+    return assistant.callAcknowledgeAssistantConversation.call(
+      this,
+      destinationId,
+      through,
     );
-    if (destination.id !== destinationId)
-      throw new Error(
-        "Conversation acknowledgement does not match its destination.",
-      );
-    return destination;
   }
   /** Recover authorized execution activity with an owner/lane-scoped cursor. */
   async assistantActivity(
@@ -4535,69 +2961,37 @@ export class OrbynClient {
     after = "0",
     limit = 50,
   ) {
-    lane = assistantActivityLane.parse(lane);
-    const query = assistantActivityQuery.parse({ after, limit });
-    const page = assistantActivityPage.parse(
-      await this.request<unknown>(
-        `/me/assistant/activity/${lane}?${new URLSearchParams({ after: query.after, limit: String(query.limit) })}`,
-        { fresh: true },
-      ),
-    );
-    if (
-      page.lane !== lane ||
-      page.events.length > query.limit ||
-      BigInt(page.cursor) < BigInt(after) ||
-      page.events.some((event) => BigInt(event.sequence) <= BigInt(after))
-    )
-      throw new Error("Activity response does not match the requested stream.");
-    return page;
+    return assistant.callAssistantActivity.call(this, lane, after, limit);
   }
   /** What waits for approval, and what was decided lately. */
   reviewInbox() {
-    return this.request<ReviewInbox>("/proposals");
+    return assistant.callReviewInbox.call(this);
   }
   /** Latest night with its current Review and Undo states. */
   latestAssistantNight(id?: string) {
-    return this.request<OvernightNight | null>(
-      id ? `/me/assistant/nights/${id}` : "/me/assistant/nights/latest",
-      { fresh: true },
-    );
+    return assistant.callLatestAssistantNight.call(this, id);
   }
   /** The person's channels and local quiet window for templated reminders. */
   reminderNudgeSettings() {
-    return this.request<ReminderNudgeSettings>("/me/assistant/reminder-nudges");
+    return assistant.callReminderNudgeSettings.call(this);
   }
   /** Stop future templated reminders for this card's source. */
   stopReminderNudge(id: string) {
-    return this.request<{ stopped: true }>(
-      `/me/assistant/reminder-nudges/${id}/stop`,
-      {
-        method: "POST",
-      },
-    );
+    return assistant.callStopReminderNudge.call(this, id);
   }
   updateReminderNudgeSettings(input: ReminderNudgeSettings) {
-    return this.request<ReminderNudgeSettings>(
-      "/me/assistant/reminder-nudges",
-      { method: "PUT", body: input },
-    );
+    return assistant.callUpdateReminderNudgeSettings.call(this, input);
   }
   /** Keep a finished run, applying all or selected held changes. */
   keepAssistantNightRun(
     id: string,
     input: { only?: number[]; steps?: string[] } = {},
   ) {
-    return this.request<OvernightRun>(`/me/assistant/nights/runs/${id}/keep`, {
-      method: "POST",
-      body: input,
-    });
+    return assistant.callKeepAssistantNightRun.call(this, id, input);
   }
   /** Undo a run or selected changes from it; held work is declined. */
   undoAssistantNightRun(id: string, changes?: string[]) {
-    return this.request<OvernightRun>(`/me/assistant/nights/runs/${id}/undo`, {
-      method: "POST",
-      body: changes ? { changes } : {},
-    });
+    return assistant.callUndoAssistantNightRun.call(this, id, changes);
   }
   /** Review a whole night in one transaction after the person's confirmation. */
   reviewAssistantNight(
@@ -4605,124 +2999,83 @@ export class OrbynClient {
     action: "keep" | "undo",
     runs: { id: string; token: string }[],
   ) {
-    return this.request<OvernightNight | null>(
-      `/me/assistant/nights/${id}/${action}-all`,
-      { method: "POST", body: { runs } },
-    );
+    return assistant.callReviewAssistantNight.call(this, id, action, runs);
   }
   /** How many proposals wait, for the badge. */
   reviewCount() {
-    return this.request<{ pending: number }>("/proposals/count");
+    return assistant.callReviewCount.call(this);
   }
   /** One proposal, each change checked against what is there now. */
   reviewItem(id: string) {
-    return this.request<ReviewItem>(`/proposals/${id}`);
+    return assistant.callReviewItem.call(this, id);
   }
   /** Approve a proposal (all of it, or `only` some of its changes). */
   approveReview(id: string, input: ReviewApproveInput = {}) {
-    return this.request<ReviewApplied>(`/proposals/${id}/apply`, {
-      method: "POST",
-      body: input,
-    });
+    return assistant.callApproveReview.call(this, id, input);
   }
   /** Decline a proposal: nothing changes. */
   declineReview(id: string) {
-    return this.request<void>(`/proposals/${id}/decline`, { method: "POST" });
+    return assistant.callDeclineReview.call(this, id);
   }
   /**
    * Approve or Decline from a notification's button: says how it ended,
    * even when it was already decided.
    */
   respondToReview(id: string, decision: "approve" | "decline") {
-    return this.request<{ status: ProposalStatus }>(
-      `/proposals/${id}/respond`,
-      { method: "POST", body: { decision } },
-    );
+    return assistant.callRespondToReview.call(this, id, decision);
   }
   /** Team settings → Outside agents: the policy, and (managers) who connects. */
   teamAgents(teamId: string) {
-    return this.request<TeamAgentsView>(`/teams/${teamId}/agents`);
+    return assistant.callTeamAgents.call(this, teamId);
   }
   // ---- Signing in with Orbyn (the consent page) ----
   /** What an app's sign-in request asks for; with your spaces when signed in. */
   oauthCheck(request: OAuthRequest) {
-    const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(request))
-      if (typeof v === "string") q.set(k, v);
-    return this.request<OAuthCheck>(`/oauth/authorize/check?${q}`);
+    return connections.callOauthCheck.call(this, request);
   }
   /** Allow the request: where to send the browser back, with a code. */
   oauthAllow(input: OAuthConsentInput) {
-    return this.request<OAuthRedirect>("/oauth/authorize", {
-      method: "POST",
-      body: input,
-    });
+    return connections.callOauthAllow.call(this, input);
   }
   /** Decline the request: where to send the browser back, with an error. */
   oauthDeny(request: OAuthRequest) {
-    return this.request<OAuthRedirect>("/oauth/authorize/deny", {
-      method: "POST",
-      body: { request },
-    });
+    return connections.callOauthDeny.call(this, request);
   }
   /** Passkey options for confirming it's you (without a new session). */
   reauthOptions() {
-    return this.request<{ handle: string; options: unknown }>(
-      "/me/reauth/options",
-      { method: "POST", body: {} },
-    );
+    return account.callReauthOptions.call(this);
   }
   /** Confirm it's you: password (and two-step code) or a passkey. */
   reauth(input: ReauthInput) {
-    return this.request<Reauthenticated>("/me/reauth", {
-      method: "POST",
-      body: input,
-    });
+    return account.callReauth.call(this, input);
   }
   /** A team's cap on outside agents (owners and admins). */
   setTeamAgentAccess(teamId: string, agent_access: TeamAgentAccess) {
-    return this.request<{ id: string; agent_access: TeamAgentAccess }>(
-      `/teams/${teamId}/agent-access`,
-      { method: "PUT", body: { agent_access } },
-    );
+    return assistant.callSetTeamAgentAccess.call(this, teamId, agent_access);
   }
   listWebhooks() {
-    return this.request<Webhook[]>("/me/webhooks");
+    return tasks.callListWebhooks.call(this);
   }
   /** The returned `secret` signs deliveries and is shown once. */
   createWebhook(input: WebhookInput) {
-    return this.request<NewWebhook>("/me/webhooks", {
-      method: "POST",
-      body: input,
-    });
+    return account.callCreateWebhook.call(this, input);
   }
   updateWebhook(id: string, input: WebhookUpdate) {
-    return this.request<Webhook>(`/me/webhooks/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdateWebhook.call(this, id, input);
   }
   deleteWebhook(id: string) {
-    return this.request<void>(`/me/webhooks/${id}`, { method: "DELETE" });
+    return account.callDeleteWebhook.call(this, id);
   }
   testWebhook(id: string) {
-    return this.request<WebhookTestResult>(`/me/webhooks/${id}/test`, {
-      method: "POST",
-    });
+    return account.callTestWebhook.call(this, id);
   }
   /** Follows pagination until the planner is fully loaded. */
   async listAllItems(pageSize = 500) {
-    const all: Item[] = [];
-    for (let offset = 0; ; offset += pageSize) {
-      const page = await this.listItems({ limit: pageSize, offset });
-      all.push(...page);
-      if (page.length < pageSize) break;
-    }
-    return all;
+    return tasks.callListAllItems.call(this, pageSize);
   }
   /** Create an item; `id` names it on the device (made offline). */
   createItem(input: Partial<ItemInput> & { title: string; id?: string }) {
-    return this.request<Item>("/items", { method: "POST", body: input });
+    return tasks.callCreateItem.call(this, input);
   }
   /**
    * Create an item from one line of text ("Lunch with @anna tomorrow 1pm
@@ -4730,33 +3083,21 @@ export class OrbynClient {
    */
   /** A shared link's title and site, looked up on the server for the share sheet. */
   linkPreview(url: string) {
-    return this.request<LinkPreview>("/capture/preview", {
-      method: "POST",
-      body: { url },
-    });
+    return assistant.callLinkPreview.call(this, url);
   }
   /**
    * Put a link or some text shared into Orbyn where it was sent: an Inbox
    * task, today's agenda, a page, a new page in a folder, or a project.
    */
   capture(input: CaptureRequest) {
-    return this.request<CaptureResult>("/capture", {
-      method: "POST",
-      body: input,
-    });
+    return capture.callCapture.call(this, input);
   }
   quickAdd(text: string, timezone?: string) {
-    return this.request<QuickAddCreated>("/items/quick", {
-      method: "POST",
-      body: { text, ...(timezone ? { timezone } : {}) },
-    });
+    return tasks.callQuickAdd.call(this, text, timezone);
   }
   /** What quick add would make of the text, with its chips. Nothing is saved. */
   previewQuickAdd(text: string, timezone?: string) {
-    return this.request<QuickAddResult>("/items/quick", {
-      method: "POST",
-      body: { text, preview: true, ...(timezone ? { timezone } : {}) },
-    });
+    return assistant.callPreviewQuickAdd.call(this, text, timezone);
   }
   /**
    * Save an item. For one occurrence of a repeating item pass `scope: "this"`
@@ -4767,10 +3108,7 @@ export class OrbynClient {
     input: ItemInput & { version: number },
     options: { scope?: EditScope; occurrence?: string } = {},
   ) {
-    return this.request<Item>(`/items/${id}${scopeQuery(options)}`, {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdateItem.call(this, id, input, options);
   }
   deleteItem(
     id: string,
@@ -4781,13 +3119,7 @@ export class OrbynClient {
       expectedBlocks?: { id: string; revision: number }[];
     } = {},
   ) {
-    const scope = scopeQuery(options).replace(/^\?/, "&");
-    return this.request<void>(`/items/${id}?version=${version}${scope}`, {
-      method: "DELETE",
-      ...(options.expectedBlocks
-        ? { body: { expected_blocks: options.expectedBlocks } }
-        : {}),
-    });
+    return tasks.callDeleteItem.call(this, id, version, options);
   }
 
   /**
@@ -4795,83 +3127,62 @@ export class OrbynClient {
    * and gives it back with a note. At most five at once.
    */
   handTaskToAgent(id: string, when: "now" | "tonight" = "now") {
-    return this.request<Item>(`/items/${id}/agent`, {
-      method: "POST",
-      body: { when },
-    });
+    return assistant.callHandTaskToAgent.call(this, id, when);
   }
   /** Take a task back from your agent; a run working on it stops. */
   takeTaskBack(id: string) {
-    return this.request<Item>(`/items/${id}/agent`, { method: "DELETE" });
+    return tasks.callTakeTaskBack.call(this, id);
   }
   /** Connected agents that made or changed tasks lately, for the board's lanes. */
   agentWork() {
-    return this.request<
-      { grant_id: string; name: string; item_ids: string[] }[]
-    >("/me/agent-work");
+    return assistant.callAgentWork.call(this);
   }
 
   /** A task with its checklist steps and progress timeline. */
   getItem(id: string) {
-    return this.request<ItemDetail>(`/items/${id}`);
+    return tasks.callGetItem.call(this, id);
   }
   addStep(itemId: string, input: { title: string }) {
-    return this.request<ItemDetail>(`/items/${itemId}/steps`, {
-      method: "POST",
-      body: input,
-    });
+    return tasks.callAddStep.call(this, itemId, input);
   }
   updateStep(
     itemId: string,
     stepId: string,
     input: { title?: string; done?: boolean },
   ) {
-    return this.request<ItemDetail>(`/items/${itemId}/steps/${stepId}`, {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdateStep.call(this, itemId, stepId, input);
   }
   deleteStep(itemId: string, stepId: string) {
-    return this.request<ItemDetail>(`/items/${itemId}/steps/${stepId}`, {
-      method: "DELETE",
-    });
+    return tasks.callDeleteStep.call(this, itemId, stepId);
   }
   /** Post a progress note, optionally changing status or progress. */
   postItemUpdate(
     itemId: string,
     input: { body?: string; status?: Status; progress?: number },
   ) {
-    return this.request<ItemDetail>(`/items/${itemId}/updates`, {
-      method: "POST",
-      body: input,
-    });
+    return tasks.callPostItemUpdate.call(this, itemId, input);
   }
 
   // ---- devices (mobile push) ----
   registerDevice(token: string) {
-    return this.request<void>("/devices", { method: "POST", body: { token } });
+    return administration.callRegisterDevice.call(this, token);
   }
   removeDevice(token: string) {
-    return this.request<void>("/devices", {
-      method: "DELETE",
-      body: { token },
-    });
+    return administration.callRemoveDevice.call(this, token);
   }
 
   // ---- notifications ----
   listNotifications() {
-    return this.request<Notice[]>("/notifications");
+    return notifications.callListNotifications.call(this);
   }
   markNotificationRead(id: string) {
-    return this.request<void>(`/notifications/${id}/read`, { method: "POST" });
+    return notifications.callMarkNotificationRead.call(this, id);
   }
 
   // ---- AI assistant ----
   /** Whether the configured assistant can read with tools and draft pages. */
   aiCapabilities() {
-    return this.request<{ enabled: boolean; tools: boolean }>(
-      "/ai/capabilities",
-    );
+    return assistant.callAiCapabilities.call(this);
   }
   /** Draft a project (subtasks) from a prompt, as a proposal to review. */
   draftProject(
@@ -4880,15 +3191,13 @@ export class OrbynClient {
     teamId?: string | null,
     details?: { summary?: string; deadline?: string | null },
   ) {
-    return this.request<Proposal>("/ai/project", {
-      method: "POST",
-      body: {
-        prompt,
-        timezone,
-        ...(teamId ? { team_id: teamId } : {}),
-        ...details,
-      },
-    });
+    return assistant.callDraftProject.call(
+      this,
+      prompt,
+      timezone,
+      teamId,
+      details,
+    );
   }
   /**
    * Ask the assistant. Pass earlier turns in `history` for follow-up questions.
@@ -4910,29 +3219,13 @@ export class OrbynClient {
     onProgress?: (progress: AssistantRunProgress) => void,
     signal?: AbortSignal,
   ) {
-    if (signal?.aborted) throw abortError();
-    const { id, chat_id, turn_id } = await this.request<{
-      id: string;
-      chat_id: string;
-      turn_id: string;
-    }>("/ai/chat/start", {
-      method: "POST",
-      body: {
-        message,
-        timezone,
-        history: history.slice(-12),
-        scope,
-        ...(ids.chatId ? { chat_id: ids.chatId } : {}),
-        ...(ids.turnId ? { turn_id: ids.turnId } : {}),
-        ...(ids.replyExcerpt ? { reply_excerpt: ids.replyExcerpt } : {}),
-        ...(ids.replyToEntryId
-          ? { reply_to_entry_id: ids.replyToEntryId }
-          : {}),
-      },
-    });
-    return this.pollAssistantRun(
-      id,
-      { chatId: chat_id, turnId: turn_id },
+    return assistant.callChat.call(
+      this,
+      message,
+      timezone,
+      history,
+      scope,
+      ids,
       onProgress,
       signal,
     );
@@ -4945,95 +3238,16 @@ export class OrbynClient {
     onProgress?: (progress: AssistantRunProgress) => void,
     signal?: AbortSignal,
   ) {
-    const { chatId: chat_id, turnId: turn_id } = ids;
-    if (signal?.aborted) throw abortError();
-    const started = Date.now();
-    let delay = CHAT_POLL_MS;
-    let deadline = started + CHAT_WAIT_MS;
-    let lastProgress = "";
-    while (Date.now() < deadline) {
-      await pause(delay, signal);
-      delay = Math.min(delay * 1.5, CHAT_POLL_MAX_MS);
-      let job: ChatJob;
-      try {
-        job = await this.request<ChatJob>(`/ai/chat/${id}`, {
-          fresh: true,
-          signal,
-        });
-      } catch (error) {
-        if (signal?.aborted) throw abortError();
-        const transient =
-          error instanceof HttpError
-            ? error.statusCode === 429 || error.statusCode >= 500
-            : error instanceof Error &&
-              ["TypeError", "TimeoutError", "AbortError"].includes(error.name);
-        if (!transient) throw error;
-        // Keep the same run attached across rate limits and network outages.
-        // The existing deadline bounds retries; the pause remains abortable.
-        if (error instanceof HttpError && error.statusCode === 429)
-          delay = Math.min(
-            error.retryAfterMs ?? 10000,
-            Math.max(0, deadline - Date.now()),
-          );
-        continue;
-      }
-      if (signal?.aborted) throw abortError();
-      if (job.state === "running" || job.state === "waiting") {
-        const progress = {
-          job_id: id,
-          state: job.state,
-          ...(job.progress?.label ? { label: job.progress.label } : {}),
-          ...(job.progress?.step ? { step: job.progress.step } : {}),
-          ...(job.state === "waiting" ? { waiting: job.waiting } : {}),
-        } satisfies AssistantRunProgress;
-        const serialized = JSON.stringify(progress);
-        if (serialized !== lastProgress) onProgress?.(progress);
-        lastProgress = serialized;
-        // A question or approval can wait for the person longer than one run.
-        // Capped, so an unanswered question never keeps this polling forever.
-        if (job.state === "waiting")
-          deadline = Math.min(
-            Date.now() + CHAT_WAIT_MS,
-            started + CHAT_WAITING_MAX_MS,
-          );
-        continue;
-      }
-      if (job.state === "done") {
-        onProgress?.({ job_id: id, state: "done" });
-        const proposal =
-          job.proposal ??
-          ({
-            id: job.chat_id ?? chat_id,
-            summary: job.answer ?? "",
-            actions: [],
-            session_change: null,
-            decision_links: [],
-            plan: null,
-            sources: [],
-            notes: [],
-          } satisfies Proposal);
-        return {
-          proposal,
-          chat_id: job.chat_id ?? chat_id,
-          turn_id: job.turn_id ?? turn_id,
-          trace: job.trace ?? [],
-          ...(job.answer ? { answer: job.answer } : {}),
-          ...(job.assistant_run ? { assistant_run: job.assistant_run } : {}),
-        } satisfies ChatResult;
-      }
-      if (job.state === "failed")
-        throw new HttpError(job.status ?? 502, job.message);
-    }
-    throw new HttpError(
-      504,
-      "That took too long to answer. Try again, or ask for less at once.",
+    return assistant.callPollAssistantRun.call(
+      this,
+      id,
+      ids,
+      onProgress,
+      signal,
     );
   }
   answerAssistantRun(id: string, answer: string, waitingId: string) {
-    return this.request<{ accepted: boolean; job_id: string }>(
-      `/ai/chat/${id}/answer`,
-      { method: "POST", body: { answer, waiting_id: waitingId } },
-    );
+    return assistant.callAnswerAssistantRun.call(this, id, answer, waitingId);
   }
   approveAssistantRun(
     id: string,
@@ -5041,72 +3255,55 @@ export class OrbynClient {
     waitingId: string,
     scope: "once" | "goal" | "routine" | "always" = "once",
   ) {
-    return this.request<{ accepted: boolean; job_id: string }>(
-      `/ai/chat/${id}/approve`,
-      { method: "POST", body: { approved, scope, waiting_id: waitingId } },
+    return assistant.callApproveAssistantRun.call(
+      this,
+      id,
+      approved,
+      waitingId,
+      scope,
     );
   }
   stopAssistantRun(id: string) {
-    return this.request<{ stopped: boolean }>(`/ai/chat/${id}/stop`, {
-      method: "POST",
-      body: {},
-    });
+    return assistant.callStopAssistantRun.call(this, id);
   }
   applyProposal(id: string, options?: { give_tasks_deadlines?: boolean }) {
-    // `project_id`: the project a drafted-project proposal made, else null.
-    return this.request<{ applied: boolean; project_id: string | null }>(
-      `/ai/proposals/${id}/apply`,
-      {
-        method: "POST",
-        body: options ?? {},
-      },
-    );
+    return assistant.callApplyProposal.call(this, id, options);
   }
 
   // ---- teams ----
   listTeams() {
-    return this.request<Team[]>("/teams");
+    return teams.callListTeams.call(this);
   }
   createTeam(input: { name: string }) {
-    return this.request<Team>("/teams", { method: "POST", body: input });
+    return teams.callCreateTeam.call(this, input);
   }
   getTeam(id: string) {
-    return this.request<TeamDetail>(`/teams/${id}`);
+    return teams.callGetTeam.call(this, id);
   }
   updateTeam(id: string, input: { name: string }) {
-    return this.request<Team>(`/teams/${id}`, { method: "PUT", body: input });
+    return teams.callUpdateTeam.call(this, id, input);
   }
   deleteTeam(id: string) {
-    return this.request<void>(`/teams/${id}`, { method: "DELETE" });
+    return teams.callDeleteTeam.call(this, id);
   }
   addTeamMember(teamId: string, input: { email: string; role?: TeamRole }) {
-    return this.request<TeamMember>(`/teams/${teamId}/members`, {
-      method: "POST",
-      body: input,
-    });
+    return teams.callAddTeamMember.call(this, teamId, input);
   }
   updateTeamMember(teamId: string, userId: string, input: { role: TeamRole }) {
-    return this.request<TeamMember>(`/teams/${teamId}/members/${userId}`, {
-      method: "PUT",
-      body: input,
-    });
+    return teams.callUpdateTeamMember.call(this, teamId, userId, input);
   }
   /** Remove a member, or leave the team when `userId` is your own id. */
   removeTeamMember(teamId: string, userId: string) {
-    return this.request<void>(`/teams/${teamId}/members/${userId}`, {
-      method: "DELETE",
-    });
+    return teams.callRemoveTeamMember.call(this, teamId, userId);
   }
 
   // ---- admin (system admins only) ----
   adminOverview() {
-    return this.request<AdminOverview>("/admin/overview");
+    return views.callAdminOverview.call(this);
   }
   /** How each service is answering over the last `hours`. */
   adminRequestSummary(hours = 24) {
-    return this.request<RequestSummary>(
-      `/admin/requests/summary?hours=${hours}`,
-    );
+    return administration.callAdminRequestSummary.call(this, hours);
   }
   /** The request log, newest first; `before` pages back. */
   adminRequests(
@@ -5121,103 +3318,70 @@ export class OrbynClient {
       limit?: number;
     } = {},
   ) {
-    const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(filters))
-      if (v !== undefined && v !== "" && v !== false) q.set(k, String(v));
-    return this.request<{ rows: RequestLogRow[]; more: boolean }>(
-      `/admin/requests${q.size ? `?${q}` : ""}`,
-    );
+    return administration.callAdminRequests.call(this, filters);
   }
   adminAnalytics(days = 30) {
-    return this.request<AdminAnalytics>(`/admin/analytics?days=${days}`);
+    return administration.callAdminAnalytics.call(this, days);
   }
   adminUserDetail(id: string) {
-    return this.request<AdminUserDetail>(`/admin/users/${id}`);
+    return administration.callAdminUserDetail.call(this, id);
   }
   adminUpdateUserProfile(id: string, input: { name?: string; email?: string }) {
-    return this.request<{ ok: true; verify_again: boolean }>(
-      `/admin/users/${id}/profile`,
-      { method: "PUT", body: input },
-    );
+    return tasks.callAdminUpdateUserProfile.call(this, id, input);
   }
   /** Sign someone out on every device. */
   adminSignOutUser(id: string) {
-    return this.request<{ ended: number }>(`/admin/users/${id}/sign-out`, {
-      method: "POST",
-    });
+    return administration.callAdminSignOutUser.call(this, id);
   }
   adminEndSession(id: string, sessionId: string) {
-    return this.request<void>(`/admin/users/${id}/sessions/${sessionId}`, {
-      method: "DELETE",
-    });
+    return administration.callAdminEndSession.call(this, id, sessionId);
   }
   /** Revoke one of an account's personal API keys (recorded in the audit log). */
   adminRevokeApiKey(id: string, keyId: string) {
-    return this.request<void>(`/admin/users/${id}/api-keys/${keyId}`, {
-      method: "DELETE",
-    });
+    return administration.callAdminRevokeApiKey.call(this, id, keyId);
   }
   /** Admin: the apps that have signed in with Orbyn. */
   adminAgentClients() {
-    return this.request<AdminAgentClient[]>("/admin/agents/clients");
+    return assistant.callAdminAgentClients.call(this);
   }
   /** Admin: agent use by app over the last `days`. */
   adminAgentUsage(days = 30) {
-    return this.request<AdminAgentUsage>(`/admin/agents/usage?days=${days}`);
+    return assistant.callAdminAgentUsage.call(this, days);
   }
   /** Admin: end one of an account's agent connections. */
   adminRevokeUserAgent(id: string, grantId: string) {
-    return this.request<void>(`/admin/users/${id}/agents/${grantId}`, {
-      method: "DELETE",
-    });
+    return assistant.callAdminRevokeUserAgent.call(this, id, grantId);
   }
   /** Admin: the switches and limits for outside agents. */
   adminAgentSettings() {
-    return this.request<AgentSettings>("/admin/agents");
+    return assistant.callAdminAgentSettings.call(this);
   }
   adminUpdateAgentSettings(input: AgentSettingsUpdate) {
-    return this.request<AgentSettings>("/admin/agents", {
-      method: "PUT",
-      body: input,
-    });
+    return assistant.callAdminUpdateAgentSettings.call(this, input);
   }
   /** A one-hour password reset link to pass on (also emailed when mail is set up). */
   adminResetLink(id: string) {
-    return this.request<{
-      link: string;
-      expires_in_minutes: number;
-      emailed: boolean;
-    }>(`/admin/users/${id}/reset-link`, { method: "POST" });
+    return administration.callAdminResetLink.call(this, id);
   }
   adminResetTwoFactor(id: string) {
-    return this.request<{ cleared: boolean }>(`/admin/users/${id}/reset-2fa`, {
-      method: "POST",
-    });
+    return administration.callAdminResetTwoFactor.call(this, id);
   }
   adminExportUser(id: string) {
-    return this.request<unknown>(`/admin/users/${id}/export`);
+    return administration.callAdminExportUser.call(this, id);
   }
   // ---- study ----
   /** Cards due, pages with cards, exams, streak and weak spots. */
   study() {
-    return this.request<StudyOverview>("/study");
+    return study.callStudy.call(this);
   }
   /** Cards to review now (due, then today's new ones); one page with `docId`. */
   studyQueue(
     options: { docId?: string; limit?: number; ahead?: boolean } = {},
   ) {
-    const q = new URLSearchParams();
-    if (options.docId) q.set("doc_id", options.docId);
-    if (options.limit) q.set("limit", String(options.limit));
-    if (options.ahead) q.set("ahead", "true");
-    const s = q.toString();
-    return this.request<StudyCard[]>(`/study/queue${s ? `?${s}` : ""}`);
+    return study.callStudyQueue.call(this, options);
   }
   reviewCard(cardId: string, rating: Rating) {
-    return this.request<StudyCard>(`/study/cards/${cardId}/review`, {
-      method: "POST",
-      body: { rating },
-    });
+    return assistant.callReviewCard.call(this, cardId, rating);
   }
   /** Which pages you're revising for an exam. */
   setExamDecks(input: {
@@ -5226,59 +3390,29 @@ export class OrbynClient {
     starts_at: string;
     doc_ids: string[];
   }) {
-    return this.request<StudyOverview>("/study/exams", {
-      method: "PUT",
-      body: input,
-    });
+    return study.callSetExamDecks.call(this, input);
   }
   /** Revision sessions before an exam, proposed into free time (nothing saved). */
   planRevision(input: { key: string; minutes?: number; timezone: string }) {
-    return this.request<RevisionPlan>("/study/revision/plan", {
-      method: "POST",
-      body: input,
-    });
+    return planner.callPlanRevision.call(this, input);
   }
   /** Apply the approved sessions: a "Revise for …" task with them set aside. */
   applyRevision(input: {
     key: string;
     sessions: { start_at: string; end_at: string }[];
   }) {
-    return this.request<{
-      item_id: string;
-      item_version: number;
-      block_versions: { id: string; revision: number }[];
-      block_ids: string[];
-      minutes: number;
-    }>("/study/revision/apply", { method: "POST", body: input });
+    return assistant.callApplyRevision.call(this, input);
   }
   /** The assistant's suggested cards from a page — a proposal to tick. */
   suggestCards(docId: string, max?: number) {
-    return this.request<{
-      cards: SuggestedCard[];
-      provider?: AiFeatureProvider;
-    }>(`/ai/study/pages/${docId}/cards`, {
-      method: "POST",
-      body: max ? { max } : {},
-    });
+    return study.callSuggestCards.call(this, docId, max);
   }
   /** Grade a typed answer against the card and its page. */
   gradeAnswer(cardId: string, answer: string) {
-    return this.request<{
-      provider?: AiFeatureProvider;
-      verdict: "correct" | "partly" | "wrong";
-      feedback: string;
-      suggested_rating: Rating;
-    }>("/ai/study/grade", {
-      method: "POST",
-      body: { card_id: cardId, answer },
-    });
+    return study.callGradeAnswer.call(this, cardId, answer);
   }
   explainCard(cardId: string) {
-    return this.request<{
-      explanation: string;
-      beyond_notes: boolean;
-      provider?: AiFeatureProvider;
-    }>(`/ai/study/cards/${cardId}/explain`, { method: "POST", body: {} });
+    return study.callExplainCard.call(this, cardId);
   }
   // ---- importing files into Docs ----
   /**
@@ -5286,11 +3420,7 @@ export class OrbynClient {
    * path on this API's base URL, good for ten minutes and one upload).
    */
   createImport(input: ImportCreateInput) {
-    return this.request<{
-      import: ImportJob;
-      upload_path: string;
-      expires_at: string;
-    }>("/imports", { method: "POST", body: input });
+    return workspace.callCreateImport.call(this, input);
   }
   /**
    * Send the file itself to the upload link from `createImport`. The file
@@ -5320,144 +3450,110 @@ export class OrbynClient {
   }
   /** Your imports: everything still going, and the last week's. */
   listImports() {
-    return this.request<ImportJob[]>("/imports");
+    return documents.callListImports.call(this);
   }
   getImport(id: string) {
-    return this.request<ImportJob>(`/imports/${id}`);
+    return documents.callGetImport.call(this, id);
   }
   /** What this server can read (scans, photos, equations), before an upload. */
   importCapabilities() {
-    return this.request<ImportCapabilities>("/imports/capabilities");
+    return documents.callImportCapabilities.call(this);
   }
   /** Admin → Storage: the database, the file store, the import queue. */
   adminStorage() {
-    return this.request<AdminStorage>("/admin/storage");
+    return administration.callAdminStorage.call(this);
   }
   /** Delete a stored upload now; its import is cancelled (audited). */
   adminDeleteStoredFile(importId: string) {
-    return this.request<void>(`/admin/storage/files/${importId}`, {
-      method: "DELETE",
-    });
+    return administration.callAdminDeleteStoredFile.call(this, importId);
   }
   /** Run the file store's sweep now (audited). */
   adminSweepStorage() {
-    return this.request<{ removed: number }>("/admin/storage/sweep", {
-      method: "POST",
-      body: {},
-    });
+    return administration.callAdminSweepStorage.call(this);
   }
   /** Cancel an import still going, or clear a finished one from the list. */
   removeImport(id: string) {
-    return this.request<void>(`/imports/${id}`, { method: "DELETE" });
+    return documents.callRemoveImport.call(this, id);
   }
   // ---- terms, privacy and consent ----
   /** Who runs the service and the current Terms and Privacy versions. */
   legal() {
-    return this.request<LegalSummary>("/legal", { anonymous: true });
+    return workspace.callLegal.call(this);
   }
   legalDocument(doc: LegalDoc) {
-    return this.request<LegalDocument>(`/legal/${doc}`, { anonymous: true });
+    return documents.callLegalDocument.call(this, doc);
   }
   /** Accept the Terms and Privacy Policy at this version. */
   acceptTerms(termsVersion: string) {
-    return this.request<{ terms_version: string }>("/me/consent", {
-      method: "POST",
-      body: { terms_version: termsVersion },
-    });
+    return account.callAcceptTerms.call(this, termsVersion);
   }
   privacy() {
-    return this.request<PrivacyView>("/me/privacy");
+    return account.callPrivacy.call(this);
   }
   setPrivacy(input: { analytics_opt_out: boolean }) {
-    return this.request<PrivacyView>("/me/privacy", {
-      method: "PUT",
-      body: input,
-    });
+    return account.callSetPrivacy.call(this, input);
   }
   /** Delete your own account for good. */
   deleteAccount(input: { password?: string; confirm_email?: string }) {
-    return this.request<void>("/me", { method: "DELETE", body: input });
+    return account.callDeleteAccount.call(this, input);
   }
   adminLegal() {
-    return this.request<LegalAdminView>("/admin/legal");
+    return administration.callAdminLegal.call(this);
   }
   updateLegal(input: LegalSettingsUpdate) {
-    return this.request<LegalAdminView>("/admin/legal", {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdateLegal.call(this, input);
   }
   /** The notice everyone sees, or null. */
   announcement() {
-    return this.request<Announcement | null>("/announcement", {
-      anonymous: true,
-    });
+    return workspace.callAnnouncement.call(this);
   }
   setAnnouncement(input: {
     message: string;
     tone?: "info" | "warning";
     until?: string | null;
   }) {
-    return this.request<Announcement>("/admin/announcement", {
-      method: "PUT",
-      body: input,
-    });
+    return administration.callSetAnnouncement.call(this, input);
   }
   /** What the sweeper keeps, for how long, and when it last ran. */
   adminSweep() {
-    return this.request<SweepView>("/admin/sweep");
+    return administration.callAdminSweep.call(this);
   }
   /** Days to keep, per kind of record; 0 keeps forever. */
   setRetention(days: Record<string, number>) {
-    return this.request<SweepView>("/admin/sweep/retention", {
-      method: "PUT",
-      body: days,
-    });
+    return administration.callSetRetention.call(this, days);
   }
   runSweep() {
-    return this.request<SweepView>("/admin/sweep/run", { method: "POST" });
+    return administration.callRunSweep.call(this);
   }
   adminDatabaseTables() {
-    return this.request<AdminDatabaseTable[]>("/admin/database/tables");
+    return administration.callAdminDatabaseTables.call(this);
   }
   adminDatabaseTable(name: string) {
-    return this.request<AdminDatabaseTableDetail>(
-      `/admin/database/tables/${encodeURIComponent(name)}`,
-    );
+    return administration.callAdminDatabaseTable.call(this, name);
   }
   adminDatabaseRows(name: string, offset = 0) {
-    return this.request<AdminDatabaseRows>(
-      `/admin/database/tables/${encodeURIComponent(name)}/rows?offset=${offset}`,
-    );
+    return administration.callAdminDatabaseRows.call(this, name, offset);
   }
   adminListUsers(
     params: { search?: string; limit?: number; offset?: number } = {},
   ) {
-    const q = new URLSearchParams();
-    if (params.search) q.set("search", params.search);
-    if (params.limit !== undefined) q.set("limit", String(params.limit));
-    if (params.offset !== undefined) q.set("offset", String(params.offset));
-    const suffix = q.size ? `?${q}` : "";
-    return this.request<Page<AdminUser>>(`/admin/users${suffix}`);
+    return tasks.callAdminListUsers.call(this, params);
   }
   adminUpdateUser(
     id: string,
     input: { role?: SystemRole; disabled?: boolean; email_verified?: boolean },
   ) {
-    return this.request<AdminUser>(`/admin/users/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callAdminUpdateUser.call(this, id, input);
   }
   adminDeleteUser(id: string) {
-    return this.request<void>(`/admin/users/${id}`, { method: "DELETE" });
+    return administration.callAdminDeleteUser.call(this, id);
   }
   adminListTeams() {
-    return this.request<Team[]>("/admin/teams");
+    return teams.callAdminListTeams.call(this);
   }
   // ---- AI providers (system admins) ----
   listAiProviders() {
-    return this.request<AiProvidersResponse>("/ai/providers");
+    return assistant.callListAiProviders.call(this);
   }
   createAiProvider(input: {
     kind: AiProviderKind;
@@ -5467,10 +3563,7 @@ export class OrbynClient {
     options?: AiProviderOptions;
     enabled?: boolean;
   }) {
-    return this.request<AiProvider>("/ai/providers", {
-      method: "POST",
-      body: input,
-    });
+    return assistant.callCreateAiProvider.call(this, input);
   }
   /** Omit `api_key` to keep the saved key; send "" to remove it. */
   updateAiProvider(
@@ -5484,39 +3577,21 @@ export class OrbynClient {
       expected_revision?: string;
     },
   ) {
-    return this.request<AiProvider>(`/ai/providers/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return assistant.callUpdateAiProvider.call(this, id, input);
   }
   deleteAiProvider(id: string) {
-    return this.request<void>(`/ai/providers/${id}`, { method: "DELETE" });
+    return assistant.callDeleteAiProvider.call(this, id);
   }
   /** Lists models using the provider's saved key. */
   listAiModels(id: string, expectedRevision?: string) {
-    return this.request<AiModelList>(`/ai/providers/${id}/models`, {
-      method: "POST",
-      body: expectedRevision ? { expected_revision: expectedRevision } : {},
-    });
+    return assistant.callListAiModels.call(this, id, expectedRevision);
   }
   /** Loads candidates for the independent embedding connection, without sending pages. */
   listAiEmbeddingModels(id: string, expectedRevision: string) {
-    return this.request<AiEmbeddingModelList>(
-      `/ai/providers/${id}/embedding-models`,
-      {
-        method: "POST",
-        body: { expected_revision: expectedRevision },
-      },
-    );
+    return assistant.callListAiEmbeddingModels.call(this, id, expectedRevision);
   }
   testAiProvider(id: string, model?: string, expectedRevision?: string) {
-    return this.request<AiTestResult>(`/ai/providers/${id}/test`, {
-      method: "POST",
-      body: {
-        ...(model ? { model } : {}),
-        ...(expectedRevision ? { expected_revision: expectedRevision } : {}),
-      },
-    });
+    return assistant.callTestAiProvider.call(this, id, model, expectedRevision);
   }
   /**
    * Search by meaning's own setup: on needs the model that measures text
@@ -5526,10 +3601,7 @@ export class OrbynClient {
     night_token_budget: number;
     expected_revision: string;
   }) {
-    return this.request<AiSettings>("/ai/settings/night-budget", {
-      method: "PUT",
-      body: input,
-    });
+    return assistant.callUpdateAiNightBudget.call(this, input);
   }
   setSemanticSearch(input: {
     on: boolean;
@@ -5539,28 +3611,18 @@ export class OrbynClient {
     expected_provider_revision?: string;
     accept?: boolean;
   }) {
-    return this.request<AiSettings>("/ai/settings/semantic", {
-      method: "PUT",
-      body: input,
-    });
+    return search.callSetSemanticSearch.call(this, input);
   }
   updateAiSettings(input: {
     provider_id: string | null;
     model?: string;
     night_token_budget?: number;
   }) {
-    return this.request<AiSettings>("/ai/settings", {
-      method: "PUT",
-      body: input,
-    });
+    return assistant.callUpdateAiSettings.call(this, input);
   }
 
   adminListAudit(params: { limit?: number; offset?: number } = {}) {
-    const q = new URLSearchParams();
-    if (params.limit !== undefined) q.set("limit", String(params.limit));
-    if (params.offset !== undefined) q.set("offset", String(params.offset));
-    const suffix = q.size ? `?${q}` : "";
-    return this.request<Page<AuditEntry>>(`/admin/audit${suffix}`);
+    return tasks.callAdminListAudit.call(this, params);
   }
 
   // ---- live news -----------------------------------------------------------
@@ -5649,116 +3711,77 @@ export class OrbynClient {
 
   /** Keep a finished (or cut short) phase; work minutes go to the task. */
   saveFocusSession(input: Omit<FocusSession, "item_title">) {
-    return this.request<{ session: FocusSession; item: ItemDetail | null }>(
-      "/focus/sessions",
-      { method: "POST", body: input },
-    );
+    return planner.callSaveFocusSession.call(this, input);
   }
   activitySummary(days: 30 | 90 | 365 = 90) {
-    return this.request<ActivitySummary>(`/me/activity-summary?days=${days}`);
+    return account.callActivitySummary.call(this, days);
   }
   focusSummary(from: Date, to: Date) {
-    const q = new URLSearchParams({
-      from: from.toISOString(),
-      to: to.toISOString(),
-    });
-    return this.request<FocusSummary>(`/focus/summary?${q}`);
+    return planner.callFocusSummary.call(this, from, to);
   }
   currentFocus() {
-    return this.request<FocusCurrent | null>("/focus/current");
+    return planner.callCurrentFocus.call(this);
   }
   /** Share the session running here with your other devices. */
   setCurrentFocus(state: FocusState, device?: string, deviceId?: string) {
-    return this.request<FocusCurrent>("/focus/current", {
-      method: "PUT",
-      body: {
-        state,
-        ...(device ? { device } : {}),
-        ...(deviceId ? { device_id: deviceId } : {}),
-      },
-    });
+    return planner.callSetCurrentFocus.call(this, state, device, deviceId);
   }
   clearCurrentFocus() {
-    return this.request<void>("/focus/current", { method: "DELETE" });
+    return planner.callClearCurrentFocus.call(this);
   }
 
   // ---- presence ------------------------------------------------------------
 
   heartbeat(input: PresenceHeartbeat) {
-    return this.request<{ ok: true }>("/presence/heartbeat", {
-      method: "POST",
-      body: input,
-    });
+    return workspace.callHeartbeat.call(this, input);
   }
   leavePresence(deviceId: string) {
-    return this.request<{ ok: true }>("/presence/leave", {
-      method: "POST",
-      body: { device_id: deviceId },
-    });
+    return workspace.callLeavePresence.call(this, deviceId);
   }
   listDevices() {
-    return this.request<DevicePresence[]>("/presence/devices");
+    return tasks.callListDevices.call(this);
   }
   forgetDevice(deviceId: string) {
-    return this.request<void>(
-      `/presence/devices/${encodeURIComponent(deviceId)}`,
-      { method: "DELETE" },
-    );
+    return administration.callForgetDevice.call(this, deviceId);
   }
   presenceSettings() {
-    return this.request<PresenceSettings>("/presence/settings");
+    return workspace.callPresenceSettings.call(this);
   }
   updatePresenceSettings(input: PresenceSettings) {
-    return this.request<PresenceSettings>("/presence/settings", {
-      method: "PUT",
-      body: input,
-    });
+    return tasks.callUpdatePresenceSettings.call(this, input);
   }
   teamPresence(teamId: string) {
-    return this.request<MemberPresence[]>(`/teams/${teamId}/presence`);
+    return teams.callTeamPresence.call(this, teamId);
   }
   docViewers(docId: string) {
-    return this.request<DocViewer[]>(`/docs/${docId}/presence`);
+    return documents.callDocViewers.call(this, docId);
   }
 
   // ---- team capacity -------------------------------------------------------
 
   /** Free working time per person per day (a month at most). */
   teamCapacity(teamId: string, from: Date, to: Date) {
-    const q = new URLSearchParams({
-      from: from.toISOString(),
-      to: to.toISOString(),
-    });
-    return this.request<TeamCapacity>(`/teams/${teamId}/capacity?${q}`);
+    return teams.callTeamCapacity.call(this, teamId, from, to);
   }
 
   // ---- page templates ------------------------------------------------------
 
   /** Your page templates, your teams', and the starters everyone has. */
   listPageTemplates() {
-    return this.request<PageTemplate[]>("/page-templates");
+    return documents.callListPageTemplates.call(this);
   }
   createPageTemplate(input: PageTemplateInput) {
-    return this.request<PageTemplate>("/page-templates", {
-      method: "POST",
-      body: input,
-    });
+    return documents.callCreatePageTemplate.call(this, input);
   }
   updatePageTemplate(id: string, input: PageTemplateUpdate) {
-    return this.request<PageTemplate>(`/page-templates/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return documents.callUpdatePageTemplate.call(this, id, input);
   }
   deletePageTemplate(id: string) {
-    return this.request<void>(`/page-templates/${id}`, { method: "DELETE" });
+    return documents.callDeletePageTemplate.call(this, id);
   }
   /** Save a page as a template: its words, folder and tags, boxes unticked. */
   savePageAsTemplate(docId: string, input: PageTemplateFromDoc = {}) {
-    return this.request<PageTemplate>(`/page-templates/from-doc/${docId}`, {
-      method: "POST",
-      body: input,
-    });
+    return documents.callSavePageAsTemplate.call(this, docId, input);
   }
   /**
    * Make a page from a template, blanks filled in. With `make_tasks`, its
@@ -5767,43 +3790,27 @@ export class OrbynClient {
    * nothing new is made.
    */
   usePageTemplate(id: string, input: PageTemplateUse = {}) {
-    return this.request<{
-      doc: Doc;
-      tasks_created: number;
-      existing: boolean;
-    }>(`/page-templates/${encodeURIComponent(id)}/use`, {
-      method: "POST",
-      body: input,
-    });
+    return documents.callUsePageTemplate.call(this, id, input);
   }
 
   // ---- project templates ---------------------------------------------------
 
   /** Your templates, your teams', and the starters everyone has. */
   listTemplates() {
-    return this.request<ProjectTemplate[]>("/templates");
+    return projects.callListTemplates.call(this);
   }
   createTemplate(input: TemplateInput) {
-    return this.request<ProjectTemplate>("/templates", {
-      method: "POST",
-      body: input,
-    });
+    return projects.callCreateTemplate.call(this, input);
   }
   updateTemplate(id: string, input: TemplateUpdate) {
-    return this.request<ProjectTemplate>(`/templates/${id}`, {
-      method: "PUT",
-      body: input,
-    });
+    return projects.callUpdateTemplate.call(this, id, input);
   }
   deleteTemplate(id: string) {
-    return this.request<void>(`/templates/${id}`, { method: "DELETE" });
+    return projects.callDeleteTemplate.call(this, id);
   }
   /** Save a project as a template: its tasks, their order, and its brief. */
   templateFromProject(projectId: string) {
-    return this.request<ProjectTemplate>(
-      `/templates/from-project/${projectId}`,
-      { method: "POST" },
-    );
+    return projects.callTemplateFromProject.call(this, projectId);
   }
   /**
    * Start a project from a template. Answers with a proposal to review —
@@ -5813,39 +3820,29 @@ export class OrbynClient {
     id: string,
     input: { title?: string; team_id?: string | null } = {},
   ) {
-    return this.request<Proposal>(`/templates/${encodeURIComponent(id)}/use`, {
-      method: "POST",
-      body: input,
-    });
+    return projects.callUseTemplate.call(this, id, input);
   }
 
   // ---- follow-through ------------------------------------------------------
 
   /** How much of what was planned lately got done, by weekday. */
   planReality() {
-    return this.request<PlanReality>("/planner/reality");
+    return planner.callPlanReality.call(this);
   }
   /** What a change would do to the coming days. Nothing is saved. */
   whatIf(input: WhatIfInput) {
-    return this.request<WhatIfResult>("/planner/what-if", {
-      method: "POST",
-      body: input,
-    });
+    return planner.callWhatIf.call(this, input);
   }
   /** After time away: what happened meanwhile, or null. */
   reentry() {
-    return this.request<ReentryBrief | null>("/me/reentry");
+    return projects.callReentry.call(this);
   }
   dismissReentry() {
-    return this.request<{ ok: true }>("/me/reentry/dismiss", {
-      method: "POST",
-    });
+    return projects.callDismissReentry.call(this);
   }
   /** Pages nobody has changed or confirmed in months. */
   fadingDocs(teamId?: string) {
-    return this.request<FadingDoc[]>(
-      `/docs/fading${teamId ? `?team_id=${teamId}` : ""}`,
-    );
+    return documents.callFadingDocs.call(this, teamId);
   }
   /** Say a page is still true, or that it needs updating (makes a task). */
   reviewDoc(
@@ -5853,20 +3850,13 @@ export class OrbynClient {
     input:
       { verdict: "still_true" } | { verdict: "needs_update"; note?: string },
   ) {
-    return this.request<{ reviewed_at: string; task: Item | null }>(
-      `/docs/${id}/review`,
-      { method: "POST", body: input },
-    );
+    return assistant.callReviewDoc.call(this, id, input);
   }
   listAsks() {
-    return this.request<{
-      to_me: TaskAsk[];
-      from_me: TaskAsk[];
-      recent: TaskAsk[];
-    }>("/asks");
+    return tasks.callListAsks.call(this);
   }
   itemAsk(itemId: string) {
-    return this.request<TaskAsk | null>(`/items/${itemId}/ask`);
+    return tasks.callItemAsk.call(this, itemId);
   }
   /** Answer an ask: take it on, suggest another date, or say you can't. */
   replyToAsk(
@@ -5881,28 +3871,17 @@ export class OrbynClient {
         }
       | { action: "decline"; message: string },
   ) {
-    return this.request<TaskAsk>(`/asks/${id}/reply`, {
-      method: "POST",
-      body: input,
-    });
+    return tasks.callReplyToAsk.call(this, id, input);
   }
   /** Settle a suggestion: agree, keep the original, or withdraw the ask. */
   settleAsk(id: string, action: "agree" | "keep" | "withdraw", message = "") {
-    return this.request<TaskAsk>(`/asks/${id}/settle`, {
-      method: "POST",
-      body: { action, message },
-    });
+    return tasks.callSettleAsk.call(this, id, action, message);
   }
   teamAttention(teamId: string, week?: string) {
-    return this.request<TeamAttention>(
-      `/teams/${teamId}/attention${week ? `?week=${week}` : ""}`,
-    );
+    return teams.callTeamAttention.call(this, teamId, week);
   }
   setMeetingBudget(teamId: string, minutes: number | null) {
-    return this.request<{ meeting_budget_minutes: number | null }>(
-      `/teams/${teamId}/attention`,
-      { method: "PUT", body: { meeting_budget_minutes: minutes } },
-    );
+    return booking.callSetMeetingBudget.call(this, teamId, minutes);
   }
   checkAttention(
     teamId: string,
@@ -5913,38 +3892,25 @@ export class OrbynClient {
       item_id?: string;
     },
   ) {
-    return this.request<AttentionCheck>(`/teams/${teamId}/attention/check`, {
-      method: "POST",
-      body: input,
-    });
+    return teams.callCheckAttention.call(this, teamId, input);
   }
   listProofs(itemId: string) {
-    return this.request<ItemProof[]>(`/items/${itemId}/proofs`);
+    return tasks.callListProofs.call(this, itemId);
   }
   addProof(itemId: string, input: { url?: string | null; note?: string }) {
-    return this.request<ItemProof>(`/items/${itemId}/proofs`, {
-      method: "POST",
-      body: { url: input.url ?? null, note: input.note ?? "" },
-    });
+    return tasks.callAddProof.call(this, itemId, input);
   }
   deleteProof(itemId: string, proofId: string) {
-    return this.request<void>(`/items/${itemId}/proofs/${proofId}`, {
-      method: "DELETE",
-    });
+    return tasks.callDeleteProof.call(this, itemId, proofId);
   }
   /** What got done between two times, with its proof; a team's, or yours. */
   progress(from: Date, to: Date, teamId?: string) {
-    const q = new URLSearchParams({
-      from: from.toISOString(),
-      to: to.toISOString(),
-      ...(teamId ? { team_id: teamId } : {}),
-    });
-    return this.request<ProgressReport>(`/progress?${q}`);
+    return planner.callProgress.call(this, from, to, teamId);
   }
 
   /** An experiment's before and after, measured. */
   experimentEvidence(id: string) {
-    return this.request<ExperimentEvidence>(`/work-records/${id}/evidence`);
+    return workspace.callExperimentEvidence.call(this, id);
   }
 
   // ---- D4c: staying current, publishing, imports, assistant chips ----
@@ -5959,101 +3925,61 @@ export class OrbynClient {
       limit?: number;
     } = {},
   ) {
-    const q = new URLSearchParams();
-    if (params.team_id) q.set("team_id", params.team_id);
-    if (params.hide_mine === false) q.set("hide_mine", "false");
-    if (params.before) q.set("before", params.before);
-    if (params.limit) q.set("limit", String(params.limit));
-    const qs = q.toString();
-    return this.request<TeamChangesPage>(`/changes${qs ? `?${qs}` : ""}`);
+    return tasks.callListChanges.call(this, params);
   }
 
   /** Finish the first run (DSN-02): what Orbyn is for, and a starter. */
   finishFirstRun(input: FirstRunInput) {
-    return this.request<FirstRunResult & { user: User }>("/me/first-run", {
-      method: "POST",
-      body: input,
-    });
+    return account.callFinishFirstRun.call(this, input);
   }
   /** Not now: the first run isn't shown again. */
   skipFirstRun() {
-    return this.request<User>("/me/first-run/skip", {
-      method: "POST",
-      body: {},
-    });
+    return account.callSkipFirstRun.call(this);
   }
 
   /** Whether a page or folder is on the web, and whether you may publish it. */
   getPublish(kind: "doc" | "folder", id: string) {
-    return this.request<PublishState>(`/${kind}s/${id}/publish`);
+    return publishing.callGetPublish.call(this, kind, id);
   }
   getPagePublication(id: string) {
-    return this.request<import("@orbyn/core").PagePublication | null>(
-      `/docs/${id}/publication`,
-      { fresh: true },
-    );
+    return documents.callGetPagePublication.call(this, id);
   }
   publishPageSelection(
     id: string,
     input: import("@orbyn/core").PagePublicationInput,
   ) {
-    return this.request<import("@orbyn/core").PagePublication>(
-      `/docs/${id}/publication`,
-      { method: "PUT", body: input },
-    );
+    return publishing.callPublishPageSelection.call(this, id, input);
   }
   revokePagePublication(id: string) {
-    return this.request(`/docs/${id}/publication`, { method: "DELETE" });
+    return documents.callRevokePagePublication.call(this, id);
   }
   /** Put a page or folder on the web, or change how (SHR-05, SHR-06). */
   publish(kind: "doc" | "folder", id: string, input: PublishInput) {
-    return this.request<PublishState>(`/${kind}s/${id}/publish`, {
-      method: "PUT",
-      body: input,
-    });
+    return publishing.callPublish.call(this, kind, id, input);
   }
   /** Take it off the web; the address stops working at once. */
   unpublish(kind: "doc" | "folder", id: string) {
-    return this.request<PublishState>(`/${kind}s/${id}/publish`, {
-      method: "DELETE",
-    });
+    return publishing.callUnpublish.call(this, kind, id);
   }
   /** A page's own description for its card on the web. */
   setWebDescription(docId: string, description: string) {
-    return this.request<PublishState>(`/docs/${docId}/web-description`, {
-      method: "PUT",
-      body: { description },
-    });
+    return documents.callSetWebDescription.call(this, docId, description);
   }
   /** A team's switch for publishing, and how many of its pages are on the web. */
   getTeamPublishing(teamId: string) {
-    return this.request<{
-      allowed: boolean;
-      published: number;
-      can_change: boolean;
-    }>(`/teams/${teamId}/publishing`);
+    return publishing.callGetTeamPublishing.call(this, teamId);
   }
   setTeamPublishing(teamId: string, allowed: boolean) {
-    return this.request<{
-      allowed: boolean;
-      published: number;
-      can_change: boolean;
-    }>(`/teams/${teamId}/publishing`, { method: "PUT", body: { allowed } });
+    return publishing.callSetTeamPublishing.call(this, teamId, allowed);
   }
 
   /** A Markdown or Notion export into pages (DATA-08). Dry run by default. */
   importPages(input: PageImportInput) {
-    return this.request<PagesImportSummary>("/imports/pages", {
-      method: "POST",
-      body: input,
-    });
+    return documents.callImportPages.call(this, input);
   }
 
   /** Summarise, or find deadlines in, a page or shared words (AI-01). */
   assistCapture(input: CaptureAssistInput) {
-    return this.request<CaptureAssistResult>("/ai/assist", {
-      method: "POST",
-      body: input,
-    });
+    return capture.callAssistCapture.call(this, input);
   }
 }

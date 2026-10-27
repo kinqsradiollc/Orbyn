@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { docContainerBlocks, parseDocContainers, HttpError } from "@orbyn/core";
-import { writeDocLeafEdits } from "../src/modules/docs/leaf-edits.js";
+import { writeDocLeafEdits } from "../src/modules/documents/leaf-edits.js";
 import type { Db } from "../src/db/pool.js";
 
 function fixture(row: unknown) {

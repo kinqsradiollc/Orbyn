@@ -10,7 +10,7 @@ import { characterAppearance } from "@orbyn/core";
 for (const mobile of [false, true]) {
   const name = mobile ? "Expo" : "web";
   const file = mobile
-    ? "mobile/src/screens/AgentContext.tsx"
+    ? "mobile/src/features/connections/AgentContext.tsx"
     : "desktop/src/features/settings/AgentContext.tsx";
   const parsed = ts.createSourceFile(
     file,

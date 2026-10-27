@@ -11,8 +11,8 @@ import {
   type TeamChange,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { deviceTimeZone, errorText } from "../../lib/planning";
-import { openObject, peekObject } from "../docs/DocLinks";
+import { deviceTimeZone, errorText } from "../planner/planning";
+import { openObject, peekObject } from "../documents/editor/DocLinks";
 import "./changes.css";
 import { CONCEPT_ICON } from "../../app/concept-icons";
 

@@ -6,7 +6,7 @@ import type { StudyOverview } from "@orbyn/core";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { agendaAiStudy, assertAgendaStudySources } =
-  await import("../src/modules/docs/agenda-study-sources.js");
+  await import("../src/modules/documents/agenda-study-sources.js");
 const owners: string[] = [];
 const teams: string[] = [];
 const now = new Date("2026-10-05T09:00:00Z");

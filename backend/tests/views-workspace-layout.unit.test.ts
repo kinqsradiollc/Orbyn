@@ -38,7 +38,7 @@ test("view table overflow region is keyboard focusable and named", () => {
 
 test("view library keeps concise empty copy and native arrangement disclosure", () => {
   const web = read("desktop/src/features/views/ViewsView.tsx");
-  const mobile = read("mobile/src/screens/views/ViewsSheet.tsx");
+  const mobile = read("mobile/src/features/views/ViewsSheet.tsx");
   assert.ok(
     web.includes("New view"),
     "the empty library retains its creation action",
@@ -69,8 +69,8 @@ test("view layouts bound title widths and retain horizontal table containment", 
 });
 
 test("mobile page gallery adapts to its pane and field labels can wrap", () => {
-  const body = read("mobile/src/screens/views/ViewBody.tsx");
-  const fields = read("mobile/src/screens/views/FieldsSection.tsx");
+  const body = read("mobile/src/features/views/ViewBody.tsx");
+  const fields = read("mobile/src/features/views/FieldsSection.tsx");
   assert.match(body, /const pane = usePaneWidth\(\);/);
   assert.match(body, /style=\{s.gallery\} onLayout=\{pane.onLayout\}/);
   assert.match(body, /pane.width < 480 && s.gallerySingle/);

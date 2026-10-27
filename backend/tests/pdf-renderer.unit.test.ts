@@ -5,11 +5,11 @@ import {
   renderPdfSnapshot,
   renderHtmlSnapshot,
   portableSnapshotHtml,
-} from "../src/modules/docs/pdf-renderer.js";
+} from "../src/modules/documents/pdf-renderer.js";
 import type {
   PdfBrowser,
   PdfBrowserEvent,
-} from "../src/modules/docs/pdf-browser.js";
+} from "../src/modules/documents/pdf-browser.js";
 
 const html = "<!doctype html><html><h1>Fixture</h1><p>Content</p></html>";
 function fixture({

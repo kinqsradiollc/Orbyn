@@ -20,8 +20,8 @@ import {
 import { client } from "../../lib/api";
 import { usePlanning } from "../../app/planning";
 import { EmptyState } from "../../components/EmptyState";
-import { ItemRow } from "../../components/ItemRow";
-import { byScore, plural, SWATCHES } from "../../lib/planning";
+import { ItemRow } from "../tasks/ItemRow";
+import { byScore, plural, SWATCHES } from "../planner/planning";
 import { session } from "../../lib/session";
 import { Popover } from "../../components/Popover";
 import { useAction, OutcomeNote } from "../../components/Outcome";

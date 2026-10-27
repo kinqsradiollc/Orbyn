@@ -3,7 +3,7 @@ import { fail } from "@orbyn/core";
 import { pool, transaction } from "../../db/pool.js";
 import { authenticate, isApiKeyRequest } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { announceDocChange } from "../docs/live.js";
+import { announceDocChange } from "../documents/live.js";
 import { forgetMemory } from "./service.js";
 
 /** Private Memory actions available to the signed-in person in Orbyn. */

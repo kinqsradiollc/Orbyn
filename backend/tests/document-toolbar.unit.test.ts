@@ -44,10 +44,10 @@ function find(
 test("desktop toolbar starts with title and actions, without duplicate Back or collapse controls", () => {
   for (const [file, className] of [
     [
-      "desktop/src/features/docs/StructuredDocEditor.tsx",
+      "desktop/src/features/documents/editor/StructuredDocEditor.tsx",
       "structured-doc-toolbar",
     ],
-    ["desktop/src/features/docs/DocEditor.tsx", "doc-bar"],
+    ["desktop/src/features/documents/editor/LegacyDocEditor.tsx", "doc-bar"],
   ]) {
     const source = parse(file);
     const header = find(
@@ -64,12 +64,12 @@ test("desktop toolbar starts with title and actions, without duplicate Back or c
     );
   }
   assert.doesNotMatch(
-    read("desktop/src/features/docs/structured-doc-editor.css"),
+    read("desktop/src/features/documents/editor/structured-doc-editor.css"),
     /\.structured-doc-back\s*\{[^}]*order:/,
   );
 });
 test("library shares responsive source fitting with one explicit collapse control", () => {
-  const library = read("desktop/src/features/docs/DocsView.tsx");
+  const library = read("desktop/src/features/documents/library/DocsView.tsx");
   assert.match(library, /paneWidth > 0 && paneWidth < 900/);
   assert.match(
     library,
@@ -77,25 +77,29 @@ test("library shares responsive source fitting with one explicit collapse contro
   );
   assert.doesNotMatch(library, /orbyn-docs-library/);
   assert.match(library, /setSourceOpen,/);
-  const mobile = read("mobile/src/screens/docs/DocsSheet.tsx");
+  const mobile = read("mobile/src/features/documents/library/DocsSheet.tsx");
   assert.match(mobile, /!sourceOpen &&/);
   assert.match(mobile, /setSourceOpen,/);
   for (const file of [
-    "desktop/src/features/docs/DocEditor.tsx",
-    "desktop/src/features/docs/StructuredDocEditor.tsx",
-    "mobile/src/screens/docs/DocEditor.tsx",
-    "mobile/src/screens/docs/StructuredDocEditor.tsx",
+    "desktop/src/features/documents/editor/LegacyDocEditor.tsx",
+    "desktop/src/features/documents/editor/StructuredDocEditor.tsx",
+    "mobile/src/features/documents/editor/LegacyDocEditor.tsx",
+    "mobile/src/features/documents/editor/StructuredDocEditor.tsx",
   ])
     assert.doesNotMatch(read(file), /DocumentLibraryButton/);
 });
 test("actual workspace effects return library space when source closes or editor unmounts", () => {
   for (const [file, hook, refName] of [
     [
-      "desktop/src/features/docs/DocumentWorkspace.tsx",
+      "desktop/src/features/documents/library/DocumentWorkspace.tsx",
       "useLayoutEffect",
       "controls",
     ],
-    ["mobile/src/screens/docs/DocumentWorkspace.tsx", "useEffect", "latest"],
+    [
+      "mobile/src/features/documents/library/DocumentWorkspace.tsx",
+      "useEffect",
+      "latest",
+    ],
   ]) {
     const source = parse(file);
     const call = find(
@@ -140,14 +144,14 @@ test("app navigation adapts to width and exposes only the narrow-screen menu", (
     read("desktop/src/app/App.tsx"),
     /onResize=\{narrowNavigation \? undefined : setSidebarWidth\}/,
   );
-  const header = read("desktop/src/components/Topbar.tsx");
+  const header = read("desktop/src/app/chrome/Topbar.tsx");
   assert.doesNotMatch(header, /PanelLeft|workspace-rail-toggle|onToggleRail/);
   assert.match(header, /className="icon-button mobile-menu"/);
   assert.match(header, /aria-expanded=\{navigationOpen\}/);
 });
 
 test("Library return and page selection honor editor departure guards", async () => {
-  const source = parse("desktop/src/features/docs/DocsView.tsx");
+  const source = parse("desktop/src/features/documents/library/DocsView.tsx");
   for (const name of ["select", "openPage"]) {
     const declaration = find(
       source,
@@ -197,7 +201,7 @@ test("Library return and page selection honor editor departure guards", async ()
 });
 
 test("Library and document meet without a source-order-dependent grid gutter", () => {
-  const base = read("desktop/src/features/docs/docs.css");
+  const base = read("desktop/src/features/documents/editor/docs.css");
   const workspace = base.match(/\.docs-workspace \{([^}]+)\}/)?.[1];
   assert.ok(workspace);
   assert.match(workspace, /gap: 0;/);

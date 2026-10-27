@@ -7,6 +7,8 @@ workspace, with a web app, an Electron desktop client and an Expo mobile app.
 It is an open-source project created by **Anh Dang**, a University of Melbourne student.
 See [creator and contact](#creator-and-contact) and [contributing](#contributing).
 
+For source navigation, see the [cross-stack code map](docs/architecture.md#find-the-code).
+
 ## What you can do
 
 - **Plan work:** manage tasks, deadlines, recurring work, calendar events and

@@ -14,7 +14,7 @@ import { Orbit } from "lucide-react";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFile(resolve(root, path));
 const source = transformSync(
-  (await read("packages/core/src/presentation.ts")).toString(),
+  (await read("packages/core/src/theme/presentation.ts")).toString(),
   { loader: "ts", format: "esm" },
 ).code;
 const { colors: light, darkColors: dark } = await import(

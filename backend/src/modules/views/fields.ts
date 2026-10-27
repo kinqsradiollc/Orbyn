@@ -27,7 +27,7 @@ import {
 } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
-import { announceDocChange } from "../docs/live.js";
+import { announceDocChange } from "../documents/live.js";
 import { idParam } from "../../lib/params.js";
 import { membershipRole, requireTeam } from "../../lib/teams.js";
 import { visibleOwned } from "../../lib/visibility.js";

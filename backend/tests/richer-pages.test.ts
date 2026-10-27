@@ -34,7 +34,7 @@ process.env.FILES_MIN_FREE_MB = "0";
 
 const { startTestPdfService } = await import("./helpers/pdf-service.js");
 const { renderPdfSnapshot } =
-  await import("../src/modules/docs/pdf-renderer.js");
+  await import("../src/modules/documents/pdf-renderer.js");
 let beforePdfPrint: (() => Promise<void>) | undefined;
 const pdfService = await startTestPdfService(async (options) => {
   const before = beforePdfPrint;
@@ -140,7 +140,7 @@ beforeEach(async () => {
     person.token = await freshRateLimitSession(person.token);
 });
 after(async () => {
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   await app.close();
   await pdfService.close();

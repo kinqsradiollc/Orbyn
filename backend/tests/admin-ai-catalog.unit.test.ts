@@ -101,7 +101,7 @@ for (const scenario of [
 }
 
 const mobileSource = await readFile(
-  new URL("../../mobile/src/screens/AdminAi.tsx", import.meta.url),
+  new URL("../../mobile/src/features/admin/AdminAi.tsx", import.meta.url),
   "utf8",
 );
 const mobileTree = ts.createSourceFile(
@@ -213,7 +213,10 @@ test("mobile follows saved model changes while preserving a manual draft", () =>
 
 test("API client sends exact catalog generation without changing legacy calls", async () => {
   const source = await readFile(
-    new URL("../../packages/api-client/src/client.ts", import.meta.url),
+    new URL(
+      "../../packages/api-client/src/endpoints/assistant.ts",
+      import.meta.url,
+    ),
     "utf8",
   );
   const tree = ts.createSourceFile(
@@ -226,15 +229,15 @@ test("API client sends exact catalog generation without changing legacy calls", 
   let method: string | undefined;
   function visit(node: ts.Node) {
     if (
-      ts.isMethodDeclaration(node) &&
-      node.name.getText(tree) === "listAiModels"
+      ts.isFunctionDeclaration(node) &&
+      node.name?.getText(tree) === "callListAiModels"
     )
       method = node.getText(tree);
     ts.forEachChild(node, visit);
   }
   visit(tree);
   assert.ok(method);
-  const callback = evaluate(`({ ${method} }).listAiModels`, {});
+  const callback = evaluate(`(${method.replace(/^export\s+/, "")})`, {});
   for (const revision of [undefined, "7"]) {
     let request: { url: string; options: any } | undefined;
     callback.call(

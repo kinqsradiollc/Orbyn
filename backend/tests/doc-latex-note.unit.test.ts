@@ -46,8 +46,8 @@ for (const native of [false, true])
       };
       const module = { exports: {} as any };
       const component = native
-        ? "mobile/src/screens/docs/DocLatexPreview.tsx"
-        : "desktop/src/features/docs/DocLatexPreview.tsx";
+        ? "mobile/src/features/documents/source/DocLatexPreview.tsx"
+        : "desktop/src/features/documents/source/DocLatexPreview.tsx";
       runInNewContext(
         transformSync(
           readFileSync(new URL(`../../${component}`, import.meta.url), "utf8"),
@@ -59,9 +59,9 @@ for (const native of [false, true])
           require: (name: string) =>
             name === "@orbyn/core"
               ? core
-              : name === "../../lib/session"
+              : name === "../../../lib/session"
                 ? { session: auth }
-                : name === "../../components/LatexHtmlPreview"
+                : name === "../../../components/LatexHtmlPreview"
                   ? {
                       LatexHtmlPreview: ({ source, fill }: any) =>
                         React.createElement("iframe", {

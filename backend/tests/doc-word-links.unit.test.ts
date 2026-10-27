@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseDoc, parseDocInline, docReferenceLinks } from "@orbyn/core";
-import { docToDocx } from "../src/modules/docs/docx.js";
+import { docToDocx } from "../src/modules/documents/docx.js";
 import { docxToMarkdown, readZip } from "../src/modules/imports/docx.js";
-import { zip } from "../src/modules/docs/zip.js";
+import { zip } from "../src/modules/documents/zip.js";
 
 const archive = (source: string) =>
   readZip(docToDocx("Links", parseDoc(source)));

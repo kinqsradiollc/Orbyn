@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { Undo2 } from "lucide-react";
 import type { AgentActivity } from "@orbyn/core";
 import { errorText } from "../../lib/errors";
-import { changeLine, visibleChanges } from "../../lib/assistant-labels";
-import { openObject } from "../docs/DocLinks";
+import { changeLine, visibleChanges } from "./assistant-labels";
+import { openObject } from "../documents/editor/DocLinks";
 
 const SHOWN = 8;
 

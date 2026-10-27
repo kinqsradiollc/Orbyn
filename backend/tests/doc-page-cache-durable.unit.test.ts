@@ -6,7 +6,10 @@ import ts from "typescript";
 import * as core from "@orbyn/core";
 
 const source = readFileSync(
-  new URL("../../mobile/src/lib/pageCache.ts", import.meta.url),
+  new URL(
+    "../../mobile/src/features/documents/library/pageCache.ts",
+    import.meta.url,
+  ),
   "utf8",
 );
 const compiled = ts.transpileModule(source, {
@@ -32,7 +35,7 @@ function fixture(
     exports,
     require: (name: string) => {
       if (name === "@orbyn/core") return core;
-      if (name === "./session")
+      if (name === "../../../lib/session")
         return { session: { token: "fixture-account" } };
       if (name === "@react-native-async-storage/async-storage")
         return {

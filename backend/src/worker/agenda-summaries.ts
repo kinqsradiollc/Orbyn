@@ -15,7 +15,7 @@ import {
   applyScheduledAgenda,
   deferScheduledAgenda,
   failScheduledAgenda,
-} from "../modules/docs/agenda-summary-runs.js";
+} from "../modules/documents/agenda-summary-runs.js";
 
 /** Background-only scoped work; a notifier never owns private model execution. */
 export async function claimScheduledAgendaWork(

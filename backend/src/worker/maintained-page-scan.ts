@@ -3,8 +3,8 @@ import { pool, transaction } from "../db/pool.js";
 import type { UserRow } from "../lib/auth.js";
 import { visibleDocs } from "../lib/visibility.js";
 import { assistantPrincipal } from "../modules/agents/assistant.js";
-import { queueMaintainedPageRun } from "../modules/docs/maintenance-runs.js";
-import { retireWithdrawnPageComments } from "../modules/docs/comment-request-context.js";
+import { queueMaintainedPageRun } from "../modules/documents/maintenance-runs.js";
+import { retireWithdrawnPageComments } from "../modules/documents/comment-request-context.js";
 import { nightShiftOwns } from "./assistant-scan.js";
 
 let afterBinding: string | null = null;

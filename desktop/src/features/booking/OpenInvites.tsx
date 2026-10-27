@@ -33,7 +33,7 @@ import {
 import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
 import { OutcomeNote, useAction } from "../../components/Outcome";
-import { copyText, minutesLabel, plural, spanLabel } from "../../lib/planning";
+import { copyText, minutesLabel, plural, spanLabel } from "../planner/planning";
 import { addDays, timeLabel } from "../calendar/dates";
 import { RemindersField } from "./RemindersField";
 import "./booking-w3.css";

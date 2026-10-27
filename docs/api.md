@@ -310,7 +310,7 @@ Challenges are single-use and expire after five minutes.
 
 ## Terms, privacy and consent
 
-The Terms of Service and Privacy Policy ship with Orbyn as starting texts (`packages/core/src/legal.ts`)
+The Terms of Service and Privacy Policy ship with Orbyn as starting texts (`packages/core/src/workspace/legal.ts`)
 with `{{placeholders}}` an admin fills in. People agree to one **agreement version** — the newer of the
 two documents' versions — so publishing either document asks everyone to review it again. Both apps
 hold a signed-in person at a consent screen while `user.terms_version` differs from it. The API does
@@ -352,7 +352,7 @@ version newer than the current agreement (today's date, `.2`, `.3`… on the sam
 ## Study
 
 Flashcards from the person's own pages, reviewed with spaced repetition, and revision planned around
-exams (`packages/core/src/study.ts`, `backend/src/modules/study/`). Everything is free, and cards
+exams (`packages/core/src/study/study.ts`, `backend/src/modules/study/`). Everything is free, and cards
 come only from Orbyn pages: nothing is imported from other apps.
 
 A **card** is any paragraph, bullet or numbered line written `Question :: Answer`. `Front ::: Back`
@@ -409,7 +409,7 @@ exam attachments for 30 days after the exam.
 
 A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordinary page in the
 **Uploads** section of Docs, and the file itself is deleted
-(`packages/core/src/imports.ts`, `backend/src/modules/imports/`). Import is free.
+(`packages/core/src/imports/imports.ts`, `backend/src/modules/imports/`). Import is free.
 
 **Keep the original** (off by default): with the person's setting on (`PUT /me/originals { keep }`, which a personal API key may read but not change), or `keep_original: true` on `POST /imports` for one file (`false` overrides the setting), the file is kept after it becomes a page, encrypted in
 the file store's `kept/` folder, within `FILES_KEEP_QUOTA_MB` per person (over it, the page is still
@@ -546,7 +546,7 @@ Today's agenda, in the person's planner time zone, written from the calendar as 
 sections: a summary line (the assistant's, when connected), Top priorities, Schedule (Morning,
 Afternoon, Evening; all-day first; no calendar names), Focus time (time set aside and free
 stretches), Due today, Carried over, Coming up, Notes and End of day. It reads
-(`packages/core/src/agenda.ts`, `backend/src/modules/docs/agenda.ts`) your events with repeats on
+(`packages/core/src/planner/agenda.ts`, `backend/src/modules/documents/agenda.ts`) your events with repeats on
 the day they fall and the calendars you subscribe to, time set aside for tasks and habits, what's
 due, what slipped, exams and all-day events in the coming week, and how much working time is free. Written the first time it's asked for each day (`201`), never waiting on the AI
 provider, and returned unchanged after that (`200`), so edits are never overwritten. → a document
@@ -615,7 +615,7 @@ time: Overview, ⌘K, notices. Every note written before times had their own is 
 one-off event's note after the event starts repeating. Opening one time of the event from the
 calendar never opens it (that time gets its own note), so the apps point to it instead: the task
 panel shows "Series note: “…”" beside Meeting note, and New page from a template says so when a
-time is chosen (`seriesNoteFor(notes, entry)` in `packages/core/src/docs.ts`).
+time is chosen (`seriesNoteFor(notes, entry)` in `packages/core/src/documents/docs.ts`).
 
 Notes stay with their times when the series changes. A "this and following" edit moves the notes
 of the times from there on to the new series, each to the matching time (the n-th time after the
@@ -635,7 +635,7 @@ The notes some events have, to mark them:
 200 event ids. `class_was` is the time a note was for when that time is gone (the note is then the
 whole event's, and `occurrence` is `null`); those come after the event's own notes. Only notes you can see in each event's own space,
 none in Trash. `from`/`to` keep a repeating event's per-time notes to those first starts (series
-notes always come back). `eventNoteFor(notes, entry)` in `packages/core/src/docs.ts` picks the one
+notes always come back). `eventNoteFor(notes, entry)` in `packages/core/src/documents/docs.ts` picks the one
 a calendar entry opens, by the same rule as the server. `422` for no ids, a bad id or more than 200.
 
 ### `POST /docs/:id/tasks` (auth)
@@ -654,7 +654,7 @@ answers `422`; a page in Trash answers `404`.
 ## Sharing into Orbyn
 
 What the phone's share sheet sends ("Save to Orbyn"): a link or some text, and where it goes
-(`packages/core/src/share.ts`, `backend/src/modules/capture/`).
+(`packages/core/src/workspace/share.ts`, `backend/src/modules/capture/`).
 
 ### `POST /capture/preview` (auth, 30/min)
 
@@ -1051,12 +1051,12 @@ other open editors refresh their tag row.
 `{ "names": ["physics", …] }` → `{ tags, added }`. Adds tags by name, as typing `#physics` in a
 line does; a name the page's space has no tag for yet makes one there. Names compare without case;
 past 20 tags the rest are left off, and a tag is only made when it goes on the page. The apps call
-this when a line with a new `#tag` is left (`addedInlineTags` in `packages/core/src/page-tags.ts`).
+this when a line with a new `#tag` is left (`addedInlineTags` in `packages/core/src/documents/page-tags.ts`).
 When something was added, open editors hear `{ tags: true }` as for `PUT`.
 
 ### Page templates (auth)
 
-A page kept to start the next one from (`packages/core/src/page-templates.ts`). Blanks `{date}`,
+A page kept to start the next one from (`packages/core/src/documents/page-templates.ts`). Blanks `{date}`,
 `{title}`, `{project}` and `{event}` fill themselves in; double braces (cloze) and `::` are never
 touched. Starters: Lecture notes, Lab report, Essay plan, Meeting, Weekly review, One-to-one.
 
@@ -1641,7 +1641,7 @@ back); deleted for good, they move up a level.
 
 A saved view (DATA-01) is a named filter, sort, grouping and layout over tasks, pages or projects.
 Its `definition` is the one language the apps, the live list block in a page and the agents' `query`
-and `save_view` share (`viewDefinition` in `packages/core/src/views.ts`):
+and `save_view` share (`viewDefinition` in `packages/core/src/views/views.ts`):
 
 ```json
 {
@@ -2338,7 +2338,7 @@ These are first-party session endpoints owned by
 `backend/src/modules/assistant-workspace/conversation-routes.ts`; MCP/plugin
 credentials do not grant access. Responses use `Cache-Control: private, no-store`
 and current account/source authority. The schemas in
-`packages/core/src/assistant-conversation.ts` own exact response fields.
+`packages/core/src/assistant/assistant-conversation.ts` own exact response fields.
 
 | Method and path                                                | Contract                                                                                                                                                      |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -3098,7 +3098,7 @@ Other tools reach your Orbyn account through these. Nothing here sends your data
 ### Subscribed calendars
 
 A subscription has a `kind` — `classes`, `exams`, `work`, `meetings`, `holidays` or `other` — which
-sets its defaults when it's added (`CALENDAR_KIND_DEFAULTS` in `packages/core/src/calendar-kinds.ts`);
+sets its defaults when it's added (`CALENDAR_KIND_DEFAULTS` in `packages/core/src/planner/calendar-kinds.ts`);
 anything sent explicitly wins, and every setting can be changed later:
 
 | Setting            | Meaning                                                                                 | Default                             |

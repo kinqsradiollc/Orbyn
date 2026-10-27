@@ -81,7 +81,7 @@ before(async () => {
   otherEmail = other.email;
 });
 after(async () => {
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   await app.close();
   await pool.end();
@@ -880,7 +880,7 @@ test("cards on a page in Trash leave every study count, and come back", async ()
   );
   const { buildMorning } = await import("../src/worker/digest.js");
   const { studyGlance } = await import("../src/modules/ai/agent/workspace.js");
-  const { rewriteAgenda } = await import("../src/modules/docs/agenda.js");
+  const { rewriteAgenda } = await import("../src/modules/documents/agenda.js");
   const ctx = {
     user: { id: userId, role: "member" as const },
     timezone: "UTC",

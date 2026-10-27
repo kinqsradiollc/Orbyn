@@ -1,7 +1,7 @@
 # Orbyn brand assets
 
 Use the current blue orbit and lowercase wordmark. The existing Lucide Orbit
-geometry and `packages/core/src/presentation.ts` palette are authoritative.
+geometry and `packages/core/src/theme/presentation.ts` palette are authoritative.
 Manrope 800 is the wordmark; social text uses Manrope and DM Sans, matching the
 apps. Lettering is outlined using the existing mobile font packages, so exported
 images do not depend on system fonts or fetch fonts from the network.

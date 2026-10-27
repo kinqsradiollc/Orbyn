@@ -297,7 +297,7 @@ that holds real data. CI runs its own throwaway PostgreSQL and marks it the same
   when there is logic worth sharing, a `service.ts`. Register new route plugins in
   `backend/src/app.ts`.
 - Web features are folders under `desktop/src/features/<name>/`; mobile screens live in
-  `mobile/src/screens/`. Reusable UI goes in each app's `components/`.
+  `mobile/src/features/`. Reusable UI goes in each app's `components/`.
 - `npm ci` at the root installs the committed lockfile across all workspaces,
   including mobile. Use the Node/npm engine range from `package.json`; build
   shared packages before running clients or services.

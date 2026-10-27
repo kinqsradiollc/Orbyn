@@ -10,12 +10,13 @@ import type { z } from "zod";
 const { pool, transaction } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { buildApp } = await import("../src/app.js");
-const { writeTodaysAgenda } = await import("../src/modules/docs/agenda.js");
+const { writeTodaysAgenda } =
+  await import("../src/modules/documents/agenda.js");
 const { scanMorningAgendas } = await import("../src/worker/agenda.js");
 const { assistantRuntimeHasRoom } =
   await import("../src/modules/ai/agent/runtime-slots.js");
 const { enqueueScheduledAgenda, claimScheduledAgenda, applyScheduledAgenda } =
-  await import("../src/modules/docs/agenda-summary-runs.js");
+  await import("../src/modules/documents/agenda-summary-runs.js");
 const { saveAgendaPrivatePermission } =
   await import("../src/modules/auth/agenda-private-permission.js");
 const { replaceAssistantRules } =
@@ -175,7 +176,7 @@ async function queueEnvelope(
   const claimed = await claimScheduledAgenda(id);
   assert.ok(claimed);
   const { recordScheduledAgendaSources } =
-    await import("../src/modules/docs/agenda-summary-runs.js");
+    await import("../src/modules/documents/agenda-summary-runs.js");
   const { queueChatgptInference } =
     await import("../src/modules/auth/chatgpt-inference.js");
   const { agendaSummaryMessages } =
@@ -1045,7 +1046,7 @@ async function stagedCall(f: Awaited<ReturnType<typeof fixture>>, id: string) {
   const claimed = await claimScheduledAgenda(id);
   assert.ok(claimed);
   const { recordScheduledAgendaSources } =
-    await import("../src/modules/docs/agenda-summary-runs.js");
+    await import("../src/modules/documents/agenda-summary-runs.js");
   const { resolveUserAi } =
     await import("../src/modules/ai/providers/user-choice.js");
   const { complete } = await import("../src/modules/ai/providers/adapters.js");

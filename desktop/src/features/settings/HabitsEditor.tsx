@@ -20,7 +20,7 @@ import {
   deviceTimeZone,
   minutesLabel,
   WEEKDAY_SHORT,
-} from "../../lib/planning";
+} from "../planner/planning";
 import { DateField } from "../../components/DateField";
 
 type Props = { report: (e: unknown) => void };

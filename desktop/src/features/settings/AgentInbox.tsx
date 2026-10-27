@@ -17,8 +17,8 @@ import {
   type AgentRule,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { copyText } from "../../lib/planning";
-import { timeAgo } from "../../lib/tasks";
+import { copyText } from "../planner/planning";
+import { timeAgo } from "../tasks/tasks";
 import { useConfirm } from "../../components/Confirm";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { Select } from "../../components/Select";

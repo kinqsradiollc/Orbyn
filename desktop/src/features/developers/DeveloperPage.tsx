@@ -13,7 +13,7 @@ import {
   type McpCatalog,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { copyText } from "../../lib/planning";
+import { copyText } from "../planner/planning";
 import { errorText } from "../../lib/errors";
 import "../status/status.css";
 import "./developers.css";

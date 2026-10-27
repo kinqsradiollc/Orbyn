@@ -8,7 +8,7 @@ import {
 
 /**
  * The query tool's filter words (tasks, events, pages, projects or work
- * records), and how a saved view (packages/core/src/views.ts, the views
+ * records), and how a saved view (packages/core/src/views/views.ts, the views
  * track's definition) reads in them. A saved view lists tasks, pages or
  * projects; query runs it with the same filters, sort and grouping, as the
  * connection sees things.

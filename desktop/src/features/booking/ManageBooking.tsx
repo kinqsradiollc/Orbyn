@@ -23,7 +23,7 @@ import {
   errorText,
   minutesLabel,
   zoneAbbr,
-} from "../../lib/planning";
+} from "../planner/planning";
 import {
   BookingStatusPill,
   Message,

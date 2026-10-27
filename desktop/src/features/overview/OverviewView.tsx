@@ -26,11 +26,11 @@ import { UpNextCard } from "./UpNextCard";
 import { TodayCard } from "./TodayCard";
 import { AssistantIdeasCard } from "./AssistantIdeasCard";
 import { usePlanned } from "../../app/planned";
-import { ItemRow } from "../../components/ItemRow";
+import { ItemRow } from "../tasks/ItemRow";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
 import type { View } from "../../app/views";
-import { progressOf } from "../../lib/tasks";
+import { progressOf } from "../tasks/tasks";
 
 type Props = {
   /** Opens a document found on the Overview. */

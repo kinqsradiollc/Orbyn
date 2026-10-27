@@ -14,7 +14,10 @@ function mount(app: "desktop" | "mobile") {
   const exports: { useChatgptRemote?: (userId: string) => any } = {};
   const compiled = ts.transpileModule(
     readFileSync(
-      new URL(`../../${app}/src/hooks/useChatgptRemote.ts`, import.meta.url),
+      new URL(
+        `../../${app}/src/features/connections/useChatgptRemote.ts`,
+        import.meta.url,
+      ),
       "utf8",
     ),
     {
@@ -70,8 +73,8 @@ function mount(app: "desktop" | "mobile") {
           useEffect: (fn: () => () => void) => effects.push(fn),
         };
       if (id === "@orbyn/api-client") return { ChatgptRemoteStore: Store };
-      if (id === "../lib/api") return { client: {} };
-      if (id === "../lib/session")
+      if (id === "../../lib/api") return { client: {} };
+      if (id === "../../lib/session")
         return {
           session: {
             get: () => token,
@@ -164,7 +167,7 @@ function view(
   const source =
     app === "desktop"
       ? "desktop/src/features/settings/ChatgptRemoteModels.tsx"
-      : "mobile/src/screens/settings/ChatgptModelsSection.tsx";
+      : "mobile/src/features/settings/ChatgptModelsSection.tsx";
   const compiled = ts.transpileModule(
     readFileSync(new URL(`../../${source}`, import.meta.url), "utf8"),
     {
@@ -235,7 +238,7 @@ function view(
             select: (selection: unknown) => selected.push(selection),
           }),
         };
-      if (id.endsWith("/lib/chatgpt-local-sign-in"))
+      if (id.endsWith("/chatgpt-local-sign-in"))
         return {
           prepareNativeChatgptAccounts: async (
             _: string,
@@ -280,7 +283,7 @@ function view(
           },
           cancelNativeChatgptSignIn: () => {},
         };
-      if (id.endsWith("/lib/chatgpt-foreground"))
+      if (id.endsWith("/chatgpt-foreground"))
         return {
           chatgptForeground: {
             snapshot: () => ({

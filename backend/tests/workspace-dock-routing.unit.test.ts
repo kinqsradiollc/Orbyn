@@ -220,7 +220,7 @@ test("actual old history and reopened notification tabs forward before main depa
 });
 test("shared split navigation preserves preferred rail and uses a drawer only at the phone viewport", async () => {
   const { sidebarLayout } =
-    await import("../../desktop/src/components/SidebarResizer");
+    await import("../../desktop/src/app/chrome/SidebarResizer");
   for (const available of [1440, 1280, 1100, 900]) {
     const layout = sidebarLayout(72, available);
     assert.equal(layout.width, 72);
@@ -236,7 +236,7 @@ test("shared split navigation preserves preferred rail and uses a drawer only at
   assert.match(source, /useMediaQuery\("\(max-width: 800px\)"\)/);
   const shared = readFileSync(
     new URL(
-      "../../desktop/src/components/SharedNarrowChrome.tsx",
+      "../../desktop/src/app/chrome/SharedNarrowChrome.tsx",
       import.meta.url,
     ),
     "utf8",

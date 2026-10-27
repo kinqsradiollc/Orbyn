@@ -1,4 +1,4 @@
-import { deliverPublishingOne } from "../modules/publishing/service.js";
+import { deliverPublishingOne } from "../modules/social-publishing/service.js";
 import { consumeTeamsQuestionReplyOne } from "../modules/agent-channels/teams-question-receipts.js";
 import {
   configuredTeams,

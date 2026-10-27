@@ -11,7 +11,7 @@ import {
   docContent,
   DOC_PARAGRAPH_MAX,
 } from "@orbyn/core";
-import { docToDocx } from "../src/modules/docs/docx.js";
+import { docToDocx } from "../src/modules/documents/docx.js";
 import { docxToMarkdown, readZip } from "../src/modules/imports/docx.js";
 
 test("ordinary continuation lines are one paragraph with the original source range", () => {

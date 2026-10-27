@@ -22,7 +22,7 @@ import {
   errorText,
   minutesLabel,
   timeZones,
-} from "../../lib/planning";
+} from "../planner/planning";
 import { Message, whenLabel } from "./bookingUi";
 import { PublicShell } from "./PublicShell";
 import { SlotPicker } from "./SlotPicker";

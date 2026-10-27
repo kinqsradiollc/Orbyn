@@ -16,7 +16,7 @@ process.env.PAGE_FILES_DIR = join(dir, "kept");
 process.env.FILES_MIN_FREE_MB = "0";
 const { startTestPdfService } = await import("./helpers/pdf-service.js");
 const { renderPdfSnapshot, renderHtmlSnapshot } =
-  await import("../src/modules/docs/pdf-renderer.js");
+  await import("../src/modules/documents/pdf-renderer.js");
 let beforeRender: (() => Promise<void>) | undefined;
 let jobs = 0;
 let lastInput = "";
@@ -68,7 +68,7 @@ before(async () => {
   token = (await h.register("publication-renderer")).token;
 });
 after(async () => {
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   await app.close();
   await renderer.close();

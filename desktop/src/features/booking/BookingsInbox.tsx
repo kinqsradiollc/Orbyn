@@ -9,7 +9,7 @@ import type {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
-import { dayKey, minutesLabel } from "../../lib/planning";
+import { dayKey, minutesLabel } from "../planner/planning";
 import { BookingDrawer } from "./BookingDrawer";
 import {
   BookingStatusPill,

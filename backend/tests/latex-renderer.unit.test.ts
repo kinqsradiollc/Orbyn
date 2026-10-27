@@ -9,7 +9,7 @@ import { runInNewContext } from "node:vm";
 import { transformSync } from "esbuild";
 const code = transformSync(
   readFileSync(
-    new URL("../src/modules/docs/latex-renderer.ts", import.meta.url),
+    new URL("../src/modules/documents/latex-renderer.ts", import.meta.url),
     "utf8",
   ),
   { loader: "ts", format: "cjs" },
@@ -127,7 +127,7 @@ for (const mode of [
 }
 test("LaTeX renderer rejects source byte limit and pre-cancellation before making a job", async () => {
   const { renderLatexSnapshot } =
-    await import("../src/modules/docs/latex-renderer.js");
+    await import("../src/modules/documents/latex-renderer.js");
   await assert.rejects(
     renderLatexSnapshot({ html: "é".repeat(140000), executable: "ignored" }),
     /too large/,

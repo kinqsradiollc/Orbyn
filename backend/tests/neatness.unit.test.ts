@@ -89,7 +89,7 @@ test("every fontSize in the phone app is on the scale", () => {
   // Maths is typeset relative to the line it sits in, and the logo is a
   // drawing; everything else takes a size from the scale.
   const exempt = new Set([
-    "mobile/src/screens/docs/MathView.tsx",
+    "mobile/src/features/documents/editor/MathView.tsx",
     "mobile/src/components/Brand.tsx",
   ]);
   const off: string[] = [];
@@ -156,7 +156,7 @@ test("each idea has one icon, the same on web and phone", () => {
       nav,
       new RegExp(`label: "${label}", icon: CONCEPT_ICON\\.${concept}`),
     );
-  const browse = read("mobile/src/screens/BrowseScreen.tsx");
+  const browse = read("mobile/src/app/chrome/BrowseScreen.tsx");
   for (const [title, concept] of [
     ["Projects", "project"],
     ["Docs", "page"],
@@ -170,10 +170,10 @@ test("each idea has one icon, the same on web and phone", () => {
   // Link pills, ⌘K and Search & do name a page, task, event and project
   // through the map too.
   for (const file of [
-    "desktop/src/features/docs/DocLinks.tsx",
-    "desktop/src/components/CommandBar.tsx",
-    "mobile/src/screens/docs/links.tsx",
-    "mobile/src/screens/SearchSheet.tsx",
+    "desktop/src/features/documents/editor/DocLinks.tsx",
+    "desktop/src/app/chrome/CommandBar.tsx",
+    "mobile/src/features/documents/editor/links.tsx",
+    "mobile/src/features/search/SearchSheet.tsx",
   ])
     for (const concept of ["page", "task", "event", "project"])
       assert.match(read(file), new RegExp(`CONCEPT_ICON\\.${concept}`), file);
@@ -234,8 +234,8 @@ test("each settings card opens with a bold lead-in and one sentence", () => {
 
 test("optional phone settings introductions stay concise", () => {
   const files = [
-    "mobile/src/screens/SettingsScreen.tsx",
-    ...walk("mobile/src/screens/settings", /\.tsx$/),
+    "mobile/src/features/settings/SettingsScreen.tsx",
+    ...walk("mobile/src/features/settings", /\.tsx$/),
   ];
   const long: string[] = [];
   for (const file of files) {
@@ -253,7 +253,7 @@ test("optional phone settings introductions stay concise", () => {
 // ------------------------------------------------------------- editor ---
 
 test("the page editor keeps handles out of sight and lines readable", () => {
-  const css = read("desktop/src/features/docs/docs.css");
+  const css = read("desktop/src/features/documents/editor/docs.css");
   const rule = (selector: string) => {
     const at = css.indexOf(`\n${selector} {`);
     assert.ok(at >= 0, selector);
@@ -269,7 +269,9 @@ test("the page editor keeps handles out of sight and lines readable", () => {
   // embeds), maths and images keep the whole column.
   assert.doesNotMatch(rule(".doc-body"), /max-width/);
   assert.match(rule(".doc-body > :not(.is-wide)"), /max-width: 680px;/);
-  const editor = read("desktop/src/features/docs/DocEditor.tsx");
+  const editor = read(
+    "desktop/src/features/documents/editor/LegacyDocEditor.tsx",
+  );
   const wide = editor.match(/const WIDE_BLOCKS = [^;]*;/)?.[0] ?? "";
   for (const type of ["table", "code", "math", "image"])
     assert.match(wide, new RegExp(`"${type}"`), type);

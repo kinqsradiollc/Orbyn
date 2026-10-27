@@ -19,7 +19,7 @@ const {
   rememberMemory,
   forgetMemory,
 } = await import("../src/modules/memory/service.js");
-const { closeLive } = await import("../src/modules/docs/live.js");
+const { closeLive } = await import("../src/modules/documents/live.js");
 const app = await buildApp();
 const h = helpers(app);
 const network = await trapNetwork();

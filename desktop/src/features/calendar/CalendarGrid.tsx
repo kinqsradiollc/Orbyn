@@ -26,7 +26,7 @@ import {
   spanLabel,
   zoneAbbr,
   zoneCity,
-} from "../../lib/planning";
+} from "../planner/planning";
 import { hourLabel, minutesOf, timeLabel } from "./dates";
 import { usePlanning } from "../../app/planning";
 import { layoutSpans, type Span } from "./layout";

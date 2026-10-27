@@ -27,7 +27,7 @@ const { env } = await import("../src/config/env.js");
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { zip } = await import("../src/modules/docs/zip.js");
+const { zip } = await import("../src/modules/documents/zip.js");
 const { convertPending } = await import("../src/modules/imports/converter.js");
 const { buildPluginService } = await import("../src/app.js");
 const { digest } = await import("../src/lib/auth.js");
@@ -708,7 +708,7 @@ test("Word footnotes survive upload, conversion, storage and source export witho
   const me = await person();
   const other = await person();
   const { parseDoc, plainText } = await import("@orbyn/core");
-  const { docToDocx } = await import("../src/modules/docs/docx.js");
+  const { docToDocx } = await import("../src/modules/documents/docx.js");
   const source = parseDoc(
     'Read[^source].\n\n[^source]: **Source** [guide](https://example.test/guide "Guide hint")  \n    next line',
   );

@@ -251,10 +251,10 @@ test("a failed opener focus attempts the visible navigation return target", () =
   assert.equal(view.document.activeElement, navigation);
 });
 test("responsive navigation and account menu expose Settings return targets", () => {
-  const source = read("desktop/src/components/Topbar.tsx");
+  const source = read("desktop/src/app/chrome/Topbar.tsx");
   assert.doesNotMatch(source, /workspace-rail-toggle/);
   assert.match(
-    read("desktop/src/components/Sidebar.tsx"),
+    read("desktop/src/app/chrome/Sidebar.tsx"),
     /className="sidebar-account-trigger"[^>]*data-settings-focus-return/,
   );
   assert.match(

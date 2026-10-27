@@ -35,6 +35,7 @@ jobs:
           python3 scripts/check-tool-sources.py
           python3 scripts/check-project-docs.py
           python3 scripts/check-workspace-boundary.py
+          python3 scripts/check-code-organization.py
       - name: Classify the complete candidate diff
         id: scope
         env:

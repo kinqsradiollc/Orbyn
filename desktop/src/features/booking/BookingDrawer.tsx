@@ -21,8 +21,8 @@ import { createPortal } from "react-dom";
 import { useModalFocus } from "../../hooks/useModalFocus";
 import { client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
-import { deviceTimeZone, errorText, minutesLabel } from "../../lib/planning";
-import { timeAgo } from "../../lib/tasks";
+import { deviceTimeZone, errorText, minutesLabel } from "../planner/planning";
+import { timeAgo } from "../tasks/tasks";
 import {
   BookingStatusPill,
   DEFAULT_COLOR,

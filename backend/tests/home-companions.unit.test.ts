@@ -9,7 +9,7 @@ import * as core from "@orbyn/core";
 
 function fixture(mobile: boolean) {
   const path = mobile
-    ? "../../mobile/src/components/HomeCompanions.tsx"
+    ? "../../mobile/src/features/home/HomeCompanions.tsx"
     : "../../desktop/src/features/overview/HomeCompanions.tsx";
   const source = readFileSync(new URL(path, import.meta.url), "utf8");
   const states: unknown[] = [];
@@ -47,6 +47,7 @@ function fixture(mobile: boolean) {
       ChevronRight: container,
     },
     "./Icon": { Icon: container },
+    "../../components/Icon": { Icon: container },
     "@orbyn/core": core,
     "react-native": { Text: container, View: container },
     "../../lib/api": {
@@ -66,7 +67,14 @@ function fixture(mobile: boolean) {
         },
       },
     },
-    "../../lib/session": { session: { get: () => token } },
+    "../../lib/session": {
+      session: {
+        get: () => token,
+        get token() {
+          return token;
+        },
+      },
+    },
     "../lib/session": {
       session: {
         get token() {
@@ -79,9 +87,16 @@ function fixture(mobile: boolean) {
         React.createElement("span", null, name),
     },
     "../styles": { shared: {} },
+    "../../styles": { shared: {} },
     "../theme": { controls: { tap: 44 }, colors: { border: "border" } },
+    "../../theme": { controls: { tap: 44 }, colors: { border: "border" } },
     "../motion": { Pressable: container },
+    "../../motion": { Pressable: container },
     "./Button": {
+      Button: ({ title }: { title: string }) =>
+        React.createElement("button", null, title),
+    },
+    "../../components/Button": {
       Button: ({ title }: { title: string }) =>
         React.createElement("button", null, title),
     },
@@ -90,7 +105,7 @@ function fixture(mobile: boolean) {
         visible ? React.createElement("div", null, "Profiles open") : null,
     },
   };
-  modules["../screens/AssistantAgents"] =
+  modules["../features/assistant/AssistantAgents"] =
     modules["../assistant/AssistantAgents"];
   modules["../lib/api"] = modules["../../lib/api"];
   modules["./Character"] = modules["../../components/Character"];

@@ -56,7 +56,7 @@ test("nothing imports from another module's routes: shared logic is a service", 
 test("each shared write has one home", () => {
   const homes: [RegExp, string[]][] = [
     // A proposed change to a page: people, the assistant's rewrite and its tool.
-    [/INSERT INTO doc_suggestions/, ["modules/docs/service.ts"]],
+    [/INSERT INTO doc_suggestions/, ["modules/documents/service.ts"]],
     // Moving or removing one session by hand, or through a reviewed change.
     [
       /UPDATE time_blocks SET start_at = \$2, end_at = \$3, source = 'manual'/,

@@ -83,7 +83,7 @@ test("settings groups mount lazily, retain drafts while folded, and cannot hide 
     transformSync(
       readFileSync(
         new URL(
-          "../../mobile/src/screens/settings/SettingsSection.tsx",
+          "../../mobile/src/features/settings/SettingsSection.tsx",
           import.meta.url,
         ),
         "utf8",
@@ -139,7 +139,10 @@ test("settings groups mount lazily, retain drafts while folded, and cannot hide 
 });
 test("Connections groups every service and compiler deployments reap sandbox children", () => {
   const root = readFileSync(
-    new URL("../../mobile/src/screens/ConnectionsSheet.tsx", import.meta.url),
+    new URL(
+      "../../mobile/src/features/connections/ConnectionsSheet.tsx",
+      import.meta.url,
+    ),
     "utf8",
   );
   for (const title of [
@@ -154,7 +157,10 @@ test("Connections groups every service and compiler deployments reap sandbox chi
     assert.match(root, new RegExp('title="' + title + '"'));
   assert.match(root, /disabled=\{busy \|\| childBusy\}/);
   const agent = readFileSync(
-    new URL("../../mobile/src/screens/AgentContext.tsx", import.meta.url),
+    new URL(
+      "../../mobile/src/features/connections/AgentContext.tsx",
+      import.meta.url,
+    ),
     "utf8",
   );
   for (const title of [

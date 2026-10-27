@@ -102,14 +102,14 @@ message instead.
   chosen); a long press opens the + sheet: New task, New page, From template, Scan notes, New
   project, Plan my day, Start focus and Ask assistant, with Arrange at the bottom to reorder
   rows, hide the ones never used and star the one a tap runs (kept on the device,
-  `packages/core/src/create-actions.ts`).
+  `packages/core/src/planner/create-actions.ts`).
 - **Writing a page:** the line being typed gets one row of icons on the keyboard (the sheet
   docks it just above it): Undo, Redo, Aa (the kind of line), Bold, Italic, Highlight, Link
   (a web address for now), To-do (a to-do with words becomes a task of its own: Make task),
   Indent, Outdent, Comment, Ask (the assistant, on the chosen words or the whole line), ⋯ (Move
   up, Move down, Comment on some words, Delete line) and Hide keyboard last, which puts the line
   away. The style the caret is in is tinted. Undo and Redo work across the page, not only the
-  line (`packages/core/src/undo.ts`, `line-toolbar.ts`).
+  line (`packages/core/src/tasks/undo.ts`, `line-toolbar.ts`).
 - **A page's header** is Back, its title (once the page's own title has scrolled away), Info
   and ⋯. Info holds how you're working on the page (Editing, Suggesting, Viewing), what it
   belongs to, its tags, "still true?", its size, who else is here, and Show history. ⋯ holds Ask

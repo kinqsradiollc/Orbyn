@@ -192,7 +192,7 @@ function contrast(a: string, b: string) {
 }
 
 test("shared mobile text roles remain readable on their normal theme surfaces", () => {
-  const core = load("packages/core/src/presentation.ts", {});
+  const core = load("packages/core/src/theme/presentation.ts", {});
   const palettes = load("mobile/src/theme/palette.ts", { "@orbyn/core": core });
   for (const name of ["light", "dark"]) {
     const palette = palettes[name];
@@ -305,7 +305,7 @@ test("project review keeps complete task details and creation consequences on bo
   };
   for (const platform of ["desktop", "mobile"]) {
     const component = load(
-      `${platform}/src/components/ProjectDraftReview.tsx`,
+      `${platform}/src/features/projects/ProjectDraftReview.tsx`,
       {
         react: React,
         "@orbyn/core": { addDays, dayTime },
@@ -316,6 +316,11 @@ test("project review keeps complete task details and creation consequences on bo
           StyleSheet: { create: (s: unknown) => s },
         },
         "../theme": {
+          colors: {},
+          fonts: {},
+          themed: (fn: () => unknown) => fn(),
+        },
+        "../../theme": {
           colors: {},
           fonts: {},
           themed: (fn: () => unknown) => fn(),
@@ -409,7 +414,7 @@ test("Focus completion stays inline and stable without covering session controls
     "utf8",
   );
   const mobile = readFileSync(
-    new URL("../../mobile/src/screens/FocusScreen.tsx", import.meta.url),
+    new URL("../../mobile/src/features/focus/FocusScreen.tsx", import.meta.url),
     "utf8",
   );
   assert.match(web, /className="focus-completion" role="status"/);
@@ -423,8 +428,8 @@ test("Focus completion stays inline and stable without covering session controls
 
 test("Publication selection preserves full block text and explicit access consequences", () => {
   for (const path of [
-    "desktop/src/features/publish/PagePublicationDialog.tsx",
-    "mobile/src/screens/docs/PagePublicationSheet.tsx",
+    "desktop/src/features/public-pages/PagePublicationDialog.tsx",
+    "mobile/src/features/public-pages/PagePublicationSheet.tsx",
   ]) {
     const source = readFileSync(
       new URL(`../../${path}`, import.meta.url),
@@ -442,8 +447,8 @@ test("Publication selection preserves full block text and explicit access conseq
     );
   }
   for (const path of [
-    "desktop/src/features/publish/PublishDialog.tsx",
-    "mobile/src/screens/docs/PublishSheet.tsx",
+    "desktop/src/features/public-pages/PublishDialog.tsx",
+    "mobile/src/features/public-pages/PublishSheet.tsx",
   ]) {
     const source = readFileSync(
       new URL(`../../${path}`, import.meta.url),
@@ -519,7 +524,7 @@ test("time-block editing keeps the subject and serializes saving and dismissal",
 });
 
 test("team collection rows retain full names, counts and roles in the identity column", () => {
-  const { TeamList } = load("mobile/src/components/TeamList.tsx", {
+  const { TeamList } = load("mobile/src/features/teams/TeamList.tsx", {
     react: React,
     "react-native": {
       StyleSheet: { create: (s: unknown) => s },
@@ -528,15 +533,24 @@ test("team collection rows retain full names, counts and roles in the identity c
     },
     "@orbyn/core": { TEAM_ROLE_LABELS: { owner: "Owner" } },
     "./Icon": { Icon: "Icon" },
+    "../../components/Icon": { Icon: "Icon" },
     "./Pill": { Pill: "Pill" },
+    "../../components/Pill": { Pill: "Pill" },
     "../motion": { FadeIn: "FadeIn", Pressable: "Pressable" },
+    "../../motion": { FadeIn: "FadeIn", Pressable: "Pressable" },
     "../theme": {
       colors: {},
       fonts: {},
       radii: {},
       themed: (fn: () => unknown) => fn(),
     },
-    "../styles": { shared: {} },
+    "../../theme": {
+      colors: {},
+      fonts: {},
+      radii: {},
+      themed: (fn: () => unknown) => fn(),
+    },
+    "../../styles": { shared: {} },
   });
   const name =
     "A full team name that must remain identifiable on a narrow phone";
@@ -566,7 +580,7 @@ test("team planning discloses secondary tools while keeping risks and save choic
   const source = (path: string) =>
     readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
   const web = source("desktop/src/features/teams/TeamPlanning.tsx");
-  const mobile = source("mobile/src/screens/TeamTime.tsx");
+  const mobile = source("mobile/src/features/teams/TeamTime.tsx");
   assert.match(web, /<summary>Availability<\/summary>/);
   assert.match(web, /<summary>Find meeting times<\/summary>/);
   assert.match(web, /<AtRiskList workload=\{workload\}/);
@@ -585,7 +599,7 @@ test("storage keeps upload authority and complete errors with optional history",
   const source = (path: string) =>
     readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
   const web = source("desktop/src/features/admin/AdminStorage.tsx");
-  const mobile = source("mobile/src/screens/AdminStorage.tsx");
+  const mobile = source("mobile/src/features/admin/AdminStorage.tsx");
   assert.match(web, /<summary>Import history · 30 days<\/summary>/);
   assert.match(mobile, /<InlineDetails title="Import history · 30 days">/);
   assert.match(web, /storage-error-detail/);
@@ -603,7 +617,7 @@ test("database browser has pane-sized navigation, owned editing and full row acc
   const source = (path: string) =>
     readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
   const web = source("desktop/src/features/admin/AdminDatabase.tsx");
-  const mobile = source("mobile/src/screens/AdminDatabase.tsx");
+  const mobile = source("mobile/src/features/admin/AdminDatabase.tsx");
   assert.match(web, /const compact = paneWidth < 900/);
   assert.match(web, /searchable\s+aria-label="Database table"/);
   assert.match(web, /useModalFocus\(onClose, busy\)/);
@@ -622,7 +636,7 @@ test("system email details retain invalid-field access and save guards", () => {
   const source = (path: string) =>
     readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
   const web = source("desktop/src/features/admin/AdminSystem.tsx");
-  const mobile = source("mobile/src/screens/AdminSystem.tsx");
+  const mobile = source("mobile/src/features/admin/AdminSystem.tsx");
   const detail = source("mobile/src/components/InlineDetails.tsx");
   assert.match(web, /<summary>Email delivery<\/summary>/);
   assert.match(web, /<summary>Test email delivery<\/summary>/);
@@ -644,7 +658,7 @@ test("system operations retain consequences, day validation and complete update 
   const source = (path: string) =>
     readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
   const web = source("desktop/src/features/admin/AdminSystem.tsx");
-  const mobile = source("mobile/src/screens/AdminSystem.tsx");
+  const mobile = source("mobile/src/features/admin/AdminSystem.tsx");
   const css = source("desktop/src/features/admin/system.css");
   assert.match(web, /<summary>Maintenance notice<\/summary>/);
   assert.match(mobile, /<InlineDetails title="Maintenance notice">/);
@@ -675,7 +689,7 @@ test("admin accounts and audit preserve actions and full details in compact layo
   const users = source("desktop/src/features/admin/AdminUsers.tsx");
   const audit = source("desktop/src/features/admin/AdminAudit.tsx");
   const requests = source("desktop/src/features/admin/AdminRequests.tsx");
-  const mobile = source("mobile/src/screens/AdminSheet.tsx");
+  const mobile = source("mobile/src/features/admin/AdminSheet.tsx");
   assert.match(users, /<Popover/);
   assert.match(users, /selected.id !== user\?\.id/);
   assert.match(users, /Verify email/);
@@ -699,7 +713,10 @@ test("admin accounts and audit preserve actions and full details in compact layo
 
 test("mobile operations keep full request values and guarded retention choices", () => {
   const source = readFileSync(
-    new URL("../../mobile/src/screens/AdminInsights.tsx", import.meta.url),
+    new URL(
+      "../../mobile/src/features/admin/AdminInsights.tsx",
+      import.meta.url,
+    ),
     "utf8",
   );
   const request = source.slice(
@@ -742,7 +759,7 @@ test("account options and analytics expose secondary content without losing valu
     readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
   const account = source("desktop/src/features/admin/AdminUserDetail.tsx");
   const analytics = source("desktop/src/features/admin/AdminAnalytics.tsx");
-  const mobile = source("mobile/src/screens/AdminInsights.tsx");
+  const mobile = source("mobile/src/features/admin/AdminInsights.tsx");
   const bars = source("desktop/src/features/admin/Bars.tsx");
   assert.match(account, /label="Account options"/);
   assert.match(account, /<code>\{link\}<\/code>/);
@@ -767,7 +784,7 @@ test("legal editing owns its overlay and preserves unrelated details drafts", ()
   const source = (path: string) =>
     readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
   const web = source("desktop/src/features/admin/AdminLegal.tsx");
-  const mobile = source("mobile/src/screens/AdminLegal.tsx");
+  const mobile = source("mobile/src/features/admin/AdminLegal.tsx");
   assert.match(web, /useModalFocus\(onClose, busy\)/);
   assert.match(web, /data-modal-focus=\{focus.id\}/);
   assert.match(web, /event.target === event.currentTarget && !busy/);
@@ -788,7 +805,7 @@ test("provider setup owns its dialog and keeps embedding consent and model value
     readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
   const web = source("desktop/src/features/admin/AdminAi.tsx");
   const semantic = source("desktop/src/features/admin/SemanticSetup.tsx");
-  const mobile = source("mobile/src/screens/AdminAi.tsx");
+  const mobile = source("mobile/src/features/admin/AdminAi.tsx");
   assert.match(
     web,
     /useModalFocus\([\s\S]*?if \(!pending.current\) onCancel\(\);[\s\S]*?working\)/,
@@ -807,7 +824,7 @@ test("agent configuration keeps unrelated drafts and complete app identities", (
   const source = (path: string) =>
     readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
   const web = source("desktop/src/features/admin/AdminAgents.tsx");
-  const mobile = source("mobile/src/screens/AdminAgents.tsx");
+  const mobile = source("mobile/src/features/admin/AdminAgents.tsx");
   for (const text of [web, mobile]) {
     assert.match(text, /"allowed_client_hosts" in saved/);
     assert.match(text, /"agent_limits" in saved/);

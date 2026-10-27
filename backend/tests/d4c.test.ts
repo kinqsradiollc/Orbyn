@@ -43,7 +43,7 @@ const providerUrl = `http://127.0.0.1:${(provider.address() as { port: number })
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { zip } = await import("../src/modules/docs/zip.js");
+const { zip } = await import("../src/modules/documents/zip.js");
 const { SWEEP_RULES } = await import("../src/lib/sweep.js");
 
 const app = await buildApp();

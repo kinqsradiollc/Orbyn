@@ -2,7 +2,7 @@ import { colors as productColors } from "@orbyn/core";
 import type { CSSProperties, ReactNode } from "react";
 import { CalendarCheck, CircleCheck } from "lucide-react";
 import type { BookingEvent, BookingStatus } from "@orbyn/core";
-import { dayKey, fromDayKey } from "../../lib/planning";
+import { dayKey, fromDayKey } from "../planner/planning";
 
 /** A booking to open in the inbox; a new `key` opens it again. */
 export type BookingFocus = { id: string; key: number };

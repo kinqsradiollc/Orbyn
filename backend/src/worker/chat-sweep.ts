@@ -5,7 +5,7 @@ import type { UserRow } from "../lib/auth.js";
 import { keptOutFor, type KeptOut } from "../lib/assistant-off.js";
 import { visibleProjects } from "../lib/visibility.js";
 import { assistantChatPendingDelivery } from "../lib/assistant-visibility.js";
-import { createDoc } from "../modules/docs/service.js";
+import { createDoc } from "../modules/documents/service.js";
 import {
   captureChatSweepJob,
   completeChatMaintenance,

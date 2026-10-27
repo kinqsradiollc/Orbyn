@@ -15,7 +15,7 @@ const { completeAgendaFeature } =
   await import("../src/modules/ai/providers/agenda-call.js");
 const { briefFor } = await import("../src/modules/ai/agenda-brief.js");
 const { captureAgendaAiSnapshot, assertAgendaAiSnapshot } =
-  await import("../src/modules/docs/agenda-ai-snapshot.js");
+  await import("../src/modules/documents/agenda-ai-snapshot.js");
 const { claimChatgptInference, finishChatgptInference } =
   await import("../src/modules/auth/chatgpt-inference.js");
 const owners: string[] = [];
@@ -367,7 +367,8 @@ test("interactive Agenda reports an unavailable device without silently using th
   await pool.query("DELETE FROM chatgpt_executor_leases WHERE executor_id=$1", [
     f.executor,
   ]);
-  const { readAgendaAiDay } = await import("../src/modules/docs/agenda.js");
+  const { readAgendaAiDay } =
+    await import("../src/modules/documents/agenda.js");
   const day = await readAgendaAiDay(f.owner, now);
   const outcomes: any[] = [];
   assert.equal(
@@ -402,7 +403,8 @@ test("interactive Agenda reports an unavailable device without silently using th
 
 test("interactive Agenda exposes its accepted ChatGPT model to both clients", async () => {
   const f = await fixture();
-  const { readAgendaAiDay } = await import("../src/modules/docs/agenda.js");
+  const { readAgendaAiDay } =
+    await import("../src/modules/documents/agenda.js");
   const day = await readAgendaAiDay(f.owner, now);
   const outcomes: any[] = [];
   const answer = briefFor(

@@ -22,7 +22,7 @@ import { OrbynClient } from "@orbyn/api-client";
 import { client } from "./api";
 import { session, subscribeSession } from "./session";
 import { errorText } from "./errors";
-import { rememberPage } from "./pageCache";
+import { rememberPage } from "../features/documents/library/pageCache";
 
 /**
  * Changes made on this phone, kept in order until the server has them.

@@ -33,7 +33,7 @@ function fixture({
   const source = ts.createSourceFile(
     "routes.ts",
     readFileSync(
-      new URL("../src/modules/docs/routes.ts", import.meta.url),
+      new URL("../src/modules/documents/routes.ts", import.meta.url),
       "utf8",
     ),
     ts.ScriptTarget.Latest,

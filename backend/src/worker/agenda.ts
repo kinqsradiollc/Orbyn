@@ -1,8 +1,8 @@
 import { dayTime, localDateKey } from "@orbyn/core";
 import { pool } from "../db/pool.js";
-import { writeTodaysAgenda } from "../modules/docs/agenda.js";
+import { writeTodaysAgenda } from "../modules/documents/agenda.js";
 import { briefFor } from "../modules/ai/agenda-brief.js";
-import { enqueueScheduledAgenda } from "../modules/docs/agenda-summary-runs.js";
+import { enqueueScheduledAgenda } from "../modules/documents/agenda-summary-runs.js";
 
 /** Local hour past midnight in `tz`. */
 const localHour = (now: Date, tz: string) =>

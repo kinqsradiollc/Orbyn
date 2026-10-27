@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import type { ChildProcess } from "node:child_process";
-import { pdfBrowserPipe } from "../src/modules/docs/pdf-browser.js";
+import { pdfBrowserPipe } from "../src/modules/documents/pdf-browser.js";
 
 function fixture(timeout = 1000) {
   const child = new EventEmitter() as EventEmitter & {

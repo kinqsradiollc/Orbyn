@@ -1,5 +1,5 @@
 /**
- * Every command in Orbyn's command list (packages/core/src/commands.ts: ⌘K,
+ * Every command in Orbyn's command list (packages/core/src/tasks/commands.ts: ⌘K,
  * the shortcut sheet and the phone's "Search & do", settings included),
  * and what an agent does instead: the tool (with arguments of the shape it
  * takes) or, for what agents never do or that means nothing to them, the

@@ -1,0 +1,76 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { viewersLabel, type DocViewer } from "@orbyn/core";
+import { client } from "../../../lib/api";
+import { onLive, setOpenDoc } from "../../../lib/live";
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+
+/**
+ * Who else has this page open right now. Using it also tells the server
+ * this device is on the page, so the page keeps it for as long as it's open
+ * (the faces themselves show in the Info panel).
+ */
+export function useDocViewers(docId: string): DocViewer[] {
+  const [viewers, setViewers] = useState<DocViewer[]>([]);
+  const request = useRef(0);
+  const load = useCallback(() => {
+    const version = ++request.current;
+    client.docViewers(docId).then(
+      (rows) => {
+        if (version === request.current) setViewers(rows);
+      },
+      () => {
+        if (version === request.current) setViewers([]);
+      },
+    );
+  }, [docId]);
+  useEffect(() => {
+    setViewers([]);
+    setOpenDoc(docId);
+    load();
+    const stop = onLive((news) =>
+      (news.kind === "doc_presence" && news.doc === docId) ||
+      news.kind === "presence"
+        ? load()
+        : undefined,
+    );
+    // Someone whose app closed without saying so fades out on its own.
+    const id = setInterval(load, 90_000);
+    return () => {
+      request.current += 1;
+      stop();
+      clearInterval(id);
+      setOpenDoc(null);
+    };
+  }, [docId, load]);
+  return viewers;
+}
+
+/** Small initials for the people here, with the rest counted. */
+export function DocViewers({ viewers }: { viewers: DocViewer[] }) {
+  if (!viewers.length) return null;
+  const names = viewers.map((v) => v.name);
+  return (
+    <span
+      className="doc-viewers"
+      role="status"
+      title={`${viewersLabel(names)} ${names.length === 1 ? "is" : "are"} here`}
+    >
+      <span className="doc-viewer-faces" aria-hidden="true">
+        {viewers.slice(0, 3).map((v) => (
+          <i key={v.user_id}>{initials(v.name)}</i>
+        ))}
+      </span>
+      <span className="sr-only">
+        {viewersLabel(names)} {names.length === 1 ? "is" : "are"} here
+      </span>
+      {viewers.length > 3 && <small>+{viewers.length - 3}</small>}
+    </span>
+  );
+}

@@ -9,7 +9,7 @@ import { client } from "../../lib/api";
 import { usePlanning } from "../../app/planning";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { Swatches } from "../lists/ListsView";
-import { SWATCHES } from "../../lib/planning";
+import { SWATCHES } from "../planner/planning";
 
 type Props = { teams: Team[]; report: (e: unknown) => void };
 

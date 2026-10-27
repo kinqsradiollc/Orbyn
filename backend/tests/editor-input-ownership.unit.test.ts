@@ -23,16 +23,22 @@ test("pane tabs claim focus while shared header actions retain the current pane"
     "../hooks/useElementWidth": {
       useElementWidth: () => ({ ref: null, width: 1400 }),
     },
+    "../../hooks/useElementWidth": {
+      useElementWidth: () => ({ ref: null, width: 1400 }),
+    },
     "lucide-react": Object.fromEntries(
       ["Bell", "Menu", "PanelLeftClose", "PanelLeftOpen", "Plus", "Search"].map(
         (name) => [name, () => null],
       ),
     ),
     "../app/views": { navName: (view: string) => view },
+    "../views": { navName: (view: string) => view },
     "../app/commands": { commandById: () => ({}), keysFor: () => [] },
+    "../commands": { commandById: () => ({}), keysFor: () => [] },
     "../app/prefs": { usePrefs: () => ({ prefs: {} }) },
+    "../prefs": { usePrefs: () => ({ prefs: {} }) },
   };
-  runInNewContext(compile("../../desktop/src/components/Topbar.tsx"), {
+  runInNewContext(compile("../../desktop/src/app/chrome/Topbar.tsx"), {
     module,
     exports: module.exports,
     navigator: { platform: "MacIntel" },
@@ -73,14 +79,17 @@ test("retained selections yield shortcuts to another pane, fields, hidden ancest
     return this.closest("[hidden]") ? [] : [{}];
   };
   const module = { exports: {} as any };
-  runInNewContext(compile("../../desktop/src/features/docs/editor-input.ts"), {
-    module,
-    exports: module.exports,
-    document: dom.window.document,
-    window: dom.window,
-    Element: dom.window.Element,
-    require: () => ({ hasHigherDialog: () => false }),
-  });
+  runInNewContext(
+    compile("../../desktop/src/features/documents/editor/editor-input.ts"),
+    {
+      module,
+      exports: module.exports,
+      document: dom.window.document,
+      window: dom.window,
+      Element: dom.window.Element,
+      require: () => ({ hasHigherDialog: () => false }),
+    },
+  );
   const owns = module.exports.ownsEditorKey;
   const document = dom.window.document,
     root = document.querySelector("#a"),
@@ -168,7 +177,7 @@ test("shared narrow chrome remains outside a hidden primary pane and routes visi
   const { createRoot } = require("react-dom/client");
   const module = { exports: {} as any };
   runInNewContext(
-    compile("../../desktop/src/components/SharedNarrowChrome.tsx"),
+    compile("../../desktop/src/app/chrome/SharedNarrowChrome.tsx"),
     {
       module,
       exports: module.exports,

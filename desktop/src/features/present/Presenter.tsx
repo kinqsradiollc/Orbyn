@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useModalFocus } from "../../hooks/useModalFocus";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { listLayout, pageSlides, slideStep, type DocBlock } from "@orbyn/core";
-import { BlockView } from "../docs/DocBlocks";
+import { BlockView } from "../documents/editor/DocBlocks";
 import "./present.css";
 
 /**

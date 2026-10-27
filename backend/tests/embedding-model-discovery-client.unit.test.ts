@@ -7,7 +7,10 @@ import ts from "typescript";
 
 test("API client sends the embedding revision to its separate read-only catalog route", async () => {
   const source = readFileSync(
-    new URL("../../packages/api-client/src/client.ts", import.meta.url),
+    new URL(
+      "../../packages/api-client/src/endpoints/assistant.ts",
+      import.meta.url,
+    ),
     "utf8",
   );
   const tree = ts.createSourceFile(
@@ -19,15 +22,15 @@ test("API client sends the embedding revision to its separate read-only catalog 
   let method: string | undefined;
   function visit(node: ts.Node) {
     if (
-      ts.isMethodDeclaration(node) &&
-      node.name.getText(tree) === "listAiEmbeddingModels"
+      ts.isFunctionDeclaration(node) &&
+      node.name?.getText(tree) === "callListAiEmbeddingModels"
     )
       method = node.getText(tree);
     ts.forEachChild(node, visit);
   }
   visit(tree);
   assert.ok(method);
-  const code = ts.transpileModule(`({ ${method} }).listAiEmbeddingModels`, {
+  const code = ts.transpileModule(`(${method.replace(/^export\s+/, "")})`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const fn = runInNewContext(code);
@@ -52,7 +55,7 @@ test("API client sends the embedding revision to its separate read-only catalog 
 function harness(platform: string) {
   const source = readFileSync(
     new URL(
-      `../../${platform}/src/hooks/useEmbeddingModelCatalog.ts`,
+      `../../${platform}/src/features/settings/useEmbeddingModelCatalog.ts`,
       import.meta.url,
     ),
     "utf8",

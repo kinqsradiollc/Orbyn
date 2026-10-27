@@ -1,10 +1,13 @@
-import type { AiModelUsage, AiProviderOptions } from "./ai-model-controls.js";
-import type { AiFeatureProvider } from "./ai-feature.js";
-import type { ProjectDecomposition } from "./projectDraft.js";
-import type { AssistantSource, DraftNote } from "./docs.js";
+import type {
+  AiModelUsage,
+  AiProviderOptions,
+} from "./assistant/ai-model-controls.js";
+import type { AiFeatureProvider } from "./assistant/ai-feature.js";
+import type { ProjectDecomposition } from "./projects/projectDraft.js";
+import type { AssistantSource, DraftNote } from "./documents/docs.js";
 import type { SessionChange } from "./schemas.js";
-import type { DeadlineFit } from "./fit.js";
-import type { AgentTaskState } from "./agent-tasks.js";
+import type { DeadlineFit } from "./planner/fit.js";
+import type { AgentTaskState } from "./assistant/agent-tasks.js";
 
 import type { z } from "zod";
 import type {
@@ -66,8 +69,8 @@ import type {
   webhookInput,
   webhookUpdate,
 } from "./schemas.js";
-import type { SystemRole, TeamRole } from "./rbac.js";
-import type { AiProviderKind } from "./aiProviders.js";
+import type { SystemRole, TeamRole } from "./teams/rbac.js";
+import type { AiProviderKind } from "./assistant/aiProviders.js";
 
 export type Kind = (typeof KINDS)[number];
 export type Status = (typeof STATUSES)[number];

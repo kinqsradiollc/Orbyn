@@ -229,7 +229,7 @@ test("unsupported and corrupt identity envelopes fail closed", async () => {
 const planner = ts.createSourceFile(
   "usePlanner.ts",
   readFileSync(
-    new URL("../../mobile/src/hooks/usePlanner.ts", import.meta.url),
+    new URL("../../mobile/src/features/planner/usePlanner.ts", import.meta.url),
     "utf8",
   ),
   ts.ScriptTarget.Latest,

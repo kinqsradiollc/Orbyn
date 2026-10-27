@@ -15,7 +15,7 @@ const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { pageFile, safeFileName } = await import("@orbyn/core");
-const { zip, zipStream } = await import("../src/modules/docs/zip.js");
+const { zip, zipStream } = await import("../src/modules/documents/zip.js");
 
 const app = await buildApp();
 type Json = Record<string, any>;

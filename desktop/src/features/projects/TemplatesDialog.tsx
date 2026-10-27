@@ -21,10 +21,10 @@ import {
   type Team,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { ProjectDraftReview } from "../../components/ProjectDraftReview";
+import { ProjectDraftReview } from "./ProjectDraftReview";
 import { useConfirm } from "../../components/Confirm";
 import { Select } from "../../components/Select";
-import { deviceTimeZone, errorText } from "../../lib/planning";
+import { deviceTimeZone, errorText } from "../planner/planning";
 
 const SOURCE_LABEL = {
   starter: "Starter",

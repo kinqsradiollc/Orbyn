@@ -1,4 +1,4 @@
-import { WEEKDAY_SHORT } from "../lib/planning";
+import { WEEKDAY_SHORT } from "../features/planner/planning";
 
 /** Toggle buttons for weekdays (0 = Sunday). */
 export function DayPicker({

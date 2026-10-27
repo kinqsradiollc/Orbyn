@@ -67,14 +67,16 @@ function preview(windowHeight = 960, onAppLink?: (url: string) => void) {
     },
     "../motion": { Pressable: container },
     "../lib/download": { saveFile: () => Promise.resolve() },
-    "../screens/docs/links": {
+    "../features/documents/editor/links": {
       openObject: (
         ref: core.ObjectRef,
         _block?: string,
         handler?: (url: string) => void,
       ) => opened.push({ ref, handler }),
     },
-    "../screens/docs/doc-navigation": { DocNavigationContext: {} },
+    "../features/documents/library/doc-navigation": {
+      DocNavigationContext: {},
+    },
   };
   const exports: Record<string, (props: unknown) => React.ReactElement> = {};
   runInNewContext(

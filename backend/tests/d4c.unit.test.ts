@@ -290,14 +290,17 @@ test("every setting the phone lists names a section or sheet its Settings has", 
   const read = (rel: string) =>
     readFileSync(
       fileURLToPath(
-        new URL(`../../mobile/src/screens/${rel}`, import.meta.url),
+        new URL(
+          `../../mobile/src/features/${rel === "SettingsScreen.tsx" ? "settings/SettingsScreen.tsx" : rel}`,
+          import.meta.url,
+        ),
       ),
       "utf8",
     );
   const source =
     read("SettingsScreen.tsx") +
-    read("AgentContext.tsx") +
-    readdirSync(new URL("../../mobile/src/screens/settings/", import.meta.url))
+    read("connections/AgentContext.tsx") +
+    readdirSync(new URL("../../mobile/src/features/settings/", import.meta.url))
       .filter((name) => name.endsWith(".tsx"))
       .map((name) => read(`settings/${name}`))
       .join("\n");

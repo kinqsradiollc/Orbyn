@@ -5,9 +5,9 @@ import { randomUUID } from "node:crypto";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { readAgendaAiDay, todaysAgenda } =
-  await import("../src/modules/docs/agenda.js");
+  await import("../src/modules/documents/agenda.js");
 const { captureAgendaAiSnapshot, assertAgendaAiSnapshot } =
-  await import("../src/modules/docs/agenda-ai-snapshot.js");
+  await import("../src/modules/documents/agenda-ai-snapshot.js");
 const owners: string[] = [];
 const teams: string[] = [];
 const now = new Date("2026-10-05T09:00:00Z");

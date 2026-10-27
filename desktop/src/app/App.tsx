@@ -1,4 +1,4 @@
-import { WorkspaceDock } from "../components/WorkspaceDock";
+import { WorkspaceDock } from "./chrome/WorkspaceDock";
 import {
   dockReducer,
   initialDock,
@@ -8,9 +8,9 @@ import {
 import { createPortal } from "react-dom";
 import { useElementWidth } from "../hooks/useElementWidth";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import { SharedNarrowChrome } from "../components/SharedNarrowChrome";
+import { SharedNarrowChrome } from "./chrome/SharedNarrowChrome";
 import { ViewDraftStore } from "@orbyn/api-client";
-import { chatgptStore } from "../lib/chatgpt";
+import { chatgptStore } from "../features/connections/chatgpt";
 import "./workspace.css";
 import {
   type CSSProperties,
@@ -21,7 +21,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { savedSidebarWidth, sidebarLayout } from "../components/SidebarResizer";
+import { savedSidebarWidth, sidebarLayout } from "./chrome/SidebarResizer";
 import { Orbit, Settings, X, type LucideIcon } from "lucide-react";
 import {
   dayZone,
@@ -41,16 +41,16 @@ import { client } from "../lib/api";
 import { session } from "../lib/session";
 import { useConfirm } from "../components/Confirm";
 import { setPageMeta } from "../lib/seo";
-import { usePlanner } from "../hooks/usePlanner";
+import { usePlanner } from "../features/planner/usePlanner";
 import { usePresence } from "../hooks/usePresence";
 import { FocusElsewhere } from "../features/focus/FocusElsewhere";
 import { WelcomeBack } from "../features/followthrough/WelcomeBack";
 import { AsksPanel } from "../features/followthrough/AsksPanel";
-import { useAssistant } from "../hooks/useAssistant";
+import { useAssistant } from "../features/assistant/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
-import { usePlanningData } from "../hooks/usePlanningData";
+import { usePlanningData } from "../features/planner/usePlanningData";
 import { PlanningContext } from "./planning";
-import { OPEN_LINK_EVENT } from "../features/docs/DocLinks";
+import { OPEN_LINK_EVENT } from "../features/documents/editor/DocLinks";
 import {
   activeTab,
   tabsReducer,
@@ -83,25 +83,29 @@ import {
   useStarred,
 } from "./prefs";
 import { isPageWindow } from "../lib/windows";
-import { PageWindow } from "../features/docs/PageWindow";
-import { usePlannedData } from "../hooks/usePlannedData";
+import { PageWindow } from "../features/documents/editor/PageWindow";
+import { usePlannedData } from "../features/planner/usePlannedData";
 import { PlanningProviders } from "./PlanningProviders";
-import { Sidebar } from "../components/Sidebar";
+import { Sidebar } from "./chrome/Sidebar";
 import {
   AnnouncementBanner,
   MaintenanceBanner,
   UpdateBanner,
-} from "../components/SystemBanners";
-import { PageHeading, Topbar } from "../components/Topbar";
+} from "./chrome/SystemBanners";
+import { PageHeading, Topbar } from "./chrome/Topbar";
 import { HomeSections, HomeTop } from "../features/overview/Home";
-import { ItemEditor } from "../components/ItemEditor";
-import { CommandBar } from "../components/CommandBar";
+import { ItemEditor } from "../features/tasks/ItemEditor";
+import { CommandBar } from "./chrome/CommandBar";
 import { Celebration } from "../components/Celebration";
 import { ShortcutSheet } from "../components/ShortcutSheet";
 import { celebrate } from "../lib/celebrate";
 import { isTyping } from "../lib/keys";
-import { appliedText } from "../components/PlanCard";
-import { deviceTimeZone, errorText, nextUp } from "../lib/planning";
+import { appliedText } from "../features/planner/PlanCard";
+import {
+  deviceTimeZone,
+  errorText,
+  nextUp,
+} from "../features/planner/planning";
 import { HomePage } from "../features/home/HomePage";
 import { LegalPage } from "../features/legal/LegalPage";
 import { StudyView } from "../features/study/StudyView";
@@ -121,7 +125,7 @@ import {
   RecentChanges,
   RecentChangesDialog,
 } from "../features/changes/RecentChanges";
-import { PEEK_EVENT, openObject } from "../features/docs/DocLinks";
+import { PEEK_EVENT, openObject } from "../features/documents/editor/DocLinks";
 import {
   PageCommandScope,
   PaneInputOwner,
@@ -138,7 +142,7 @@ import {
   useWideEnoughForTabs,
   type TabRequest,
 } from "./tabs";
-import { TabStrip } from "../components/TabStrip";
+import { TabStrip } from "./chrome/TabStrip";
 import { AuthPage } from "../features/auth/AuthPage";
 import {
   ForgotPasswordPage,
@@ -155,8 +159,8 @@ import type {
   LegalSummary,
   SavedView,
 } from "@orbyn/core";
-import { DocsView } from "../features/docs/DocsView";
-import { AgendaView } from "../features/docs/AgendaView";
+import { DocsView } from "../features/documents/library/DocsView";
+import { AgendaView } from "../features/documents/library/AgendaView";
 import { ProjectsView } from "../features/projects/ProjectsView";
 import { ViewsView } from "../features/views/ViewsView";
 import {
@@ -174,7 +178,7 @@ import {
 import { TeamsView } from "../features/teams/TeamsView";
 import type { TeamActions } from "../features/teams/TeamDetail";
 import { AdminView } from "../features/admin/AdminView";
-import { TaskDetail } from "../features/task/TaskDetail";
+import { TaskDetail } from "../features/tasks/TaskDetail";
 import { FocusMode } from "../features/focus/FocusMode";
 import {
   BookingView,
@@ -186,15 +190,15 @@ import {
   OAuthConsentPage,
   takeOAuthReturn,
 } from "../features/auth/OAuthConsent";
-import type { AuthMode } from "../hooks/usePlanner";
+import type { AuthMode } from "../features/planner/usePlanner";
 import { PublicInvitePage } from "../features/booking/PublicInvite";
 import { PublicProfilePage } from "../features/booking/PublicProfile";
-import type { EditOptions, OccurrenceRef } from "../components/ScopeDialog";
+import type { EditOptions, OccurrenceRef } from "../features/tasks/ScopeDialog";
 import { NAV, navName, type View } from "./views";
 import { ReviewView } from "../features/review/ReviewView";
 import { OvernightView } from "../features/assistant/OvernightView";
 import { BackgroundView } from "../features/assistant/BackgroundView";
-import { onOpenReview } from "../lib/review";
+import { onOpenReview } from "../features/review/review";
 import { onLive } from "../lib/live";
 import "../styles/planning.css";
 

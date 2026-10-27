@@ -109,7 +109,7 @@ test("private diagram asset matches the locked first-party builder and engine so
   const asset = JSON.parse(file("backend/assets/mermaid-runtime.json"));
   const digest = createHash("sha256")
     .update(file("scripts/mermaid-runtime.mjs"))
-    .update(file("packages/core/src/mermaid.ts"))
+    .update(file("packages/core/src/documents/mermaid.ts"))
     .update(file("scripts/build-mermaid.mjs"))
     .update(file("package.json"))
     .update(file("mobile/package.json"))

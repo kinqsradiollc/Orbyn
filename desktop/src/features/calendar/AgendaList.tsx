@@ -8,7 +8,7 @@ import {
   type TimeBlock,
 } from "@orbyn/core";
 import { usePlanning } from "../../app/planning";
-import { joinable, spanLabel } from "../../lib/planning";
+import { joinable, spanLabel } from "../planner/planning";
 import { StatusPill } from "../../components/StatusPill";
 import { timeLabel } from "./dates";
 import { listLook } from "./MonthView";

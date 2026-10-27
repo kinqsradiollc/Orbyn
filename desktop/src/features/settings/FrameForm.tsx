@@ -20,7 +20,7 @@ import { usePlanning } from "../../app/planning";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { DayPicker } from "../../components/DayPicker";
 import { Swatches } from "../lists/ListsView";
-import { longDay, SWATCHES, timeZones } from "../../lib/planning";
+import { longDay, SWATCHES, timeZones } from "../planner/planning";
 import { DateField } from "../../components/DateField";
 
 /** How a frame repeats: chosen weekdays, a preset rule, or custom RRULE text. */

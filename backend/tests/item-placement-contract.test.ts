@@ -12,7 +12,7 @@ const { migrate } = await import("../src/db/migrate.js");
 const { setItemPlacement, mutate, restoreDerivedItemPlacement } =
   await import("../src/modules/items/service.js");
 const { makeLineTasks, requireDoc } =
-  await import("../src/modules/docs/service.js");
+  await import("../src/modules/documents/service.js");
 const { removeLink, staleness, createAgentProposal, mergedItem } =
   await import("../src/modules/proposals/service.js");
 const { limiter, strikes } =
@@ -56,7 +56,7 @@ before(async () => {
   ).rows[0].id;
 });
 after(async () => {
-  const { closeLive } = await import("../src/modules/docs/live.js");
+  const { closeLive } = await import("../src/modules/documents/live.js");
   await closeLive();
   assert.deepEqual(
     network.calls,

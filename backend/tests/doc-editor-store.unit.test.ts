@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DocEditorStore } from "@orbyn/api-client";
-import { canLeaveStructuredDocDraft } from "../../mobile/src/lib/structuredDocDraftGuard.js";
+import { canLeaveStructuredDocDraft } from "../../mobile/src/features/documents/editor/structuredDocDraftGuard.js";
 import {
   parseDocContainers,
   type Doc,

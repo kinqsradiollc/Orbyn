@@ -34,7 +34,7 @@ test("unclassified buttons get themed defaults while feature classes keep contro
 });
 test("every structured editor button explicitly uses an app action class", () => {
   const file = new URL(
-    "../../desktop/src/features/docs/StructuredDocEditor.tsx",
+    "../../desktop/src/features/documents/editor/StructuredDocEditor.tsx",
     import.meta.url,
   );
   const source = ts.createSourceFile(
@@ -84,7 +84,7 @@ test("desktop actions share compact sizing and touch controls keep their target"
   );
   const doc = readFileSync(
     new URL(
-      "../../desktop/src/features/docs/structured-doc-editor.css",
+      "../../desktop/src/features/documents/editor/structured-doc-editor.css",
       import.meta.url,
     ),
     "utf8",

@@ -13,7 +13,7 @@ type Props = {
 /**
  * Security and data (/security, OTH-02): how Orbyn keeps an account safe,
  * dated, in the same frame as the Terms and Privacy Policy. The words are
- * shared with the phone app (packages/core/src/security-page.ts).
+ * shared with the phone app (packages/core/src/workspace/security-page.ts).
  */
 export function SecurityPage({ signedIn, onNavigate, onHome }: Props) {
   const go = (path: string) => (e: MouseEvent) => {

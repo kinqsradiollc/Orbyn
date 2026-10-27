@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Users } from "lucide-react";
 import { hoursLabel, type Item, type WorkRecord } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { errorText } from "../../lib/planning";
+import { errorText } from "../planner/planning";
 
 export function MeetingOutcome(
   props: Parameters<typeof MeetingOutcomeBody>[0],

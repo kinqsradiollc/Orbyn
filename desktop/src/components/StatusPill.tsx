@@ -1,5 +1,5 @@
 import { statusLabels, type Status } from "@orbyn/core";
-import "./tasks-w3.css";
+import "../features/tasks/tasks-w3.css";
 
 type Props = { status: Status; className?: string };
 

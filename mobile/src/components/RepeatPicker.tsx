@@ -9,7 +9,7 @@ import {
 import { Chip, ChipRow } from "./Chip";
 import { DateField, NumberInput } from "./Field";
 import { Segmented } from "./Segmented";
-import { WEEK_ORDER, WEEKDAYS } from "../lib/planning";
+import { WEEK_ORDER, WEEKDAYS } from "../features/planner/planning";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 

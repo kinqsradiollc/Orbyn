@@ -10,7 +10,7 @@ test("automation identity editing never includes interactive chat", () => {
 test("both chat surfaces keep character configuration and forced naming out of conversations", async () => {
   const files = [
     "../../desktop/src/features/assistant/AssistantView.tsx",
-    "../../mobile/src/screens/AssistantScreen.tsx",
+    "../../mobile/src/features/assistant/AssistantScreen.tsx",
   ];
   for (const name of files) {
     const source = await readFile(new URL(name, import.meta.url), "utf8");
@@ -38,7 +38,7 @@ test("runtime and profile readers use independently stored automation identities
   assert.ok(runtime.includes('{ name: "Orbyn", persona: "" }'));
   for (const file of [
     "../../desktop/src/features/settings/AgentContext.tsx",
-    "../../mobile/src/screens/AgentContext.tsx",
+    "../../mobile/src/features/connections/AgentContext.tsx",
   ]) {
     const source = await readFile(new URL(file, import.meta.url), "utf8");
     assert.match(source, /updateAutomationAgentIdentity\(\s*lane/);

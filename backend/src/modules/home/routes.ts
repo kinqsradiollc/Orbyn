@@ -24,9 +24,12 @@ import { docVisibleTo } from "../../lib/doc-visibility.js";
 import { listGoals } from "../assistant-workspace/goals.js";
 import { listAgentRoutines } from "../assistant-workspace/routines.js";
 import { dayZoneFor } from "../planner/timezone.js";
-import { todaysAgendaIfWritten, writeTodaysAgenda } from "../docs/agenda.js";
-import { addToPage } from "../docs/service.js";
-import { readVersionedDoc } from "../docs/content-format.js";
+import {
+  todaysAgendaIfWritten,
+  writeTodaysAgenda,
+} from "../documents/agenda.js";
+import { addToPage } from "../documents/service.js";
+import { readVersionedDoc } from "../documents/content-format.js";
 
 /**
  * Home (W1): the panels under the hubs in one read — the person's active

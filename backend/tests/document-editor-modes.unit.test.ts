@@ -30,12 +30,12 @@ for (const native of [false, true]) {
         Text: "span",
         StyleSheet: { create: (styles: unknown) => styles },
       },
-      "../../motion": { Pressable: "button" },
-      "../../theme": tokens,
+      "../../../motion": { Pressable: "button" },
+      "../../../theme": tokens,
     };
     const path = native
-      ? "../../mobile/src/screens/docs/DocEditorModes.tsx"
-      : "../../desktop/src/features/docs/DocEditorModes.tsx";
+      ? "../../mobile/src/features/documents/source/DocEditorModes.tsx"
+      : "../../desktop/src/features/documents/source/DocEditorModes.tsx";
     runInNewContext(
       transformSync(readFileSync(new URL(path, import.meta.url), "utf8"), {
         loader: "tsx",
@@ -83,10 +83,10 @@ for (const native of [false, true]) {
 }
 test("all document editor parents expose formats directly and the toast keeps its message and dismiss control together", () => {
   for (const platform of [
-    "desktop/src/features/docs",
-    "mobile/src/screens/docs",
+    "desktop/src/features/documents/editor",
+    "mobile/src/features/documents/editor",
   ])
-    for (const file of ["DocEditor.tsx", "StructuredDocEditor.tsx"]) {
+    for (const file of ["LegacyDocEditor.tsx", "StructuredDocEditor.tsx"]) {
       const source = readFileSync(
         new URL(`../../${platform}/${file}`, import.meta.url),
         "utf8",
@@ -111,7 +111,10 @@ test("all document editor parents expose formats directly and the toast keeps it
 
 test("mobile legacy source split measures the editor pane after surrounding navigation", () => {
   const source = readFileSync(
-    new URL("../../mobile/src/screens/docs/DocEditor.tsx", import.meta.url),
+    new URL(
+      "../../mobile/src/features/documents/editor/LegacyDocEditor.tsx",
+      import.meta.url,
+    ),
     "utf8",
   );
   assert.match(

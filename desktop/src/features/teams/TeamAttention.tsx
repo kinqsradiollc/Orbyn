@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { hoursLabel, type TeamAttention as Attention } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Select } from "../../components/Select";
-import { dayKey } from "../../lib/planning";
+import { dayKey } from "../planner/planning";
 import "./team-capacity.css";
 import { useSettingsRead } from "../settings/useSettingsRead";
 import { usePaneLeaveGuard } from "../../app/page-commands";

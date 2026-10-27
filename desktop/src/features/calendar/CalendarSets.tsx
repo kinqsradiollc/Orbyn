@@ -10,7 +10,7 @@ import type {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { session } from "../../lib/session";
-import { errorText } from "../../lib/planning";
+import { errorText } from "../planner/planning";
 
 type Props = {
   sets: CalendarSet[];

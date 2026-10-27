@@ -6,7 +6,7 @@ guidance in [CONTRIBUTING](../CONTRIBUTING.md).
 
 ## Tokens and appearance
 
-The current owners are `packages/core/src/presentation.ts`,
+The current owners are `packages/core/src/theme/presentation.ts`,
 `desktop/src/styles/global.css` and `mobile/src/theme/index.ts`. Inspect current
 source before changing them. Keep neutral light/dark surfaces and the restrained
 blue accent; preserve semantic statuses and user-selected calendar/tag colors.

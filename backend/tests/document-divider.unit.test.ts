@@ -46,7 +46,7 @@ for (const mobile of [false, true])
     const module = { exports: {} as any };
     const file = mobile
       ? "mobile/src/components/DocumentDivider.web.tsx"
-      : "desktop/src/features/docs/DocumentWorkspace.tsx";
+      : "desktop/src/features/documents/library/DocumentWorkspace.tsx";
     class ResizeObserver {
       observe() {}
       disconnect() {}

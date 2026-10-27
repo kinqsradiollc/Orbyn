@@ -6,7 +6,7 @@ import {
 } from "@orbyn/core";
 import { lockItem } from "../modules/items/service.js";
 import { applyChange, staleness } from "../modules/proposals/service.js";
-import { announceDocChange } from "../modules/docs/live.js";
+import { announceDocChange } from "../modules/documents/live.js";
 import { pool } from "../db/pool.js";
 import { syncSavedPages } from "../modules/study/service.js";
 import { CapabilityError, type CapabilityContext } from "./registry.js";

@@ -37,13 +37,13 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { usePlanning } from "../../app/planning";
-import { appliedText, PlanCard } from "../../components/PlanCard";
+import { appliedText, PlanCard } from "../planner/PlanCard";
 import {
   deviceTimeZone,
   errorText,
   minutesLabel,
   spanLabel,
-} from "../../lib/planning";
+} from "../planner/planning";
 import type { PlanTuning } from "./usePlanTuning";
 import { HorizonLanes } from "./HorizonLanes";
 import { RealityLine, WhatIfBox } from "./PlanChecks";

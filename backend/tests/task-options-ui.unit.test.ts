@@ -29,8 +29,8 @@ function evaluate(expression: ts.Node, page: ts.SourceFile, context: object) {
   }).outputText;
   return runInNewContext(code, context);
 }
-const web = file("../../desktop/src/features/task/TaskDetail.tsx");
-const mobile = file("../../mobile/src/screens/TaskDetail.tsx");
+const web = file("../../desktop/src/features/tasks/TaskDetail.tsx");
+const mobile = file("../../mobile/src/features/tasks/TaskDetail.tsx");
 
 function webMenu(context: object) {
   const popover = find(

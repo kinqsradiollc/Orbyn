@@ -9,8 +9,8 @@ import * as core from "@orbyn/core";
 /** Execute the actual section component without starting unrelated rich-block services. */
 function section(native: boolean) {
   const path = native
-    ? "../../mobile/src/screens/docs/RichBlocks.tsx"
-    : "../../desktop/src/features/docs/RichBlocks.tsx";
+    ? "../../mobile/src/features/documents/editor/RichBlocks.tsx"
+    : "../../desktop/src/features/documents/editor/RichBlocks.tsx";
   const source = readFileSync(new URL(path, import.meta.url), "utf8");
   const ast = ts.createSourceFile(
     path,

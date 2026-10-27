@@ -24,7 +24,10 @@ test("collection headings use view identities and title fitting observes availab
   );
   assert.match(app, /\["AI assistant", "Docs", "Memory", "Agent"\]/);
   const editor = readFileSync(
-    new URL("../../desktop/src/features/docs/DocEditor.tsx", import.meta.url),
+    new URL(
+      "../../desktop/src/features/documents/editor/LegacyDocEditor.tsx",
+      import.meta.url,
+    ),
     "utf8",
   );
   assert.match(editor, /titleField.current/);
@@ -71,8 +74,20 @@ test("mounted Focus dialog portals outside its scrolled containing pane and pres
     "react-dom": require("react-dom"),
     "lucide-react": require("lucide-react"),
     "@orbyn/core": core,
-    "../../lib/api": { client: { getItem: async () => ({ item, steps: [] }) } },
+    "../../lib/api": {
+      client: { getItem: async () => ({ item, steps: [] }) },
+    },
     "../../lib/planning": {
+      errorText: (e: any) => String(e),
+      minutesLabel: () => "0 min",
+      nextUp: () => [],
+    },
+    "../../planner/planning": {
+      errorText: (e: any) => String(e),
+      minutesLabel: () => "0 min",
+      nextUp: () => [],
+    },
+    "../planner/planning": {
       errorText: (e: any) => String(e),
       minutesLabel: () => "0 min",
       nextUp: () => [],
@@ -158,7 +173,10 @@ test("mounted Focus dialog portals outside its scrolled containing pane and pres
 
 test("Docs owns the available editor width and uses shared source mode controls", () => {
   const sheet = readFileSync(
-    new URL("../../mobile/src/screens/docs/DocsSheet.tsx", import.meta.url),
+    new URL(
+      "../../mobile/src/features/documents/library/DocsSheet.tsx",
+      import.meta.url,
+    ),
     "utf8",
   );
   assert.match(
@@ -169,7 +187,7 @@ test("Docs owns the available editor width and uses shared source mode controls"
   assert.match(sheet, /sideList: \{\s*flexGrow: 0,\s*flexShrink: 0,/);
   const source = readFileSync(
     new URL(
-      "../../mobile/src/screens/docs/DocSourcePreview.tsx",
+      "../../mobile/src/features/documents/source/DocSourcePreview.tsx",
       import.meta.url,
     ),
     "utf8",

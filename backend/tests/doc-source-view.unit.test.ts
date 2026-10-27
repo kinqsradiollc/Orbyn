@@ -83,17 +83,17 @@ function fixture(
   const modules: Record<string, unknown> = {
     react: hooks,
     "@orbyn/core": core,
-    "../../lib/session": { session: auth },
-    "../../components/LatexHtmlPreview": { LatexHtmlPreview: container },
-    "../../components/Select": { Select: container },
-    "../../lib/download": {
+    "../../../lib/session": { session: auth },
+    "../../../components/LatexHtmlPreview": { LatexHtmlPreview: container },
+    "../../../components/Select": { Select: container },
+    "../../../lib/download": {
       saveFile: async () => {
         downloads++;
       },
     },
     "lucide-react": { X: () => null },
     "./doc-source.css": {},
-    "./DocBlocks": {
+    "../editor/DocBlocks": {
       BlockView: ({ block }: { block: core.DocBlock }) =>
         React.createElement(
           "span",
@@ -101,9 +101,9 @@ function fixture(
           "text" in block ? block.text : "Divider",
         ),
     },
-    "./RichBlocks": { FootnoteContext: notes },
-    "./doc-navigation": { DocNavigationContext: navigationContext },
-    "./footnotes": { FootnoteContext: notes },
+    "../editor/RichBlocks": { FootnoteContext: notes },
+    "../library/doc-navigation": { DocNavigationContext: navigationContext },
+    "../editor/footnotes": { FootnoteContext: notes },
     "react-native": {
       useWindowDimensions: () => ({ width: 390, height: 800, fontScale: 1 }),
       View: container,
@@ -113,7 +113,7 @@ function fixture(
       TextInput: ({ value }: { value: string }) =>
         React.createElement("pre", null, value),
     },
-    "../../components/Sheet": { Sheet: container },
+    "../../../components/Sheet": { Sheet: container },
     "../../components/InlineDetails": {
       InlineDetails: ({ title, children }: any) =>
         React.createElement(
@@ -141,18 +141,36 @@ function fixture(
           ),
         ),
     },
-    "../../components/Button": {
+    "../source/DocEditorModes": {
+      DocEditorModes: ({ value, onChange }: any) =>
+        React.createElement(
+          "div",
+          null,
+          ...["note", "markdown", "latex"].map((mode) =>
+            React.createElement(
+              "button",
+              {
+                key: mode,
+                onClick: () => onChange(mode),
+                "aria-pressed": value === mode,
+              },
+              mode[0].toUpperCase() + mode.slice(1),
+            ),
+          ),
+        ),
+    },
+    "../../../components/Button": {
       Button: ({ title }: { title: string }) =>
         React.createElement("button", null, title),
     },
-    "../../styles": { shared: {} },
-    "../../theme": {
+    "../../../styles": { shared: {} },
+    "../../../theme": {
       colors: { danger: "danger-token", accent: "accent-token" },
       radii: {},
       fonts: {},
       inputFontSize: 16,
     },
-    "./DocBody": {
+    "../editor/DocBody": {
       DocBody: ({ content }: { content: core.DocBlock[] }) =>
         React.createElement("pre", null, core.serializeDoc(content)),
     },
@@ -184,12 +202,12 @@ function fixture(
       },
     },
   );
-  modules["../../hooks/useModalFocus"] = focusExports;
+  modules["../../../hooks/useModalFocus"] = focusExports;
   modules["./DocLatexPreview"] = { useDocLatexPreview: () => null };
   const exports: Record<string, (props: unknown) => React.ReactElement> = {};
   const path = native
-    ? "../../mobile/src/screens/docs/DocSourcePreview.tsx"
-    : "../../desktop/src/features/docs/DocSourcePreview.tsx";
+    ? "../../mobile/src/features/documents/source/DocSourcePreview.tsx"
+    : "../../desktop/src/features/documents/source/DocSourcePreview.tsx";
   runInNewContext(
     ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {
       compilerOptions: {

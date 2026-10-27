@@ -289,7 +289,7 @@ test("explicit fallback resolution preserves captured managed model and refuses 
 
 test("hosted page origins capture managed authority and cannot retarget queued work", async () => {
   const { captureMaintainedPageModelOrigin, resolveMaintainedPageModel } =
-    await import("../src/modules/docs/maintenance-model.js");
+    await import("../src/modules/documents/maintenance-model.js");
   const f = await fixture();
   const captured = await captureMaintainedPageModelOrigin(pool, f.owner);
   // PostgreSQL jsonb reorders keys; persisted authority must compare semantically.
@@ -314,7 +314,7 @@ test("hosted page origins capture managed authority and cannot retarget queued w
 
 test("legacy hosted page origins cannot invent the queued managed selection", async () => {
   const { resolveMaintainedPageModel } =
-    await import("../src/modules/docs/maintenance-model.js");
+    await import("../src/modules/documents/maintenance-model.js");
   const f = await fixture();
   await assert.rejects(
     resolveMaintainedPageModel(f.owner, {
@@ -327,7 +327,7 @@ test("legacy hosted page origins cannot invent the queued managed selection", as
 
 test("hosted model key ignores label edits and preserves persisted snapshot identity", async () => {
   const { captureMaintainedPageModelOrigin, resolveMaintainedPageModel } =
-    await import("../src/modules/docs/maintenance-model.js");
+    await import("../src/modules/documents/maintenance-model.js");
   const f = await fixture();
   const captured = await captureMaintainedPageModelOrigin(pool, f.owner);
   const origin = (await pool.query("SELECT $1::jsonb AS origin", [captured]))

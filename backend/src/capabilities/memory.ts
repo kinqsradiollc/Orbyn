@@ -34,7 +34,7 @@ import {
   readMemory,
   rememberMemory,
 } from "../modules/memory/service.js";
-import { announceDocChange } from "../modules/docs/live.js";
+import { announceDocChange } from "../modules/documents/live.js";
 
 // MCP requires an object root schema. Action-specific required fields are
 // checked below because a discriminated union serializes as `oneOf`.

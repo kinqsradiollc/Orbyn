@@ -3,7 +3,11 @@ import { fail } from "@orbyn/core";
 import { pool, reader } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { closeLive, streamDocChanges, streamDocUpdates } from "../docs/live.js";
+import {
+  closeLive,
+  streamDocChanges,
+  streamDocUpdates,
+} from "../documents/live.js";
 import { closeLiveNews, streamLive } from "../presence/live.js";
 import { visibleDocs } from "../../lib/visibility.js";
 

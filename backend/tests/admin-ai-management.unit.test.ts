@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
 const source = await readFile(
-  new URL("../../mobile/src/screens/AdminAi.tsx", import.meta.url),
+  new URL("../../mobile/src/features/admin/AdminAi.tsx", import.meta.url),
   "utf8",
 );
 const tree = ts.createSourceFile(

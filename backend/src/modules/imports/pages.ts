@@ -16,7 +16,7 @@ import { pool, transaction } from "../../db/pool.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { authenticate } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
-import { unzip, ZipError } from "../docs/zip.js";
+import { unzip, ZipError } from "../documents/zip.js";
 import { actAs } from "../../lib/actor.js";
 
 const TEXT = /\.(md|markdown|txt|csv)$/i;

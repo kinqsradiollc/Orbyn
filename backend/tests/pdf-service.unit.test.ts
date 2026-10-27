@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildPdfService,
   pdfRequestHeaders,
-} from "../src/modules/docs/pdf-service.js";
+} from "../src/modules/documents/pdf-service.js";
 
 const key = "test-only-document-pdf-key-at-least-32-characters";
 const html = "<!doctype html><html><p>Authorized snapshot</p></html>";

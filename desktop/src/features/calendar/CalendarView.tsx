@@ -40,7 +40,7 @@ import { isTyping } from "../../lib/keys";
 import { usePlanning } from "../../app/planning";
 import { usePrefs } from "../../app/prefs";
 import { useElementWidth } from "../../hooks/useElementWidth";
-import { errorText, fromDayKey } from "../../lib/planning";
+import { errorText, fromDayKey } from "../planner/planning";
 import { localDay } from "../../lib/drag";
 import {
   addDays,
@@ -54,7 +54,7 @@ import { DayAgenda } from "./DayAgenda";
 import { CalendarGrid } from "./CalendarGrid";
 import { AgendaList } from "./AgendaList";
 import { BlockMenu, EntryMenu, ExternalMenu, FrameMenu } from "./CalendarMenus";
-import { ScopeDialog, type OccurrenceRef } from "../../components/ScopeDialog";
+import { ScopeDialog, type OccurrenceRef } from "../tasks/ScopeDialog";
 import { BlockDialog } from "./BlockDialog";
 import { CalendarSetsDialog } from "./CalendarSets";
 import { FrameDialog } from "./FrameDialog";

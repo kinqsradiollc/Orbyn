@@ -6,17 +6,17 @@ requested environment and delivery scope. Repository changes are not deployment.
 
 ## Locate the owning contract
 
-| Concern             | Source                                                         |
-| ------------------- | -------------------------------------------------------------- |
-| Environment parsing | `backend/src/config/env.ts`                                    |
-| Authorization       | `packages/core/src/rbac.ts`                                    |
-| Data/API design     | `docs/architecture.md`, `docs/api.md`                          |
-| Deployment          | `docs/deployment.md`, `deploy/`                                |
-| Scale and queues    | `docs/scalability.md` and the owning worker                    |
-| Request diagnostics | `backend/src/lib/request-log.ts`                               |
-| Record retention    | `backend/src/lib/sweep.ts`                                     |
-| Imports             | `packages/core/src/imports.ts`, `backend/src/modules/imports/` |
-| Legal/privacy copy  | `packages/core/src/legal.ts`                                   |
+| Concern             | Source                                                                 |
+| ------------------- | ---------------------------------------------------------------------- |
+| Environment parsing | `backend/src/config/env.ts`                                            |
+| Authorization       | `packages/core/src/teams/rbac.ts`                                      |
+| Data/API design     | `docs/architecture.md`, `docs/api.md`                                  |
+| Deployment          | `docs/deployment.md`, `deploy/`                                        |
+| Scale and queues    | `docs/scalability.md` and the owning worker                            |
+| Request diagnostics | `backend/src/lib/request-log.ts`                                       |
+| Record retention    | `backend/src/lib/sweep.ts`                                             |
+| Imports             | `packages/core/src/imports/imports.ts`, `backend/src/modules/imports/` |
+| Legal/privacy copy  | `packages/core/src/workspace/legal.ts`                                 |
 
 Trace service boundaries, persistence, retry/idempotency rules and recovery before
 changing APIs, jobs or connectors. Keep secrets out of logs, screenshots and

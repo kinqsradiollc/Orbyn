@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
-import { buildPdfService } from "../../src/modules/docs/pdf-service.js";
+import { buildPdfService } from "../../src/modules/documents/pdf-service.js";
 import {
   renderPdfSnapshot,
   renderHtmlSnapshot,
-} from "../../src/modules/docs/pdf-renderer.js";
+} from "../../src/modules/documents/pdf-renderer.js";
 
 /** Each integration test process owns an actual private renderer and independent test key. */
 export async function startTestPdfService(

@@ -1,20 +1,20 @@
-import { colors as productColors } from "./presentation.js";
+import { colors as productColors } from "./theme/presentation.js";
 import { z } from "zod";
-import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
-import { AI_PROVIDER_KINDS } from "./aiProviders.js";
-import { aiProviderOptions } from "./ai-model-controls.js";
-import { isTimeZone, isValidRrule } from "./time.js";
+import { SYSTEM_ROLES, TEAM_ROLES } from "./teams/rbac.js";
+import { AI_PROVIDER_KINDS } from "./assistant/aiProviders.js";
+import { aiProviderOptions } from "./assistant/ai-model-controls.js";
+import { isTimeZone, isValidRrule } from "./planner/time.js";
 import {
   CALLOUT_KINDS,
   DOC_KINDS,
   DOC_PARAGRAPH_MAX,
   DOC_FOOTNOTE_MAX,
   DOC_QUOTE_MAX,
-} from "./docs.js";
-import { aliasesInput } from "./links.js";
-import { lookIconInput } from "./covers.js";
-import { PROJECT_STATUSES } from "./projects.js";
-import { FAVOURITE_KINDS } from "./folders.js";
+} from "./documents/docs.js";
+import { aliasesInput } from "./documents/links.js";
+import { lookIconInput } from "./documents/covers.js";
+import { PROJECT_STATUSES } from "./projects/projects.js";
+import { FAVOURITE_KINDS } from "./documents/folders.js";
 
 /** When a session's reminder can go: as it starts, or minutes before. */
 export const SESSION_REMINDER_MINUTES = [0, 5, 10, 15];

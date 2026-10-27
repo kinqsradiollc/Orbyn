@@ -46,10 +46,10 @@ import {
   type Team,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { copyText } from "../../lib/planning";
-import { timeAgo } from "../../lib/tasks";
-import { openReview } from "../../lib/review";
-import { openObject } from "../docs/DocLinks";
+import { copyText } from "../planner/planning";
+import { timeAgo } from "../tasks/tasks";
+import { openReview } from "../review/review";
+import { openObject } from "../documents/editor/DocLinks";
 import { useConfirm } from "../../components/Confirm";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { Select } from "../../components/Select";

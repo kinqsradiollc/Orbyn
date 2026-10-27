@@ -6,7 +6,7 @@ import {
   type DocBlock,
   type ReviewChangeInput,
 } from "@orbyn/core";
-import { createDoc } from "../modules/docs/service.js";
+import { createDoc } from "../modules/documents/service.js";
 import { syncSavedPages } from "../modules/study/service.js";
 import { readMarkdown } from "./doc-markdown.js";
 import { projectId, teamFilter } from "./common.js";

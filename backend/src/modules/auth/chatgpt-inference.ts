@@ -53,7 +53,7 @@ async function jobLive(db: Db, owner: string, id: string) {
     await import("../ai/providers/agenda-call.js");
   await guardAgendaInferenceJob(db, owner, id);
   const { guardPageInferenceJob } =
-    await import("../docs/maintenance-inference.js");
+    await import("../documents/maintenance-inference.js");
   await guardPageInferenceJob(db, owner, id);
   // Publication can update job provenance after locking the request. Serialize
   // the job first; a SHARE lock here would require an upgrade behind a poll

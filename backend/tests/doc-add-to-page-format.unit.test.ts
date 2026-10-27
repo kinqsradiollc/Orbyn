@@ -7,7 +7,7 @@ import * as core from "@orbyn/core";
 
 // Compile the actual service function while isolating DB, ACL and event transports.
 const source = readFileSync(
-  new URL("../src/modules/docs/service.ts", import.meta.url),
+  new URL("../src/modules/documents/service.ts", import.meta.url),
   "utf8",
 );
 const ast = ts.createSourceFile(

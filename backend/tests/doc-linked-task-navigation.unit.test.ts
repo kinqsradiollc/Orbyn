@@ -9,8 +9,8 @@ import * as core from "@orbyn/core";
 function linkedTask(platform: "web" | "mobile") {
   const path =
     platform === "web"
-      ? "../../desktop/src/features/docs/RichBlocks.tsx"
-      : "../../mobile/src/screens/docs/RichBlocks.tsx";
+      ? "../../desktop/src/features/documents/editor/RichBlocks.tsx"
+      : "../../mobile/src/features/documents/editor/RichBlocks.tsx";
   const source = readFileSync(new URL(path, import.meta.url), "utf8");
   const ast = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
   const declaration = ast.statements.find(

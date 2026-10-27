@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { blocksHtml, renderHtmlDiagrams } from "@orbyn/core";
-import { renderPublicationDiagrams } from "../src/modules/publish/diagrams.js";
+import { renderPublicationDiagrams } from "../src/modules/public-pages/diagrams.js";
 
 const request = {} as FastifyRequest,
   reply = {} as FastifyReply;

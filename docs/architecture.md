@@ -1,5 +1,70 @@
 # Architecture
 
+## Find the code
+
+Start with the capability you want to change, then choose its platform. Web and
+Electron share `desktop`; Expo owns mobile UI and native integrations. Both use
+the same domain contracts and typed API client. The
+[organization ADR](work/adr-codebase-organization.md) records the migration and
+its verification status.
+
+| Capability                              | Backend authority                                                                                                           | Web / Electron                                                                                   | Mobile                                                                                         | Shared domain                                    |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Documents, notes and editor             | [documents](../backend/src/modules/documents/)                                                                              | [documents](../desktop/src/features/documents/)                                                  | [documents](../mobile/src/features/documents/)                                                 | [documents](../packages/core/src/documents/)     |
+| Assistant and background/overnight work | [AI orchestration](../backend/src/modules/ai/), [workers](../backend/src/services/)                                         | [assistant](../desktop/src/features/assistant/)                                                  | [assistant](../mobile/src/features/assistant/)                                                 | [assistant](../packages/core/src/assistant/)     |
+| Tasks and lists                         | [items](../backend/src/modules/items/)                                                                                      | [tasks](../desktop/src/features/tasks/), [lists](../desktop/src/features/lists/)                 | [tasks](../mobile/src/features/tasks/)                                                         | [tasks](../packages/core/src/tasks/)             |
+| Projects                                | [projects](../backend/src/modules/projects/)                                                                                | [projects](../desktop/src/features/projects/)                                                    | [projects](../mobile/src/features/projects/)                                                   | [projects](../packages/core/src/projects/)       |
+| Planning and calendar                   | [planner](../backend/src/modules/planner/)                                                                                  | [calendar](../desktop/src/features/calendar/), [planner state](../desktop/src/features/planner/) | [calendar](../mobile/src/features/calendar/), [planner state](../mobile/src/features/planner/) | [planner](../packages/core/src/planner/)         |
+| Connections and external agents         | [MCP](../backend/src/modules/mcp-server/), [plugin](../backend/src/modules/plugin/), [OAuth](../backend/src/modules/oauth/) | [connections](../desktop/src/features/connections/)                                              | [connections](../mobile/src/features/connections/)                                             | [connections](../packages/core/src/connections/) |
+| Public document pages                   | [public-pages](../backend/src/modules/public-pages/)                                                                        | [public-pages](../desktop/src/features/public-pages/)                                            | [public-pages](../mobile/src/features/public-pages/)                                           | [publishing](../packages/core/src/publishing/)   |
+| Admin changelog and LinkedIn            | [social-publishing](../backend/src/modules/social-publishing/)                                                              | [admin](../desktop/src/features/admin/)                                                          | [admin](../mobile/src/features/admin/)                                                         | [publishing](../packages/core/src/publishing/)   |
+| Teams and access                        | [teams](../backend/src/modules/teams/), [access](../backend/src/modules/access/)                                            | [teams](../desktop/src/features/teams/)                                                          | [teams](../mobile/src/features/teams/)                                                         | [teams](../packages/core/src/teams/)             |
+| Study                                   | [study](../backend/src/modules/study/)                                                                                      | [study](../desktop/src/features/study/)                                                          | [study](../mobile/src/features/study/)                                                         | [study](../packages/core/src/study/)             |
+
+### Within a feature
+
+Document code is grouped by responsibility in both clients:
+
+- `editor/`: format dispatch, legacy/structured editors, block rendering and input.
+- `source/`: Markdown/LaTeX modes, previews and excerpt selection.
+- `library/`: document navigation, library listing and workspace layout.
+- `collaboration/`: comments, suggestions, viewers and document conversation.
+- `metadata/`: tags, aliases, page information and maintenance controls.
+- `history/`: document history.
+
+`DocEditor.tsx` loads authoritative content and selects the editor for its stored
+format. `LegacyDocEditor.tsx` owns legacy block editing;
+`StructuredDocEditor.tsx` owns versioned container editing. Project UI belongs in
+`projects`, even when reached from the document library. The shell composes
+features in `desktop/src/app` and `mobile/src/app`; navigation controls live in
+each app’s `app/chrome`. Global `components` contain
+reusable UI primitives and `lib` retains platform/session/storage infrastructure.
+
+### Shared code and infrastructure
+
+Core's domain directories own pure behavior and contracts. Its root `index.ts`
+retains the public exports; common `schemas.ts` and `types.ts` remain the shared
+item/account backbone. `core/src/theme` owns shared design tokens, while document
+slide contracts live with documents. Internal paths are implementation details. The typed
+client's `endpoints/` directory owns endpoint implementations by capability.
+`client.ts` retains the compatible `OrbynClient` surface and transport/lifecycle
+state; `client-contracts.ts` owns its request options, news and polling contracts.
+The facade preserves existing method names while making implementations findable.
+
+Backend `services/` are process composition roots; `modules/` own feature routes,
+permissions and effects; `db/` owns connection/transaction infrastructure, and
+`migrations/` owns database transitions. Clients never import backend source.
+Core never imports client or application code, and API-client never imports an
+application. Feature helpers stay beside their feature unless actual consumers
+justify sharing them.
+
+Operational paths remain stable: `compose.yaml` and `deploy.sh` are deployment
+entrypoints, `deploy/` holds renderer/database/Kubernetes configuration, `gateway/`
+owns nginx, `pgbouncer/` owns pooling, `mail/` owns the local mail stack, and `ocr/`
+and `formula/` own optional recognition services. These are operational boundaries,
+not application feature folders. `scripts/` owns repository build/check helpers;
+`tools/` contains retained external tools and provenance, not product modules.
+
 Orbyn is a set of backend services, two client apps and PostgreSQL. The clients never talk to the
 database or to AI providers directly; everything goes through the gateway.
 
@@ -74,7 +139,7 @@ and model execution have separate ownership and current-access checks.
 The [API guide](api.md#retained-assistant-conversations) covers feed, details,
 reply/excerpt, read-state and work-control contracts. Source lives in
 `modules/assistant-workspace/`, `modules/ai/` and
-`packages/core/src/assistant-conversation.ts`.
+`packages/core/src/assistant/assistant-conversation.ts`.
 
 ## Workspace and document ownership
 
@@ -252,7 +317,7 @@ scan lane per worker: `TESSERACT_WORKERS` lanes (2 by default) with the built-in
   equations as OMML, which `ommlToLatex` in `@orbyn/core` turns into exact LaTeX: fractions,
   scripts, roots, sums with limits, brackets, accents and matrices.
 - **PDF pages with real text.** pdf.js gives each piece of text with its position, size and real
-  font name. `pageToMarkdown` (`packages/core/src/pdftext.ts`) rebuilds the page from that:
+  font name. `pageToMarkdown` (`packages/core/src/documents/pdftext.ts`) rebuilds the page from that:
   - lines in reading order, with two-column pages read column by column;
   - running headers, footers and page numbers dropped (lines that repeat at the edges across the
     file);
@@ -355,7 +420,7 @@ without automatic resend. See [delivery operations](operations.md#booking-email-
 
 ### Access control
 
-Roles and permissions are defined once in `packages/core/src/rbac.ts` and enforced only on the
+Roles and permissions are defined once in `packages/core/src/teams/rbac.ts` and enforced only on the
 server; the clients use the same helpers to decide what to show.
 
 **System roles.** `admin` or `member`. The first account on a fresh database, and any email in
@@ -533,7 +598,7 @@ loop (`backend/src/modules/ai/agent/`):
    single failing action (wrong version, item belonging to someone else) rolls back the whole batch.
    Applying is idempotent.
 
-**Consistent with BrainRouter.** The provider catalog in `packages/core/src/aiProviders.ts`
+**Consistent with BrainRouter.** The provider catalog in `packages/core/src/assistant/aiProviders.ts`
 mirrors BrainRouter's: its built-in chat providers in the same order, then its declarative starter
 set, with the same ids, labels, endpoints and picker visibility (a test pins this). Calls follow
 BrainRouter's common OpenAI-compatible profile: `Authorization: Bearer`, a blank key sent as
@@ -630,7 +695,7 @@ Everything planning needs lives on this server; nothing syncs with Google, Micro
 Other tools read Orbyn through the calendar feed, API keys and webhooks instead, and Orbyn reads
 other calendars only through their ICS links.
 
-- **Time zones and repeats** (`packages/core/src/time.ts`): wall-clock conversion that survives
+- **Time zones and repeats** (`packages/core/src/planner/time.ts`): wall-clock conversion that survives
   daylight-saving changes, and a subset of RFC 5545 RRULE (daily, weekly on chosen days, monthly
   on month days or weekdays with set positions such as "the last weekday", yearly; interval;
   count or until). A repeating item keeps `series_start` and its own time zone;
@@ -822,7 +887,7 @@ The same bundle runs three ways:
 ## Mobile (`mobile/`)
 
 An Expo app with tabs for Today, Tasks, Calendar, Assistant, Inbox, and Settings, organised as
-`src/screens/`, `src/components/`, `src/hooks/`, `src/lib/` (API client, session, push), and
+`src/features/`, `src/components/`, `src/hooks/`, `src/lib/` (API client, session, push), and
 `src/theme/`. The session token is stored with `expo-secure-store`. On login the app requests
 notification permission, obtains an Expo push token, and registers it with `POST /devices`. On
 logout it deletes the device registration so reminders stop. Push notifications include the item id
@@ -847,7 +912,7 @@ capture a task hands-free with no native extension. The link parser (`parseAddDe
 
 The mobile app shares its look with the web app so both read as one product:
 
-- **Tokens.** `packages/core/src/presentation.ts` owns shared light semantic colors.
+- **Tokens.** `packages/core/src/theme/presentation.ts` owns shared light semantic colors.
   `desktop/src/styles/theme.css` and `mobile/src/theme/palette.ts` provide dark
   roles and client-specific tokens. The current redesign uses neutral surfaces
   and a blue accent; custom list, tag and calendar colors stay user-owned.
@@ -948,7 +1013,7 @@ implementation pending qualification and deployment, not current production proo
 
 ### Admin Publishing
 
-`modules/publishing` owns editorial drafts, explicit public changelog snapshots,
+`modules/social-publishing` owns editorial drafts, explicit public changelog snapshots,
 browser-bound LinkedIn OAuth and company Page delivery. Core defines the
 versioned contract; api-client exposes admin/public transports. The responsive
 admin workspace edits text and raster images locally. Public changelog and

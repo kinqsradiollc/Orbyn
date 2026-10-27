@@ -125,7 +125,10 @@ function mount(
   const exports: any = {};
   const compiled = ts.transpileModule(
     readFileSync(
-      new URL("../../mobile/src/lib/chatgpt-local-sign-in.ts", import.meta.url),
+      new URL(
+        "../../mobile/src/features/connections/chatgpt-local-sign-in.ts",
+        import.meta.url,
+      ),
       "utf8",
     ),
     {
@@ -156,7 +159,7 @@ function mount(
           ts.transpileModule(
             readFileSync(
               new URL(
-                `../../mobile/src/lib/${id.slice(2)}.ts`,
+                `../../mobile/src/features/connections/${id.slice(2)}.ts`,
                 import.meta.url,
               ),
               "utf8",
@@ -177,8 +180,8 @@ function mount(
       if (id === "zod") return { z };
       if (id === "react-native")
         return { Platform: { OS: options.platform ?? "ios" } };
-      if (id === "./session") return { session };
-      if (id === "./device")
+      if (id === "../../lib/session") return { session };
+      if (id === "../../lib/device")
         return {
           deviceLabel: () =>
             options.platform === "android" ? "Pixel QA" : "iPhone QA",
@@ -409,7 +412,7 @@ function mount(
             dismiss?.({ type: "dismiss" });
           },
         };
-      if (id === "../../modules/orbyn-chatgpt")
+      if (id === "../../../modules/orbyn-chatgpt")
         return {
           nativeChatgptSigningAvailable: () => options.signing === true,
           nativeChatgptKeyMetadata: async (alias: string) => {
@@ -468,7 +471,7 @@ function mount(
             rejectWait?.(new Error("cancelled"));
           },
         };
-      if (id === "./api")
+      if (id === "../../lib/api")
         return {
           client: {
             baseUrl: "https://orbyn.example/api",

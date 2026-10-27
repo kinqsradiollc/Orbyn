@@ -59,13 +59,13 @@ import { DateField } from "../../components/DateField";
 import { ShareLinkButton } from "../../components/ShareButton";
 import { useToast } from "../../components/Toast";
 import { copyLink } from "../../lib/links";
-import { deviceTimeZone } from "../../lib/planning";
-import { ImportButton, useImports } from "../docs/Uploads";
+import { deviceTimeZone } from "../planner/planning";
+import { ImportButton, useImports } from "../documents/library/Uploads";
 import { FieldsPanel } from "../views/FieldsPanel";
 import { ConnectionsMap } from "../connections/ConnectionsMap";
 import { StarButton } from "../../components/StarButton";
-import { LinkedHere } from "../docs/DocLinks";
-import { AliasesField } from "../docs/AliasesField";
+import { LinkedHere } from "../documents/editor/DocLinks";
+import { AliasesField } from "../documents/metadata/AliasesField";
 import { canOpenTabs, openInNewTab } from "../../app/tabs";
 import { Cover, LookDialog, LookIcon } from "../../components/Look";
 

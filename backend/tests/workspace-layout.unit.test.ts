@@ -13,8 +13,8 @@ test("the workspace layout is signed-in scoped and keeps palette values in theme
 test("responsive navigation and mobile drawer reference the same accessible navigation", async () => {
   const [app, top, side] = await Promise.all([
     source("app/App.tsx"),
-    source("components/Topbar.tsx"),
-    source("components/Sidebar.tsx"),
+    source("app/chrome/Topbar.tsx"),
+    source("app/chrome/Sidebar.tsx"),
   ]);
   assert.ok(app.includes("sidebarLayout("));
   assert.ok(app.includes("navigationOpen={mobileNav}"));

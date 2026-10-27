@@ -15,7 +15,7 @@ import { assertChatgptJobAccess } from "../../auth/chatgpt-inference.js";
 import {
   assertAgendaAiSnapshot,
   type AgendaAiSnapshot,
-} from "../../docs/agenda-ai-snapshot.js";
+} from "../../documents/agenda-ai-snapshot.js";
 import { resolveUserAi } from "./user-choice.js";
 import { complete, ProviderError, type ChatMessage } from "./adapters.js";
 
@@ -132,7 +132,7 @@ export async function guardAgendaInferenceJob(
   ).rows[0];
   if (row?.run_state?.version === 5 || row?.agenda_summary_run_id) {
     const { guardScheduledAgendaJob } =
-      await import("../../docs/agenda-summary-runs.js");
+      await import("../../documents/agenda-summary-runs.js");
     await guardScheduledAgendaJob(db, owner, jobId, row);
     return;
   }

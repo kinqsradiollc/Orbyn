@@ -126,8 +126,15 @@ function fixture(initial: Record<string, string> = {}, userId = "A") {
         return () => listeners.delete(fn);
       },
     },
+    "../../../lib/session": {
+      session,
+      subscribeSession: (fn: () => void) => {
+        listeners.add(fn);
+        return () => listeners.delete(fn);
+      },
+    },
     "./errors": { errorText: (e: unknown) => String(e) },
-    "./pageCache": { rememberPage: async () => {} },
+    "../features/documents/library/pageCache": { rememberPage: async () => {} },
   };
   const api = {} as API;
   runInNewContext(compiled, {

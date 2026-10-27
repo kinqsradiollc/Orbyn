@@ -61,7 +61,7 @@ function fixture(
   const source = readFileSync(
     new URL(
       mobile
-        ? "../../mobile/src/screens/SemanticSetup.tsx"
+        ? "../../mobile/src/features/settings/SemanticSetup.tsx"
         : "../../desktop/src/features/admin/SemanticSetup.tsx",
       import.meta.url,
     ),
@@ -81,7 +81,7 @@ function fixture(
       if (path === "react") return hooks;
       // Catalog lifecycle is tested through the real hook in its own suite.
       // This component harness isolates consent/setup and UI event wiring.
-      if (path.endsWith("/hooks/useEmbeddingModelCatalog"))
+      if (path.endsWith("/useEmbeddingModelCatalog"))
         return {
           useEmbeddingModelCatalog: () => ({
             loading: false,

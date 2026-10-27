@@ -42,9 +42,9 @@ import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { visibleFolders, visibleProjects } from "../../lib/visibility.js";
 import { mutate } from "../items/service.js";
-import { announceDocChange } from "../docs/live.js";
-import { checkLinks, requireDoc, snapshot } from "../docs/service.js";
-import { saveVersionedDoc } from "../docs/content-format.js";
+import { announceDocChange } from "../documents/live.js";
+import { checkLinks, requireDoc, snapshot } from "../documents/service.js";
+import { saveVersionedDoc } from "../documents/content-format.js";
 import { actAs } from "../../lib/actor.js";
 
 /**

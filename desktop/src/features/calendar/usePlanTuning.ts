@@ -10,7 +10,7 @@ import type {
   PlanTuneInput,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { errorText } from "../../lib/planning";
+import { errorText } from "../planner/planning";
 
 /** How often an open preview checks whether it went stale. */
 const STALE_POLL_MS = 30_000;

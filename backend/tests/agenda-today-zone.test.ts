@@ -16,7 +16,7 @@ const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { agendaDayOf, agendaOn, writeAgendaOn, writeTodaysAgenda } =
-  await import("../src/modules/docs/agenda.js");
+  await import("../src/modules/documents/agenda.js");
 const { adoptDeviceZone, dayZoneFor } =
   await import("../src/modules/planner/timezone.js");
 const { todayFor } = await import("../src/modules/planner/today.js");

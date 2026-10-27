@@ -36,7 +36,7 @@ import {
   minutesLabel,
   timeZones,
   WEEKDAY_SHORT,
-} from "../../lib/planning";
+} from "../planner/planning";
 import { DateField } from "../../components/DateField";
 
 type Props = { teams: Team[]; report: (e: unknown) => void };

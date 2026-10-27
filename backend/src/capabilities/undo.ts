@@ -15,7 +15,7 @@ import {
   saveDoc,
   trashDoc,
   untrashDoc,
-} from "../modules/docs/service.js";
+} from "../modules/documents/service.js";
 import {
   restoreExam,
   syncSavedPages,
@@ -29,12 +29,12 @@ import {
   updateProject,
 } from "../modules/projects/service.js";
 import { mergedItem } from "../modules/proposals/service.js";
-import { announceDocChange } from "../modules/docs/live.js";
+import { announceDocChange } from "../modules/documents/live.js";
 import { pool } from "../db/pool.js";
 import { announceTo } from "../modules/presence/live.js";
 import { savePrefs } from "../modules/planner/routines.js";
 import { restoreSubscription } from "../modules/planner/subscriptions.js";
-import { setFolds, setLook } from "../modules/docs/structure.js";
+import { setFolds, setLook } from "../modules/documents/structure.js";
 import { setInstructions } from "../modules/agent-context/service.js";
 import { forgetMemory } from "../modules/memory/service.js";
 import {

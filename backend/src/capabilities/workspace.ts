@@ -53,12 +53,12 @@ import {
   listSuggestions,
   resolveComment,
   setPageTags,
-} from "../modules/docs/comments.js";
+} from "../modules/documents/comments.js";
 import {
   makeLineTasks,
   requireDoc,
   pageTags,
-} from "../modules/docs/service.js";
+} from "../modules/documents/service.js";
 import {
   createTemplate,
   templateFromProject,
@@ -71,7 +71,7 @@ import {
 } from "../modules/templates/pages.js";
 import { announceTo } from "../modules/presence/live.js";
 import { listProofs } from "../modules/followthrough/proof.js";
-import { announceDocChange } from "../modules/docs/live.js";
+import { announceDocChange } from "../modules/documents/live.js";
 import { READ, projectId, teamFilter } from "./common.js";
 import {
   both,

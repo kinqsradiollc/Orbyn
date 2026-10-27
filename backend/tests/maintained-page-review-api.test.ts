@@ -15,7 +15,7 @@ const {
   stageMaintainedPageRun,
   applyMaintainedPageRun,
   waitMaintainedPageRun,
-} = await import("../src/modules/docs/maintenance-runs.js");
+} = await import("../src/modules/documents/maintenance-runs.js");
 const users: { id: string; token: string }[] = [];
 let address = 1;
 const request = (

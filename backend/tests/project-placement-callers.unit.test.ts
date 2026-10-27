@@ -6,12 +6,12 @@ import { transformSync } from "esbuild";
 import ts from "typescript";
 
 const paths = {
-  desktopTask: "desktop/src/features/task/TaskDetail.tsx",
-  mobileTask: "mobile/src/screens/TaskDetail.tsx",
+  desktopTask: "desktop/src/features/tasks/TaskDetail.tsx",
+  mobileTask: "mobile/src/features/tasks/TaskDetail.tsx",
   desktopProject: "desktop/src/features/projects/ProjectDetail.tsx",
-  mobileProject: "mobile/src/screens/docs/ProjectsSheet.tsx",
+  mobileProject: "mobile/src/features/projects/ProjectsSheet.tsx",
   desktopRecords: "desktop/src/features/projects/ProjectRecords.tsx",
-  mobileRecords: "mobile/src/screens/docs/ProjectRecords.tsx",
+  mobileRecords: "mobile/src/features/projects/ProjectRecords.tsx",
 };
 function source(path: string) {
   return ts.createSourceFile(

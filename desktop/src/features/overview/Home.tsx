@@ -47,7 +47,7 @@ import { ProgressBar } from "../../components/ProgressBar";
 import { Select } from "../../components/Select";
 import { useToast } from "../../components/Toast";
 import { useConfirm } from "../../components/Confirm";
-import { dayLabel } from "../../lib/assistant-labels";
+import { dayLabel } from "../assistant/assistant-labels";
 import "./home.css";
 import { HomeCompanions } from "./HomeCompanions";
 

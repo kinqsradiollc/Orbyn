@@ -3,7 +3,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import type { Day } from "../src/modules/docs/agenda.js";
+import type { Day } from "../src/modules/documents/agenda.js";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { briefFor } = await import("../src/modules/ai/agenda-brief.js");

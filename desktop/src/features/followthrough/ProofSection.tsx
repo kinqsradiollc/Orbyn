@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { BadgeCheck, Link2 } from "lucide-react";
 import type { ItemProof } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { errorText } from "../../lib/planning";
+import { errorText } from "../planner/planning";
 
 const hostOf = (url: string) => {
   try {

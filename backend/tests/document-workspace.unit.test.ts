@@ -51,8 +51,12 @@ test("explicit LaTeX source selection preserves the other sources and nested own
   }
 });
 test("workspace owns viewport, persistent controls, independent panes and keyboard resize", () => {
-  const component = source("desktop/src/features/docs/DocumentWorkspace.tsx"),
-    css = source("desktop/src/features/docs/document-workspace.css");
+  const component = source(
+      "desktop/src/features/documents/library/DocumentWorkspace.tsx",
+    ),
+    css = source(
+      "desktop/src/features/documents/library/document-workspace.css",
+    );
   assert.match(component, /aria-label="Resize source and preview"/);
   assert.match(component, /setPointerCapture/);
   assert.match(component, /ArrowLeft/);
@@ -63,8 +67,8 @@ test("workspace owns viewport, persistent controls, independent panes and keyboa
   assert.match(css, /data-pane-view="source"/);
   assert.match(css, /data-pane-view="preview"/);
   for (const path of [
-    "desktop/src/features/docs/StructuredDocEditor.tsx",
-    "desktop/src/features/docs/DocEditor.tsx",
+    "desktop/src/features/documents/editor/StructuredDocEditor.tsx",
+    "desktop/src/features/documents/editor/LegacyDocEditor.tsx",
   ]) {
     const parent = source(path);
     assert.match(parent, /useDocumentWorkspace/);
@@ -74,8 +78,8 @@ test("workspace owns viewport, persistent controls, independent panes and keyboa
 });
 test("document editing never automatically compiles or mounts a PDF preview", () => {
   for (const client of [
-    "desktop/src/features/docs",
-    "mobile/src/screens/docs",
+    "desktop/src/features/documents/source",
+    "mobile/src/features/documents/source",
   ]) {
     const preview = source(`${client}/DocLatexPreview.tsx`),
       editor = source(`${client}/DocSourcePreview.tsx`);
@@ -94,8 +98,10 @@ test("document editing never automatically compiles or mounts a PDF preview", ()
   }
 });
 test("mobile keeps format ownership independent from Source and Preview selection", () => {
-  const structured = source("mobile/src/screens/docs/StructuredDocEditor.tsx"),
-    legacy = source("mobile/src/screens/docs/DocEditor.tsx");
+  const structured = source(
+      "mobile/src/features/documents/editor/StructuredDocEditor.tsx",
+    ),
+    legacy = source("mobile/src/features/documents/editor/LegacyDocEditor.tsx");
   assert.match(structured, /value=\{sourceFormat\}/);
   assert.match(structured, /setSourceVisible\(false\)/);
   assert.match(structured, /setSourceVisible\(true\)/);
@@ -106,17 +112,19 @@ test("mobile keeps format ownership independent from Source and Preview selectio
 });
 
 test("pane captions cannot take body height and Note hides optional source chrome", () => {
-  const css = source("desktop/src/features/docs/document-workspace.css");
+  const css = source(
+    "desktop/src/features/documents/library/document-workspace.css",
+  );
   assert.match(css, /div:not\(\.document-pane-title\):not\(\[hidden\]\)/);
   assert.match(
     css,
     /data-active-pane="preview"\]\s*>\s*\.structured-doc-source\s*\{\s*display: none/,
   );
   assert.doesNotMatch(
-    source("desktop/src/features/docs/doc-source.css"),
+    source("desktop/src/features/documents/source/doc-source.css"),
     /\.doc-layout\s*\{\s*display: none/,
   );
-  const mobile = source("mobile/src/screens/docs/DocsSheet.tsx");
+  const mobile = source("mobile/src/features/documents/library/DocsSheet.tsx");
   assert.match(mobile, /<BottomSheet[\s\S]*?title="Comments"/);
   assert.match(mobile, /showEntry=\{false\}/);
 });

@@ -49,7 +49,7 @@ import { docEditorsSql, itemSourceSql } from "./sources.js";
  * team, list, tag, assignee, due range, overdue, folder, links and when
  * changed, sorted, grouped and paged with a cursor (25 by default, 100 at
  * most). It runs a saved view (`view`), an ad-hoc one, or a saved view with
- * some filters changed. A saved view is the app's (packages/core/src/views.ts,
+ * some filters changed. A saved view is the app's (packages/core/src/views/views.ts,
  * made in the app or by save_view), read in these words (query-def.ts).
  */
 

@@ -30,7 +30,7 @@ import { Popover } from "../../components/Popover";
 import { useElementWidth } from "../../hooks/useElementWidth";
 import { EmptyState } from "../../components/EmptyState";
 import { OutcomeNote, useAction } from "../../components/Outcome";
-import { copyText, minutesLabel, plural } from "../../lib/planning";
+import { copyText, minutesLabel, plural } from "../planner/planning";
 import { bookingLink, type BookingFocus } from "./bookingUi";
 import { BookingsInbox } from "./BookingsInbox";
 import { PageForm } from "./PageForm";

@@ -44,7 +44,7 @@ import {
 } from "../assistant-workspace/conversation-context.js";
 import { type AgentContext, getItem } from "./agent/tools.js";
 import { getProject } from "./agent/workspace.js";
-import { rewriteAgenda } from "../docs/agenda.js";
+import { rewriteAgenda } from "../documents/agenda.js";
 import { briefFor } from "./agenda-brief.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";

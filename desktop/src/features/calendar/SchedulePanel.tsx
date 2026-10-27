@@ -9,7 +9,7 @@ import {
   type Item,
 } from "@orbyn/core";
 import { usePlanned } from "../../app/planned";
-import { byScore, minutesLabel } from "../../lib/planning";
+import { byScore, minutesLabel } from "../planner/planning";
 import { TASK_MIME } from "./model";
 
 type Props = {

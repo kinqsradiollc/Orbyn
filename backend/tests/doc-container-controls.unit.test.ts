@@ -14,8 +14,8 @@ function load(native: boolean) {
     "react/jsx-runtime": jsx,
     "@orbyn/core": core,
     "react-native": { Text: "Text", View: "View" },
-    "../../motion": { Pressable: "Pressable" },
-    "../../theme": { colors: {}, fonts: {} },
+    "../../../motion": { Pressable: "Pressable" },
+    "../../../theme": { colors: {}, fonts: {} },
     "./DocBody": { DocBody: "DocBody" },
     "./DocBlocks": { BlockView: "BlockView" },
     "./RichBlocks": { FootnoteContext: { Provider: "Provider" } },
@@ -25,8 +25,8 @@ function load(native: boolean) {
   const source = readFileSync(
     new URL(
       native
-        ? "../../mobile/src/screens/docs/DocContainerBody.tsx"
-        : "../../desktop/src/features/docs/DocContainerView.tsx",
+        ? "../../mobile/src/features/documents/editor/DocContainerBody.tsx"
+        : "../../desktop/src/features/documents/editor/DocContainerView.tsx",
       import.meta.url,
     ),
     "utf8",
