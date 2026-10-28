@@ -67,20 +67,22 @@ export function AuthPage({
   );
   return (
     <div className="auth-page">
-      {onHome && (
-        <button className="text-button auth-home-link" onClick={onHome}>
-          ← Back to Orbyn
-        </button>
-      )}
       <div className="auth-story">
-        <div className="brand">
-          <Orbit />{" "}
-          <span className="brand-name">
-            orbyn
-            <span className="brand-dot" aria-hidden="true">
-              •
+        <div className="auth-story-top">
+          {onHome && (
+            <button className="text-button auth-home-link" onClick={onHome}>
+              ← Back to Orbyn
+            </button>
+          )}
+          <div className="brand">
+            <Orbit />{" "}
+            <span className="brand-name">
+              orbyn
+              <span className="brand-dot" aria-hidden="true">
+                •
+              </span>
             </span>
-          </span>
+          </div>
         </div>
         <div>
           <h1>Make room for your work.</h1>
@@ -89,6 +91,14 @@ export function AuthPage({
       </div>
       <main className="auth-form">
         <div className="auth-card">
+          {onHome && (
+            <button
+              className="text-button auth-home-link auth-home-mobile"
+              onClick={onHome}
+            >
+              ← Back to Orbyn
+            </button>
+          )}
           {notice}
           <h2>{register ? "Create account" : "Sign in"}</h2>
           <form

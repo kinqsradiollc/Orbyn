@@ -302,12 +302,20 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
+  box-shadow: 0 1px 2px var(--color-shadow);
   text-align: left;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
 }
 @media (hover: hover) {
   .calendar-agenda-item:hover {
     border-color: var(--color-borderHover);
     background: var(--color-sunken);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px var(--color-shadow);
   }
 }
 .agenda-time small {

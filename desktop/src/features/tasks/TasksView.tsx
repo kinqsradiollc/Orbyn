@@ -809,20 +809,9 @@ export function TasksView({
         <ProgressDialog onClose={() => setProgressOpen(false)} />
       )}
       <div className="section-heading tasks-heading workspace-task-toolbar">
-        <h2>
+        <h2 className="sr-only">
           All items <span>{items.length}</span>
         </h2>
-        <button
-          className="secondary tasks-view-button"
-          aria-haspopup="dialog"
-          aria-label="Done this week"
-          title="Done this week"
-          onClick={() => setProgressOpen(true)}
-        >
-          <BadgeCheck size={14} aria-hidden="true" />{" "}
-          <span>Done this week</span>
-        </button>
-
         <div className="tasks-tools">
           <div className="search">
             <Search size={16} aria-hidden="true" />
@@ -834,6 +823,17 @@ export function TasksView({
               onChange={(e) => onQueryChange(e.target.value)}
             />
           </div>
+          <button
+            className="secondary tasks-view-button"
+            aria-haspopup="dialog"
+            aria-label="Done this week"
+            title="Done this week"
+            onClick={() => setProgressOpen(true)}
+          >
+            <BadgeCheck size={14} aria-hidden="true" />{" "}
+            <span>Done this week</span>
+          </button>
+
           <button
             className="secondary tasks-view-button"
             aria-label="Saved view options"

@@ -265,6 +265,9 @@ export function TaskBoard({
             {!isFolded &&
               column.items.map((i) => {
                 const steps = stepsLabel(i);
+                const progress = progressOf(i);
+                const showProgress =
+                  (progress > 0 && progress < 100) || !!i.steps_total;
                 const writable = canWrite(i);
                 return (
                   <article
@@ -367,11 +370,13 @@ export function TaskBoard({
                         </span>
                       )}
                       <ItemFacts item={i} />
-                      <ProgressBar
-                        value={progressOf(i)}
-                        status={i.status}
-                        label={`Progress on ${i.title}`}
-                      />
+                      {showProgress && (
+                        <ProgressBar
+                          value={progress}
+                          status={i.status}
+                          label={`Progress on ${i.title}`}
+                        />
+                      )}
                       {(steps || !!i.updates_count) && (
                         <span className="board-card-meta">
                           {steps && (

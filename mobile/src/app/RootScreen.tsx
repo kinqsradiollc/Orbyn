@@ -2371,6 +2371,9 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
           onPlanned={() => void refresh()}
         />
         <DocsSheet
+          teamNames={Object.fromEntries(
+            teams.map((team) => [team.id, team.name]),
+          )}
           beforeLeave={documentBeforeLeave}
           onSearch={() => {
             setSearchStart("");
@@ -2406,6 +2409,9 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
           }}
         />
         <DocsSheet
+          teamNames={Object.fromEntries(
+            teams.map((team) => [team.id, team.name]),
+          )}
           beforeLeave={documentBeforeLeave}
           onSearch={() => {
             setSearchStart("");
@@ -2425,6 +2431,9 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
           onItemsChanged={() => void refresh()}
         />
         <DocsSheet
+          teamNames={Object.fromEntries(
+            teams.map((team) => [team.id, team.name]),
+          )}
           beforeLeave={documentBeforeLeave}
           onSearch={() => {
             setSearchStart("");

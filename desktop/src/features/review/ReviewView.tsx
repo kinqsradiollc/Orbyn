@@ -309,6 +309,14 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
 
       <section
         className="review-detail"
+        hidden={
+          !open &&
+          !openId &&
+          !detailPending &&
+          !detailError &&
+          !inbox.pending.length &&
+          !inbox.recent.length
+        }
         ref={detailRef}
         aria-live="polite"
         aria-label="Changes"

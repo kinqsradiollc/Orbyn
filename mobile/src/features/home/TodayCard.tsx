@@ -246,9 +246,12 @@ export function TodayCard({
 
   const empty = !rows.length && !unfinished.length && !checkIns.length;
   return (
-    <View style={shared.card}>
+    <View style={[shared.card, s.card]}>
       <View style={s.head}>
-        <Text style={shared.sectionTitle} accessibilityRole="header">
+        <Text
+          style={[shared.sectionTitle, s.headTitle]}
+          accessibilityRole="header"
+        >
           Today · {dayName(today.day)}
         </Text>
       </View>
@@ -453,7 +456,17 @@ function PillButton({
 
 const s = themed(() =>
   StyleSheet.create({
-    head: { marginBottom: 6 },
+    card: {
+      backgroundColor: "transparent",
+      borderWidth: 0,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderRadius: 0,
+      padding: 0,
+      paddingBottom: 12,
+      marginBottom: 24,
+    },
+    head: { marginBottom: 10 },
+    headTitle: { fontSize: 18, lineHeight: 24 },
     empty: { marginTop: 4 },
     row: {
       flexDirection: "row",
@@ -467,12 +480,12 @@ const s = themed(() =>
       borderTopColor: colors.divider,
     },
     icon: { alignSelf: "flex-start", paddingTop: 2 },
-    main: { flex: 1, flexBasis: 160, minWidth: 0, gap: 4 },
+    main: { flex: 1, flexBasis: 130, minWidth: 0, gap: 4 },
     pressed: { opacity: 0.6 },
     title: {
       fontFamily: fonts.semibold,
-      fontSize: 13,
-      lineHeight: 20,
+      fontSize: 15,
+      lineHeight: 22,
       color: colors.text,
     },
     eventTitle: { fontFamily: fonts.medium, color: colors.textSoft },
@@ -526,7 +539,7 @@ const s = themed(() =>
     pill: {
       minHeight: 44,
       paddingHorizontal: 12,
-      borderRadius: radii.pill,
+      borderRadius: radii.input,
       backgroundColor: colors.accentSoft,
       alignItems: "center",
       justifyContent: "center",

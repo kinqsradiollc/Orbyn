@@ -245,15 +245,15 @@ function TeamsBody({ teams, ...ctx }: Props) {
           }}
           {...ctx}
         />
-      ) : (
-        <section className="card">
+      ) : teams.length > 0 ? (
+        <section className="card team-pick">
           <EmptyState
             icon={Users}
             title="Pick a team."
             body="Members and shared plans appear here."
           />
         </section>
-      )}
+      ) : null}
     </div>
   );
 }

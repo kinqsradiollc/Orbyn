@@ -1832,274 +1832,285 @@ function ProjectDetailBody({
 
       {mode === "home" ? (
         <div className="project-home">
-          <ProjectMilestones
-            projectId={project.id}
-            items={items.filter((i) => i.project_id === project.id)}
-            canWrite={canWrite}
-            onChanged={onItemsChanged}
-            report={report}
-            refreshKey={sessions}
-          />
-          {homeTasks.length > 0 && (
-            <section className="project-home-section">
-              <h3>Coming due</h3>
-              <ul>
-                {homeTasks.map((item) => (
-                  <li key={item.id}>
-                    <button
-                      className="text-button"
-                      onClick={() => onOpenItem(item)}
-                    >
-                      {item.title}
-                    </button>
-                    <span className="muted">
-                      {deadlineOf(item)
-                        ? new Date(deadlineOf(item)!).toLocaleDateString([], {
-                            month: "short",
-                            day: "numeric",
-                          })
-                        : project.deadline
-                          ? `No deadline · project ends ${new Date(project.deadline).toLocaleDateString([], { month: "short", day: "numeric" })}`
-                          : "No deadline"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {homeSessions.length > 0 && (
-            <section className="project-home-section">
-              <h3>Next 7 days</h3>
-              <ul>
-                {homeSessions.map((session) => {
-                  const item = items.find(
-                    (task) => task.id === session.item_id,
-                  );
-                  return (
-                    <li key={session.id}>
-                      <span>
-                        {new Date(session.start_at).toLocaleString([], {
-                          weekday: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                      {item ? (
-                        <button
-                          className="text-button"
-                          onClick={() => onOpenItem(item)}
-                        >
-                          {item.title}
-                        </button>
-                      ) : (
-                        <span>Session</span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
-          {(project.summary || project.doc_id || (canWrite && onOpenNote)) && (
-            <section className="project-home-section">
-              <h3>Brief</h3>
-
-              {project.doc_id && onOpenNote && (
-                <button
-                  className="text-button"
-                  onClick={() => onOpenNote(project.doc_id!)}
-                >
-                  Open brief
-                </button>
-              )}
-              {!project.doc_id && canWrite && onOpenNote && (
-                <button
-                  className="text-button"
-                  disabled={busy || !canWrite}
-                  onClick={() => void createProjectPage(true)}
-                >
-                  Write a brief
-                </button>
-              )}
-            </section>
-          )}
-          {(homeNotes.length > 0 || homeLinks.length > 0 || canWrite) && (
-            <section className="project-home-section">
-              <h3>Pages & files</h3>
-              {homeLinks.length > 0 && (
+          <div className="project-home-main">
+            <ProjectMilestones
+              projectId={project.id}
+              items={items.filter((i) => i.project_id === project.id)}
+              canWrite={canWrite}
+              onChanged={onItemsChanged}
+              report={report}
+              refreshKey={sessions}
+            />
+            {homeTasks.length > 0 && (
+              <section className="project-home-section">
+                <h3>Coming due</h3>
                 <ul>
-                  {homeLinks.map((link) => (
-                    <li key={link.id}>
-                      <a
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {link.title || link.url}
-                      </a>
-                      {canWrite && (
-                        <button
-                          className="text-button"
-                          disabled={busy || !canWrite}
-                          onClick={() => void removeLink(link.id)}
-                          aria-label={`Remove ${link.title || link.url}`}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {addingLink && canWrite && (
-                <div className="project-home-actions">
-                  <input
-                    disabled={busy}
-                    value={linkUrl}
-                    onChange={(event) => setLinkUrl(event.target.value)}
-                    placeholder="https://…"
-                    aria-label="Link URL"
-                    maxLength={2000}
-                  />
-                  <input
-                    disabled={busy}
-                    value={linkTitle}
-                    onChange={(event) => setLinkTitle(event.target.value)}
-                    placeholder="Title (optional)"
-                    aria-label="Link title"
-                    maxLength={200}
-                  />
-                  <button
-                    className="text-button"
-                    disabled={busy || !linkUrl.trim()}
-                    onClick={() => void saveLink()}
-                  >
-                    Save link
-                  </button>
-                  <button
-                    className="text-button"
-                    disabled={busy}
-                    onClick={() => setAddingLink(false)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-              {homeNotes.length > 0 && onOpenNote && (
-                <ul>
-                  {homeNotes.slice(0, 5).map((note) => (
-                    <li key={note.id}>
+                  {homeTasks.map((item) => (
+                    <li key={item.id}>
                       <button
                         className="text-button"
-                        onClick={() => onOpenNote(note.id)}
+                        onClick={() => onOpenItem(item)}
                       >
-                        {note.title || "Untitled"}
+                        {item.title}
                       </button>
-                      <span className="muted">{note.preview}</span>
+                      <span className="muted">
+                        {deadlineOf(item)
+                          ? new Date(deadlineOf(item)!).toLocaleDateString([], {
+                              month: "short",
+                              day: "numeric",
+                            })
+                          : project.deadline
+                            ? `No deadline · project ends ${new Date(project.deadline).toLocaleDateString([], { month: "short", day: "numeric" })}`
+                            : "No deadline"}
+                      </span>
                     </li>
                   ))}
                 </ul>
-              )}
-              <div className="project-home-actions">
+              </section>
+            )}
+            {homeSessions.length > 0 && (
+              <section className="project-home-section">
+                <h3>Next 7 days</h3>
+                <ul>
+                  {homeSessions.map((session) => {
+                    const item = items.find(
+                      (task) => task.id === session.item_id,
+                    );
+                    return (
+                      <li key={session.id}>
+                        <span>
+                          {new Date(session.start_at).toLocaleString([], {
+                            weekday: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        {item ? (
+                          <button
+                            className="text-button"
+                            onClick={() => onOpenItem(item)}
+                          >
+                            {item.title}
+                          </button>
+                        ) : (
+                          <span>Session</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
+            {(homeNotes.length > 0 || homeLinks.length > 0 || canWrite) && (
+              <section className="project-home-section project-home-resources">
+                <h3>Pages & files</h3>
+                {homeLinks.length > 0 && (
+                  <ul>
+                    {homeLinks.map((link) => (
+                      <li key={link.id}>
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {link.title || link.url}
+                        </a>
+                        {canWrite && (
+                          <button
+                            className="text-button"
+                            disabled={busy || !canWrite}
+                            onClick={() => void removeLink(link.id)}
+                            aria-label={`Remove ${link.title || link.url}`}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {addingLink && canWrite && (
+                  <div className="project-home-actions">
+                    <input
+                      disabled={busy}
+                      value={linkUrl}
+                      onChange={(event) => setLinkUrl(event.target.value)}
+                      placeholder="https://…"
+                      aria-label="Link URL"
+                      maxLength={2000}
+                    />
+                    <input
+                      disabled={busy}
+                      value={linkTitle}
+                      onChange={(event) => setLinkTitle(event.target.value)}
+                      placeholder="Title (optional)"
+                      aria-label="Link title"
+                      maxLength={200}
+                    />
+                    <button
+                      className="text-button"
+                      disabled={busy || !linkUrl.trim()}
+                      onClick={() => void saveLink()}
+                    >
+                      Save link
+                    </button>
+                    <button
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() => setAddingLink(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
                 {homeNotes.length > 0 && onOpenNote && (
+                  <ul>
+                    {homeNotes.slice(0, 5).map((note) => (
+                      <li key={note.id}>
+                        <button
+                          className="text-button"
+                          onClick={() => onOpenNote(note.id)}
+                        >
+                          {note.title || "Untitled"}
+                        </button>
+                        <span className="muted">{note.preview}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="project-home-actions">
+                  {homeNotes.length > 0 && onOpenNote && (
+                    <button
+                      className="text-button"
+                      onClick={() => setMode("notes")}
+                    >
+                      All pages & files
+                    </button>
+                  )}
+                  {canWrite && (
+                    <button
+                      className="text-button"
+                      disabled={busy || !canWrite}
+                      onClick={() => void createProjectPage(false)}
+                    >
+                      New page
+                    </button>
+                  )}
+                  {canWrite && homeLinks.length < 20 && !addingLink && (
+                    <button
+                      className="text-button"
+                      onClick={() => setAddingLink(true)}
+                    >
+                      Add link
+                    </button>
+                  )}
+                  {canWrite && (
+                    <ImportButton
+                      label="Add a file"
+                      onFiles={(files) => void addProjectFiles(files)}
+                      busy={busy || imports.busy}
+                    />
+                  )}
+                </div>
+              </section>
+            )}
+            {openQuestions.length > 0 && (
+              <section className="project-home-section">
+                <h3>Open questions</h3>
+                <ul>
+                  {openQuestions.slice(0, 5).map((record) => (
+                    <li key={record.id}>
+                      <span>{record.title}</span>
+                      <span className="muted">
+                        {record.kind === "decision"
+                          ? "Decision"
+                          : "Promise due soon"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  className="text-button"
+                  onClick={() => setMode("decisions")}
+                >
+                  All decisions
+                </button>
+              </section>
+            )}
+          </div>
+          <aside className="project-home-aside" aria-label="Project details">
+            {(project.summary ||
+              project.doc_id ||
+              (canWrite && onOpenNote)) && (
+              <section className="project-home-section">
+                <h3>Brief</h3>
+
+                {project.doc_id && onOpenNote && (
                   <button
                     className="text-button"
-                    onClick={() => setMode("notes")}
+                    onClick={() => onOpenNote(project.doc_id!)}
                   >
-                    All pages & files
+                    Open brief
                   </button>
                 )}
-                {canWrite && (
+                {!project.doc_id && canWrite && onOpenNote && (
                   <button
                     className="text-button"
                     disabled={busy || !canWrite}
-                    onClick={() => void createProjectPage(false)}
+                    onClick={() => void createProjectPage(true)}
                   >
-                    New page
+                    Write a brief
                   </button>
                 )}
-                {canWrite && homeLinks.length < 20 && !addingLink && (
-                  <button
-                    className="text-button"
-                    onClick={() => setAddingLink(true)}
-                  >
-                    Add link
-                  </button>
-                )}
-                {canWrite && (
-                  <ImportButton
-                    label="Add a file"
-                    onFiles={(files) => void addProjectFiles(files)}
-                    busy={busy || imports.busy}
-                  />
-                )}
-              </div>
-            </section>
-          )}
-          {openQuestions.length > 0 && (
-            <section className="project-home-section">
-              <h3>Open questions</h3>
-              <ul>
-                {openQuestions.slice(0, 5).map((record) => (
-                  <li key={record.id}>
-                    <span>{record.title}</span>
-                    <span className="muted">
-                      {record.kind === "decision"
-                        ? "Decision"
-                        : "Promise due soon"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <button
-                className="text-button"
-                onClick={() => setMode("decisions")}
-              >
-                All decisions
-              </button>
-            </section>
-          )}
-          {/* Other names, such as a course code (LNK-03). */}
-          {(canWrite || (project.aliases ?? []).length > 0) && (
-            <section className="project-home-section">
-              <h3>Also called</h3>
-              <AliasesField
-                aliases={project.aliases ?? []}
-                canWrite={canWrite}
-                placeholder="Add another name, like COMP3100"
-                onSave={(aliases) =>
-                  client.updateProject(project.id, { aliases }).then(
-                    (next) => {
-                      onChanged(next);
-                      return next.aliases ?? aliases;
-                    },
-                    (e) => {
-                      report(e);
-                      throw e;
-                    },
-                  )
-                }
-              />
-            </section>
-          )}
-          {/* Your own fields on the project (ORG-02). */}
-          <FieldsPanel
-            target="project"
-            targetId={project.id}
-            revision={project.updated_at}
-            report={report}
-            className="project-home-section"
-          />
-          {/* Pages in the project and pages that link to it. */}
-          <LinkedHere kind="project" id={project.id} report={report} compact />
-          {/* What the project is linked to, one or two steps out (CNV-02). */}
+              </section>
+            )}
+
+            {/* Other names, such as a course code (LNK-03). */}
+            {(canWrite || (project.aliases ?? []).length > 0) && (
+              <section className="project-home-section">
+                <h3>Also called</h3>
+                <AliasesField
+                  aliases={project.aliases ?? []}
+                  canWrite={canWrite}
+                  placeholder="Add another name, like COMP3100"
+                  onSave={(aliases) =>
+                    client.updateProject(project.id, { aliases }).then(
+                      (next) => {
+                        onChanged(next);
+                        return next.aliases ?? aliases;
+                      },
+                      (e) => {
+                        report(e);
+                        throw e;
+                      },
+                    )
+                  }
+                />
+              </section>
+            )}
+            {/* Your own fields on the project (ORG-02). */}
+            <FieldsPanel
+              target="project"
+              targetId={project.id}
+              revision={project.updated_at}
+              report={report}
+              className="project-home-section"
+            />
+            {/* Pages in the project and pages that link to it. */}
+            <LinkedHere
+              kind="project"
+              id={project.id}
+              report={report}
+              compact
+            />
+          </aside>
           <ConnectionsMap
             kind="project"
             id={project.id}
             revision={project.updated_at}
             report={report}
-            className="project-home-section"
+            className="project-home-section project-home-connections"
           />
         </div>
       ) : mode === "notes" && onOpenNote ? (

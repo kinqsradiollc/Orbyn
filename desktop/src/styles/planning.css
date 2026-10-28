@@ -1656,8 +1656,9 @@ kbd {
   width: 100%;
 }
 .tasks-card.is-compact .tasks-tools > .search {
-  flex: 1 1 100%;
+  flex: 1 1 calc(100% - 52px);
   min-width: 0;
+  box-sizing: border-box;
 }
 .tasks-card.is-compact .tasks-tools .search input {
   flex: 1;

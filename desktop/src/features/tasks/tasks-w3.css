@@ -126,6 +126,16 @@
 .item-row .item-main {
   min-height: 44px;
 }
+.item-row .item-progress-line,
+.item-row .item-facts {
+  display: inline-flex;
+  vertical-align: middle;
+  align-items: center;
+  margin-top: 6px;
+}
+.item-row .item-progress-line {
+  margin-right: 12px;
+}
 .row-fold,
 .row-move .icon-button {
   min-width: 32px;
@@ -140,4 +150,70 @@
     min-width: 44px;
     min-height: 44px;
   }
+}
+
+/* Tasks are a working list, with one quiet toolbar rather than a nested card. */
+.app.workspace .card.tasks-card {
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+.app.workspace .tasks-card .workspace-task-toolbar {
+  padding: 0 0 16px;
+}
+.tasks-card > .filter-chips {
+  padding-inline: 0;
+}
+.app.workspace .tasks-card .task-group-title {
+  background: transparent;
+  border-bottom: 1px solid var(--color-divider);
+  padding: 14px 0;
+}
+.app.workspace .tasks-card .item-row {
+  background: transparent;
+  padding: 16px 0;
+  align-items: flex-start;
+}
+.tasks-card .item-row .check {
+  margin-top: 2px;
+}
+.tasks-card .item-main .item-meta {
+  margin-top: 4px;
+}
+.item-row .item-progress-meter {
+  display: block;
+  width: 180px;
+  max-width: 100%;
+  margin-top: 8px;
+}
+.item-row .item-progress-meter .progress-bar {
+  width: 100%;
+}
+.tasks-card .item-tags {
+  align-self: flex-start;
+}
+@media (max-width: 640px) {
+  .tasks-card .item-row {
+    padding: 14px 0;
+    background: transparent;
+  }
+  .app.workspace .tasks-card .workspace-task-toolbar {
+    padding-inline: 0;
+  }
+  .app.workspace .tasks-card .task-group-title {
+    padding-inline: 0;
+  }
+  .tasks-card .item-tags {
+    gap: 6px;
+  }
+}
+@media (max-width: 640px) {
+  .tasks-card .workspace-task-toolbar > h2 {
+    display: none;
+  }
+}
+
+.app.workspace .tasks-card .item-row:hover {
+  background: var(--color-hover);
 }

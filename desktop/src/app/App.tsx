@@ -2968,6 +2968,33 @@ function WorkspaceController({
                   />
                 )}
                 {view === "Overview" && (
+                  <OverviewView
+                    {...listProps}
+                    onNewItem={() => newItem()}
+                    onNavigate={(next) =>
+                      chromeRun.current({ kind: "navigate", view: next })
+                    }
+                    onOpenProject={(id) => {
+                      setProjectToOpen(id);
+                      setView("Projects");
+                    }}
+                    onOpenDoc={(found) => {
+                      setNoteDoc(found);
+                      setView("Docs");
+                    }}
+                    onPlanDay={() => {
+                      navigate("AI assistant");
+                      void assistant.ask(planDayPrompt);
+                    }}
+                    onFocus={startFocus}
+                    onOpenById={openItemById}
+                    onPlanIt={(id) => planTask(id, true)}
+                    onPlanAgain={(id) => void rollForward([id])}
+                    onPlanMyDay={planMyDay}
+                    onShowLate={() => navigate("My tasks")}
+                  />
+                )}
+                {view === "Overview" && (
                   <HomeSections
                     canOpenAgentOutput={
                       !busy &&
@@ -3002,33 +3029,6 @@ function WorkspaceController({
                       setUpcomingAsked((n) => n + 1);
                       navigate("AI assistant");
                     }}
-                  />
-                )}
-                {view === "Overview" && (
-                  <OverviewView
-                    {...listProps}
-                    onNewItem={() => newItem()}
-                    onNavigate={(next) =>
-                      chromeRun.current({ kind: "navigate", view: next })
-                    }
-                    onOpenProject={(id) => {
-                      setProjectToOpen(id);
-                      setView("Projects");
-                    }}
-                    onOpenDoc={(found) => {
-                      setNoteDoc(found);
-                      setView("Docs");
-                    }}
-                    onPlanDay={() => {
-                      navigate("AI assistant");
-                      void assistant.ask(planDayPrompt);
-                    }}
-                    onFocus={startFocus}
-                    onOpenById={openItemById}
-                    onPlanIt={(id) => planTask(id, true)}
-                    onPlanAgain={(id) => void rollForward([id])}
-                    onPlanMyDay={planMyDay}
-                    onShowLate={() => navigate("My tasks")}
                   />
                 )}
                 {/* What changed in your teams, others' changes first (SHR-02). */}

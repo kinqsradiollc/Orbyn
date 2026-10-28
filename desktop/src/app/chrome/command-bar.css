@@ -1,4 +1,8 @@
 /* ⌘K's filters, summary and command rows (NAV-01, NAV-02, SRCH-01). */
+.command-input,
+.command-input:focus-within {
+  outline: none;
+}
 .command-filters {
   padding: 10px 16px 2px;
   gap: 6px;

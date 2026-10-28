@@ -1169,10 +1169,6 @@ dialog.settings-editor::backdrop {
   min-width: var(--button-h);
   min-height: var(--button-h);
 }
-.settings-editor-body {
-  padding: 0 16px 16px;
-  min-width: 0;
-}
 .settings-editor-body form {
   padding: 0;
 }

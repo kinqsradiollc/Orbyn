@@ -694,7 +694,7 @@
   color: var(--color-muted);
 }
 :root[data-theme="dark"] .search input {
-  background: var(--color-sunken);
+  background: transparent;
 }
 :root[data-theme="dark"] .assistant-intro > svg {
   color: var(--color-dot);

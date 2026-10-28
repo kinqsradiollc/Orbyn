@@ -487,25 +487,42 @@ nav button i,
 .secondary {
   min-height: var(--button-h);
   border-radius: var(--radius-sm);
-  padding: 5px 12px;
+  padding: 5px 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   font-size: var(--button-fs);
-  font-weight: 500;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 .primary {
-  background: var(--green);
-  border: 1px solid var(--green);
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent);
   color: var(--color-onAccent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
-.primary:hover {
-  background: var(--color-accentText);
+.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 88%, black);
+  border-color: color-mix(in srgb, var(--color-accent) 88%, black);
+  box-shadow: 0 4px 12px
+    color-mix(in srgb, var(--color-accent) 25%, transparent);
 }
 .secondary {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
+  color: var(--color-text);
+  box-shadow: 0 1px 2px var(--color-shadow);
+}
+.secondary:hover:not(:disabled) {
+  background: var(--color-surfaceMuted);
+  border-color: var(--color-borderHover);
 }
 .text-button {
   min-height: var(--button-h);
@@ -518,7 +535,14 @@ nav button i,
   display: inline-flex;
   gap: 7px;
   align-items: center;
-  padding: 6px 8px;
+  padding: 6px 10px;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+.text-button:hover:not(:disabled) {
+  background: var(--color-hover);
+  color: var(--color-text);
 }
 /* Links used as controls share the same appearance as button controls. */
 a:is(.primary, .secondary, .text-button) {
@@ -583,6 +607,11 @@ a.secondary {
   border-radius: var(--radius-md);
   margin-bottom: 24px;
   overflow: hidden;
+  box-shadow: 0 1px 3px var(--color-shadow);
+  transition:
+    box-shadow var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 .section-heading {
   padding: 16px 21px;
@@ -608,17 +637,29 @@ a.secondary {
   display: flex;
   gap: 13px;
   align-items: center;
-  padding: 18px 22px;
+  padding: 16px 22px;
   border-top: 1px solid var(--color-divider);
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+.item-row:hover {
+  background-color: var(--color-hover);
 }
 .check {
-  width: 17px;
-  height: 17px;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  max-width: 18px;
+  max-height: 18px;
   border: 1.5px solid var(--color-borderStrong);
   border-radius: var(--radius-xs);
   background: var(--color-surface);
   flex-shrink: 0;
   padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 .checked {
   background: var(--color-accent);
@@ -1161,10 +1202,11 @@ footer svg {
 .auth-story {
   width: 48%;
   background: var(--color-sunken);
-  padding: 32px clamp(24px, 4vw, 48px);
+  padding: 40px clamp(24px, 4vw, 56px);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: clamp(40px, 12vh, 120px);
   overflow: hidden;
 }
 .auth-story .brand {
@@ -1255,9 +1297,6 @@ footer svg {
   .overview-grid {
     grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
   }
-  .assistant-card {
-    min-height: 370px;
-  }
 }
 @media (max-width: 1100px) {
   .sidebar {
@@ -1343,9 +1382,6 @@ footer svg {
   .overview-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
-  }
-  .assistant-card {
-    min-height: 0;
   }
   .page-heading {
     align-items: flex-start;
@@ -2168,6 +2204,14 @@ footer svg {
 .stats-4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
+/* The main pane can be narrow even on a wide monitor. */
+.stats-4.is-compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  row-gap: 18px;
+}
+.stats-4.is-compact > div:nth-child(2) {
+  border-right: 0;
+}
 .stats > .stat-blocked strong {
   color: var(--status-blocked-fg);
 }
@@ -2255,6 +2299,10 @@ footer svg {
   color: var(--color-textSoft);
   font-size: var(--button-fs);
   font-weight: 500;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
 }
 .segmented button.active {
   background: var(--color-surface);
@@ -2311,7 +2359,8 @@ footer svg {
 }
 .board {
   display: grid;
-  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--cols, 4), minmax(min(240px, 100%), 1fr));
+  overflow-x: auto;
   gap: 14px;
   padding: 4px 18px 20px;
   border-top: 1px solid var(--color-divider);
@@ -2362,14 +2411,17 @@ footer svg {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
+  box-shadow: 0 1px 2px var(--color-shadow);
   transition:
     border-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out);
 }
 @media (hover: hover) {
   .board-card:hover {
     border-color: var(--color-borderHover);
-    box-shadow: 0 6px 18px var(--color-shadow);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px var(--color-shadow);
   }
 }
 .board-card-main {
@@ -3431,7 +3483,6 @@ input[type="number"]::-webkit-outer-spin-button {
   .search,
   .settings-search-field,
   .chat-input,
-  .command-input,
   .ai-composer,
   .update-composer
 ):focus-within {
@@ -3439,6 +3490,8 @@ input[type="number"]::-webkit-outer-spin-button {
   outline-offset: 2px;
 }
 .search {
+  min-height: 44px;
+  box-sizing: border-box;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surfaceMuted);
@@ -3949,6 +4002,15 @@ footer {
 .stat-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
 }
+@media (max-width: 640px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .stat-card {
+    padding: 16px;
+  }
+}
 @media (max-width: 640px), (pointer: coarse) {
   .primary,
   .secondary,
@@ -3979,6 +4041,10 @@ footer {
     position: relative;
     width: 44px;
     height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
     border: 0;
     background: transparent;
   }
@@ -4074,4 +4140,9 @@ footer {
   font-size: inherit;
   color: var(--color-dot);
   margin-left: 4px;
+}
+
+/* Compact team navigation already presents the available choices. */
+.teams-layout.is-compact > .team-pick {
+  display: none;
 }

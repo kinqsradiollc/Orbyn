@@ -1032,3 +1032,7 @@ fieldset.view-menu {
   padding: 0;
   border: 0;
 }
+
+.views-library-search {
+  min-height: 44px;
+}

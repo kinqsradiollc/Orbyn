@@ -13,10 +13,13 @@ import { colors, fonts, radii, themed } from "../../theme";
 export function PlanningMeta({
   item,
   large = false,
+  hideEffort = false,
 }: {
   item: Item;
   /** Slightly bigger chips for the task sheet. */
   large?: boolean;
+  /** Remaining time is already visible in the row footer. */
+  hideEffort?: boolean;
 }) {
   const { listById, tagById } = usePlanning();
   const list = item.list_id ? listById.get(item.list_id) : undefined;
@@ -24,7 +27,7 @@ export function PlanningMeta({
     .map((id) => tagById.get(id))
     .filter((t): t is Tag => !!t);
   const repeat = describeRrule(item.rrule);
-  const effort = effortLabel(item);
+  const effort = hideEffort ? null : effortLabel(item);
   const assignee = item.assignee_name;
   const measure = measureLabel(item);
   if (!list && !tags.length && !repeat && !effort && !assignee && !measure)

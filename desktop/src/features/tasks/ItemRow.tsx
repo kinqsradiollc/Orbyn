@@ -69,7 +69,8 @@ export function ItemRow({
   const done = i.status === "done";
   const steps = stepsLabel(i);
   const updates = updatesLabel(i);
-  const showProgress = i.kind === "task" || !!i.steps_total;
+  const progress = progressOf(i);
+  const showProgress = (progress > 0 && progress < 100) || !!i.steps_total;
   const subtasks = i.child_count
     ? `${i.children_done ?? 0} of ${i.child_count} subtasks`
     : null;
@@ -144,15 +145,17 @@ export function ItemRow({
             )}
           </span>
         )}
-        {(showProgress || steps || updates || subtasks || left) && (
+        {showProgress && (
+          <span className="item-progress-meter">
+            <ProgressBar
+              value={progressOf(i)}
+              status={i.status}
+              label={`Progress on ${i.title}`}
+            />
+          </span>
+        )}
+        {(steps || updates || subtasks || left) && (
           <span className="item-progress-line">
-            {showProgress && (
-              <ProgressBar
-                value={progressOf(i)}
-                status={i.status}
-                label={`Progress on ${i.title}`}
-              />
-            )}
             {steps && (
               <span className="item-fact">
                 <ListChecks size={12} aria-hidden="true" />
@@ -174,7 +177,7 @@ export function ItemRow({
             {updates && <span className="item-fact">{updates}</span>}
           </span>
         )}
-        <ItemFacts item={i} />
+        <ItemFacts item={i} hideTime={!!left && !i.spent_minutes} />
       </button>
       <span className="item-tags">
         {i.team_id && i.team_name && (

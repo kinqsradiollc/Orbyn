@@ -169,3 +169,5 @@ export * from "./documents/doc-selection.js";
 export * from "./publishing/publishing.js";
 
 export * from "./assistant/assistant-conversation-ui.js";
+
+export * from "./connections/space.js";

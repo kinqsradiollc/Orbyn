@@ -196,17 +196,6 @@ export function TodayScreen({
         prefill={quickAddPrefill}
         onPrefillUsed={onQuickAddPrefillUsed}
       />
-      <HomeSection
-        conversationEnabled={conversationEnabled}
-        canOpenAgentOutput={canOpenAgentOutput}
-        onOpenAgentOutput={onOpenAgentOutput}
-        layout={homeLayout}
-        agentName={agentName}
-        onOpenLink={onOpenLink}
-        onOpenStudy={() => onOpenWorkspace("study")}
-        onOpenDoc={(id) => onOpenLink({ kind: "doc", id })}
-      />
-      <AssistantIdeasCard />
       <View style={s.stats}>
         {stats.map((stat) => (
           <View key={stat.label} style={[s.statCell, wide && s.statCellWide]}>
@@ -225,9 +214,6 @@ export function TodayScreen({
         ))}
       </View>
 
-      {open.some((i) => i.kind === "task") && (
-        <UpNextCard items={items} onOpen={handlers.onOpen} onFocus={onFocus} />
-      )}
       {items.length > 0 && (
         <TodayCard
           today={todayList}
@@ -240,6 +226,20 @@ export function TodayScreen({
           onCheckedIn={() => onQuickAdded(null)}
         />
       )}
+      {open.some((i) => i.kind === "task") && (
+        <UpNextCard items={items} onOpen={handlers.onOpen} onFocus={onFocus} />
+      )}
+      <HomeSection
+        conversationEnabled={conversationEnabled}
+        canOpenAgentOutput={canOpenAgentOutput}
+        onOpenAgentOutput={onOpenAgentOutput}
+        layout={homeLayout}
+        agentName={agentName}
+        onOpenLink={onOpenLink}
+        onOpenStudy={() => onOpenWorkspace("study")}
+        onOpenDoc={(id) => onOpenLink({ kind: "doc", id })}
+      />
+      <AssistantIdeasCard />
       {open.some((i) => i.kind === "task") && (
         <View style={[shared.card, s.plan]}>
           <View style={s.planText}>
@@ -439,18 +439,20 @@ const s = themed(() =>
     stats: {
       flexDirection: "row",
       flexWrap: "wrap",
-      backgroundColor: colors.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      borderRadius: radii.card,
-      padding: 6,
-      marginBottom: 18,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+      paddingVertical: 6,
+      marginBottom: 24,
     },
     statCell: { width: "50%", padding: 6 },
     statCellWide: { width: "25%" },
     stat: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
       paddingVertical: 4,
-      paddingHorizontal: 6,
+      paddingHorizontal: 4,
     },
     statTop: {
       flexDirection: "row",
@@ -464,7 +466,7 @@ const s = themed(() =>
       fontFamily: fonts.bold,
       fontSize: 18,
       color: colors.text,
-      marginTop: 4,
+      marginTop: 0,
     },
     emptyRow: {
       borderWidth: 1,

@@ -8,7 +8,13 @@
   margin: 4px 0 8px;
   font-size: 18px;
   line-height: 1.25;
+}
+.first-run h2:focus:not(:focus-visible) {
   outline: none;
+}
+.first-run h2:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 .first-run > p {
   margin: 0 0 14px;

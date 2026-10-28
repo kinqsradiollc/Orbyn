@@ -753,17 +753,22 @@
 .home-footer-links a {
   color: var(--color-accentText);
 }
-.auth-home-link {
-  position: absolute;
-  top: 24px;
-  left: 30px;
-  font-size: 11px;
-  color: var(--color-accent);
-  z-index: 1;
-  text-decoration: none;
+.auth-story-top {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
 }
-.auth-story {
-  padding-top: 64px;
+.auth-home-link {
+  font-size: 13px;
+  color: var(--color-accentText);
+  text-decoration: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+.auth-home-link:hover {
+  color: var(--color-accent);
 }
 @media (max-width: 900px) {
   .home-nav {
@@ -1623,5 +1628,16 @@ html.js .home .reveal {
   }
   .home-hero h1 {
     font-size: 36px;
+  }
+}
+
+.auth-home-mobile {
+  display: none;
+}
+@media (max-width: 800px) {
+  .auth-home-mobile {
+    display: inline-flex;
+    min-height: 44px;
+    margin-bottom: 16px;
   }
 }

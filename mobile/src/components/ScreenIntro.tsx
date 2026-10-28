@@ -31,7 +31,7 @@ export function ScreenIntro({
 const s = themed(() =>
   StyleSheet.create({
     intro: { gap: 6, marginBottom: 14 },
-    heading: { flexDirection: "row", alignItems: "center", gap: 10 },
+    heading: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
     badge: {
       width: 32,
       height: 32,

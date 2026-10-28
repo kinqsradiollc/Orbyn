@@ -128,3 +128,19 @@ test("pane captions cannot take body height and Note hides optional source chrom
   assert.match(mobile, /<BottomSheet[\s\S]*?title="Comments"/);
   assert.match(mobile, /showEntry=\{false\}/);
 });
+
+test("library navigation distinguishes shared folders and duplicate tag names without changing IDs", () => {
+  const web = source("desktop/src/features/documents/library/DocsView.tsx");
+  const mobile = source("mobile/src/features/documents/library/DocsSheet.tsx");
+  assert.match(web, /docs-folder-scope-label/);
+  assert.match(web, /\(f.team_id \?\? null\) === teamId/);
+  assert.match(web, /id=\{`folder:\$\{folder.id\}`\}/);
+  assert.match(web, /tag.name === t.name/);
+  assert.match(mobile, /name: folderLabel\(f\)/);
+  assert.match(mobile, /tag.name === t.name/);
+  assert.match(mobile, /setTagFilter\(tagFilter === t.id/);
+  assert.match(
+    source("mobile/src/app/RootScreen.tsx"),
+    /<DocsSheet\s+teamNames=/,
+  );
+});

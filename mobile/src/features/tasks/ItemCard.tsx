@@ -105,7 +105,7 @@ export function ItemCard({
   useEffect(() => {
     setMenuOpen(false);
   }, [item.id, busy]);
-  const showProgress = item.kind === "task" || percent > 0;
+  const showProgress = (percent > 0 && percent < 100) || !!item.steps_total;
   // "Planned 9:15" for a session today, and the task's status only within a
   // week of its deadline or with a session after it.
   const planned = usePlanned().byItem.get(item.id);
@@ -323,7 +323,10 @@ export function ItemCard({
               </View>
             )}
           </View>
-          <PlanningMeta item={item} />
+          <PlanningMeta
+            item={item}
+            hideEffort={!!leftLabel(item) && !item.spent_minutes}
+          />
           {(!!plannedToday || !!fitChip) && (
             <View style={s.plan}>
               {!!plannedToday && <Pill label={plannedToday} tone="accent" />}
