@@ -132,3 +132,12 @@
 :root[data-theme="dark"] .booking-accent {
   --green: var(--accent-dark, var(--color-accent));
 }
+
+/* Commit one palette before restoring hover/press transitions. Without this,
+   transitioning rows can remain light while their card has already turned dark. */
+:root[data-theme-switching],
+:root[data-theme-switching] *,
+:root[data-theme-switching] *::before,
+:root[data-theme-switching] *::after {
+  transition: none !important;
+}

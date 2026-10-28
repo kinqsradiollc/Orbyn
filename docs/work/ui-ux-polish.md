@@ -311,3 +311,23 @@ rim, and the workspace switch. Navigation centres were within 2px at 1024, 1280,
 1440 and 1920px; public-header actions all measured 44px. Screenshots of Home,
 sign-in, hover and phone workspace were inspected and retained outside Git.
 This is browser evidence, not installed native-device qualification.
+
+### Theme-switch flash correction
+
+Chrome frame sampling reproduced the reported flash: Coming up's card adopted
+the new palette immediately while its row background transitioned from the old
+palette for 6–7 of the first 15 sampled frames. The existing hover transition
+was also interpolating palette changes.
+
+`applyTheme` now suppresses transitions while committing a changed palette,
+flushes its styles, then restores interaction transitions after a painted frame.
+The temporary root attribute covers descendants and pseudo-elements. Repeated
+applications of the same theme do not restart cleanup; rapid reversals cancel
+superseded cleanup so only the latest change restores transitions.
+
+The 23 focused appearance/button/style tests and desktop build passed. Chrome
+recorded zero mismatched row/card colours and zero row background transitions
+across 240 sampled frames: 16 toggles at 1440/390px, in both directions, with
+normal/reduced motion. The temporary attribute was removed after switching.
+These are browser/style observations, not native-device or exhaustive pixel
+capture claims. Original failure and corrected frame receipts are outside Git.

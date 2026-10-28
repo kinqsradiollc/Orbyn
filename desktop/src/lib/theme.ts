@@ -7,6 +7,7 @@ export type ThemeChoice = "light" | "dark";
 const THEME_KEY = "orbyn-theme";
 const THEME_EVENT = "orbyn-theme-change";
 let volatileChoice: ThemeChoice = "light";
+let themeCleanupFrame: number | undefined;
 const DARK_QUERY = "(prefers-color-scheme: dark)";
 /** Page backgrounds, for the browser's theme colour. */
 const BACKGROUNDS = { light: "#fafafa", dark: "#171717" };
@@ -34,7 +35,23 @@ export function savedTheme(): ThemeChoice {
 /** Sets `data-theme` on <html> to what the choice resolves to, and the theme colour. */
 export function applyTheme(choice: ThemeChoice) {
   const dark = choice === "dark";
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const root = document.documentElement;
+  const next = dark ? "dark" : "light";
+  if (root.dataset.theme !== next) {
+    // Hover transitions must not interpolate old palette colours against the
+    // new page background. Commit the palette with transitions suppressed.
+    root.dataset.themeSwitching = "";
+    root.dataset.theme = next;
+    void root.offsetHeight;
+    if (themeCleanupFrame !== undefined)
+      window.cancelAnimationFrame(themeCleanupFrame);
+    themeCleanupFrame = window.requestAnimationFrame(() => {
+      themeCleanupFrame = window.requestAnimationFrame(() => {
+        delete root.dataset.themeSwitching;
+        themeCleanupFrame = undefined;
+      });
+    });
+  }
   document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute("content", dark ? BACKGROUNDS.dark : BACKGROUNDS.light);

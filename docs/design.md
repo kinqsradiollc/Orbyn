@@ -140,3 +140,7 @@ other open Orbyn tabs. System preferences migrate once to their resolved theme;
 later operating-system changes do not alter the explicit choice. Public content
 inherits the palette, including previews and first paint. Keep the desktop public
 navigation centred with equal side columns; header actions share 44px targets.
+
+Apply appearance changes atomically. Suppress transitions while committing the
+new palette, then restore ordinary hover/press behavior after it has painted;
+rows must not interpolate old-theme surfaces against a new-theme background.

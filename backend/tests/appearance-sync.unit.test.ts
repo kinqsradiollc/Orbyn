@@ -7,7 +7,19 @@ import ts from "typescript";
 function fixture(blocked = false) {
   const data = new Map<string, string>();
   let systemDark = true;
+  let frameId = 0;
+  const frames = new Map<number, () => void>();
+  const frame = () => {
+    const callbacks = [...frames.values()];
+    frames.clear();
+    callbacks.forEach((fn) => fn());
+  };
   const window = Object.assign(new EventTarget(), {
+    requestAnimationFrame: (callback: () => void) => {
+      frames.set(++frameId, callback);
+      return frameId;
+    },
+    cancelAnimationFrame: (id: number) => frames.delete(id),
     matchMedia: () => ({ matches: systemDark }),
   });
   const states: { value: string }[] = [];
@@ -64,6 +76,8 @@ function fixture(blocked = false) {
   );
   return {
     api: exports,
+    frame,
+    frames,
     setSystemDark: (value: boolean) => {
       systemDark = value;
     },
@@ -177,4 +191,41 @@ test("appearance is an explicit accessible binary switch, including Settings", (
     /<AppearanceControl/,
   );
   assert.doesNotMatch(source("main.tsx"), /followSystemTheme/);
+});
+
+test("palette changes suppress transitions until the new theme has painted", () => {
+  const f = fixture();
+  f.document.documentElement.dataset.theme = "light";
+  f.api.applyTheme("dark");
+  assert.equal(f.document.documentElement.dataset.theme, "dark");
+  assert.equal(f.document.documentElement.dataset.themeSwitching, "");
+  f.frame();
+  assert.equal(f.document.documentElement.dataset.themeSwitching, "");
+  f.frame();
+  assert.equal(f.document.documentElement.dataset.themeSwitching, undefined);
+  assert.equal(f.frames.size, 0);
+  const css = readFileSync(
+    new URL("../../desktop/src/styles/theme.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    css,
+    /:root\[data-theme-switching\] \*::after\s*\{\s*transition: none !important;/,
+  );
+});
+
+test("rapid and repeated theme applications keep one cleanup for the latest palette", () => {
+  const f = fixture();
+  f.document.documentElement.dataset.theme = "light";
+  f.api.applyTheme("dark");
+  f.api.applyTheme("dark");
+  assert.equal(f.frames.size, 1);
+  f.frame();
+  f.api.applyTheme("light");
+  assert.equal(f.frames.size, 1);
+  f.frame();
+  assert.equal(f.document.documentElement.dataset.themeSwitching, "");
+  f.frame();
+  assert.equal(f.document.documentElement.dataset.theme, "light");
+  assert.equal(f.document.documentElement.dataset.themeSwitching, undefined);
 });
