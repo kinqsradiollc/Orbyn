@@ -172,7 +172,7 @@
 }
 .app.workspace .tasks-tools .secondary,
 .app.workspace .workspace-task-toolbar > .secondary {
-  min-height: 44px;
+  min-height: var(--collection-control-h);
   padding: 8px 12px;
   font-size: 13px;
 }
@@ -653,7 +653,7 @@
 /* Search and companion actions use one outer height in collection toolbars. */
 .app.workspace .tasks-tools > .segmented {
   box-sizing: border-box;
-  min-height: 44px;
+  min-height: var(--collection-control-h);
   align-items: stretch;
 }
 .app.workspace .tasks-tools > .segmented > button {

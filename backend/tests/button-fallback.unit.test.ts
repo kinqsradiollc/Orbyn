@@ -142,3 +142,24 @@ test("routine action overrides use the shared size rather than desktop touch min
   visit(root);
   assert.deepEqual(violations, []);
 });
+
+test("collection toolbar actions share the field height without resizing routine actions", () => {
+  const read = (path: string) =>
+    readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+  const global = read("desktop/src/styles/global.css");
+  const workspace = read("desktop/src/app/workspace.css");
+  assert.match(global, /--collection-control-h: 44px;/);
+  assert.match(
+    global,
+    /\.search\s*\{\s*min-height: var\(--collection-control-h\);/,
+  );
+  assert.match(
+    workspace,
+    /\.app\.workspace \.workspace-task-toolbar > \.secondary\s*\{\s*min-height: var\(--collection-control-h\);/,
+  );
+  assert.match(
+    workspace,
+    /\.app\.workspace \.tasks-tools > \.segmented\s*\{\s*box-sizing: border-box;\s*min-height: var\(--collection-control-h\);/,
+  );
+  assert.match(global, /--button-h: 32px;/);
+});

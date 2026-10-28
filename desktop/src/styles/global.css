@@ -28,6 +28,8 @@
    */
   --control-h: 40px;
   --control-h-sm: 32px;
+  /* Collection fields and adjacent actions share one outer height. */
+  --collection-control-h: 44px;
   --control-fs: 15px;
   --control-fs-sm: 13px;
   --control-pad-x: 12px;
@@ -755,8 +757,11 @@ a.secondary {
   width: 100%;
   background: var(--color-surface);
   border: 0;
-  border-top: 1px solid var(--color-divider);
+  border-radius: 0;
   text-align: left;
+}
+.upcoming + .upcoming {
+  border-top: 1px solid var(--color-divider);
 }
 .upcoming:hover {
   background: var(--color-sunken);
@@ -3490,7 +3495,7 @@ input[type="number"]::-webkit-outer-spin-button {
   outline-offset: 2px;
 }
 .search {
-  min-height: 44px;
+  min-height: var(--collection-control-h);
   box-sizing: border-box;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);

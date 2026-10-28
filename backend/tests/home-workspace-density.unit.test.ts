@@ -137,3 +137,16 @@ test("Plan today grows with its content instead of a large-screen minimum height
   const view = read("desktop/src/features/overview/OverviewView.tsx");
   assert.match(view, /<button onClick=\{onPlanDay\}>\s*Make a plan/);
 });
+
+test("Coming up rows have straight dividers only between adjacent items", () => {
+  const css = read("desktop/src/styles/global.css");
+  const row = css.match(/\.upcoming\s*\{([^}]*)\}/)?.[1];
+  assert.ok(row);
+  assert.match(row, /border: 0;/);
+  assert.match(row, /border-radius: 0;/);
+  assert.doesNotMatch(row, /border-top:/);
+  assert.match(
+    css,
+    /\.upcoming \+ \.upcoming\s*\{\s*border-top: 1px solid var\(--color-divider\);/,
+  );
+});

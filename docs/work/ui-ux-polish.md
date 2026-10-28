@@ -257,3 +257,26 @@ project-document links, source-organization and workspace-boundary checks, and
 Earlier Expo web interaction and iOS/Android Hermes export evidence remains scoped
 as described above; installed native behavior has not been qualified. Dependency
 links, private dotenv files and local preview artifacts are excluded from Git.
+
+### PR 243 divider and CI correction
+
+The Coming up buttons inherited the generic button radius while drawing a top
+border, producing the rounded partial-card lines in the supplied screenshot.
+Rows now explicitly have square corners and only adjacent rows draw a divider;
+the first item has no top divider. Chrome checks at 1440px and 390px in both
+themes confirmed 0px corner radii and the expected 0px/1px border sequence.
+
+Hosted run `40729406711` failed in backend-and-web with exactly two failing tests
+out of 5461. Both reproduced locally: the routine-action size guard rejected the
+hard-coded collection-toolbar height, and the project layout assertion still
+required the retired two-column row composition. Collection fields, companion
+actions and segmented controls now share `--collection-control-h`; compact routine
+buttons retain their existing token. The project regression now checks bounded
+cards, wrapping names/metadata and separated single-column phone rows. The
+routine-action guard was retained, with a separate shared collection-token check.
+
+The expanded 110-test focused set and desktop production build passed. Browser
+checks also confirmed all five task-toolbar controls at 44px and project cards
+without overflow at desktop and phone widths. Earlier failed run and local
+reproduction logs are retained outside Git. Hosted CI must qualify the new commit
+separately; no merge is authorized by this correction.

@@ -122,7 +122,7 @@ fixtures, exercised contracts and platform qualification limits.
 ## Connections and collection controls
 
 Collection search fields use one outer surface/focus ring and a 44px control
-height; embedded inputs remain transparent in both themes. Align companion
+height (`--collection-control-h`); embedded inputs remain transparent in both themes. Align companion
 collection actions to that height. Compact global command search is a navigation
 control with its own header sizing.
 
