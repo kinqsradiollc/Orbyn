@@ -35,6 +35,7 @@ import {
   HOME_AGENT_GUIDE,
   HOME_AGENT_IDLE_NOTE,
 } from "@orbyn/core";
+import { AppearanceControl } from "../../components/AppearanceControl";
 import { Character } from "../../components/Character";
 import { LinkDemo, WeekDemo } from "./HomeDemos";
 import { FAQ } from "./faq";
@@ -161,7 +162,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
     onNavigate("/status");
   };
   return (
-    <div className="home theme-light">
+    <div className="home">
       <a className="home-skip" href="#home-main">
         Skip to content
       </a>
@@ -182,6 +183,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           <a href="#faq">FAQ</a>
         </nav>
         <div className="home-nav-actions">
+          <AppearanceControl />
           {!signedIn && (
             <button
               className="text-button"

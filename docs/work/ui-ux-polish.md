@@ -280,3 +280,34 @@ checks also confirmed all five task-toolbar controls at 44px and project cards
 without overflow at desktop and phone widths. Earlier failed run and local
 reproduction logs are retained outside Git. Hosted CI must qualify the new commit
 separately; no merge is authorized by this correction.
+
+### Explicit appearance switch and consistent action sizing
+
+Public Home had an explicit light-theme subtree and hard-coded white preview
+surfaces. It now inherits the saved Light/Dark palette, including the first-paint
+background. One binary appearance switch is shared by public navigation, sign-in,
+workspace chrome and Settings. It synchronizes mounted controls and other Orbyn
+tabs, with a visit-only fallback when storage is blocked. Legacy System choices
+resolve once to an explicit theme; there is no ongoing device-theme listener.
+
+Sign-in now renders one Back to Orbyn action in its page header, replacing the two
+responsive copies. Coming up hover uses the semantic hover surface and retains
+the date tile's borderless treatment rather than inheriting the legacy dark rim.
+Desktop public navigation uses equal side columns so adding the switch does not
+displace Features/Planning/Agents/FAQ from the page centre.
+
+Shared routine desktop actions now use a 36px minimum, up from 32px. Collection
+and public-header companions remain 44px; phone/coarse actions retain 44px. Compact
+feature-specific controls and native Button's existing 44pt minimum are retained.
+The appearance track was enlarged along with its target; the switch is keyboard
+operable and exposes its checked state.
+
+All 63 focused appearance/settings/button/Home/workspace/project tests passed,
+as did the desktop production build including prerendering and TypeScript.
+Chrome verified saved theme and reload, cross-tab preference updates, explicit
+theme stability under a device-theme change, keyboard Space toggling, a single
+actionable back link at 1440/390px, no page overflow, dark hover without a date-tile
+rim, and the workspace switch. Navigation centres were within 2px at 1024, 1280,
+1440 and 1920px; public-header actions all measured 44px. Screenshots of Home,
+sign-in, hover and phone workspace were inspected and retained outside Git.
+This is browser evidence, not installed native-device qualification.

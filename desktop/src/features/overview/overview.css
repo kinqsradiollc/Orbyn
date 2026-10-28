@@ -122,7 +122,7 @@
 .overview-aside .upcoming:last-child {
   padding-bottom: 0;
 }
-.overview-aside .date-tile {
+.overview-workspace .overview-aside .upcoming .date-tile {
   border: 0;
   background: var(--color-surfaceMuted);
   border-radius: var(--radius-sm);

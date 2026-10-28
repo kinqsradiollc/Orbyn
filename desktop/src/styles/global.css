@@ -33,7 +33,7 @@
   --control-fs: 15px;
   --control-fs-sm: 13px;
   --control-pad-x: 12px;
-  --button-h: 32px;
+  --button-h: 36px;
   --button-fs: 13px;
   --button-line-h: 20px;
 }
@@ -1200,6 +1200,7 @@ footer svg {
   font-size: var(--button-fs);
 }
 .auth-page {
+  position: relative;
   display: flex;
   min-height: 100dvh;
   background: var(--color-canvas);
@@ -1207,7 +1208,7 @@ footer svg {
 .auth-story {
   width: 48%;
   background: var(--color-sunken);
-  padding: 40px clamp(24px, 4vw, 56px);
+  padding: 88px clamp(24px, 4vw, 56px) 40px;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
@@ -1267,6 +1268,22 @@ footer svg {
   align-items: center;
   justify-content: center;
   padding: 32px;
+}
+.auth-page .auth-form {
+  padding-top: 88px;
+  padding-bottom: 40px;
+}
+.auth-navigation {
+  position: absolute;
+  top: 20px;
+  inset-inline: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.auth-navigation .appearance-control {
+  margin-left: auto;
 }
 .auth-card {
   max-width: 350px;

@@ -1,9 +1,9 @@
 /* Light and dark themes, token by token.
    The shared palette (--color-* and --status-*) comes from @orbyn/core and is
    written for light by main.tsx. This file adds the web-only tokens and the
-   dark values. Settings → Appearance sets data-theme="light" or "dark" on
-   <html>; with no attribute the system setting decides. `.theme-light`
-   keeps a subtree light whatever the theme (the marketing home page). */
+   dark values. The shared appearance controls set data-theme on <html>.
+   Public pages inherit the same choice; .theme-light is an explicit opt-in
+   for content that must retain a light palette. */
 :root,
 .theme-light {
   color-scheme: light;

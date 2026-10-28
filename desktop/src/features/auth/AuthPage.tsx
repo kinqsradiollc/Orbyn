@@ -1,3 +1,4 @@
+import { AppearanceControl } from "../../components/AppearanceControl";
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { ArrowRight, KeyRound, Orbit } from "lucide-react";
 import { MINIMUM_AGE } from "@orbyn/core";
@@ -67,13 +68,16 @@ export function AuthPage({
   );
   return (
     <div className="auth-page">
+      <header className="auth-navigation" aria-label="Page controls">
+        {onHome && (
+          <button className="text-button auth-home-link" onClick={onHome}>
+            ← Back to Orbyn
+          </button>
+        )}
+        <AppearanceControl />
+      </header>
       <div className="auth-story">
         <div className="auth-story-top">
-          {onHome && (
-            <button className="text-button auth-home-link" onClick={onHome}>
-              ← Back to Orbyn
-            </button>
-          )}
           <div className="brand">
             <Orbit />{" "}
             <span className="brand-name">
@@ -91,14 +95,6 @@ export function AuthPage({
       </div>
       <main className="auth-form">
         <div className="auth-card">
-          {onHome && (
-            <button
-              className="text-button auth-home-link auth-home-mobile"
-              onClick={onHome}
-            >
-              ← Back to Orbyn
-            </button>
-          )}
           {notice}
           <h2>{register ? "Create account" : "Sign in"}</h2>
           <form

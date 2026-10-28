@@ -69,7 +69,7 @@ test("desktop actions share compact sizing and touch controls keep their target"
     new URL("../../desktop/src/styles/global.css", import.meta.url),
     "utf8",
   );
-  assert.match(css, /--button-h: 32px/);
+  assert.match(css, /--button-h: 36px/);
   assert.match(css, /--button-h: 44px/);
   for (const selector of [
     ":where(button)",
@@ -161,5 +161,5 @@ test("collection toolbar actions share the field height without resizing routine
     workspace,
     /\.app\.workspace \.tasks-tools > \.segmented\s*\{\s*box-sizing: border-box;\s*min-height: var\(--collection-control-h\);/,
   );
-  assert.match(global, /--button-h: 32px;/);
+  assert.match(global, /--button-h: 36px;/);
 });

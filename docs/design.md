@@ -25,7 +25,7 @@ Web fields use `--control-fs` and height tokens; phone/coarse field text uses it
 system font scaling. Do not shrink text or cap scaling to hide overflow.
 
 Web actions use `--button-h`, `--button-fs` and `--button-line-h`:
-32px/13px/20px on desktop and 44px/15px/20px on phone/coarse pointers. Native
+36px/13px/20px on desktop and 44px/15px/20px on phone/coarse pointers. Native
 `controls.tap` is 44pt. Keep visual marks inside usable, noncolliding targets.
 Reuse shared `Select`, `DateField`, buttons and menus; avoid local literal styles.
 
@@ -131,3 +131,12 @@ orbit, zoom/reset and selection controls. Keep full names and direct navigation 
 selection/list views, use sparse collision-aware captions, preserve page scrolling
 on touch, and do not run decorative idle rotation. A project graph occupies its own
 full-width section; editable metadata remains grouped beside the main work.
+
+## Appearance across routes
+
+Use the shared Light/Dark switch in the public header, sign-in navigation,
+workspace header and Settings. It changes one device preference and updates
+other open Orbyn tabs. System preferences migrate once to their resolved theme;
+later operating-system changes do not alter the explicit choice. Public content
+inherits the palette, including previews and first paint. Keep the desktop public
+navigation centred with equal side columns; header actions share 44px targets.

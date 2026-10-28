@@ -631,7 +631,7 @@
   background: var(--color-surface);
 }
 :root[data-theme="dark"] .upcoming:hover {
-  background: var(--color-sunken);
+  background: var(--color-hover);
 }
 :root[data-theme="dark"] .date-tile {
   background: var(--color-sunken);

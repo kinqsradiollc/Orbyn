@@ -4,7 +4,7 @@
   overflow: hidden;
   /* The page's own values, named for the sections added after it: the
      card, the soft green band and its edge, the quiet text and the rule. */
-  --home-card: white;
+  --home-card: var(--color-surface);
   --home-band: var(--color-selected);
   --home-band-line: var(--color-border);
   --home-quiet: var(--color-accentText);
@@ -127,7 +127,7 @@
   position: absolute;
   top: -60px;
   left: 20px;
-  background: white;
+  background: var(--color-surface);
   padding: 15px;
   z-index: 10;
 }
@@ -248,7 +248,7 @@
 .home-preview {
   width: 380px;
   position: relative;
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: 23px;
@@ -314,7 +314,7 @@
 }
 .home-preview-item > span.done {
   background: var(--color-accentText);
-  color: white;
+  color: var(--color-onAccent);
   border-color: var(--color-accentText);
 }
 .home-preview-item strong {
@@ -376,7 +376,7 @@
   right: -10px;
   top: 10px;
   z-index: 2;
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   padding: 14px 17px;
@@ -435,7 +435,7 @@
   gap: 19px;
 }
 .home-feature {
-  background: white;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 30px;
@@ -503,7 +503,7 @@
 }
 .home-mini-week span.selected {
   background: var(--color-accentText);
-  color: white;
+  color: var(--color-onAccent);
   border-radius: 50%;
 }
 .home-mini-week i {
@@ -683,7 +683,7 @@
   bottom: -5px;
   border: 5px solid var(--color-accentSoft);
   border-radius: var(--radius-lg);
-  background: white;
+  background: var(--color-surface);
   padding: 23px 13px;
   color: var(--color-accentText);
   transform: rotate(7deg);
@@ -1631,13 +1631,10 @@ html.js .home .reveal {
   }
 }
 
-.auth-home-mobile {
-  display: none;
+/* Header actions share one target and baseline, including appearance. */
+.home .home-nav-actions > button {
+  min-height: var(--collection-control-h);
 }
-@media (max-width: 800px) {
-  .auth-home-mobile {
-    display: inline-flex;
-    min-height: 44px;
-    margin-bottom: 16px;
-  }
+.home .home-nav-actions > .primary {
+  padding: 8px 16px;
 }
