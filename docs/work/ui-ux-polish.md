@@ -331,3 +331,14 @@ across 240 sampled frames: 16 toggles at 1440/390px, in both directions, with
 normal/reduced motion. The temporary attribute was removed after switching.
 These are browser/style observations, not native-device or exhaustive pixel
 capture claims. Original failure and corrected frame receipts are outside Git.
+
+### Rendering-harness CI repair before landing
+
+Run `40739020910` had three failures among 5471 tests: the pane-header ownership
+fixture could not resolve the new AppearanceControl dependency, and both signed-in
+states of the public Home fixture rejected it. All three reproduced locally.
+The two harnesses now load the production switch through a shared fixture that
+isolates only its theme hook and decorative icons. Existing assertions are
+retained; new assertions include the switch's shared-header focus ownership and
+its presence in both public Home states. All 52 focused rendering, theme, settings,
+button and workspace tests passed. The full hosted matrix remains the landing gate.

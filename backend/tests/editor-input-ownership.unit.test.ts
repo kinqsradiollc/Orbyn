@@ -1,3 +1,4 @@
+import { appearanceControlFixture } from "./appearance-control-fixture.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -20,6 +21,7 @@ test("pane tabs claim focus while shared header actions retain the current pane"
   const { renderToStaticMarkup } = require("react-dom/server");
   const module = { exports: {} as any };
   const mocks: Record<string, unknown> = {
+    "../../components/AppearanceControl": appearanceControlFixture(),
     "../hooks/useElementWidth": {
       useElementWidth: () => ({ ref: null, width: 1400 }),
     },
@@ -60,7 +62,12 @@ test("pane tabs claim focus while shared header actions retain the current pane"
       null,
       "clicking a pane tab must reach its owning pane's focus capture",
     );
-    for (const label of ["Search or ask", "Notifications", "Toggle navigation"])
+    for (const label of [
+      "Search or ask",
+      "Notifications",
+      "Toggle navigation",
+      "Dark appearance",
+    ])
       assert.ok(
         document
           .querySelector(`[aria-label="${label}"]`)!

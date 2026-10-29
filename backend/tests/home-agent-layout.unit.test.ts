@@ -1,3 +1,4 @@
+import { appearanceControlFixture } from "./appearance-control-fixture.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -15,6 +16,7 @@ function home(signedIn: boolean) {
   );
   const icon = () => React.createElement("svg", { "aria-hidden": true });
   const modules: Record<string, unknown> = {
+    "../../components/AppearanceControl": appearanceControlFixture(),
     "lucide-react": new Proxy({}, { get: () => icon }),
     "@orbyn/core": core,
     "../../components/Character": {
@@ -53,6 +55,10 @@ for (const signedIn of [false, true]) {
   test(`public Home prioritizes agent responsibilities and preserves characters (${signedIn})`, () => {
     const html = home(signedIn);
     assert.match(html, /href="#agents"/);
+    assert.match(
+      html,
+      /role="switch" aria-label="Dark appearance" aria-checked="false"/,
+    );
     const agents = html.indexOf('id="agents"');
     const characters = html.indexOf('id="companions"');
     assert.ok(agents > 0 && characters > agents);
