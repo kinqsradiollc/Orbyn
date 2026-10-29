@@ -70,3 +70,83 @@ test("Home agent rows open activity and optional guide and characters retain dis
   assert.match(mobile, /\{guideOpen && \(\s*<View/);
   assert.match(mobile, /\{guideOpen && expanded && \(/);
 });
+
+test("Home puts daily work before optional hubs on both clients", () => {
+  const web = read("desktop/src/app/App.tsx");
+  assert.ok(web.indexOf("<OverviewView") < web.indexOf("<HomeSections"));
+  const mobile = read("mobile/src/features/home/TodayScreen.tsx");
+  assert.ok(mobile.indexOf("<TodayCard") < mobile.indexOf("<HomeSection"));
+  // Optional hubs must still be reachable when there are no planner items.
+  assert.ok(
+    mobile.indexOf("<HomeSection") < mobile.indexOf("{!items.length ?"),
+  );
+});
+
+test("Home owns section insets and keeps agenda facts below their titles", () => {
+  const overview = read("desktop/src/features/overview/overview.css");
+  const workspace = read("desktop/src/app/workspace.css");
+  const today = read("desktop/src/features/overview/today.css");
+  assert.match(
+    overview,
+    /\.app\.workspace \.overview-workspace \.section-heading\s*\{\s*padding: 0 0 16px;/,
+  );
+  const genericGrid = workspace.match(
+    /\.app\.workspace \.overview-grid\s*\{([^}]*)\}/,
+  )?.[1];
+  assert.ok(genericGrid);
+  assert.doesNotMatch(genericGrid, /\bgap:/);
+  assert.match(today, /\.today-main\s*\{\s*display: grid;/);
+  assert.match(
+    today,
+    /\.app\.workspace \.today-card \.today-action\s*\{\s*min-height: 44px;/,
+  );
+  assert.match(
+    today,
+    /\.today-row:has\(\.today-lead\.is-empty\) > \.today-action\s*\{\s*grid-row: 1;/,
+  );
+});
+
+test("Home task rows inset completion controls from status stripes and align them with titles", () => {
+  const css = read("desktop/src/features/overview/overview.css");
+  assert.match(
+    css,
+    /\.overview-main \.item-row\s*\{\s*align-items: flex-start;\s*padding: 14px 16px;/,
+  );
+  assert.match(
+    css,
+    /\.overview-main \.item-row > \.check\s*\{\s*margin-top: 3px;/,
+  );
+  // Preserve the global 44px touch target while aligning its visible checkbox.
+  assert.match(
+    css,
+    /@media \(max-width: 640px\), \(pointer: coarse\)\s*\{\s*\.overview-main \.item-row > \.check\s*\{\s*margin-top: -10px;/,
+  );
+});
+
+test("Plan today grows with its content instead of a large-screen minimum height", () => {
+  const global = read("desktop/src/styles/global.css");
+  // The retired 370px desktop minimum stretched a single-action card.
+  for (const rule of global.matchAll(/\.assistant-card\s*\{([^}]*)\}/g)) {
+    assert.doesNotMatch(rule[1], /\b(?:min-)?height\s*:/);
+  }
+  const overview = read("desktop/src/features/overview/overview.css");
+  assert.match(
+    overview,
+    /\.overview-aside \.assistant-card\s*\{\s*display: flex;/,
+  );
+  const view = read("desktop/src/features/overview/OverviewView.tsx");
+  assert.match(view, /<button onClick=\{onPlanDay\}>\s*Make a plan/);
+});
+
+test("Coming up rows have straight dividers only between adjacent items", () => {
+  const css = read("desktop/src/styles/global.css");
+  const row = css.match(/\.upcoming\s*\{([^}]*)\}/)?.[1];
+  assert.ok(row);
+  assert.match(row, /border: 0;/);
+  assert.match(row, /border-radius: 0;/);
+  assert.doesNotMatch(row, /border-top:/);
+  assert.match(
+    css,
+    /\.upcoming \+ \.upcoming\s*\{\s*border-top: 1px solid var\(--color-divider\);/,
+  );
+});

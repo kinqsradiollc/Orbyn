@@ -74,6 +74,8 @@ const s = themed(() =>
     disabled: { opacity: 0.45 },
     text: {
       flexShrink: 1,
+      minWidth: 0,
+      lineHeight: 22,
       textAlign: "center",
       fontFamily: fonts.semibold,
       fontSize: 15,

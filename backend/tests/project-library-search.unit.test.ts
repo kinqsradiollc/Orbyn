@@ -85,7 +85,7 @@ test("both project clients retain open/create/manage actions while using shared 
   assert.match(mobile, /setHeldProject\(p\)/);
   assert.match(mobile, /getProject\(p.id\)/);
 });
-test("project row layout bounds the title/status columns and wraps metadata on narrow screens", () => {
+test("project library uses bounded cards, wrapping metadata and separated phone rows", () => {
   const css = readFileSync(
     new URL(
       "../../desktop/src/features/projects/projects.css",
@@ -95,7 +95,19 @@ test("project row layout bounds the title/status columns and wraps metadata on n
   );
   assert.match(
     css,
-    /grid-template-columns: minmax\(0, 1fr\) minmax\(160px, 220px\)/,
+    /\.project-grid\s*\{[^}]*grid-template-columns: repeat\(auto-fill, minmax\(min\(300px, 100%\), 1fr\)\)/,
+  );
+  assert.match(
+    css,
+    /\.project-card\s*\{[^}]*display: flex;\s*flex-direction: column;/,
+  );
+  assert.match(
+    css,
+    /\.project-card \.project-card-top strong,\s*\.project-card small\s*\{\s*white-space: normal;\s*overflow-wrap: anywhere;/,
+  );
+  assert.match(
+    css,
+    /\.project-grid \.project-card\s*\{[^}]*border-bottom: 1px solid var\(--color-divider\);\s*border-radius: 0;/,
   );
   assert.match(
     css,
@@ -103,6 +115,6 @@ test("project row layout bounds the title/status columns and wraps metadata on n
   );
   assert.match(
     css,
-    /@media \(max-width: 640px\) \{\s*\.project-card \{\s*grid-template-columns: minmax\(0, 1fr\)/,
+    /@media \(max-width: 640px\) \{\s*\.project-grid\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/,
   );
 });

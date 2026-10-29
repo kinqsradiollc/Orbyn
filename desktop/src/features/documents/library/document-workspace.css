@@ -552,3 +552,50 @@
     min-height: 44px;
   }
 }
+
+/* On phones the Library control belongs beside the collection heading. */
+@media (max-width: 600px) {
+  .docs-workspace:not(:has(.document-workspace)) {
+    position: relative;
+    gap: 0;
+  }
+  .docs-workspace:not(:has(.document-workspace))
+    > .docs-nav-toggle:not([hidden]) {
+    position: absolute;
+    top: 16px;
+    left: 12px;
+    z-index: 2;
+    margin: 0;
+    padding: 0;
+    width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+  .docs-workspace:not(:has(.document-workspace)) .docs-library-toggle-label {
+    display: none;
+  }
+  .docs-workspace:has(> .docs-nav-toggle:not([hidden])):not(
+      :has(.document-workspace)
+    )
+    .docs-head {
+    padding-left: 44px;
+  }
+  .docs-workspace > .docs-workspace-content:not(:has(.document-workspace)) {
+    padding: 16px 12px;
+  }
+  .docs-head-actions > .primary {
+    font-size: 0;
+    gap: 0;
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+  }
+}
+
+.docs-folder-scope-label {
+  color: var(--color-textMuted);
+  font-size: 13px;
+  font-weight: 500;
+  margin: 16px 12px 4px;
+  overflow-wrap: anywhere;
+}

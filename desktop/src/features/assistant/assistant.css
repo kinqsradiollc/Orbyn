@@ -230,9 +230,8 @@
 
 /* Optional starting requests sit above the composer and wrap to pane width. */
 .ai-suggestions {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   text-align: left;
 }
@@ -240,15 +239,16 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   text-align: left;
   min-width: 0;
   min-height: var(--button-h);
-  padding: 8px 12px;
+  padding: 8px 14px;
   line-height: 1.4;
-  border: 0;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--color-surfaceMuted);
+  background: var(--color-surface);
+  box-shadow: 0 1px 3px var(--color-shadow);
   cursor: pointer;
   transition:
     border-color var(--motion-fast) var(--ease-out),
@@ -257,8 +257,8 @@
     transform var(--motion-fast) var(--ease-out);
 }
 .ai-suggestions button:hover:not(:disabled) {
-  border-color: var(--color-border);
-  background: var(--color-sunken);
+  border-color: var(--color-borderHover);
+  background: var(--color-surfaceMuted);
 }
 .ai-suggestions button:disabled {
   opacity: 0.5;
@@ -561,13 +561,13 @@
   box-sizing: border-box;
   margin: 0;
   padding: 6px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 26px;
-  box-shadow: 0 6px 24px rgba(39, 56, 47, 0.07);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
 }
 .ai-composer:focus-within {
-  border-color: #b9d0c0;
+  border-color: var(--color-accent);
 }
 /* One line at rest; AssistantView grows it with its text up to the
    max-height (four lines), then it scrolls inside. */
@@ -667,7 +667,7 @@
 .ai-note {
   display: block;
   flex-shrink: 0;
-  margin-top: auto;
+  margin-top: 0;
   text-align: center;
   color: var(--muted);
   font-size: 11px;
@@ -1485,6 +1485,7 @@
 /* New conversations start in the centre; active conversations keep the dock. */
 .ai-chat.is-empty .ai-dock {
   margin-bottom: auto;
+  padding-bottom: 16px;
 }
 .ai-chat.is-empty .ai-suggestions {
   order: 1;

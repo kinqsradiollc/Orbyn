@@ -40,10 +40,19 @@
   gap: 10px;
   font-size: 13px;
   color: var(--color-textSoft);
+  border-radius: var(--radius-sm);
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+.app.workspace .sidebar nav button:hover:not(.active) {
+  background: var(--color-hover);
+  color: var(--color-text);
 }
 .app.workspace .sidebar nav button.active {
-  background: var(--color-accentSoft, var(--color-hover));
-  color: var(--color-accentText);
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+  font-weight: 600;
 }
 .app.workspace .sidebar-bottom {
   border-color: var(--color-divider);
@@ -53,8 +62,12 @@
   gap: 12px;
   padding: 0 24px;
   border-color: var(--color-divider);
-  background: var(--color-canvas);
-  backdrop-filter: none;
+  background: color-mix(in srgb, var(--color-canvas) 85%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .app.workspace .workspace-location {
   font-size: 13px;
@@ -65,10 +78,20 @@
 }
 .app.workspace .command-trigger {
   min-height: 32px;
-  padding: 6px 10px;
+  padding: 5px 12px;
   font-size: 13px;
   background: var(--color-surface);
-  border-color: var(--color-divider);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 2px var(--color-shadow);
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+.app.workspace .command-trigger:hover {
+  border-color: var(--color-borderHover);
+  box-shadow: 0 2px 6px var(--color-shadow);
 }
 .app.workspace .today-label {
   font-size: 11px;
@@ -149,8 +172,8 @@
 }
 .app.workspace .tasks-tools .secondary,
 .app.workspace .workspace-task-toolbar > .secondary {
-  min-height: 34px;
-  padding: 6px 10px;
+  min-height: var(--collection-control-h);
+  padding: 8px 12px;
   font-size: 13px;
 }
 .app.workspace .filter-bar {
@@ -334,7 +357,6 @@
 /* Overview cards follow the same reading and keyboard order at every width. */
 .app.workspace .overview-grid {
   align-items: start;
-  gap: 16px;
 }
 .app.workspace .overview-grid > * {
   min-width: 0;
@@ -603,4 +625,37 @@
     padding-left: var(--shared-navigation-width, 0px);
     box-sizing: border-box;
   }
+}
+
+@media (max-width: 640px) {
+  .app.workspace .tasks-card.is-compact .tasks-tools > .search {
+    flex: 1 1 calc(100% - 52px);
+    min-width: 0;
+    box-sizing: border-box;
+  }
+}
+@media (max-width: 480px) {
+  .app.workspace .page-heading > .primary {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    gap: 0;
+    padding: 0;
+    line-height: 0;
+  }
+}
+
+/* Search and companion actions use one outer height in collection toolbars. */
+.app.workspace .tasks-tools > .segmented {
+  box-sizing: border-box;
+  min-height: var(--collection-control-h);
+  align-items: stretch;
+}
+.app.workspace .tasks-tools > .segmented > button {
+  min-height: 0;
 }

@@ -25,7 +25,7 @@ Web fields use `--control-fs` and height tokens; phone/coarse field text uses it
 system font scaling. Do not shrink text or cap scaling to hide overflow.
 
 Web actions use `--button-h`, `--button-fs` and `--button-line-h`:
-32px/13px/20px on desktop and 44px/15px/20px on phone/coarse pointers. Native
+36px/13px/20px on desktop and 44px/15px/20px on phone/coarse pointers. Native
 `controls.tap` is 44pt. Keep visual marks inside usable, noncolliding targets.
 Reuse shared `Select`, `DateField`, buttons and menus; avoid local literal styles.
 
@@ -96,3 +96,51 @@ Inspect changed flows and concrete risks, not a matrix of unchanged screens.
 Follow the outer workspace for review coordination. Builds and DOM dimensions alone
 do not establish usable visuals. Keep failed/blocked states and evidence limits.
 A blocked browser origin is not permission to retry through another transport.
+
+## Planner workspace layout
+
+The `refactor/ui-ux-polish` candidate keeps the established palette and type roles.
+Home gives the daily agenda and active work the main column, with upcoming work
+and planning in a quieter secondary column. Phones use one sequence. Summary
+metrics are compact; agenda entries use separators rather than nested cards.
+Optional hubs follow daily work while retaining saved order and visibility.
+
+Task lists omit empty progress bars and duplicate effort estimates. Board columns
+keep readable widths with local scrolling. Project portfolios use aligned grids
+on wide screens and separated rows on phones. Document collections retain distinct
+selection, open, filing and favorite actions; folder and duplicate-tag labels
+identify personal/team scope. Compact Study metrics stay paired.
+
+New desktop sessions start in the established icon rail, preserving remembered
+widths. Phone task checkboxes and create controls retain 44px targets. Assistant
+starter prompts wrap in two columns and multiline composers stay bounded.
+
+Browser inspection, source/component tests, native exports and installed-device
+evidence remain separate. The [redesign work record](work/ui-ux-polish.md) records
+fixtures, exercised contracts and platform qualification limits.
+
+## Connections and collection controls
+
+Collection search fields use one outer surface/focus ring and a 44px control
+height (`--collection-control-h`); embedded inputs remain transparent in both themes. Align companion
+collection actions to that height. Compact global command search is a navigation
+control with its own header sizing.
+
+Connections projects API-owned graph nodes from shared 3D positions, with explicit
+orbit, zoom/reset and selection controls. Keep full names and direct navigation in
+selection/list views, use sparse collision-aware captions, preserve page scrolling
+on touch, and do not run decorative idle rotation. A project graph occupies its own
+full-width section; editable metadata remains grouped beside the main work.
+
+## Appearance across routes
+
+Use the shared Light/Dark switch in the public header, sign-in navigation,
+workspace header and Settings. It changes one device preference and updates
+other open Orbyn tabs. System preferences migrate once to their resolved theme;
+later operating-system changes do not alter the explicit choice. Public content
+inherits the palette, including previews and first paint. Keep the desktop public
+navigation centred with equal side columns; header actions share 44px targets.
+
+Apply appearance changes atomically. Suppress transitions while committing the
+new palette, then restore ordinary hover/press behavior after it has painted;
+rows must not interpolate old-theme surfaces against a new-theme background.

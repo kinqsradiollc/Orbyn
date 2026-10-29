@@ -11,9 +11,6 @@ import {
   Newspaper,
   Search,
   ShieldCheck,
-  Monitor,
-  Moon,
-  Sun,
 } from "lucide-react";
 import {
   searchSettings,
@@ -25,7 +22,7 @@ import {
   type User,
 } from "@orbyn/core";
 import { readsFirst, setReadsFirst } from "../documents/editor/reading";
-import { useTheme, type ThemeChoice } from "../../lib/theme";
+import { AppearanceControl } from "../../components/AppearanceControl";
 import { PlanningSettings } from "./PlanningSettings";
 import { TagSettings } from "./TagSettings";
 import { ConnectionsSettings } from "./ConnectionsSettings";
@@ -49,12 +46,6 @@ import {
   type SettingsTab,
 } from "./SettingsNavigation";
 export type { SettingsTab } from "./SettingsNavigation";
-
-const THEMES: { id: ThemeChoice; label: string; icon: typeof Sun }[] = [
-  { id: "system", label: "System", icon: Monitor },
-  { id: "light", label: "Light", icon: Sun },
-  { id: "dark", label: "Dark", icon: Moon },
-];
 
 type Props = {
   user: User | null;
@@ -95,7 +86,6 @@ export function SettingsView({
   const content = useRef<HTMLElement>(null);
   const [limit, setLimit] = useState(8);
   const [tab, setTab] = useState<SettingsTab>(initialTab);
-  const [theme, setTheme] = useTheme();
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<{ key: string; seq: number } | null>(null);
   const [reading, setReading] = useState(readsFirst);
@@ -217,18 +207,7 @@ export function SettingsView({
                   <strong>Theme</strong>
                   <small>Saved on this device.</small>
                 </span>
-                <div className="segmented" role="group" aria-label="Theme">
-                  {THEMES.map(({ id, label, icon: Icon }) => (
-                    <button
-                      key={id}
-                      aria-pressed={theme === id}
-                      className={theme === id ? "active" : ""}
-                      onClick={() => setTheme(id)}
-                    >
-                      <Icon size={14} aria-hidden="true" /> {label}
-                    </button>
-                  ))}
-                </div>
+                <AppearanceControl />
               </div>
             </SettingsSection>
           )}

@@ -53,8 +53,8 @@
   justify-items: end;
 }
 .study-stats {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin: 0;
 }
@@ -62,7 +62,6 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  flex: 1 1 100px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
   background: var(--color-sunken);
@@ -616,7 +615,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .study-hero-side {
-    justify-items: start;
+    justify-items: stretch;
   }
   .study-exam-row {
     grid-template-columns: auto minmax(0, 1fr);
@@ -904,7 +903,7 @@
   grid-template-columns: minmax(0, 1fr);
 }
 .study.is-compact .study-hero-side {
-  justify-items: start;
+  justify-items: stretch;
 }
 .study.is-compact .study-exam-row {
   grid-template-columns: auto minmax(0, 1fr);

@@ -216,17 +216,24 @@
 /* "What's new" in the app's footer line. */
 .footer-link {
   margin-left: 10px;
-  padding: 0;
-  border: none;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
   background: none;
   font: inherit;
+  font-size: 11px;
   color: var(--color-muted);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
   cursor: pointer;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
 }
 .footer-link:hover {
   color: var(--color-text);
+  background: var(--color-hover);
+  border-color: var(--color-divider);
 }
 
 /* A finger needs a 44px target; padding grows it, the layout doesn't move. */

@@ -130,8 +130,11 @@ function DocsBody({
   onSearch,
   fixedKind,
   beforeLeave,
+  teamNames = {},
 }: {
   beforeLeave?: React.MutableRefObject<(() => Promise<boolean>) | null>;
+  /** Current visible team names, supplied by the workspace owner. */
+  teamNames?: Record<string, string>;
   /** Pull down on the library or a page: "Search & do" (MOB-09). */
   onSearch?: () => void;
   /** A separate Memory or Agent notes library. */
@@ -161,6 +164,8 @@ function DocsBody({
   /** Called when ticking a line changed a task in the planner. */
   onItemsChanged?: () => void;
 }) {
+  const folderLabel = (folder: Folder) =>
+    `${folder.name} · ${folder.team_id ? (teamNames[folder.team_id] ?? "Shared team") : "Personal"}`;
   const beforePageLeave = useRef<(() => Promise<boolean>) | null>(null);
   const owner = useRef(session.token).current;
   const mounted = useRef(true);
@@ -822,6 +827,8 @@ function DocsBody({
     created_at?: string;
     folder_id?: string | null;
     agenda_date?: string | null;
+    team_id?: string | null;
+    team_name?: string | null;
     tags?: DocSummary["tags"];
   };
 
@@ -878,7 +885,20 @@ function DocsBody({
   // The tags on the pages in view, for the tag filter; then the filter.
   const tagsHere = [
     ...new Map(
-      narrowed.flatMap((d) => d.tags ?? []).map((t) => [t.id, t] as const),
+      narrowed.flatMap((d) =>
+        (d.tags ?? []).map(
+          (t) =>
+            [
+              t.id,
+              {
+                ...t,
+                scope: d.team_id
+                  ? (teamNames[d.team_id] ?? d.team_name ?? "Shared team")
+                  : "Personal",
+              },
+            ] as const,
+        ),
+      ),
     ).values(),
   ].sort((a, b) => a.name.localeCompare(b.name));
   const tagged = tagFilter
@@ -1298,7 +1318,7 @@ function DocsBody({
           .map((f) => (
             <Chip
               key={f.id}
-              label={f.name}
+              label={folderLabel(f)}
               selected={
                 !picking && filing.folder_id === f.id && !filing.parent_id
               }
@@ -1589,7 +1609,7 @@ function DocsBody({
                   {[
                     ...folders
                       .filter((f) => !f.archived_at)
-                      .map((f) => ({ id: f.id, name: f.name }))
+                      .map((f) => ({ id: f.id, name: folderLabel(f) }))
                       .sort((a, b) => a.name.localeCompare(b.name)),
                     { id: "none", name: "Unfiled" },
                   ].map((f) => (
@@ -2006,7 +2026,7 @@ function DocsBody({
                           <Chip
                             key={t.id}
                             compact
-                            label={`#${t.name}`}
+                            label={`#${t.name}${tagsHere.filter((tag) => tag.name === t.name).length > 1 ? ` · ${t.scope}` : ""}`}
                             selected={tagFilter === t.id}
                             onPress={() =>
                               setTagFilter(tagFilter === t.id ? "" : t.id)
@@ -2968,6 +2988,7 @@ const styles = themed(() =>
     },
     navTitle: {
       flex: 1,
+      minWidth: 0,
       color: colors.text,
       fontSize: 15,
       fontFamily: fonts.medium,

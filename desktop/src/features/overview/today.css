@@ -6,14 +6,13 @@
 .today-card .section-heading {
   padding-bottom: 8px;
 }
-/* One grid for the whole list, so times, titles and buttons line up. The
-   first track holds a row's left padding (12px) as well as its icon. */
+/* One grid for the whole list, so times, titles and buttons line up. */
 .today-list {
   display: grid;
-  grid-template-columns: 28px max-content minmax(0, 1fr) auto;
-  gap: 6px 10px;
+  grid-template-columns: 20px max-content minmax(0, 1fr) auto;
+  gap: 0 12px;
   margin: 0;
-  padding: 0 16px 12px;
+  padding: 0;
   list-style: none;
 }
 .today-list + .today-list {
@@ -23,16 +22,18 @@
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
-  align-items: center;
-  min-height: 44px;
-  padding: 8px 12px;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  align-items: start;
+  min-height: 64px;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: transparent;
 }
 .today-icon {
   display: inline-flex;
   grid-column: 1;
+  margin-top: 5px;
   color: var(--color-accentText);
 }
 .today-icon svg {
@@ -46,6 +47,7 @@
 }
 .today-lead {
   grid-column: 2;
+  padding-top: 3px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -56,21 +58,23 @@
   font-weight: 600;
 }
 .today-main {
-  display: flex;
+  display: grid;
   grid-column: 3;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
+  justify-items: start;
+  align-items: start;
+  gap: 4px;
   min-width: 0;
 }
 .today-title {
+  min-height: 24px;
+  max-width: 100%;
   padding: 0;
   border: 0;
   background: none;
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.4;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
   color: var(--color-text);
   text-align: left;
   overflow-wrap: anywhere;
@@ -105,11 +109,12 @@ button.today-title:hover {
   grid-column: 4;
   justify-self: end;
 }
-.today-action {
+.app.workspace .today-card .today-action {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 2px;
+  min-height: 24px;
+  padding: 2px 0;
   font-size: 13px;
   white-space: nowrap;
 }
@@ -164,7 +169,7 @@ button.today-title:hover {
 }
 /* Over already: quieter, still readable. */
 .today-row.is-past {
-  background: var(--color-sunken);
+  background: transparent;
 }
 .today-row.is-past .today-title,
 .today-row.is-past .today-lead {
@@ -201,7 +206,7 @@ button.today-title:hover {
 .today-footer {
   display: flex;
   justify-content: flex-end;
-  padding: 10px 18px 14px;
+  padding: 12px 0 20px;
   border-top: 1px solid var(--color-divider);
 }
 .today-footer .text-button {
@@ -222,7 +227,7 @@ button.today-title:hover {
   .today-icon {
     grid-row: 1;
     align-self: start;
-    margin-top: 1px;
+    margin-top: 4px;
   }
   .today-lead {
     grid-row: 1;
@@ -251,6 +256,10 @@ button.today-title:hover {
 
 /* A finger needs a 44px target; padding grows it, the layout doesn't move. */
 @media (max-width: 600px), (pointer: coarse) {
+  .app.workspace .today-card .today-action {
+    min-height: 44px;
+    margin-top: -10px;
+  }
   .today-title {
     padding: 13px 0;
     margin-block: -13px;
@@ -268,8 +277,8 @@ button.today-title:hover {
 
 @container today-pane (max-width: 560px) {
   .today-list {
-    grid-template-columns: 24px minmax(0, 1fr);
-    padding: 0 12px 12px;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    padding: 0;
   }
   .today-icon {
     grid-column: 1;
@@ -287,12 +296,17 @@ button.today-title:hover {
   }
   .today-action,
   .today-buttons {
-    grid-column: 2;
-    grid-row: 3;
-    justify-self: start;
+    grid-column: 3;
+    grid-row: 2;
+    align-self: start;
+    justify-self: end;
+    margin-top: 0;
     margin-left: 0;
     white-space: normal;
     flex-wrap: wrap;
+  }
+  .today-row:has(.today-lead.is-empty) > .today-action {
+    grid-row: 1;
   }
   .today-checkin .today-buttons {
     justify-content: flex-start;
@@ -307,6 +321,7 @@ button.today-title:hover {
   .today-list.is-unfinished .today-buttons {
     grid-column: 1;
     grid-row: 2;
+    margin-top: 0;
   }
 }
 .assistant-ideas-list details summary {

@@ -723,7 +723,20 @@ function DocsBody({
   // The tags on the pages in view, for the tag filter; then the filter.
   const tagsHere = [
     ...new Map(
-      shown.flatMap((d) => d.tags ?? []).map((t) => [t.id, t] as const),
+      shown.flatMap((d) =>
+        (d.tags ?? []).map(
+          (t) =>
+            [
+              t.id,
+              {
+                ...t,
+                scope: d.team_id
+                  ? (d.team_name ?? teamNameFor?.(d.team_id) ?? "Shared team")
+                  : "Personal",
+              },
+            ] as const,
+        ),
+      ),
     ).values(),
   ].sort((a, b) => a.name.localeCompare(b.name));
   const tagged = tagFilter
@@ -1122,12 +1135,15 @@ function DocsBody({
         hidden={!libraryHidden && !compactLibrary}
         aria-expanded={!libraryHidden && (!compactLibrary || navigationOpen)}
         aria-controls={`${libraryId}-navigation`}
+        aria-label={navigationOpen ? "Close library" : "Browse library"}
         onClick={() => showLibrary(!navigationOpen)}
       >
         <PanelLeftOpen size={18} />{" "}
-        {navigationOpen
-          ? `Close ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`
-          : `Browse ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`}
+        <span className="docs-library-toggle-label">
+          {navigationOpen
+            ? `Close ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`
+            : `Browse ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`}
+        </span>
       </button>
       <nav
         id={`${libraryId}-navigation`}
@@ -1325,34 +1341,63 @@ function DocsBody({
                 <OutcomeNote outcome={action.outcome} />
               </form>
             )}
-            {folders
-              .filter((f) => !f.archived_at)
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((folder) => {
-                const inside = (docs ?? []).filter(
-                  (d) => d.folder_id === folder.id,
+            {Array.from(
+              new Set(
+                folders
+                  .filter((f) => !f.archived_at)
+                  .map((f) => f.team_id ?? null),
+              ),
+            )
+              .sort((a, b) => {
+                if (!a) return -1;
+                if (!b) return 1;
+                return (teamNameFor?.(a) ?? a).localeCompare(
+                  teamNameFor?.(b) ?? b,
                 );
-                return (
-                  <TreeFolder
-                    key={folder.id}
-                    id={`folder:${folder.id}`}
-                    name={folder.name}
-                    count={inside.length}
-                    tree={tree}
-                    drop={folderDrop(folder.id)}
-                  >
-                    <button
-                      aria-current={
-                        !open && folderFilter === folder.id ? "page" : undefined
-                      }
-                      onClick={() => select(folder.id)}
-                    >
-                      View folder
-                    </button>
-                    {treePages(inside)}
-                  </TreeFolder>
-                );
-              })}
+              })
+              .map((teamId) => (
+                <div key={teamId ?? "personal"} className="docs-folder-scope">
+                  {folders.some((f) => !f.archived_at && f.team_id) && (
+                    <p className="docs-folder-scope-label">
+                      {teamId
+                        ? (teamNameFor?.(teamId) ?? "Shared team")
+                        : "Personal"}
+                    </p>
+                  )}
+                  {folders
+                    .filter(
+                      (f) => !f.archived_at && (f.team_id ?? null) === teamId,
+                    )
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((folder) => {
+                      const inside = (docs ?? []).filter(
+                        (d) => d.folder_id === folder.id,
+                      );
+                      return (
+                        <TreeFolder
+                          key={folder.id}
+                          id={`folder:${folder.id}`}
+                          name={folder.name}
+                          count={inside.length}
+                          tree={tree}
+                          drop={folderDrop(folder.id)}
+                        >
+                          <button
+                            aria-current={
+                              !open && folderFilter === folder.id
+                                ? "page"
+                                : undefined
+                            }
+                            onClick={() => select(folder.id)}
+                          >
+                            View folder
+                          </button>
+                          {treePages(inside)}
+                        </TreeFolder>
+                      );
+                    })}
+                </div>
+              ))}
             <TreeFolder
               id="folder:unfiled"
               name="Unfiled"
@@ -1516,6 +1561,10 @@ function DocsBody({
                     {tagsHere.map((t) => (
                       <option key={t.id} value={t.id}>
                         #{t.name}
+                        {tagsHere.filter((tag) => tag.name === t.name).length >
+                        1
+                          ? ` · ${t.scope}`
+                          : ""}
                       </option>
                     ))}
                   </Select>
@@ -1727,20 +1776,8 @@ function DocsBody({
                         : "Create a page or import a file."
                 }
               >
-                {!(query || tagFilter) && (
+                {!(query || tagFilter || fixedKind) && (
                   <div className="empty-actions">
-                    <button
-                      className="primary"
-                      onClick={() => create(fixedKind ?? kindFilter ?? "doc")}
-                      disabled={busy}
-                    >
-                      <Plus size={15} />
-                      {fixedKind === "memory"
-                        ? "New Memory note"
-                        : fixedKind === "agent"
-                          ? "New Agent note"
-                          : `New ${kindFilter === "note" ? "note" : "page"}`}
-                    </button>
                     {!fixedKind && (
                       <ImportButton
                         onFiles={importFiles}
@@ -1864,6 +1901,9 @@ function DocsBody({
                                         (f) => f.id === doc.folder_id,
                                       )?.name || "Unfiled"
                                     }`}
+                                <span className="doc-row-when">
+                                  {when(doc.updated_at)}
+                                </span>
                                 {!!doc.tags?.length && (
                                   <span className="doc-row-tags">
                                     {doc.tags.map((t) => (
@@ -1879,9 +1919,6 @@ function DocsBody({
                                   </span>
                                 )}
                               </span>
-                            </span>
-                            <span className="doc-row-when">
-                              {when(doc.updated_at)}
                             </span>
                           </button>
                           {(!canWriteDoc || canWriteDoc(doc.team_id)) && (

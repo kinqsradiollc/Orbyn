@@ -7,6 +7,8 @@ type Props = {
   item: Item;
   /** Leave out tags (for tight spaces). */
   hideTags?: boolean;
+  /** Remaining time is already shown by the parent row. */
+  hideTime?: boolean;
   className?: string;
 };
 
@@ -20,13 +22,18 @@ export function timeFact(i: Item) {
     : minutesLabel(i.estimate_minutes);
 }
 
-export function ItemFacts({ item: i, hideTags, className = "" }: Props) {
+export function ItemFacts({
+  item: i,
+  hideTags,
+  hideTime,
+  className = "",
+}: Props) {
   const { listById, tagById } = usePlanning();
   const list = i.list_id ? listById.get(i.list_id) : undefined;
   const tags = hideTags
     ? []
     : (i.tag_ids ?? []).map((id) => tagById.get(id)).filter((t) => !!t);
-  const time = timeFact(i);
+  const time = hideTime ? null : timeFact(i);
   const repeat = describeRrule(i.rrule);
   const measure = measureLabel(i);
   if (!time && !list && !repeat && !measure && !i.assignee_name && !tags.length)

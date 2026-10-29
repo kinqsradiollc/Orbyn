@@ -631,7 +631,7 @@
   background: var(--color-surface);
 }
 :root[data-theme="dark"] .upcoming:hover {
-  background: var(--color-sunken);
+  background: var(--color-hover);
 }
 :root[data-theme="dark"] .date-tile {
   background: var(--color-sunken);
@@ -694,7 +694,7 @@
   color: var(--color-muted);
 }
 :root[data-theme="dark"] .search input {
-  background: var(--color-sunken);
+  background: transparent;
 }
 :root[data-theme="dark"] .assistant-intro > svg {
   color: var(--color-dot);

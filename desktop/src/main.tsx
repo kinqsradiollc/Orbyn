@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import { ConfirmProvider } from "./components/Confirm";
 import { ToastProvider } from "./components/Toast";
-import { applyTheme, followSystemTheme, savedTheme } from "./lib/theme";
+import { applyTheme, savedTheme } from "./lib/theme";
 import "katex/dist/katex.min.css";
 import "./styles/global.css";
 import "./styles/theme.css";
@@ -24,7 +24,6 @@ const palette = document.createElement("style");
 palette.textContent = `:root,.theme-light{${light}}`;
 document.head.prepend(palette);
 applyTheme(savedTheme());
-followSystemTheme();
 
 // Shared motion tokens (the mobile app uses the same values).
 const root = document.documentElement.style;

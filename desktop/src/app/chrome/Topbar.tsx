@@ -1,3 +1,4 @@
+import { AppearanceControl } from "../../components/AppearanceControl";
 import type { ReactNode } from "react";
 import { useElementWidth } from "../../hooks/useElementWidth";
 import { Bell, Menu, Plus, Search } from "lucide-react";
@@ -90,6 +91,7 @@ export function Topbar({
           <span>Search or ask</span>
           {shortcut && <kbd>{shortcut}</kbd>}
         </button>
+        <AppearanceControl />
         <span className="today-label">
           {today.toLocaleDateString([], {
             timeZone,

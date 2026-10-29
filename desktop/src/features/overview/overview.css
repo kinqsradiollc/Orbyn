@@ -1,0 +1,186 @@
+/* A working day: one agenda column and a quieter planning companion. */
+.app.workspace .overview-summary.stats {
+  margin: 0 0 28px;
+  padding: 0 0 20px;
+  border: 0;
+  border-bottom: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.overview-summary.stats > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 0 20px;
+}
+.overview-summary.stats > div:first-child {
+  padding-left: 0;
+}
+.overview-summary.stats > div > span {
+  font-size: 13px;
+  gap: 6px;
+}
+.overview-summary.stats strong {
+  font-size: 24px;
+  margin: 0;
+}
+.overview-grid.overview-workspace {
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.9fr);
+  gap: 32px;
+  align-items: start;
+  margin-bottom: 32px;
+}
+.overview-grid.overview-workspace.is-compact {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+.overview-main,
+.overview-aside {
+  min-width: 0;
+}
+.overview-grid.overview-workspace .overview-main > .card {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--color-divider);
+  border-radius: 0;
+  box-shadow: none;
+  margin-bottom: 24px;
+}
+.app.workspace .overview-workspace .section-heading {
+  padding: 0 0 16px;
+  min-height: 0;
+}
+.app.workspace .overview-workspace .section-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 18px;
+}
+.app.workspace .overview-workspace .section-heading h2 > span {
+  margin-left: 0;
+}
+.app.workspace .overview-main > .overview-section > .section-heading {
+  padding-top: 20px;
+}
+.app.workspace
+  .overview-workspace.is-compact
+  .overview-main
+  > .overview-section
+  > .section-heading {
+  padding-top: 0;
+}
+.app.workspace .overview-aside .section-hint {
+  margin: 6px 0 0;
+}
+.app.workspace .overview-workspace .section-heading .heading-icon {
+  flex: none;
+}
+.overview-main .item-row {
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-top: 1px solid var(--color-divider);
+}
+.overview-main .item-row > .check {
+  margin-top: 3px;
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .overview-main .item-row > .check {
+    margin-top: -10px;
+  }
+}
+.overview-main .section-empty {
+  padding: 0 0 20px;
+  margin: 0;
+}
+.overview-aside > .card,
+.overview-aside > .assistant-card {
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: none;
+  border-radius: var(--radius-md);
+}
+.overview-aside .up-next {
+  background: var(--color-surface);
+}
+.overview-aside .up-next-main {
+  padding: 0;
+  gap: 12px;
+}
+.overview-aside .up-next-more {
+  margin: 16px -20px -20px;
+}
+.overview-aside .up-next-more button {
+  padding: 14px 20px;
+}
+.overview-aside .upcoming {
+  padding: 12px 0;
+  gap: 12px;
+}
+.overview-aside .upcoming:last-child {
+  padding-bottom: 0;
+}
+.overview-workspace .overview-aside .upcoming .date-tile {
+  border: 0;
+  background: var(--color-surfaceMuted);
+  border-radius: var(--radius-sm);
+}
+.overview-aside .progress-card h2 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+.overview-aside .progress-card {
+  padding: 16px 20px;
+}
+.overview-aside .progress-line strong {
+  font-size: 24px;
+}
+.overview-aside .progress-card p {
+  margin-bottom: 0;
+}
+.overview-aside .assistant-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.overview-aside .assistant-card > button {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .app.workspace .overview-summary.stats {
+    gap: 16px 12px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+  }
+  .overview-summary.stats > div {
+    padding: 0;
+    border: 0;
+    justify-content: space-between;
+  }
+  .overview-summary.stats strong {
+    font-size: 18px;
+  }
+  .overview-summary.stats > div > span {
+    font-size: 13px;
+  }
+  .overview-workspace .section-heading h2 {
+    font-size: 18px;
+  }
+  .overview-grid.overview-workspace {
+    gap: 16px;
+  }
+  .overview-aside > .card,
+  .overview-aside > .assistant-card {
+    padding: 16px;
+  }
+  .overview-aside .up-next-more {
+    margin: 16px -16px -16px;
+  }
+  .overview-aside .up-next-more button {
+    padding: 12px 16px;
+  }
+}

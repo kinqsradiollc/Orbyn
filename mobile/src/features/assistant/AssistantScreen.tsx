@@ -1650,9 +1650,11 @@ const s = themed(() =>
     },
     suggestion: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: 8,
       minHeight: controls.tap,
+      flexBasis: "45%",
+      flexGrow: 1,
       maxWidth: "100%",
       backgroundColor: colors.surfaceMuted,
       paddingHorizontal: 12,

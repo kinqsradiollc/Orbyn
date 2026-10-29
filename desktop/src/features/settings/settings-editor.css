@@ -14,7 +14,7 @@ dialog.settings-editor {
 dialog.settings-editor::backdrop {
   background: var(--color-backdrop);
 }
-.settings-editor > .section-heading {
+dialog.settings-editor > .section-heading {
   padding: 16px;
   gap: 12px;
   border-bottom: 1px solid var(--color-divider);
@@ -23,7 +23,7 @@ dialog.settings-editor::backdrop {
   margin: 0;
   font-size: 18px;
 }
-.settings-editor-body {
+dialog.settings-editor > .settings-editor-body {
   min-width: 0;
   padding: 16px;
 }

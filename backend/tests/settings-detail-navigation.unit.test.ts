@@ -443,11 +443,11 @@ test("reconnect-required grants expose sign-in recovery and suppress restoration
   }
 });
 
-test("Activity opts into the standalone editor width whose viewport bounds load with the editor", () => {
+test("Activity uses the compact standalone editor with viewport bounds", () => {
   const activity = read("desktop/src/features/activity/ActivityDialog.tsx");
   const editor = read("desktop/src/features/settings/SettingsEditor.tsx");
   const css = read("desktop/src/features/settings/settings-editor.css");
-  assert.match(activity, /<SettingsEditor wide title="Activity"/);
+  assert.match(activity, /<SettingsEditor title="Activity"/);
   assert.match(editor, /import "\.\/settings-editor\.css"/);
   assert.match(editor, /"--settings-editor-width": wide \? "1000px" : "560px"/);
   assert.match(
