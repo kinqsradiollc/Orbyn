@@ -418,7 +418,10 @@ export async function execute(
     const answer =
       cap.mode === "read"
         ? await readTransaction(run, {
-            primary: p.via === "assistant" || options.primary,
+            primary:
+              cap.readConsistency === "primary" ||
+              p.via === "assistant" ||
+              options.primary,
             timeoutMs: READ_TIMEOUT_MS,
           })
         : options.write

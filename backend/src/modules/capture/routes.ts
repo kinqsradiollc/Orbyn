@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { z } from "zod";
 import {
   addToAgendaNotes,
@@ -18,6 +18,7 @@ import {
 } from "@orbyn/core";
 import { transaction, type Db } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
+import { rememberIdempotencyScope } from "../../lib/idempotency.js";
 import { requireTeam } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
 import { addToPage } from "../documents/service.js";
@@ -145,7 +146,7 @@ export async function captureRoutes(app: FastifyInstance) {
     async (r, reply) => {
       const u = await authenticate(r);
       const body = captureInput.parse(r.body ?? {});
-      const result = await capture(u, body);
+      const result = await capture(u, body, r);
       reply.code(201);
       return result;
     },
@@ -156,6 +157,7 @@ export async function captureRoutes(app: FastifyInstance) {
 async function capture(
   u: UserRow,
   body: z.output<typeof captureInput>,
+  request: FastifyRequest,
 ): Promise<CaptureResult> {
   const url = body.url ?? null;
   // The title the app already fetched, or one looked up now.
@@ -170,6 +172,10 @@ async function capture(
         to.kind === "project"
           ? await writableProject(db, to.project_id, u)
           : null;
+      await rememberIdempotencyScope(request, db, {
+        user_id: u.id,
+        team_id: project?.team_id ?? null,
+      });
       return { item: await shareTask(db, u, c, project), project };
     });
     return {
@@ -198,6 +204,11 @@ async function capture(
           { last: true, stopAtAnyHeading: true },
         ),
       }),
+      (db, page) =>
+        rememberIdempotencyScope(request, db, {
+          user_id: page.user_id,
+          team_id: page.team_id,
+        }),
     );
     return {
       to: "agenda",
@@ -222,6 +233,11 @@ async function capture(
         format: 2,
         nodes: appendDocContainerBlocks(document.nodes, captureBlocks(c)),
       }),
+      (db, page) =>
+        rememberIdempotencyScope(request, db, {
+          user_id: page.user_id,
+          team_id: page.team_id,
+        }),
     );
     return {
       to: "page",
@@ -236,6 +252,10 @@ async function capture(
     const folder = to.folder_id
       ? await visibleFolder(db, to.folder_id, u)
       : null;
+    await rememberIdempotencyScope(request, db, {
+      user_id: u.id,
+      team_id: folder?.team_id ?? null,
+    });
     const doc = (
       await db.query<{ id: string; title: string }>(
         `INSERT INTO docs (user_id, team_id, title, kind, content, folder_id)

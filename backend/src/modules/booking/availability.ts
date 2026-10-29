@@ -194,7 +194,11 @@ async function holdsFor(
       `SELECT b.start_at, b.end_at FROM bookings b
        WHERE (b.assigned_user_id = ANY ($1::uuid[])
               OR (b.assigned_user_id IS NULL
-                  AND b.page_id IN (SELECT page_id FROM booking_hosts WHERE user_id = ANY ($1::uuid[]))))
+                  AND b.page_id IN (SELECT h.page_id FROM booking_hosts h
+                    JOIN booking_pages p ON p.id = h.page_id
+                    WHERE h.user_id = ANY ($1::uuid[])
+                      AND (p.team_id IS NULL OR EXISTS (SELECT 1 FROM team_members tm
+                        WHERE tm.team_id = p.team_id AND tm.user_id = h.user_id)))))
          AND b.status IN ('pending', 'awaiting_approval') AND b.hold_until > now()
          AND b.start_at < $3 AND b.end_at > $2 AND b.id IS DISTINCT FROM $4::uuid`,
       [hosts, new Date(from), new Date(to), ignoreBookingId ?? null],
@@ -313,6 +317,11 @@ export async function availableSlots(
   options: SlotOptions = {},
 ): Promise<BusyInterval[]> {
   if (page.invite) return inviteSlots(db, page, duration, from, to, options);
+  if (
+    options.assignedHost &&
+    !page.hosts.some((h) => h.user_id === options.assignedHost)
+  )
+    return [];
   const now = (options.now ?? new Date()).getTime();
   const earliest = Math.max(
     from.getTime(),
@@ -432,10 +441,12 @@ export async function chooseHost(
   end: Date,
   now = new Date(),
   preferred?: string,
+  options: Pick<SlotOptions, "ignoreBookingId" | "ignoreItemIds"> = {},
 ): Promise<string | null> {
   // A routed host gets it when they're free; otherwise fall through to fair.
   if (preferred && page.hosts.some((h) => h.user_id === preferred)) {
     const free = await availableSlots(db, page, duration, start, end, {
+      ...options,
       now,
       assignedHost: preferred,
     });
@@ -457,6 +468,7 @@ export async function chooseHost(
   let bestCount = Infinity;
   for (const host of page.hosts) {
     const free = await availableSlots(db, page, duration, start, end, {
+      ...options,
       now,
       assignedHost: host.user_id,
     });

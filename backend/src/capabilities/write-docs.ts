@@ -121,6 +121,8 @@ async function agendaPage(ctx: CapabilityContext, title: string) {
     );
   if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
   const me = ctx.principal.user.id;
+  const after: (() => Promise<void>)[] = [];
+  const transaction = { db: ctx.db, after };
   const today = localDateKey(ctx.now, ctx.timezone);
   const date = title.toLowerCase() === "today" ? today : title;
   if (!isDateKey(date))
@@ -132,20 +134,19 @@ async function agendaPage(ctx: CapabilityContext, title: string) {
     doc: { id: string; title: string; version: number };
     created: boolean;
   } | null;
-  if (date === today && (await todaysAgendaIfWritten(me, ctx.now)))
+  if (date === today && (await todaysAgendaIfWritten(me, ctx.now, ctx.db)))
     made = {
-      doc: await rewriteAgenda(me, { now: ctx.now }),
+      doc: await rewriteAgenda(me, { now: ctx.now, transaction }),
       created: false,
     };
-  else made = await writeAgendaOn(me, date, ctx.now);
+  else made = await writeAgendaOn(me, date, ctx.now, transaction);
   if (!made)
     throw new CapabilityError(
       "INVALID",
       "The agenda goes back a year and ahead two months.",
     );
   const doc = made.doc;
-  // Written on the agenda's own connection, so labelled here: the page
-  // says "via <agent>" until the person writes in it (H7).
+  // The page says "via <agent>" until the person writes in it (H7).
   if (ctx.principal.grant_id)
     await ctx.db.query(
       `UPDATE docs SET written_via = $2 WHERE id = $1
@@ -165,7 +166,7 @@ async function agendaPage(ctx: CapabilityContext, title: string) {
     undo: made.created
       ? [{ op: "doc.trash", doc_id: doc.id, version: doc.version }]
       : [],
-    after: made.created ? [() => syncSavedPages(doc.id)] : [],
+    after: [...after, ...(made.created ? [() => syncSavedPages(doc.id)] : [])],
   });
 }
 

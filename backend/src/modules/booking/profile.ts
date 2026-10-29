@@ -6,7 +6,7 @@ import {
   type Profile,
   type PublicProfile,
 } from "@orbyn/core";
-import { pool, reader } from "../../db/pool.js";
+import { pool } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { appLink } from "./service.js";
 
@@ -51,7 +51,7 @@ export async function profileRoutes(app: FastifyInstance) {
     const { handle } = z
       .object({ handle: z.string().trim().toLowerCase().max(40) })
       .parse(r.params);
-    const db = reader(r.headers);
+    const db = pool;
     const user = (
       await db.query<{ id: string; name: string; handle: string; bio: string }>(
         "SELECT id, name, handle, bio FROM users WHERE handle = $1 AND NOT disabled",
@@ -63,6 +63,8 @@ export async function profileRoutes(app: FastifyInstance) {
       await db.query<PublicProfile["pages"][number]>(
         `SELECT p.title, p.slug, p.description, p.durations, p.color FROM booking_pages p
          WHERE p.active
+           AND (p.team_id IS NULL OR EXISTS (SELECT 1 FROM team_members tm
+             WHERE tm.team_id = p.team_id AND tm.user_id = $1))
            AND (p.team_id IS NULL OR EXISTS (
              SELECT 1 FROM teams bt WHERE bt.id = p.team_id AND bt.booking_allowed))
            AND (p.owner_id = $1

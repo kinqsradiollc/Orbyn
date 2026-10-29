@@ -760,6 +760,190 @@ test("a retried plan with the same client_ref answers as before and changes noth
   assert.equal((await docsTitled("Idempotent plan page")).length, 1);
 });
 
+test("agenda creation and rewrite stay in the plan's transaction", async () => {
+  const today = ok(
+    await tool(keys.full, "create_doc", { kind: "agenda", title: "today" }),
+  );
+  const todayId = idOf(today.done[0].id);
+  const snapshot = async () =>
+    (
+      await pool.query(
+        "SELECT version, content, written_via FROM docs WHERE id = $1",
+        [todayId],
+      )
+    ).rows[0];
+  const before = await snapshot();
+  const future = new Date(Date.now() + 10 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const futurePages = async () =>
+    (
+      await pool.query(
+        "SELECT id FROM docs WHERE user_id = $1 AND kind = 'agenda' AND agenda_date = $2::date AND deleted_at IS NULL",
+        [olga.id, future],
+      )
+    ).rows;
+  assert.equal((await futurePages()).length, 0);
+  const failed = await tool(keys.full, "apply_plan", {
+    steps: [
+      {
+        id: "rewrite",
+        tool: "create_doc",
+        args: { kind: "agenda", title: "today" },
+      },
+      {
+        id: "new",
+        tool: "create_doc",
+        args: { kind: "agenda", title: future },
+      },
+      {
+        id: "bad",
+        tool: "update_tasks",
+        args: {
+          changes: [
+            {
+              id: "task:00000000-0000-4000-8000-000000000000",
+              version: 1,
+              title: "x",
+            },
+          ],
+        },
+      },
+    ],
+  });
+  assert.equal(code(failed), "NOT_FOUND");
+  assert.deepEqual(await snapshot(), before, "the rewrite was rolled back");
+  assert.equal((await futurePages()).length, 0, "the new page was rolled back");
+
+  const applied = ok(
+    await tool(keys.full, "apply_plan", {
+      steps: [
+        {
+          id: "new",
+          tool: "create_doc",
+          args: { kind: "agenda", title: future },
+        },
+      ],
+    }),
+  );
+  assert.equal(applied.status, "done");
+  assert.equal(
+    (await futurePages()).length,
+    1,
+    "an approved plan can create the page",
+  );
+});
+
+test("agenda editor notifications follow commit and never a rolled-back plan", async () => {
+  const today = ok(
+    await tool(keys.full, "create_doc", { kind: "agenda", title: "today" }),
+  );
+  const id = idOf(today.done[0].id);
+  const original = pool.query;
+  const announced: { announced: number; committed: number }[] = [];
+  pool.query = (async (...args: any[]) => {
+    if (
+      args[0] === "SELECT pg_notify($1, $2)" &&
+      args[1]?.[0] === "doc_changed"
+    ) {
+      const event = JSON.parse(args[1][1]);
+      if (event.docId === id) {
+        const current = await original.call(
+          pool,
+          "SELECT version FROM docs WHERE id=$1",
+          [id],
+        );
+        announced.push({
+          announced: event.version,
+          committed: current.rows[0].version,
+        });
+      }
+    }
+    return (original as any).apply(pool, args);
+  }) as typeof pool.query;
+  try {
+    const rewrite = {
+      id: "agenda",
+      tool: "create_doc",
+      args: { kind: "agenda", title: "today" },
+    };
+    const failed = await tool(keys.full, "apply_plan", {
+      steps: [
+        rewrite,
+        {
+          id: "bad",
+          tool: "update_tasks",
+          args: {
+            changes: [
+              {
+                id: "task:00000000-0000-4000-8000-000000000000",
+                version: 1,
+                title: "x",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(code(failed), "NOT_FOUND");
+    assert.deepEqual(announced, []);
+    const applied = ok(
+      await tool(keys.full, "apply_plan", { steps: [rewrite] }),
+    );
+    assert.equal(applied.status, "done");
+    assert.equal(announced.length, 1);
+    assert.equal(announced[0].announced, announced[0].committed);
+  } finally {
+    pool.query = original;
+  }
+});
+
+test("an agenda in a plan is not written while the person is being asked", async () => {
+  const date = new Date(Date.now() + 12 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const theirs = await mosTask("Agenda approval fixture");
+  const pages = async () =>
+    (
+      await pool.query(
+        "SELECT id FROM docs WHERE user_id = $1 AND kind = 'agenda' AND agenda_date = $2::date AND deleted_at IS NULL",
+        [olga.id, date],
+      )
+    ).rows;
+  assert.equal((await pages()).length, 0);
+  const args = {
+    steps: [
+      {
+        id: "agenda",
+        tool: "create_doc",
+        args: { kind: "agenda", title: date },
+      },
+      {
+        id: "change",
+        tool: "update_tasks",
+        args: {
+          changes: [
+            {
+              id: `task:${theirs.id}`,
+              version: theirs.version,
+              title: "Approved agenda fixture",
+            },
+          ],
+        },
+      },
+    ],
+  };
+  const first = await modern(keys.full, "apply_plan", args, FORM);
+  assert.equal(first.result.resultType, "input_required");
+  assert.equal((await pages()).length, 0);
+  const accepted = await modern(keys.full, "apply_plan", args, FORM, {
+    state: first.result.requestState,
+    responses: { confirm: { action: "accept", content: { confirm: true } } },
+  });
+  assert.ok(!accepted.result.isError, JSON.stringify(accepted.result));
+  assert.equal((await pages()).length, 1);
+});
+
 test("budgets: apply_plan is in core and its steps are all write tools", () => {
   const cap = registry.get("apply_plan")!;
   assert.equal(cap.toolset, "core");

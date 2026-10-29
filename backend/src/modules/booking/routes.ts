@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { randomBytes } from "node:crypto";
 import {
   addDays,
@@ -27,19 +27,22 @@ import {
   type PublicBookingPage,
 } from "@orbyn/core";
 import { z } from "zod";
-import { reader, transaction, type Db, type Queryable } from "../../db/pool.js";
+import { pool, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { authenticate, digest, type UserRow } from "../../lib/auth.js";
+import { rememberIdempotencyScope } from "../../lib/idempotency.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { encryptSecret } from "../../lib/secrets.js";
 import { emailEnabled } from "../../worker/channels/email.js";
 import { queueBookingEmail } from "../../worker/booking-email.js";
 import { availableSlots, chooseHost, type PageRow } from "./availability.js";
+import { csvCell } from "./csv.js";
 import {
   checkCoHosts,
   managesTeam,
   PAGE_COLUMNS,
   pageById,
   pageFor,
+  retainTeamHosts,
 } from "./pages.js";
 import {
   BOOKING_SELECT,
@@ -71,6 +74,8 @@ import {
   awaitApproval,
   cancel,
   confirm,
+  bookingSlotOptions,
+  bookingAvailabilityPage,
   decline,
   logEvent,
   reschedule,
@@ -86,17 +91,28 @@ import { inMyTeams } from "../../lib/visibility.js";
  * times and the booker's own booking.
  */
 
-async function pageBySlug(db: Queryable, slug: string) {
-  return (
+async function pageBySlug(db: Queryable, slug: string, lock = false) {
+  const page = (
     await db.query<PageRow>(
       `SELECT ${PAGE_COLUMNS} FROM booking_pages p WHERE p.slug = $1 AND p.active
          -- A team can pause its booking pages for people outside (OTH-04).
          AND (p.team_id IS NULL OR EXISTS (
-           SELECT 1 FROM teams bt WHERE bt.id = p.team_id AND bt.booking_allowed))`,
+           SELECT 1 FROM teams bt WHERE bt.id = p.team_id AND bt.booking_allowed))${lock ? " FOR UPDATE OF p" : ""}`,
       [slug.toLowerCase()],
     )
   ).rows[0];
+  if (page) await retainTeamHosts(db, page, lock);
+  return page;
 }
+
+/** Bind a cached result to the space authorized by this booking transaction. */
+const bookingReceipt =
+  (r: FastifyRequest, u: UserRow, db: Db) => (page: PageRow) =>
+    rememberIdempotencyScope(r, db, {
+      user_id: u.id,
+      team_id: page.team_id ?? null,
+      permission: "items:read",
+    });
 
 /** Check and tidy the booker's answers against the page's questions. */
 function cleanAnswers(page: PageRow, raw: Record<string, string>) {
@@ -117,11 +133,6 @@ function cleanAnswers(page: PageRow, raw: Record<string, string>) {
   }
   return answers;
 }
-
-const csvCell = (value: unknown) => {
-  const text = value == null ? "" : String(value);
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-};
 
 /** The public view of a page (never host calendars). */
 const publicPage = (page: PageRow) => ({
@@ -167,7 +178,7 @@ async function managed(db: Db, token: string) {
       404,
       "This link isn't valid. Check the latest email about your booking.",
     );
-  const page = (await pageFor(db, booking))!;
+  const page = (await pageFor(db, booking, true))!;
   return { booking, page };
 }
 
@@ -217,7 +228,7 @@ export async function bookingRoutes(app: FastifyInstance) {
   // Your pages, pages you host, and your teams' pages.
   app.get("/booking-pages", async (r) => {
     const u = await authenticate(r);
-    return listBookingPages(reader(r.headers), u.id);
+    return listBookingPages(pool, u.id);
   });
 
   app.post("/booking-pages", async (r, reply) => {
@@ -243,7 +254,7 @@ export async function bookingRoutes(app: FastifyInstance) {
   // Older apps: one page's upcoming and recent bookings, and cancelling one.
   app.get("/booking-pages/:id/bookings", async (r) => {
     const u = await authenticate(r);
-    const db = reader(r.headers);
+    const db = pool;
     const page = await requirePage(db, idParam(r), u, false);
     return (
       await db.query<Booking>(
@@ -275,13 +286,13 @@ export async function bookingRoutes(app: FastifyInstance) {
   app.get("/bookings", async (r) => {
     const u = await authenticate(r);
     const q = bookingsQuery.parse(r.query);
-    return listBookings(reader(r.headers), u.id, q);
+    return listBookings(pool, u.id, q);
   });
 
   app.get("/bookings/stats", async (r): Promise<BookingStats> => {
     const u = await authenticate(r);
     const q = bookingStatsQuery.parse(r.query);
-    return bookingStats(reader(r.headers), u.id, q.page_id ?? null);
+    return bookingStats(pool, u.id, q.page_id ?? null);
   });
 
   app.get("/bookings/export.csv", async (r, reply) => {
@@ -289,9 +300,7 @@ export async function bookingRoutes(app: FastifyInstance) {
     const q = bookingsQuery.parse(r.query);
     const view = VIEWS[q.view];
     const rows = (
-      await reader(r.headers).query<
-        Booking & { questions: PageRow["questions"] }
-      >(
+      await pool.query<Booking & { questions: PageRow["questions"] }>(
         `${BOOKING_SELECT.replace("SELECT b.id", "SELECT coalesce(p.questions, '[]') AS questions, b.id")}
          WHERE ${MINE} AND ${view.where} AND ($2::uuid IS NULL OR b.page_id = $2)
            AND NOT EXISTS (SELECT 1 FROM unnest($3::text[]) w
@@ -347,7 +356,7 @@ export async function bookingRoutes(app: FastifyInstance) {
 
   app.get("/bookings/:id", async (r) => {
     const u = await authenticate(r);
-    return bookingDetail(reader(r.headers), u, idParam(r));
+    return bookingDetail(pool, u, idParam(r));
   });
 
   // Times a host can move a booking to: its own time and events don't
@@ -355,13 +364,19 @@ export async function bookingRoutes(app: FastifyInstance) {
   app.get("/bookings/:id/slots", async (r) => {
     const u = await authenticate(r);
     const q = rescheduleSlotsQuery.parse(r.query);
-    return bookingSlots(reader(r.headers), u, idParam(r), q);
+    return bookingSlots(pool, u, idParam(r), q);
   });
 
   app.post("/bookings/:id/approve", async (r) => {
     const u = await authenticate(r);
     return transaction((db) =>
-      bookingAction(db, u, idParam(r), { action: "approve" }),
+      bookingAction(
+        db,
+        u,
+        idParam(r),
+        { action: "approve" },
+        bookingReceipt(r, u, db),
+      ),
     );
   });
 
@@ -369,7 +384,13 @@ export async function bookingRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const d = bookingReason.parse(r.body ?? {});
     return transaction((db) =>
-      bookingAction(db, u, idParam(r), { action: "decline", reason: d.reason }),
+      bookingAction(
+        db,
+        u,
+        idParam(r),
+        { action: "decline", reason: d.reason },
+        bookingReceipt(r, u, db),
+      ),
     );
   });
 
@@ -377,7 +398,13 @@ export async function bookingRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const d = bookingReason.parse(r.body ?? {});
     return transaction((db) =>
-      bookingAction(db, u, idParam(r), { action: "cancel", reason: d.reason }),
+      bookingAction(
+        db,
+        u,
+        idParam(r),
+        { action: "cancel", reason: d.reason },
+        bookingReceipt(r, u, db),
+      ),
     );
   });
 
@@ -385,23 +412,30 @@ export async function bookingRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const d = bookingReschedule.parse(r.body);
     return transaction((db) =>
-      bookingAction(db, u, idParam(r), {
-        action: "reschedule",
-        start_at: d.start_at,
-      }),
+      bookingAction(
+        db,
+        u,
+        idParam(r),
+        { action: "reschedule", start_at: d.start_at },
+        bookingReceipt(r, u, db),
+      ),
     );
   });
 
   app.put("/bookings/:id/no-show", async (r) => {
     const u = await authenticate(r);
     const d = noShowInput.parse(r.body);
-    return transaction((db) => setNoShow(db, u, idParam(r), d.no_show));
+    return transaction((db) =>
+      setNoShow(db, u, idParam(r), d.no_show, bookingReceipt(r, u, db)),
+    );
   });
 
   app.put("/bookings/:id/note", async (r) => {
     const u = await authenticate(r);
     const d = bookingNoteInput.parse(r.body);
-    return transaction((db) => setHostNote(db, u, idParam(r), d.host_note));
+    return transaction((db) =>
+      setHostNote(db, u, idParam(r), d.host_note, bookingReceipt(r, u, db)),
+    );
   });
 
   // ---- the public page (no sign-in) ----------------------------------------------
@@ -409,7 +443,7 @@ export async function bookingRoutes(app: FastifyInstance) {
   app.get("/book/:slug", async (r): Promise<PublicBookingPage> => {
     const { slug } = z.object({ slug: z.string().max(60) }).parse(r.params);
     const q = publicSlotsQuery.parse(r.query);
-    const db = reader(r.headers);
+    const db = pool;
     const page = await pageBySlug(db, slug);
     if (!page) fail(404, "This booking page doesn't exist or is switched off.");
     const duration = q.duration ?? page.durations[0];
@@ -433,7 +467,7 @@ export async function bookingRoutes(app: FastifyInstance) {
       const { slug } = z.object({ slug: z.string().max(60) }).parse(r.params);
       const d = bookingRequest.parse(r.body);
       const result = await transaction(async (db) => {
-        const page = await pageBySlug(db, slug);
+        const page = await pageBySlug(db, slug, true);
         if (!page)
           fail(404, "This booking page doesn't exist or is switched off.");
         if (!page.durations.includes(d.duration))
@@ -536,7 +570,7 @@ export async function bookingRoutes(app: FastifyInstance) {
           fail(404, "This link has already been used or isn't valid.");
         if (booking.status !== "pending" || booking.hold_until <= new Date())
           fail(410, "This booking expired. Book again.");
-        const page = await pageFor(db, booking);
+        const page = await pageFor(db, booking, true);
         if (!page?.active) fail(404, "This booking page is switched off.");
         await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [page.id]);
         await logEvent(db, booking.id, "email_confirmed", { actor: "booker" });
@@ -570,10 +604,16 @@ export async function bookingRoutes(app: FastifyInstance) {
       return {
         timezone: q.timezone,
         duration: view.booking.duration,
-        slots: await availableSlots(db, page, view.booking.duration, from, to, {
-          ignoreBookingId: booking.id,
-          ignoreItemIds: booking.item_ids,
-        }),
+        slots: await availableSlots(
+          db,
+          bookingAvailabilityPage(page, booking),
+          view.booking.duration,
+          from,
+          to,
+          {
+            ...(await bookingSlotOptions(db, page, booking)),
+          },
+        ),
       };
     });
   });
@@ -621,7 +661,7 @@ export async function bookingRoutes(app: FastifyInstance) {
           404,
           "This booking was already cancelled or the link isn't valid.",
         );
-      const page = (await pageFor(db, booking))!;
+      const page = (await pageFor(db, booking, true))!;
       await cancel(db, booking, page, { actor: "booker" }, "");
       return { cancelled: true };
     });

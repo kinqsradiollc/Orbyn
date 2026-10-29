@@ -1,3 +1,7 @@
+import {
+  markIdempotencyVersionConflict,
+  rememberDocumentIdempotencyScope,
+} from "../../lib/idempotency.js";
 import type { FastifyInstance } from "fastify";
 import { fail, versionedDocSave, type DocContentFormat } from "@orbyn/core";
 import { z } from "zod";
@@ -55,8 +59,9 @@ export async function docContentRoutes(app: FastifyInstance) {
         typeof raw === "string" && /^\d{1,9}$/.test(raw) ? Number(raw) : 0;
       const ticksFrom =
         tickVersion > 0 ? Math.min(tickVersion, body.version) : null;
-      const saved = await transaction((db) =>
-        saveVersionedDoc(
+      const saved = await transaction(async (db) => {
+        await rememberDocumentIdempotencyScope(request, db, docId);
+        return saveVersionedDoc(
           db,
           user,
           docId,
@@ -64,8 +69,11 @@ export async function docContentRoutes(app: FastifyInstance) {
           body.document,
           supported,
           ticksFrom,
-        ),
-      );
+        );
+      }).catch((error: unknown) => {
+        markIdempotencyVersionConflict(request, error, "doc");
+        throw error;
+      });
       const editor =
         typeof request.headers["x-orbyn-editor"] === "string"
           ? request.headers["x-orbyn-editor"].slice(0, 64)

@@ -107,21 +107,24 @@ export async function pageFileStoreRoutes(app: FastifyInstance) {
         });
       // Taking the row makes the link single-use.
       const taken = (
-        await pool.query(
+        await pool.query<{ id: string; bytes: string | number }>(
           `UPDATE page_files SET stored_at = now()
             WHERE id = $1 AND user_id = $2 AND status = 'waiting'
               AND stored_at IS NULL
-            RETURNING id`,
+            RETURNING id, bytes`,
           [claim.f, claim.u],
         )
-      ).rowCount;
+      ).rows[0];
       if (!taken)
         return reply
           .code(409)
           .send({ message: "This upload link has already been used." });
       let bytes: number;
       try {
-        bytes = await storeStream(claim.f, r.body as Readable, claim.m, {
+        // Links issued by an older API may allow more than the reservation.
+        // The stored reservation is authoritative even for those links.
+        const limit = Math.min(claim.m, Number(taken.bytes));
+        bytes = await storeStream(claim.f, r.body as Readable, limit, {
           dir: pageFilesDir(),
           type: claim.t,
           tooBig: "This file is bigger than it said it was.",

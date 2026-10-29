@@ -1,3 +1,4 @@
+import { markIdempotencyVersionConflict } from "../../lib/idempotency.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
@@ -532,7 +533,10 @@ export async function itemRoutes(app: FastifyInstance) {
         : scope.scope === "following"
           ? editFollowing(db, u, id, version, scope.occurrence!, data)
           : mutate(db, u, { operation: "update", data, item_id: id, version }),
-    );
+    ).catch((error: unknown) => {
+      markIdempotencyVersionConflict(r, error, "item");
+      throw error;
+    });
   });
 
   app.delete("/items/:id", async (r, reply) => {

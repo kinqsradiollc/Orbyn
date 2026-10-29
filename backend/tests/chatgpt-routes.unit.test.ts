@@ -36,11 +36,13 @@ test("ChatGPT connection routes enforce session-only access, strict inputs and r
   let invalidProof = false;
   let unexpectedCredential = false;
   let ownedConnection = false;
+  let connectionQueries = 0;
   const query = async (sql: string, args: unknown[] = []) => {
     assert.ok(
       !sql.includes("idempotency_keys"),
       "connection proofs must not be replayed from the 24-hour response cache",
     );
+    if (sql.includes("chatgpt_identity_")) connectionQueries++;
     if (sql.includes("JOIN sessions"))
       return {
         rows:
@@ -93,17 +95,16 @@ test("ChatGPT connection routes enforce session-only access, strict inputs and r
     token?: string,
     payload?: object,
     remoteAddress = `10.73.0.${address++}`,
+    keyed = false,
   ) =>
     app.inject({
       method,
       url,
       remoteAddress,
-      headers: token
-        ? {
-            authorization: `Bearer ${token}`,
-            "idempotency-key": "connection_fixture_key",
-          }
-        : {},
+      headers: {
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(keyed ? { "idempotency-key": "connection_fixture_key" } : {}),
+      },
       ...(payload ? { payload } : {}),
     });
   const start = "/ai/connections/chatgpt/challenges";
@@ -123,6 +124,43 @@ test("ChatGPT connection routes enforce session-only access, strict inputs and r
       assert.equal((await call(method, url, "disabled")).statusCode, 403);
       assert.equal((await call(method, url, "expired")).statusCode, 401);
       assert.equal((await call(method, url, "oat_fixture")).statusCode, 401);
+      const before = connectionQueries;
+      for (const token of [
+        undefined,
+        "expired",
+        "disabled",
+        "ok_fixture",
+        "session",
+      ]) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const keyed = await call(method, url, token, {}, undefined, true);
+          assert.equal(
+            keyed.statusCode,
+            method === "GET"
+              ? token === "session"
+                ? 200
+                : token === "disabled" || token === "ok_fixture"
+                  ? 403
+                  : 401
+              : token === "session"
+                ? 409
+                : token === "disabled" || token === "ok_fixture"
+                  ? 403
+                  : 401,
+            keyed.body,
+          );
+          assert.equal(keyed.headers["idempotent-replay"], undefined);
+          if (method !== "GET") {
+            if (token === "session") {
+              assert.equal(keyed.headers["idempotency-outcome"], "unsupported");
+              assert.doesNotMatch(keyed.body, /nonce|id_token|access_token/);
+            }
+            assert.equal(connectionQueries, before);
+          } else if (token === "session") {
+            assert.equal(keyed.headers["cache-control"], "no-store");
+          }
+        }
+      }
     }
     assert.equal(
       (await call("POST", start, "session", { access_token: "forbidden" }))

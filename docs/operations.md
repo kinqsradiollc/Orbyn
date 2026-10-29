@@ -47,6 +47,65 @@ Record what was changed, the commands actually run, remaining manual checks,
 rollback/recovery considerations and exact delivery state. Report denied actions
 rather than bypassing host restrictions.
 
+## Security receipt and booking-host cutover
+
+Migrations 295 and 296 change retained idempotency receipts and team booking-host
+assignments. Before an authorized rollout, the service owner must identify and
+drain all old API and agent processes that read receipts or mutate team membership,
+booking pages or host assignments, including in-flight transactions and queued
+work. Keep incompatible instances from restarting. Do not reopen those paths while
+their writer versions or direct database writers are unknown.
+
+Migration 295 removes existing receipt bodies, retains their keys and statuses as
+non-reexecuting tombstones until normal receipt retention expires, and installs a
+database trigger that strips bodies
+written by old or unsupported receipt writers. Old readers still bypass the new
+authorization policy, so the trigger does not make mixed-version serving safe.
+Migration 296 removes team-page host assignments for people who are no longer
+members, preserving personal-page assignments. Its locks protect the cleanup
+transaction; old booking or membership writers must remain drained afterwards.
+Review table size, lock duration and the maintenance window before applying either
+migration. A host who left and rejoined before cleanup is indistinguishable from
+a continuously authorized host and requires an owner review if its history matters.
+
+After upgrading all readers and writers, check that old receipt writers cannot
+store response bodies, new authorized retries work, removed team hosts cannot
+read bookings, and queued operations are reconciled. Pre-upgrade receipts cannot
+recover their original response; a `409` requires reviewing the prior result,
+not repeating the operation under a new key. Do not restore old application
+binaries or reinsert all deleted host assignments as a rollback. Use a compatible
+forward repair and explicit host reassignment. Old database pages, backups and
+WAL can still contain plaintext credentials after the logical purge; assessing
+rotation and storage retention or sanitization is a separate operator task. This
+procedure is a rollout requirement, not evidence of a deployment or that any
+historical credential was exposed.
+
+The booking change reconciles existing calendar associations when a booking is
+rescheduled or cancelled; it does not bulk-delete or rewrite people’s personal
+calendar events. A former host's old event and reminder settings remain as they
+were, and may need personal cleanup. The live booking can select a current
+round-robin host when its former assignee is no longer a host on the page. Drain old booking
+writers before relying on this boundary: an older writer can still update the
+old associations. Existing records whose assigned user was deleted and whose
+foreign key became null do not retain enough information to distinguish a former
+round-robin assignment from a collective booking; they keep the existing null
+interpretation rather than being automatically reassigned.
+
+The updated mobile outbox stores its exact request before dispatch in a version 3
+record under the existing storage key. An older app refuses that record instead
+of reopening it, but an older process that already loaded the queue can still
+write its old copy. Stop old app processes before upgrading a device's queue.
+Previously attempted version 2 changes without an exact request are held for
+reconciliation, because their delivery cannot be proved. Keep the updated app
+available for those queues; replacing it with an older build does not provide a
+safe retry or recovery path.
+
+For the page-file quota correction, upgrade or drain every old file-store process
+before accepting outstanding upload links: old stores can still honor a larger
+allowance embedded in a previously issued link. New stores also cap those links at
+their saved reservation. Existing files above quota remain counted at their actual
+size and need a separate owner decision if storage must be brought below quota.
+
 ## Retained tooling snapshots
 
 `tools/rea` retains source revision `ccc7da309d7db385d5c6d73b0a3a8e093be33504`

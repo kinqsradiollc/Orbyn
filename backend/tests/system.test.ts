@@ -114,6 +114,22 @@ test("settings are admin-only and apply without a restart", async () => {
     allowed.headers["access-control-allow-origin"],
     "https://planner.example.com",
   );
+  const keyed = await call(
+    member,
+    "POST",
+    "/items",
+    {},
+    {
+      origin: "https://planner.example.com",
+      "idempotency-key": "short",
+    },
+  );
+  assert.equal(keyed.statusCode, 422);
+  const exposed = String(keyed.headers["access-control-expose-headers"])
+    .toLowerCase()
+    .split(/\s*,\s*/);
+  assert.ok(exposed.includes("idempotent-replay"));
+  assert.ok(exposed.includes("idempotency-outcome"));
   const other = await call(null, "GET", "/version", undefined, {
     origin: "https://evil.example.com",
   });

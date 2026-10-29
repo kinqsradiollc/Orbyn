@@ -981,10 +981,12 @@ export async function addToPage(
   placeStructured?: (
     document: Extract<VersionedDocContent, { format: 2 }>,
   ) => Extract<VersionedDocContent, { format: 2 }>,
+  onAuthorized?: (db: Db, page: Owned) => Promise<void>,
 ): Promise<{ id: string; title: string; version: number }> {
   const saved = await transaction(async (db) => {
     await actAs(db, u.id);
-    await requireDoc(db, docId, u, "items:write");
+    const page = await requireDoc(db, docId, u, "items:write");
+    if (onAuthorized) await onAuthorized(db, page);
     const row = (
       await db.query<{
         content: DocBlock[] | null;
