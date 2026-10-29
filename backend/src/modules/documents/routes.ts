@@ -1,3 +1,7 @@
+import {
+  markIdempotencyVersionConflict,
+  rememberDocumentIdempotencyScope,
+} from "../../lib/idempotency.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { createPageCommentRequest } from "./comment-requests.js";
@@ -666,6 +670,7 @@ export async function docRoutes(app: FastifyInstance) {
         ? docContentFormatsHeader(r.headers["x-orbyn-doc-formats"])
         : undefined;
       const saved = await transaction(async (db) => {
+        await rememberDocumentIdempotencyScope(r, db, id);
         const saved = await saveDoc(db, u, id, body, {
           ticksFrom: ticksFrom(r, body.version),
           ...(structured && supported
@@ -675,6 +680,9 @@ export async function docRoutes(app: FastifyInstance) {
         if (!structured || !supported) return saved;
         const read = await readVersionedDoc(db, u, id, supported);
         return { ...saved, document: read.document };
+      }).catch((error: unknown) => {
+        markIdempotencyVersionConflict(r, error, "doc");
+        throw error;
       });
       // Announced after the transaction commits, so anyone who comes running
       // to re-read the document finds the new version already there.

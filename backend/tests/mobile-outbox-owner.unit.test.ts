@@ -75,6 +75,9 @@ function fixture(initial: Record<string, string> = {}, userId = "A") {
     token: string | null;
     key: string | null;
     consistency: string | null;
+    url: string;
+    body: string | null;
+    headers: Record<string, string>;
   }[] = [];
   const writes: string[] = [];
   const timers: (() => void)[] = [];
@@ -93,6 +96,9 @@ function fixture(initial: Record<string, string> = {}, userId = "A") {
       token: headers.get("Authorization"),
       key: headers.get("Idempotency-Key"),
       consistency: headers.get("X-Orbyn-Consistency"),
+      url: String(url),
+      body: options?.body === undefined ? null : String(options.body),
+      headers: Object.fromEntries(headers.entries()),
     };
     requests.push(request);
     return send(request);
@@ -144,6 +150,7 @@ function fixture(initial: Record<string, string> = {}, userId = "A") {
       return modules[name];
     },
     fetch,
+    Headers,
     setTimeout: (fn: () => void) => {
       timers.push(fn);
       return timers.length;
@@ -178,7 +185,7 @@ function fixture(initial: Record<string, string> = {}, userId = "A") {
   };
 }
 
-test("automatic auth loss pauses A's commands; B cannot see/replay them; A resumes after reauthentication", async () => {
+test("automatic auth loss pauses A's commands and reauthentication cannot reexecute an uncertain delivery", async () => {
   const f = fixture({ [KEY]: envelope([entry()]) });
   f.send(async () => Response.json({ message: "Expired" }, { status: 401 }));
   await f.api.flush();
@@ -193,9 +200,9 @@ test("automatic auth loss pauses A's commands; B cannot see/replay them; A resum
   f.switchTo("A", "replacement-A");
   f.send(async () => Response.json({ id: "task" }));
   await f.api.flush();
-  assert.equal(f.requests[1].token, "Bearer replacement-A");
-  assert.equal(f.requests[1].key, "stable-key");
-  assert.equal(f.api.outboxState().entries.length, 0);
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.api.outboxState().entries[0].key, "stable-key");
+  assert.equal(f.api.outboxState().entries[0].uncertain, true);
 });
 
 test("new commands are durably owned before the first request and survive restart", async () => {
@@ -812,7 +819,7 @@ test("in-progress receipt conflicts do not rotate the key or create another oper
       ? Response.json({ id: "page", title: "Page", content: [], version: 1 })
       : Response.json(
           { message: "That change is still being made. Try again soon." },
-          { status: 409 },
+          { status: 409, headers: { "Idempotency-Outcome": "in-flight" } },
         ),
   );
   await f.api.flush();
@@ -869,16 +876,38 @@ test("lost conflict-merge responses require the uncertainty warning before manua
     if (request.method === "GET")
       return Response.json({ ...base, notes: "Remote", version: 2 });
     if (request.key === "stable-key")
-      return Response.json({ message: "Version conflict" }, { status: 409 });
+      return Response.json(
+        { message: "Version conflict" },
+        { status: 409, headers: { "Idempotency-Outcome": "version-conflict" } },
+      );
     throw new TypeError("Failed to fetch after merge commit");
   });
   await f.api.flush();
-  assert.equal(f.api.outboxState().entries[0].state, "failed");
-  assert.equal(f.api.outboxState().entries[0].uncertain, true);
+  assert.equal(f.api.outboxState().entries[0].state, "pending");
+  assert.ok(f.api.outboxState().entries[0].delivery?.request);
   assert.equal(
     f.requests.some((request) => request.key === "stable-key-merged"),
     true,
   );
+  const merged = f.requests.find(
+    (request) => request.key === "stable-key-merged",
+  )!;
+  const restarted = fixture(Object.fromEntries(f.disk));
+  restarted.send(async (request) => {
+    assert.equal(request.method, "PUT", "do not recompute a dispatched merge");
+    assert.equal(request.key, merged.key);
+    assert.equal(request.url, merged.url);
+    assert.equal(request.body, merged.body);
+    return Response.json({
+      ...base,
+      title: "Mine",
+      notes: "Remote",
+      version: 3,
+    });
+  });
+  await restarted.api.flush();
+  assert.equal(restarted.requests.length, 1);
+  assert.equal(restarted.api.outboxState().entries.length, 0);
 });
 
 test("placement-bearing offline updates without an exact creation baseline never substitute a fresh version", async () => {
@@ -935,4 +964,321 @@ test("a persisted creation receipt supplies its exact version to a causally queu
   const saved = JSON.parse(f.disk.get(KEY)!).entries[0];
   assert.equal(saved.op.base.version, 1);
   assert.equal(saved.op.body.version, 1);
+});
+
+for (const structured of [false, true]) {
+  test(`lost ${structured ? "structured" : "legacy"} page responses replay the exact durable request after restart`, async () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const blocks: core.DocBlock[] = [{ type: "paragraph", text: "Mine" }];
+    const save: core.PageSave = {
+      id,
+      title: "Page",
+      content: blocks,
+      base: {
+        title: "Page",
+        version: 1,
+        content: [],
+        ...(structured ? { document: { format: 1 as const, blocks: [] } } : {}),
+      },
+      ...(structured ? { document: { format: 1 as const, blocks } } : {}),
+    };
+    const current = (version: number, content: core.DocBlock[] = []) => ({
+      id,
+      title: "Page",
+      version,
+      content,
+      ...(structured ? { document: { format: 1, blocks: content } } : {}),
+    });
+    const f = fixture();
+    await f.api.savePageOffline(save);
+    f.send(async (request) => {
+      if (request.method === "GET") return Response.json(current(1));
+      const persisted = JSON.parse(f.disk.get(KEY)!);
+      assert.equal(persisted.version, 3);
+      assert.equal(persisted.entries[0].delivery.request.body, request.body);
+      throw new TypeError("Failed to fetch after commit");
+    });
+    await f.api.flush();
+    const first = f.requests.find((r) => r.method === "PUT")!;
+    assert.ok(first);
+    const restarted = fixture(Object.fromEntries(f.disk));
+    let authorityReads = 0;
+    restarted.send(async (request) => {
+      if (request.method === "GET") {
+        authorityReads++;
+        return Response.json(
+          current(9, [{ type: "paragraph", text: "New remote text" }]),
+        );
+      }
+      assert.equal(request.key, first.key);
+      assert.equal(request.url, first.url);
+      assert.equal(request.body, first.body);
+      assert.equal(
+        request.headers["x-orbyn-doc-formats"],
+        first.headers["x-orbyn-doc-formats"],
+      );
+      assert.equal(
+        request.headers["x-orbyn-ticks-from"],
+        first.headers["x-orbyn-ticks-from"],
+      );
+      return Response.json(current(2, blocks));
+    });
+    await restarted.api.flush();
+    assert.equal(authorityReads, 1);
+    assert.equal(
+      restarted.requests.filter((r) => r.method === "PUT").length,
+      1,
+    );
+    assert.equal(restarted.api.outboxState().entries.length, 0);
+  });
+}
+
+for (const kind of ["item.update", "item.delete"] as const) {
+  test(`${kind} retains the first dynamically resolved version across restart`, async () => {
+    const base = { id: "task", title: "Task", version: 0 } as core.Item;
+    const op: core.OutboxOp =
+      kind === "item.delete"
+        ? { type: kind, id: "task", version: 0, title: "Task" }
+        : {
+            type: kind,
+            id: "task",
+            base,
+            body: { title: "Mine", version: 0 } as core.ItemInput & {
+              version: number;
+            },
+          };
+    const f = fixture({ [KEY]: envelope([entry("A", op)]) });
+    f.send(async (request) => {
+      if (request.method === "GET")
+        return Response.json({ ...base, version: 4 });
+      throw new TypeError("Failed to fetch after commit");
+    });
+    await f.api.flush();
+    const first = f.requests.find((r) => r.method !== "GET")!;
+    assert.ok(first);
+    const restarted = fixture(Object.fromEntries(f.disk));
+    restarted.send(async (request) => {
+      assert.notEqual(
+        request.method,
+        "GET",
+        "the original version must not be fetched again",
+      );
+      assert.equal(request.url, first.url);
+      assert.equal(request.body, first.body);
+      assert.equal(request.key, first.key);
+      return kind === "item.delete"
+        ? new Response(null, { status: 204 })
+        : Response.json({ ...base, title: "Mine", version: 5 });
+    });
+    await restarted.api.flush();
+    assert.equal(restarted.requests.length, 1);
+    assert.equal(restarted.api.outboxState().entries.length, 0);
+  });
+}
+
+for (const outcome of ["unsafe", "mismatch", "unsupported", "unknown"]) {
+  test(`${outcome} receipt refusals preserve doc and item request identity through manual retry`, async () => {
+    const doc: core.PageSave = {
+      id: "page",
+      title: "Page",
+      content: [],
+      base: { title: "Page", version: 1, content: [] },
+    };
+    const base = { id: "task", title: "Task", version: 1 } as core.Item;
+    for (const op of [
+      { type: "doc.save", save: doc },
+      {
+        type: "item.update",
+        id: "task",
+        base,
+        body: { title: "Mine", version: 1 },
+      },
+    ] as core.OutboxOp[]) {
+      const f = fixture({ [KEY]: envelope([entry("A", op)]) });
+      f.send(async (request) =>
+        request.method === "GET"
+          ? Response.json({
+              id: "page",
+              title: "Page",
+              content: [],
+              version: 1,
+            })
+          : Response.json(
+              { message: "Version conflict" },
+              {
+                status: outcome === "mismatch" ? 422 : 409,
+                headers:
+                  outcome === "unknown"
+                    ? {}
+                    : { "Idempotency-Outcome": outcome },
+              },
+            ),
+      );
+      await f.api.flush();
+      const held = f.api.outboxState().entries[0];
+      assert.equal(held.state, "failed");
+      assert.equal(held.uncertain, true);
+      assert.equal(held.key, "stable-key");
+      assert.ok(held.delivery?.request);
+      await f.api.resolve(held.key, "retry");
+      assert.equal(f.api.outboxState().entries[0].key, "stable-key");
+      assert.ok(
+        f.requests
+          .filter((r) => r.method !== "GET")
+          .every((r) => r.key === "stable-key"),
+      );
+      assert.equal(f.requests.filter((r) => r.method !== "GET").length, 2);
+    }
+  });
+}
+
+test("pre-upgrade dispatched entries are held with their owner and payload intact", async () => {
+  const pending = entry();
+  pending.delivery = {
+    credential_hash: createHash("sha256").update("token-A").digest("hex"),
+    started_at: new Date().toISOString(),
+  };
+  const f = fixture({ [KEY]: envelope([pending]) });
+  await f.api.flush();
+  assert.equal(f.requests.length, 0);
+  const retained = f.api.outboxState().entries[0];
+  assert.equal(retained.key, pending.key);
+  assert.equal(retained.uncertain, true);
+  assert.equal(retained.state, "failed");
+  assert.equal(JSON.stringify(retained.op), JSON.stringify(pending.op));
+  assert.equal(JSON.parse(f.disk.get(KEY)!).version, 3);
+  await f.api.resolve(retained.key, "retry");
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.api.outboxState().entries[0].key, pending.key);
+});
+
+test("legacy failed work without a request snapshot cannot be dispatched by manual retry", async () => {
+  const pending = {
+    ...entry(),
+    state: "failed" as const,
+    attempts: 1,
+    uncertain: false,
+  };
+  const f = fixture({ [KEY]: envelope([pending]) });
+  await f.api.loadOutbox();
+  assert.equal(f.api.outboxState().entries[0].uncertain, true);
+  await f.api.resolve(pending.key, "retry");
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.api.outboxState().entries[0].key, pending.key);
+  assert.equal(f.api.outboxState().entries[0].state, "failed");
+});
+
+test("a saved page request still rechecks access before receipt replay", async () => {
+  const save: core.PageSave = {
+    id: "page",
+    title: "Page",
+    content: [],
+    base: { title: "Page", content: [], version: 1 },
+  };
+  const pending = entry("A", { type: "doc.save", save });
+  pending.delivery = {
+    credential_hash: createHash("sha256").update("token-A").digest("hex"),
+    started_at: new Date().toISOString(),
+    request: {
+      server: "https://fixture.invalid",
+      path: "/docs/page",
+      method: "PUT",
+      body: JSON.stringify({ title: "Page", content: [], version: 1 }),
+      headers: {},
+    },
+  };
+  const f = fixture({
+    [KEY]: JSON.stringify({ version: 3, entries: [pending], recovery: [] }),
+  });
+  f.send(async (request) => {
+    assert.equal(request.method, "GET");
+    return Response.json({ message: "Page not found" }, { status: 404 });
+  });
+  await f.api.flush();
+  assert.equal(f.requests.length, 1);
+  const held = f.api.outboxState().entries[0];
+  assert.equal(held.key, pending.key);
+  assert.equal(held.uncertain, true);
+  assert.ok(held.delivery?.request);
+});
+
+test("only a proved version rejection permits a page merge with a new key", async () => {
+  const save: core.PageSave = {
+    id: "page",
+    title: "Page",
+    content: [{ type: "paragraph", text: "Mine" }],
+    base: { title: "Page", content: [], version: 1 },
+  };
+  const f = fixture();
+  await f.api.savePageOffline(save);
+  const originalKey = f.api.outboxState().entries[0].key;
+  let reads = 0;
+  f.send(async (request) => {
+    if (request.method === "GET")
+      return Response.json({
+        id: "page",
+        title: "Page",
+        content: [],
+        version: ++reads,
+      });
+    if (request.key === originalKey) {
+      assert.equal(JSON.parse(request.body!).version, 1);
+      return Response.json(
+        { message: "Changed" },
+        { status: 409, headers: { "Idempotency-Outcome": "version-conflict" } },
+      );
+    }
+    assert.equal(request.key, `${originalKey}-m1`);
+    assert.equal(JSON.parse(request.body!).version, 2);
+    assert.equal(JSON.parse(f.disk.get(KEY)!).entries[0].key, request.key);
+    return Response.json({
+      id: "page",
+      title: "Page",
+      content: save.content,
+      version: 3,
+    });
+  });
+  await f.api.flush();
+  assert.equal(f.requests.filter((r) => r.method === "PUT").length, 2);
+  assert.equal(f.api.outboxState().entries.length, 0);
+});
+
+test("a persisted dispatch cannot migrate to a different API server", async () => {
+  const f = fixture();
+  f.send(async () => {
+    throw new TypeError("Failed to fetch");
+  });
+  await f.api.run(create);
+  const stored = JSON.parse(f.disk.get(KEY)!);
+  stored.entries[0].delivery.request.server = "https://previous.invalid";
+  const restarted = fixture({ [KEY]: JSON.stringify(stored) });
+  await restarted.api.flush();
+  assert.equal(restarted.requests.length, 0);
+  assert.equal(restarted.api.outboxState().entries[0].uncertain, true);
+  assert.equal(
+    restarted.api.outboxState().entries[0].key,
+    stored.entries[0].key,
+  );
+});
+
+test("an unsafe 404 deletion receipt remains held instead of being acknowledged as absent", async () => {
+  const pending = entry("A", {
+    type: "item.delete",
+    id: "task",
+    title: "Task",
+    version: 1,
+  });
+  const f = fixture({ [KEY]: envelope([pending]) });
+  f.send(async () =>
+    Response.json(
+      { message: "Resource not found" },
+      { status: 404, headers: { "Idempotency-Outcome": "unsafe" } },
+    ),
+  );
+  await f.api.flush();
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.api.outboxState().entries[0].key, pending.key);
+  assert.equal(f.api.outboxState().entries[0].state, "failed");
+  assert.equal(f.api.outboxState().entries[0].uncertain, true);
+  assert.ok(f.api.outboxState().entries[0].delivery?.request);
 });

@@ -3,7 +3,7 @@
 import { buildStatusService } from "./status-app.js";
 import { env } from "../config/env.js";
 import { startProber } from "../modules/status/prober.js";
-import { startService } from "./http.js";
+import { startService } from "./http-shared.js";
 
 const stopProber = startProber();
 await startService(await buildStatusService(), env.PORT, stopProber);

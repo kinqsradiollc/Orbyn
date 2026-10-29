@@ -1,13 +1,19 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { fail } from "@orbyn/core";
+import { fail, type WebhookEvent } from "@orbyn/core";
 import { env } from "../../config/env.js";
-import type { Db } from "../../db/pool.js";
+import type { Db, Queryable } from "../../db/pool.js";
 import { digest } from "../../lib/auth.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { queueBookingEmail } from "../../worker/booking-email.js";
 import { mutate, recordDeletions } from "../items/service.js";
-import { availableSlots, pageTimeZone, type PageRow } from "./availability.js";
+import {
+  availableSlots,
+  chooseHost,
+  pageTimeZone,
+  type PageRow,
+  type SlotOptions,
+} from "./availability.js";
 import { pageFor } from "./pages.js";
 
 /**
@@ -85,6 +91,28 @@ export function effectiveHosts(page: PageRow, booking: BookingRow) {
   return booking.assigned_user_id
     ? page.hosts.filter((h) => h.user_id === booking.assigned_user_id)
     : page.hosts;
+}
+
+/** A team page's former owner must not receive new guest data by webhook. */
+async function queuePageWebhook(
+  db: Db,
+  event: WebhookEvent,
+  page: PageRow,
+  data: Record<string, unknown>,
+) {
+  if (page.team_id) {
+    const membership = await db.query(
+      "SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2 FOR SHARE",
+      [page.team_id, page.owner_id],
+    );
+    if (!membership.rowCount) return;
+  }
+  await queueWebhooks(
+    db,
+    event,
+    { user_id: page.owner_id, team_id: null },
+    data,
+  );
 }
 
 /** In-app notices for the hosts. They point at the booking, not an event. */
@@ -169,9 +197,14 @@ export function answerLines(page: PageRow, answers: Record<string, string>) {
 }
 
 /** Put the booking on every host's calendar. */
-async function createHostEvents(db: Db, booking: BookingRow, page: PageRow) {
+async function createHostEvents(
+  db: Db,
+  booking: BookingRow,
+  page: PageRow,
+  hosts = effectiveHosts(page, booking),
+) {
   const ids: string[] = [];
-  for (const host of effectiveHosts(page, booking)) {
+  for (const host of hosts) {
     // The event holds what the guest typed: outside agents are told so (and
     // their email address is masked) for as long as the event lasts, even
     // after the booking or its page is gone. Recorded first, so whatever is
@@ -215,6 +248,70 @@ async function createHostEvents(db: Db, booking: BookingRow, page: PageRow) {
   return ids;
 }
 
+/** A page can change assignment mode after a booking was made. */
+export function bookingAvailabilityPage(
+  page: PageRow,
+  booking: BookingRow,
+): PageRow {
+  return {
+    ...page,
+    assignment: booking.assigned_user_id ? "round_robin" : "collective",
+  };
+}
+
+/** Preserve a live round-robin assignee; only a departed host is replaced. */
+export async function bookingSlotOptions(
+  db: Queryable,
+  page: PageRow,
+  booking: BookingRow,
+  lock = false,
+): Promise<SlotOptions> {
+  return {
+    ignoreBookingId: booking.id,
+    ignoreItemIds: (await currentHostEvents(db, booking, page, lock)).map(
+      (item) => item.id,
+    ),
+    assignedHost:
+      booking.assigned_user_id &&
+      page.hosts.some((host) => host.user_id === booking.assigned_user_id)
+        ? booking.assigned_user_id
+        : undefined,
+  };
+}
+
+/** Associations grant no authority over a former host's personal calendar.
+ * Lock and retain only personal booking copies belonging to current hosts.
+ * Detached copies stay unchanged, including their historical reminder settings. */
+async function currentHostEvents(
+  db: Queryable,
+  booking: BookingRow,
+  page: PageRow,
+  lock = false,
+) {
+  const hosts = effectiveHosts(page, booking).map((host) => host.user_id);
+  // Lock items before their source rows, matching item deletion and its source
+  // cascade. A copy ignored by availability cannot change owner/scope or lose
+  // booking provenance before the same transaction synchronizes it.
+  const copies = (
+    await db.query<{ id: string; user_id: string }>(
+      `SELECT i.id, i.user_id FROM items i
+     WHERE i.id = ANY ($1::uuid[]) AND i.user_id = ANY ($2::uuid[])
+       AND i.team_id IS NULL
+     ORDER BY i.id${lock ? " FOR UPDATE OF i" : ""}`,
+      [booking.item_ids, hosts],
+    )
+  ).rows;
+  const sources = (
+    await db.query<{ item_id: string }>(
+      `SELECT item_id FROM item_sources WHERE item_id = ANY ($1::uuid[])
+       AND source = 'booking_guest' ORDER BY item_id${lock ? " FOR SHARE" : ""}`,
+      [copies.map((copy) => copy.id)],
+    )
+  ).rows;
+  const linked = new Set(sources.map((source) => source.item_id));
+  return copies.filter((copy) => linked.has(copy.id));
+}
+
 /**
  * Check a time is still free for this booking. Hosts may approve or move a
  * booking inside the notice period; bookers may not.
@@ -236,12 +333,44 @@ async function assertFree(
           start.getTime() - page.min_notice_minutes * 60_000,
         ),
       );
-  const free = await availableSlots(db, page, duration, start, end, {
-    now,
-    ignoreBookingId: booking.id,
-    ignoreItemIds: booking.item_ids,
-    assignedHost: booking.assigned_user_id ?? undefined,
-  });
+  const options = await bookingSlotOptions(db, page, booking, true);
+  const availabilityPage = bookingAvailabilityPage(page, booking);
+  if (booking.assigned_user_id && !options.assignedHost) {
+    const routed = page.routing.find(
+      (rule) =>
+        (booking.answers[rule.question_id] ?? "").trim().toLowerCase() ===
+        rule.equals.trim().toLowerCase(),
+    )?.host_user_id;
+    const assigned = await chooseHost(
+      db,
+      availabilityPage,
+      duration,
+      start,
+      end,
+      now,
+      routed,
+      options,
+    );
+    if (!assigned)
+      fail(409, "That time isn't free any more. Pick another time.");
+    await db.query("UPDATE bookings SET assigned_user_id = $2 WHERE id = $1", [
+      booking.id,
+      assigned,
+    ]);
+    booking.assigned_user_id = assigned;
+    options.assignedHost = assigned;
+  }
+  const free = await availableSlots(
+    db,
+    availabilityPage,
+    duration,
+    start,
+    end,
+    {
+      ...options,
+      now,
+    },
+  );
   if (!free.some((s) => s.start_at === start.toISOString()))
     fail(409, "That time isn't free any more. Pick another time.");
 }
@@ -279,20 +408,15 @@ export async function confirm(
     by.userId,
     effectiveHosts(page, booking),
   );
-  await queueWebhooks(
-    db,
-    "booking.confirmed",
-    { user_id: page.owner_id, team_id: null },
-    {
-      id: booking.id,
-      ...source(page),
-      start_at: booking.start_at.toISOString(),
-      end_at: booking.end_at.toISOString(),
-      name: booking.name,
-      email: booking.email,
-      answers: booking.answers,
-    },
-  );
+  await queuePageWebhook(db, "booking.confirmed", page, {
+    id: booking.id,
+    ...source(page),
+    start_at: booking.start_at.toISOString(),
+    end_at: booking.end_at.toISOString(),
+    name: booking.name,
+    email: booking.email,
+    answers: booking.answers,
+  });
   const link = await manageLink(db, booking);
   await mailBooker(db, booking, `Confirmed: ${page.title}`, [
     `Hi ${booking.name},`,
@@ -309,6 +433,7 @@ export async function awaitApproval(
   booking: BookingRow,
   page: PageRow,
 ) {
+  await assertFree(db, page, booking, booking.start_at, booking.end_at, false);
   await db.query(
     `UPDATE bookings SET status = 'awaiting_approval', hold_until = start_at,
        confirm_token_hash = NULL, updated_at = now() WHERE id = $1`,
@@ -325,19 +450,14 @@ export async function awaitApproval(
     null,
     effectiveHosts(page, booking),
   );
-  await queueWebhooks(
-    db,
-    "booking.requested",
-    { user_id: page.owner_id, team_id: null },
-    {
-      id: booking.id,
-      ...source(page),
-      start_at: booking.start_at.toISOString(),
-      end_at: booking.end_at.toISOString(),
-      name: booking.name,
-      email: booking.email,
-    },
-  );
+  await queuePageWebhook(db, "booking.requested", page, {
+    id: booking.id,
+    ...source(page),
+    start_at: booking.start_at.toISOString(),
+    end_at: booking.end_at.toISOString(),
+    name: booking.name,
+    email: booking.email,
+  });
   const link = await manageLink(db, booking);
   await mailBooker(db, booking, `Request received: ${page.title}`, [
     `Hi ${booking.name},`,
@@ -377,17 +497,12 @@ export async function decline(
     [booking.id, reason],
   );
   await logEvent(db, booking.id, "declined", { actor: "host", userId }, reason);
-  await queueWebhooks(
-    db,
-    "booking.cancelled",
-    { user_id: page.owner_id, team_id: null },
-    {
-      id: booking.id,
-      ...source(page),
-      status: "declined",
-      reason,
-    },
-  );
+  await queuePageWebhook(db, "booking.cancelled", page, {
+    id: booking.id,
+    ...source(page),
+    status: "declined",
+    reason,
+  });
   await mailBooker(db, booking, `Not available: ${page.title}`, [
     `Hi ${booking.name},`,
     `Sorry, the host can't take ${whenLabel(booking.start_at, booking.end_at, booking.timezone)}.`,
@@ -408,11 +523,12 @@ export async function cancel(
       ? booking.end_at > new Date()
       : holding(booking);
   if (!open) fail(409, "This booking can't be cancelled any more.");
-  if (booking.item_ids.length) {
-    await recordDeletions(db, booking.item_ids);
-    await db.query("DELETE FROM items WHERE id = ANY ($1::uuid[])", [
-      booking.item_ids,
-    ]);
+  const itemIds = (await currentHostEvents(db, booking, page, true)).map(
+    (item) => item.id,
+  );
+  if (itemIds.length) {
+    await recordDeletions(db, itemIds);
+    await db.query("DELETE FROM items WHERE id = ANY ($1::uuid[])", [itemIds]);
   }
   await db.query(
     `UPDATE bookings SET status = 'cancelled', cancelled_by = $2, cancel_reason = $3,
@@ -438,18 +554,13 @@ export async function cancel(
     ).rows[0];
     reopened = row?.status === "open";
   }
-  await queueWebhooks(
-    db,
-    "booking.cancelled",
-    { user_id: page.owner_id, team_id: null },
-    {
-      id: booking.id,
-      ...source(page),
-      status: "cancelled",
-      cancelled_by: by.actor,
-      reason,
-    },
-  );
+  await queuePageWebhook(db, "booking.cancelled", page, {
+    id: booking.id,
+    ...source(page),
+    status: "cancelled",
+    cancelled_by: by.actor,
+    reason,
+  });
   const when = whenLabel(booking.start_at, booking.end_at, booking.timezone);
   if (by.actor === "host")
     await mailBooker(db, booking, `Cancelled: ${page.title}`, [
@@ -501,7 +612,7 @@ export async function bookerReminder(db: Db, ref: string) {
     Math.round(booking.start_at.getTime() / 1000) !== Number(epoch)
   )
     return null;
-  const page = await pageFor(db, booking);
+  const page = await pageFor(db, booking, true);
   if (!page) return null;
   return {
     title: `Reminder: ${page.title}`,
@@ -535,6 +646,7 @@ export async function reschedule(
     fail(409, "That's already the booked time.");
   const length = booking.end_at.getTime() - booking.start_at.getTime();
   const end = new Date(start.getTime() + length);
+  const previousAssignee = booking.assigned_user_id;
   await assertFree(db, page, booking, start, end, by.actor === "booker");
   const tz = await pageTimeZone(db, page);
   const from = whenLabel(booking.start_at, booking.end_at, tz);
@@ -544,29 +656,42 @@ export async function reschedule(
        updated_at = now() WHERE id = $1`,
     [booking.id, start, end],
   );
-  if (booking.item_ids.length)
+  const retained = await currentHostEvents(db, booking, page, true);
+  const itemIds = retained.map((item) => item.id);
+  if (itemIds.length)
     await db.query(
       `UPDATE items SET due_at = $2, end_at = $3, version = version + 1,
          reminder_version = reminder_version + 1, updated_at = now()
        WHERE id = ANY ($1::uuid[])`,
-      [booking.item_ids, start, end],
+      [itemIds, start, end],
     );
   booking.start_at = start;
   booking.end_at = end;
+  // Reassignment creates the new assignee's copy. Ordinary moves never
+  // recreate an event a host deliberately deleted or fan out ambiguous legacy
+  // bookings whose assignee FK was cleared by account deletion.
+  if (
+    booking.status === "confirmed" &&
+    previousAssignee &&
+    previousAssignee !== booking.assigned_user_id &&
+    !retained.length
+  ) {
+    itemIds.push(...(await createHostEvents(db, booking, page)));
+  }
+  await db.query("UPDATE bookings SET item_ids = $2 WHERE id = $1", [
+    booking.id,
+    itemIds,
+  ]);
+  booking.item_ids = itemIds;
   const to = whenLabel(start, end, tz);
   await logEvent(db, booking.id, "rescheduled", by, `From ${from} to ${to}`);
-  await queueWebhooks(
-    db,
-    "booking.rescheduled",
-    { user_id: page.owner_id, team_id: null },
-    {
-      id: booking.id,
-      ...source(page),
-      start_at: start.toISOString(),
-      end_at: end.toISOString(),
-      moved_by: by.actor,
-    },
-  );
+  await queuePageWebhook(db, "booking.rescheduled", page, {
+    id: booking.id,
+    ...source(page),
+    start_at: start.toISOString(),
+    end_at: end.toISOString(),
+    moved_by: by.actor,
+  });
   if (by.actor === "booker")
     await notifyHosts(
       db,

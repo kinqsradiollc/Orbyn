@@ -34,6 +34,8 @@ test("actual status entrypoint and status route graph exclude unrelated backend 
     assert.ok(inputs.includes("backend/src/modules/status/components.ts"));
     assert.ok(inputs.includes("backend/src/config/env.ts"));
     assert.ok(!inputs.includes("backend/src/app.ts"));
+    assert.ok(!inputs.includes("backend/src/services/http.ts"));
+    assert.ok(!inputs.includes("backend/src/lib/idempotency.ts"));
     assert.deepEqual(
       inputs.filter(
         (path) =>
@@ -48,7 +50,7 @@ test("actual status entrypoint and status route graph exclude unrelated backend 
     );
   }
   assert.ok(
-    graph("services/status.ts").includes("backend/src/services/http.ts"),
+    graph("services/status.ts").includes("backend/src/services/http-shared.ts"),
   );
 });
 
@@ -67,7 +69,7 @@ test("status factory uses the original shared HTTP shell and exactly its owned r
       module,
       exports: module.exports,
       require(name: string) {
-        if (name === "./http.js")
+        if (name === "./http-shared.js")
           return {
             createService: async (...args: unknown[]) => {
               calls.push(args);
@@ -131,7 +133,7 @@ test("real environment validation remains in the status graph with provider cred
 function startServiceCallback(context: Record<string, unknown>) {
   const tree = ts.createSourceFile(
     "http.ts",
-    source("services/http.ts"),
+    source("services/http-shared.ts"),
     ts.ScriptTarget.Latest,
     true,
   );
@@ -180,7 +182,7 @@ test("actual status entrypoint passes its stop callback and configured port to s
             return stop;
           },
         };
-      if (name === "./http.js")
+      if (name === "./http-shared.js")
         return {
           startService: async (
             value: unknown,

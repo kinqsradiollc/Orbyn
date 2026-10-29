@@ -658,6 +658,93 @@ test("a share can start a new page in a folder", async () => {
   );
 });
 
+test("keyed shares replay each destination without repeating its change", async () => {
+  const project = (
+    await call(member.token, "POST", "/projects", {
+      name: "Receipt project",
+      team_id: team,
+    })
+  ).json();
+  const folder = (
+    await call(member.token, "POST", "/folders", {
+      name: "Receipt folder",
+      team_id: team,
+    })
+  ).json();
+  const page = (
+    await call(member.token, "POST", "/docs", {
+      title: "Receipt page",
+      team_id: team,
+      content: [{ type: "paragraph", text: "Before" }],
+    })
+  ).json();
+  const destinations = [
+    { user: owner, to: { kind: "inbox" }, table: "items" },
+    {
+      user: member,
+      to: { kind: "project", project_id: project.id },
+      table: "items",
+    },
+    { user: owner, to: { kind: "agenda" }, table: "docs" },
+    { user: member, to: { kind: "page", doc_id: page.id }, table: "docs" },
+    {
+      user: member,
+      to: { kind: "new_page", folder_id: folder.id },
+      table: "docs",
+    },
+  ] as const;
+
+  for (const destination of destinations) {
+    const key = randomUUID();
+    const marker = `Receipt ${randomUUID()}`;
+    const payload = {
+      text: marker,
+      to: destination.to,
+      timezone: "Europe/London",
+    };
+    const submit = () =>
+      app.inject({
+        method: "POST",
+        url: "/capture",
+        remoteAddress: address(),
+        headers: {
+          authorization: `Bearer ${destination.user.token}`,
+          "idempotency-key": key,
+        },
+        payload,
+      });
+    const first = await submit();
+    assert.equal(first.statusCode, 201, first.body);
+    const result = first.json();
+    const id = result.item?.id ?? result.doc?.id;
+    const before = (
+      await pool.query(`SELECT * FROM ${destination.table} WHERE id=$1`, [id])
+    ).rows[0];
+    const replay = await submit();
+    assert.equal(replay.statusCode, 201, replay.body);
+    assert.equal(replay.headers["idempotent-replay"], "true");
+    assert.deepEqual(replay.json(), result);
+    assert.deepEqual(
+      (await pool.query(`SELECT * FROM ${destination.table} WHERE id=$1`, [id]))
+        .rows[0],
+      before,
+    );
+    if (
+      destination.to.kind === "inbox" ||
+      destination.to.kind === "project" ||
+      destination.to.kind === "new_page"
+    ) {
+      const count = (
+        await pool.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM ${destination.table} WHERE user_id=$1 AND title=$2`,
+          [destination.user.id, marker],
+        )
+      ).rows[0].n;
+      assert.equal(count, 1);
+    }
+  }
+});
+
 test("a share asks for a signed-in person, something shared, and a destination", async () => {
   assert.equal(
     (await call(null, "POST", "/capture", { text: "x", to: { kind: "inbox" } }))

@@ -26,6 +26,8 @@ import {
 } from "./pages.js";
 import {
   approve,
+  bookingSlotOptions,
+  bookingAvailabilityPage,
   cancel,
   decline,
   logEvent,
@@ -42,10 +44,12 @@ import {
  */
 
 export /** Pages `$1` owns, hosts, or manages as an owner or admin of the page's team. */
-const MY_PAGES = `SELECT id FROM booking_pages WHERE owner_id = $1
-  UNION SELECT page_id FROM booking_hosts WHERE user_id = $1
-  UNION SELECT bp.id FROM booking_pages bp JOIN team_members tm
-    ON tm.team_id = bp.team_id AND tm.user_id = $1 AND tm.role IN ('owner', 'admin')`;
+const MY_PAGES = `SELECT bp.id FROM booking_pages bp
+  LEFT JOIN team_members tm ON tm.team_id = bp.team_id AND tm.user_id = $1
+  WHERE (bp.team_id IS NULL OR tm.user_id IS NOT NULL)
+    AND (bp.owner_id = $1 OR EXISTS (SELECT 1 FROM booking_hosts bh
+      WHERE bh.page_id = bp.id AND bh.user_id = $1)
+      OR tm.role IN ('owner', 'admin'))`;
 
 /** Bookings on pages `$1` owns, hosts or manages, and from open invites they host. */
 export const MINE = `(b.page_id IN (${MY_PAGES})
@@ -87,12 +91,50 @@ export const VIEWS: Record<BookingView, { where: string; order: string }> = {
  * Who may see and act on its bookings: those, and its hosts. An open
  * invite's owner and co-hosts are its hosts.
  */
-export async function canEdit(db: Queryable, page: PageRow, u: UserRow) {
-  if (page.owner_id === u.id) return true;
-  return !!page.team_id && (await managesTeam(db, page.team_id, u.id));
+export async function canEdit(
+  db: Queryable,
+  page: PageRow,
+  u: UserRow,
+  lock = false,
+) {
+  if (!page.team_id) return page.owner_id === u.id;
+  const { role } = await teamAuthority(db, page, u.id, lock);
+  return (
+    !!role && (page.owner_id === u.id || role === "owner" || role === "admin")
+  );
 }
-export const canHost = async (db: Queryable, page: PageRow, u: UserRow) =>
-  page.hosts.some((h) => h.user_id === u.id) || (await canEdit(db, page, u));
+export async function canHost(
+  db: Queryable,
+  page: PageRow,
+  u: UserRow,
+  lock = false,
+) {
+  if (!page.team_id)
+    return page.owner_id === u.id || page.hosts.some((h) => h.user_id === u.id);
+  const { role, host } = await teamAuthority(db, page, u.id, lock);
+  return (
+    !!role &&
+    (page.owner_id === u.id || role === "owner" || role === "admin" || host)
+  );
+}
+
+async function teamAuthority(
+  db: Queryable,
+  page: PageRow,
+  userId: string,
+  lock: boolean,
+) {
+  return (
+    (
+      await db.query<{ role: string; host: boolean }>(
+        `SELECT role, EXISTS (SELECT 1 FROM booking_hosts h
+         WHERE h.page_id = $3 AND h.user_id = $2) AS host
+       FROM team_members WHERE team_id = $1 AND user_id = $2${lock ? " FOR SHARE" : ""}`,
+        [page.team_id, userId, page.id],
+      )
+    ).rows[0] ?? {}
+  );
+}
 
 /** A page `u` may edit (`owner`), or whose bookings they may act on. */
 export async function requirePage(
@@ -100,11 +142,14 @@ export async function requirePage(
   id: string,
   u: UserRow,
   owner: boolean,
+  lock = false,
 ) {
-  const page = await pageById(db, id);
+  const page = await pageById(db, id, lock);
   if (
     !page ||
-    !(owner ? await canEdit(db, page, u) : await canHost(db, page, u))
+    !(owner
+      ? await canEdit(db, page, u, lock)
+      : await canHost(db, page, u, lock))
   )
     fail(404, "Booking page not found");
   return page;
@@ -115,14 +160,21 @@ export async function requireBookingPage(
   db: Queryable,
   booking: { page_id: string | null; invite_id: string | null },
   u: UserRow,
+  lock = false,
 ) {
-  const page = await pageFor(db, booking);
-  if (!page || !(await canHost(db, page, u))) fail(404, "Booking not found");
+  const page = await pageFor(db, booking, lock);
+  if (!page || !(await canHost(db, page, u, lock)))
+    fail(404, "Booking not found");
   return page;
 }
 
 /** Lock a booking that `u` can act on, with its page. */
-export async function bookingFor(db: Db, id: string, u: UserRow) {
+export async function bookingFor(
+  db: Db,
+  id: string,
+  u: UserRow,
+  onAuthorized?: (page: PageRow) => Promise<void>,
+) {
   const booking = (
     await db.query<BookingRow>(
       "SELECT * FROM bookings WHERE id = $1 FOR UPDATE",
@@ -130,8 +182,9 @@ export async function bookingFor(db: Db, id: string, u: UserRow) {
     )
   ).rows[0];
   if (!booking) fail(404, "Booking not found");
-  const page = await requireBookingPage(db, booking, u);
+  const page = await requireBookingPage(db, booking, u, true);
   await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [page.id]);
+  if (onAuthorized) await onAuthorized(page);
   return { booking, page };
 }
 
@@ -176,11 +229,12 @@ export async function listBookingPages(db: Queryable, userId: string) {
   return (
     await db.query<PageRow & { can_edit: boolean }>(
       `SELECT ${PAGE_COLUMNS},
-         (p.owner_id = $1 OR p.team_id IN (SELECT team_id FROM team_members
-            WHERE user_id = $1 AND role IN ('owner', 'admin'))) AS can_edit
+         ((p.team_id IS NULL AND p.owner_id = $1) OR EXISTS (
+           SELECT 1 FROM team_members tm WHERE tm.team_id = p.team_id AND tm.user_id = $1
+             AND (p.owner_id = $1 OR tm.role IN ('owner', 'admin')))) AS can_edit
        FROM booking_pages p
-       WHERE p.owner_id = $1 OR p.id IN (SELECT page_id FROM booking_hosts WHERE user_id = $1)
-         OR ${inMyTeams("p")}
+       WHERE (p.team_id IS NULL AND (p.owner_id = $1 OR p.id IN (
+           SELECT page_id FROM booking_hosts WHERE user_id = $1))) OR ${inMyTeams("p")}
        ORDER BY p.created_at DESC`,
       [userId],
     )
@@ -338,11 +392,17 @@ export async function bookingSlots(
   const from = dayTime(firstDay, 0, q.timezone);
   const to = dayTime(addDays(firstDay, q.days), 0, q.timezone);
   const now = Date.now();
-  const slots = await availableSlots(db, page, duration, from, to, {
-    now: new Date(now - page.min_notice_minutes * 60_000),
-    ignoreBookingId: booking.id,
-    ignoreItemIds: booking.item_ids,
-  });
+  const slots = await availableSlots(
+    db,
+    bookingAvailabilityPage(page, booking),
+    duration,
+    from,
+    to,
+    {
+      now: new Date(now - page.min_notice_minutes * 60_000),
+      ...(await bookingSlotOptions(db, page, booking)),
+    },
+  );
   return {
     timezone: q.timezone,
     duration,
@@ -369,8 +429,9 @@ export async function bookingAction(
   u: UserRow,
   id: string,
   d: BookingActionInput,
+  onAuthorized?: (page: PageRow) => Promise<void>,
 ): Promise<BookingDetail> {
-  const { booking, page } = await bookingFor(db, id, u);
+  const { booking, page } = await bookingFor(db, id, u, onAuthorized);
   if (d.action === "approve") await approve(db, booking, page, u.id);
   else if (d.action === "decline")
     await decline(db, booking, page, u.id, d.reason);
@@ -390,8 +451,9 @@ export async function setNoShow(
   u: UserRow,
   id: string,
   noShow: boolean,
+  onAuthorized?: (page: PageRow) => Promise<void>,
 ): Promise<BookingDetail> {
-  const { booking } = await bookingFor(db, id, u);
+  const { booking } = await bookingFor(db, id, u, onAuthorized);
   if (booking.status !== "confirmed" || booking.start_at > new Date())
     fail(409, "You can mark a no-show once a confirmed booking has started.");
   if (booking.no_show !== noShow) {
@@ -416,8 +478,9 @@ export async function setHostNote(
   u: UserRow,
   id: string,
   note: string,
+  onAuthorized?: (page: PageRow) => Promise<void>,
 ): Promise<BookingDetail> {
-  const { booking } = await bookingFor(db, id, u);
+  const { booking } = await bookingFor(db, id, u, onAuthorized);
   await db.query(
     "UPDATE bookings SET host_note = $2, updated_at = now() WHERE id = $1",
     [booking.id, note],
@@ -437,7 +500,7 @@ export async function requireTeamManager(
   teamId: string,
   u: UserRow,
 ) {
-  if (!(await managesTeam(db, teamId, u.id)))
+  if (!(await managesTeam(db, teamId, u.id, true)))
     fail(
       403,
       "Only the team's owners and admins can manage its booking pages.",
@@ -449,11 +512,21 @@ export async function setHosts(
   pageId: string,
   ownerId: string,
   coHosts: { user_id: string; required: boolean }[],
+  teamId: string | null = null,
 ) {
   await db.query("DELETE FROM booking_hosts WHERE page_id = $1", [pageId]);
   const hosts = new Map<string, boolean>([[ownerId, true]]);
   for (const h of coHosts)
     if (h.user_id !== ownerId) hosts.set(h.user_id, h.required);
+  if (teamId) {
+    const members = await db.query<{ user_id: string }>(
+      `SELECT user_id FROM team_members WHERE team_id = $1
+         AND user_id = ANY ($2::uuid[]) ORDER BY user_id FOR SHARE`,
+      [teamId, [...hosts.keys()]],
+    );
+    const live = new Set(members.rows.map((m) => m.user_id));
+    for (const user of hosts.keys()) if (!live.has(user)) hosts.delete(user);
+  }
   for (const [user, required] of hosts)
     await db.query(
       "INSERT INTO booking_hosts (page_id, user_id, required) VALUES ($1, $2, $3)",
@@ -540,7 +613,7 @@ export async function createBookingPage(
       )
       .catch(taken)
   ).rows[0];
-  await setHosts(db, id, u.id, d.co_hosts);
+  await setHosts(db, id, u.id, d.co_hosts, d.team_id);
   return { ...(await pageById(db, id)), can_edit: true };
 }
 
@@ -552,7 +625,7 @@ export async function updateBookingPage(
   input: z.input<typeof bookingPageUpdate>,
 ) {
   const d = bookingPageUpdate.parse(input);
-  const current = await requirePage(db, id, u, true);
+  const current = await requirePage(db, id, u, true, true);
   const { buffer_minutes, co_hosts, ...changes } = d;
   const next: PageFields = { ...current, ...changes };
   const team = next.team_id ?? null;
@@ -588,12 +661,19 @@ export async function updateBookingPage(
       [current.id, ...pageValues(next)],
     )
     .catch(taken);
-  if (co_hosts) await setHosts(db, current.id, current.owner_id, co_hosts);
+  if (co_hosts || team !== (current.team_id ?? null))
+    await setHosts(
+      db,
+      current.id,
+      current.owner_id,
+      co_hosts ?? current.hosts,
+      team,
+    );
   return { ...(await pageById(db, current.id)), can_edit: true };
 }
 
 /** Remove a booking page (its owner, or the team's owners and admins). */
 export async function deleteBookingPage(db: Db, u: UserRow, id: string) {
-  const page = await requirePage(db, id, u, true);
+  const page = await requirePage(db, id, u, true, true);
   await db.query("DELETE FROM booking_pages WHERE id = $1", [page.id]);
 }

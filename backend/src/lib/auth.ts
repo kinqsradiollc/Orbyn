@@ -142,7 +142,7 @@ export async function authenticateSessionBinding(r: FastifyRequest) {
 export const isApiKeyRequest = (r: FastifyRequest) => viaApiKey.has(r);
 
 export const KEY_BLOCKED_MESSAGE =
-  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, change what outside agents can reach, publish to the web, or use the assistant. Sign in to Orbyn to do that.";
+  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, change team membership or what outside agents can reach, publish to the web, or use the assistant. Sign in to Orbyn to do that.";
 
 /**
  * What a personal API key may never do, although it otherwise acts as its
@@ -154,6 +154,16 @@ export const KEY_BLOCKED_MESSAGE =
  * (Deleting a key is refused in its route unless it's the calling key.)
  */
 const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
+  // Membership grants and role changes create durable access beyond this key;
+  // removing a member (including its owner leaving) can lock the owner out.
+  { method: "POST", route: /^\/teams\/:id\/members$/ },
+  { method: "PUT", route: /^\/teams\/:id\/members\/:userId$/ },
+  { method: "DELETE", route: /^\/teams\/:id\/members\/:userId$/ },
+  // Only a signed-in person chooses persistent assistant approvals and work.
+  { method: "PUT", route: /^\/me\/assistant\/approval-scopes$/ },
+  { method: "POST", route: /^\/me\/agent-routines$/ },
+  { method: "PUT", route: /^\/me\/agent-routines\/:id$/ },
+  { method: "DELETE", route: /^\/me\/agent-routines\/:id$/ },
   { method: "POST", route: /^\/me\/api-keys$/ },
   { route: /^\/me\/(?:webhooks|chat|sessions|2fa|passkeys)(?:\/|$)/ },
   // The account export, as JSON or as the .zip with every page in it.

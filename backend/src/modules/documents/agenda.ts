@@ -318,13 +318,42 @@ export type BriefWriter = (
   ownerId: string,
 ) => Promise<string | null>;
 
+/** An enclosing write owns both the transaction and its after-commit work. */
+export type AgendaTransaction = {
+  db: Queryable;
+  after: (() => Promise<void>)[];
+};
+
+type AgendaOptions = {
+  brief?: BriefWriter;
+  now?: Date;
+  transaction?: AgendaTransaction;
+};
+
+const inAgendaTransaction = <T>(
+  enclosing: AgendaTransaction | undefined,
+  write: (db: Queryable) => Promise<T>,
+) => (enclosing ? write(enclosing.db) : transaction(write));
+
+async function announceAgendaChange(
+  id: string,
+  version: number,
+  enclosing?: AgendaTransaction,
+) {
+  const announce = () =>
+    announceDocChange(pool, id, version, "agenda").catch(() => {});
+  if (enclosing) enclosing.after.push(announce);
+  else await announce();
+}
+
 async function contentFor(
   userId: string,
   now: Date,
   writeBrief: BriefWriter | undefined,
   other: { dayName: string; past: boolean } | null = null,
+  db: Queryable = pool,
 ) {
-  const day = await readDay(userId, now, other?.past, !other);
+  const day = await readDay(userId, now, other?.past, !other, false, db);
   // The assistant's words are about today; another day reads without them.
   const brief =
     writeBrief && !other ? await writeBrief(day, now, userId) : null;
@@ -350,9 +379,9 @@ async function contentFor(
   };
 }
 
-const readDoc = async (id: string) =>
+const readDoc = async (id: string, db: Queryable = pool) =>
   (
-    await pool.query<Doc>(
+    await db.query<Doc>(
       `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS} WHERE d.id = $1`,
       [id],
     )
@@ -362,9 +391,14 @@ const readDoc = async (id: string) =>
  * The agenda page for one day, when there is one (Trash left out), and
  * whether it was written before its day began.
  */
-async function findAgenda(userId: string, date: string, tz: string) {
+async function findAgenda(
+  userId: string,
+  date: string,
+  tz: string,
+  db: Queryable = pool,
+) {
   return (
-    await pool.query<{ id: string; version: number; written_early: boolean }>(
+    await db.query<{ id: string; version: number; written_early: boolean }>(
       `SELECT d.id, d.version,
               d.created_at < $3::timestamptz AS written_early
          FROM docs d
@@ -377,7 +411,7 @@ async function findAgenda(userId: string, date: string, tz: string) {
 }
 
 /** The zone the agenda's days are in: the account's, as everywhere else. */
-const zoneOf = (userId: string) => dayZoneFor(pool, userId);
+const zoneOf = (userId: string, db: Queryable = pool) => dayZoneFor(db, userId);
 
 const dayStartOf = (date: string, tz: string) => dayTime(date, 0, tz);
 
@@ -389,8 +423,9 @@ async function writeDay(
   userId: string,
   date: string,
   content: DocBlock[],
+  enclosing?: AgendaTransaction,
 ): Promise<{ id: string; created: boolean }> {
-  return transaction(async (db) => {
+  return inAgendaTransaction(enclosing, async (db) => {
     await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       `agenda:${userId}`,
     ]);
@@ -426,7 +461,7 @@ async function writeDay(
  */
 export async function todaysAgenda(
   userId: string,
-  options: { brief?: BriefWriter; now?: Date } = {},
+  options: AgendaOptions = {},
 ): Promise<Doc> {
   return (await writeTodaysAgenda(userId, options)).doc;
 }
@@ -434,18 +469,19 @@ export async function todaysAgenda(
 /** {@link todaysAgenda}, saying whether the page was written just now. */
 export async function writeTodaysAgenda(
   userId: string,
-  options: { brief?: BriefWriter; now?: Date } = {},
+  options: AgendaOptions = {},
 ): Promise<{ doc: Doc; created: boolean; generatedVersion?: number }> {
   const now = options.now ?? new Date();
-  const tz = await zoneOf(userId);
+  const db = options.transaction?.db ?? pool;
+  const tz = await zoneOf(userId, db);
   const date = localDateKey(now, tz);
-  const found = await findAgenda(userId, date, tz);
+  const found = await findAgenda(userId, date, tz, db);
   if (found && !(found.written_early && found.version === 1))
-    return { doc: await readDoc(found.id), created: false };
-  const { content } = await contentFor(userId, now, options.brief);
+    return { doc: await readDoc(found.id, db), created: false };
+  const { content } = await contentFor(userId, now, options.brief, null, db);
   if (found) {
     const version = (
-      await pool.query<{ version: number }>(
+      await db.query<{ version: number }>(
         `UPDATE docs SET content = $2::jsonb, version = version + 1,
            updated_at = now()
          WHERE id = $1 AND version = 1 RETURNING version`,
@@ -453,18 +489,16 @@ export async function writeTodaysAgenda(
       )
     ).rows[0]?.version;
     if (version)
-      await announceDocChange(pool, found.id, version, "agenda").catch(
-        () => {},
-      );
+      await announceAgendaChange(found.id, version, options.transaction);
     return {
-      doc: await readDoc(found.id),
+      doc: await readDoc(found.id, db),
       created: false,
       ...(version ? { generatedVersion: version } : {}),
     };
   }
-  const made = await writeDay(userId, date, content);
+  const made = await writeDay(userId, date, content, options.transaction);
   return {
-    doc: await readDoc(made.id),
+    doc: await readDoc(made.id, db),
     created: made.created,
     ...(made.created ? { generatedVersion: 1 } : {}),
   };
@@ -478,11 +512,12 @@ export async function writeTodaysAgenda(
 export async function todaysAgendaIfWritten(
   userId: string,
   now = new Date(),
+  db: Queryable = pool,
 ): Promise<Doc | null> {
-  const tz = await zoneOf(userId);
-  const found = await findAgenda(userId, localDateKey(now, tz), tz);
+  const tz = await zoneOf(userId, db);
+  const found = await findAgenda(userId, localDateKey(now, tz), tz, db);
   if (!found || (found.written_early && found.version === 1)) return null;
-  return readDoc(found.id);
+  return readDoc(found.id, db);
 }
 
 /** How far back and ahead the agenda steps: a year back, two months ahead. */
@@ -497,8 +532,9 @@ export async function agendaDayOf(
   userId: string,
   date: string,
   now = new Date(),
+  db: Queryable = pool,
 ) {
-  const tz = await zoneOf(userId);
+  const tz = await zoneOf(userId, db);
   const today = localDateKey(now, tz);
   if (date === today) return { tz, today, when: "today" as const };
   if (date < addDays(today, -DAYS_BACK) || date > addDays(today, DAYS_AHEAD))
@@ -536,22 +572,31 @@ export async function writeAgendaOn(
   userId: string,
   date: string,
   now = new Date(),
+  enclosing?: AgendaTransaction,
 ): Promise<{ doc: Doc; created: boolean } | null> {
-  const day = await agendaDayOf(userId, date, now);
+  const db = enclosing?.db ?? pool;
+  const day = await agendaDayOf(userId, date, now, db);
   if (!day) return null;
-  if (day.when === "today") return writeTodaysAgenda(userId, { now });
-  const found = await findAgenda(userId, date, day.tz);
-  if (found) return { doc: await readDoc(found.id), created: false };
+  if (day.when === "today")
+    return writeTodaysAgenda(userId, { now, transaction: enclosing });
+  const found = await findAgenda(userId, date, day.tz, db);
+  if (found) return { doc: await readDoc(found.id, db), created: false };
   const start = dayStartOf(date, day.tz);
-  const { content } = await contentFor(userId, start, undefined, {
-    dayName: start.toLocaleDateString("en-GB", {
-      timeZone: day.tz,
-      weekday: "long",
-    }),
-    past: day.when === "past",
-  });
-  const made = await writeDay(userId, date, content);
-  return { doc: await readDoc(made.id), created: made.created };
+  const { content } = await contentFor(
+    userId,
+    start,
+    undefined,
+    {
+      dayName: start.toLocaleDateString("en-GB", {
+        timeZone: day.tz,
+        weekday: "long",
+      }),
+      past: day.when === "past",
+    },
+    db,
+  );
+  const made = await writeDay(userId, date, content, enclosing);
+  return { doc: await readDoc(made.id, db), created: made.created };
 }
 
 /**
@@ -562,12 +607,22 @@ export async function writeAgendaOn(
  */
 export async function rewriteAgenda(
   userId: string,
-  options: { brief?: BriefWriter; now?: Date } = {},
+  options: AgendaOptions = {},
 ): Promise<Doc & { brief: boolean }> {
   const now = options.now ?? new Date();
-  const doc = await todaysAgenda(userId, { now });
-  const { content, brief } = await contentFor(userId, now, options.brief);
-  const version = await transaction(async (db) => {
+  const db = options.transaction?.db ?? pool;
+  const doc = await todaysAgenda(userId, {
+    now,
+    transaction: options.transaction,
+  });
+  const { content, brief } = await contentFor(
+    userId,
+    now,
+    options.brief,
+    null,
+    db,
+  );
+  const version = await inAgendaTransaction(options.transaction, async (db) => {
     // Read under the lock, so words typed into Notes a moment ago are the
     // ones kept, not a copy from before them.
     const current = (
@@ -584,6 +639,6 @@ export async function rewriteAgenda(
       )
     ).rows[0].version;
   });
-  await announceDocChange(pool, doc.id, version, "agenda").catch(() => {});
-  return { ...(await readDoc(doc.id)), brief: !!brief };
+  await announceAgendaChange(doc.id, version, options.transaction);
+  return { ...(await readDoc(doc.id, db)), brief: !!brief };
 }

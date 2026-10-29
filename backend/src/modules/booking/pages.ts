@@ -16,7 +16,9 @@ export const PAGE_COLUMNS = `p.id, p.owner_id, p.slug, p.title, p.description, p
   (SELECT name FROM teams WHERE id = p.team_id) AS team_name,
   coalesce((SELECT json_agg(json_build_object('user_id', h.user_id, 'name', u.name, 'required', h.required)
                             ORDER BY h.required DESC, u.name)
-            FROM booking_hosts h JOIN users u ON u.id = h.user_id WHERE h.page_id = p.id), '[]') AS hosts,
+            FROM booking_hosts h JOIN users u ON u.id = h.user_id WHERE h.page_id = p.id
+              AND (p.team_id IS NULL OR EXISTS (SELECT 1 FROM team_members tm
+                WHERE tm.team_id = p.team_id AND tm.user_id = h.user_id))), '[]') AS hosts,
   json_build_object(
     'upcoming', (SELECT count(*)::int FROM bookings b
                  WHERE b.page_id = p.id AND b.status = 'confirmed' AND b.end_at >= now()),
@@ -24,13 +26,34 @@ export const PAGE_COLUMNS = `p.id, p.owner_id, p.slug, p.title, p.description, p
                        WHERE b.page_id = p.id AND b.status = 'awaiting_approval' AND b.hold_until > now())
   ) AS counts`;
 
-export async function pageById(db: Queryable, id: string) {
-  return (
+export async function pageById(db: Queryable, id: string, lock = false) {
+  const page = (
     await db.query<PageRow>(
-      `SELECT ${PAGE_COLUMNS} FROM booking_pages p WHERE p.id = $1`,
+      `SELECT ${PAGE_COLUMNS} FROM booking_pages p WHERE p.id = $1${lock ? " FOR UPDATE OF p" : ""}`,
       [id],
     )
   ).rows[0];
+  if (page) await retainTeamHosts(db, page, lock);
+  return page;
+}
+
+/** Lock live memberships through a booking transaction and discard stale hosts.
+ * The second read also covers removal committed after the page was loaded. */
+export async function retainTeamHosts(
+  db: Queryable,
+  page: PageRow,
+  lock = false,
+) {
+  if (!page.team_id) return;
+  const members = await db.query<{ user_id: string }>(
+    `SELECT user_id FROM team_members tm WHERE team_id = $1
+       AND user_id = ANY ($2::uuid[]) AND EXISTS (SELECT 1 FROM booking_hosts h
+         WHERE h.page_id = $3 AND h.user_id = tm.user_id)
+       ORDER BY user_id${lock ? " FOR SHARE" : ""}`,
+    [page.team_id, page.hosts.map((h) => h.user_id), page.id],
+  );
+  const live = new Set(members.rows.map((m) => m.user_id));
+  page.hosts = page.hosts.filter((h) => live.has(h.user_id));
 }
 
 export const INVITE_COLUMNS = `oi.id, oi.owner_id, oi.title, oi.duration, oi.windows, oi.location,
@@ -109,8 +132,9 @@ export async function inviteAsPage(
 export async function pageFor(
   db: Queryable,
   booking: { page_id: string | null; invite_id: string | null },
+  lock = false,
 ): Promise<PageRow | undefined> {
-  if (booking.page_id) return pageById(db, booking.page_id);
+  if (booking.page_id) return pageById(db, booking.page_id, lock);
   const invite = booking.invite_id
     ? await inviteById(db, booking.invite_id)
     : undefined;
@@ -122,11 +146,12 @@ export async function managesTeam(
   db: Queryable,
   teamId: string,
   userId: string,
+  lock = false,
 ) {
   return !!(
     await db.query(
       `SELECT 1 FROM team_members
-       WHERE team_id = $1 AND user_id = $2 AND role IN ('owner', 'admin')`,
+       WHERE team_id = $1 AND user_id = $2 AND role IN ('owner', 'admin')${lock ? " FOR SHARE" : ""}`,
       [teamId, userId],
     )
   ).rowCount;
@@ -144,6 +169,16 @@ export async function checkCoHosts(
 ) {
   const others = [...new Set(ids.filter((id) => id !== ownerId))];
   if (!others.length) return;
+  if (teamId) {
+    const members = await db.query<{ user_id: string }>(
+      `SELECT user_id FROM team_members WHERE team_id = $1
+         AND user_id = ANY ($2::uuid[]) ORDER BY user_id FOR SHARE`,
+      [teamId, others],
+    );
+    if (members.rows.length !== others.length)
+      fail(422, "Hosts of a team's page must be in the team.");
+    return;
+  }
   const ok = (
     await db.query<{ n: number }>(
       `SELECT count(DISTINCT m.user_id)::int AS n FROM team_members m

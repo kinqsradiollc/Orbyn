@@ -175,6 +175,9 @@ export type Capability<
   access: AgentAccess;
   toolset: AgentToolset;
   mode: Mode;
+  /** Reads whose authority must see committed revocations use the primary.
+   * The transaction remains read-only; omitted reads may use a replica. */
+  readConsistency?: "primary";
   tier: Tier;
   effects?: Effect[];
   /**

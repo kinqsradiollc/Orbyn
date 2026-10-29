@@ -1,4 +1,4 @@
-import { test, before, after } from "node:test";
+import { test, before, after, mock } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, generateKeyPairSync, sign } from "node:crypto";
 import "./setup.js";
@@ -532,6 +532,10 @@ test("first-party models and executor routes reject other principals, malformed 
     chatgptModelRoutes,
     chatgptExecutorRoutes,
   ]);
+  let handlerEntries = 0;
+  app.addHook("preHandler", async () => {
+    handlerEntries++;
+  });
   let address = 1;
   const call = (
     method: "GET" | "PUT" | "POST",
@@ -539,16 +543,15 @@ test("first-party models and executor routes reject other principals, malformed 
     token?: string,
     payload?: unknown,
     ip?: string,
+    keyed = false,
   ) =>
     app.inject({
       method,
       url,
-      headers: token
-        ? {
-            authorization: `Bearer ${token}`,
-            "idempotency-key": "fixture-request-key",
-          }
-        : {},
+      headers: {
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(keyed ? { "idempotency-key": "fixture-request-key" } : {}),
+      },
       payload: payload as object,
       remoteAddress: ip ?? `10.78.0.${address++}`,
     });
@@ -618,11 +621,136 @@ test("first-party models and executor routes reject other principals, malformed 
     const saved = await call("PUT", "/models/default", f.session.token, change);
     assert.equal(saved.statusCode, 200, saved.body);
     assert.equal(saved.headers["cache-control"], "no-store");
-    // The identical Idempotency-Key cannot bypass live CAS by replaying the first answer.
+    // An unkeyed stale version must reach live CAS, not the unsupported-key guard.
+    const stale = await call("PUT", "/models/default", f.session.token, change);
+    assert.equal(stale.statusCode, 409, stale.body);
+    assert.equal(stale.headers["idempotency-outcome"], undefined);
+    assert.equal(stale.headers["idempotent-replay"], undefined);
     assert.equal(
-      (await call("PUT", "/models/default", f.session.token, change))
-        .statusCode,
-      409,
+      (await readChatgptModelCatalog(f.session, selection)).preference.version,
+      saved.json().version,
+    );
+
+    const expired = await person(f.session.userId);
+    await pool.query(
+      "UPDATE sessions SET expires_at=now()-interval '1 second' WHERE id=$1",
+      [expired.sessionId],
+    );
+    // Keyed writes stop before the remaining hooks/handlers or any receipt
+    // read/write. Real authentication still runs through the guarded pool.
+    const query = pool.query;
+    const queryGuard = mock.method(
+      pool,
+      "query",
+      function (this: typeof pool, ...args: unknown[]) {
+        const sql = args[0];
+        assert.ok(typeof sql === "string");
+        assert.ok(
+          !sql.includes("idempotency_keys"),
+          "identity proofs must never use receipt storage",
+        );
+        return Reflect.apply(query, this, args);
+      },
+    );
+    const beforeKeyed = handlerEntries;
+    try {
+      for (const [path, body] of [
+        ["/models/default", change],
+        [
+          "/ai/connections/chatgpt/executors/challenges",
+          { connection_id: f.connection.id },
+        ],
+        ["/ai/connections/chatgpt/executors/complete", {}],
+        [
+          "/ai/connections/chatgpt/leases/challenges",
+          { executor_id: f.executor.id },
+        ],
+        ["/ai/connections/chatgpt/leases/complete", {}],
+        ["/ai/connections/chatgpt/leases/heartbeat", {}],
+        ["/ai/connections/chatgpt/catalog", f.publication(2)],
+        [
+          "/ai/connections/chatgpt/inference/claim",
+          { executor_id: f.executor.id },
+        ],
+        ["/ai/connections/chatgpt/inference/result", {}],
+      ] as const) {
+        for (const token of [
+          undefined,
+          expired.token,
+          apiKey,
+          f.session.token,
+        ]) {
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const rejected = await call(
+              path === "/models/default" ? "PUT" : "POST",
+              path,
+              token,
+              body,
+              undefined,
+              true,
+            );
+            const expected =
+              token === undefined || token === expired.token
+                ? 401
+                : token === apiKey && path.startsWith("/ai/")
+                  ? 403
+                  : 409;
+            assert.equal(rejected.statusCode, expected, rejected.body);
+            assert.equal(rejected.headers["idempotent-replay"], undefined);
+            assert.equal(handlerEntries, beforeKeyed);
+            if (expected === 409) {
+              assert.equal(
+                rejected.headers["idempotency-outcome"],
+                "unsupported",
+              );
+              assert.doesNotMatch(
+                rejected.body,
+                /nonce|proof_message|public_key|access_token/,
+              );
+            }
+          }
+        }
+      }
+    } finally {
+      queryGuard.mock.restore();
+    }
+    assert.deepEqual(
+      (await readChatgptModelCatalog(f.session, selection)).preference,
+      saved.json(),
+    );
+    for (const token of [undefined, expired.token, apiKey, f.session.token]) {
+      const keyedGet = await call(
+        "GET",
+        url,
+        token,
+        undefined,
+        undefined,
+        true,
+      );
+      assert.equal(
+        keyedGet.statusCode,
+        token === f.session.token ? 200 : token === apiKey ? 403 : 401,
+        keyedGet.body,
+      );
+      assert.equal(keyedGet.headers["idempotent-replay"], undefined);
+      if (token === f.session.token) {
+        assert.equal(keyedGet.headers["cache-control"], "no-store");
+        assert.deepEqual(keyedGet.json().preference, saved.json());
+      }
+    }
+    const leaseChallenge = await call(
+      "POST",
+      "/ai/connections/chatgpt/leases/challenges",
+      f.session.token,
+      { executor_id: f.executor.id },
+    );
+    assert.equal(leaseChallenge.statusCode, 200, leaseChallenge.body);
+    assert.equal(leaseChallenge.headers["cache-control"], "no-store");
+    assert.equal(leaseChallenge.json().executor_id, f.executor.id);
+    assert.equal(typeof leaseChallenge.json().proof_message, "string");
+    assert.ok(
+      handlerEntries > beforeKeyed,
+      "unkeyed controls must reach handlers",
     );
     assert.equal(
       (

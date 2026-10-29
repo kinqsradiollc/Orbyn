@@ -380,7 +380,7 @@ test("an admin's key is an ordinary member for teams it isn't on", async () => {
         role: "owner",
       })
     ).status,
-    404,
+    403,
   );
   const still = await call(owner.token, "GET", path);
   assert.equal(still.body.name, "Studio");
@@ -409,4 +409,132 @@ test("during maintenance an admin's session may change things, its key may not",
     await pool.query("DELETE FROM system_settings WHERE key = 'maintenance'");
     invalidateSettings();
   }
+});
+
+test("personal keys cannot grant, promote, demote or remove team membership", async () => {
+  const owner = await newUser();
+  const teammate = await newUser();
+  const outsider = await newUser();
+  const ownerKey = await newKey(owner.token);
+  const created = await call(owner.token, "POST", "/teams", {
+    name: "Key boundary",
+  });
+  assert.equal(created.status, 201, created.raw.body);
+  const path = `/teams/${created.body.id}`;
+  const sessionAdd = await call(owner.token, "POST", `${path}/members`, {
+    email: teammate.email,
+    role: "member",
+  });
+  assert.equal(sessionAdd.status, 201, sessionAdd.raw.body);
+  for (const role of ["viewer", "member", "admin", "owner"]) {
+    const grant = await call(ownerKey.key, "POST", `${path}/members`, {
+      email: outsider.email,
+      role,
+    });
+    assert.equal(grant.status, 403, grant.raw.body);
+    const promote = await call(
+      ownerKey.key,
+      "PUT",
+      `${path}/members/${teammate.id}`,
+      { role },
+    );
+    assert.equal(promote.status, 403, promote.raw.body);
+  }
+  const promoted = await call(
+    owner.token,
+    "PUT",
+    `${path}/members/${teammate.id}`,
+    { role: "owner" },
+  );
+  assert.equal(promoted.status, 200, promoted.raw.body);
+  // A second owner exists: the last-owner guard would not stop this takeover.
+  const demote = await call(
+    ownerKey.key,
+    "PUT",
+    `${path}/members/${owner.id}`,
+    { role: "viewer" },
+  );
+  assert.equal(demote.status, 403, demote.raw.body);
+  for (const id of [owner.id, teammate.id]) {
+    const removed = await call(ownerKey.key, "DELETE", `${path}/members/${id}`);
+    assert.equal(removed.status, 403, removed.raw.body);
+  }
+  const summary = await call(ownerKey.key, "GET", path);
+  assert.equal(summary.status, 200, summary.raw.body);
+  assert.deepEqual(
+    summary.body.members.map((m: Json) => [m.user_id, m.role]).sort(),
+    [
+      [owner.id, "owner"],
+      [teammate.id, "owner"],
+    ].sort(),
+  );
+  const removed = await call(
+    owner.token,
+    "DELETE",
+    `${path}/members/${teammate.id}`,
+  );
+  assert.equal(removed.status, 204, removed.raw.body);
+});
+
+test("personal keys cannot persist assistant approvals or scheduled routines", async () => {
+  const person = await newUser();
+  const personalKey = await newKey(person.token);
+  const initialScopes = await call(
+    person.token,
+    "GET",
+    "/me/assistant/approval-scopes",
+  );
+  assert.equal(initialScopes.status, 200, initialScopes.raw.body);
+  const input = {
+    instruction: "Review fixture priorities",
+    rrule: "FREQ=DAILY",
+    timezone: "UTC",
+    next_run_at: new Date(Date.now() + 3_600_000).toISOString(),
+  };
+  const deniedScopes = await call(
+    personalKey.key,
+    "PUT",
+    "/me/assistant/approval-scopes",
+    {
+      tasks: "always",
+    },
+  );
+  assert.equal(deniedScopes.status, 403, deniedScopes.raw.body);
+  const deniedCreate = await call(
+    personalKey.key,
+    "POST",
+    "/me/agent-routines",
+    input,
+  );
+  assert.equal(deniedCreate.status, 403, deniedCreate.raw.body);
+  assert.deepEqual(
+    (await call(person.token, "GET", "/me/assistant/approval-scopes")).body,
+    initialScopes.body,
+  );
+  assert.deepEqual(
+    (await call(person.token, "GET", "/me/agent-routines")).body,
+    [],
+  );
+
+  const made = await call(person.token, "POST", "/me/agent-routines", input);
+  assert.equal(made.status, 201, made.raw.body);
+  const path = `/me/agent-routines/${made.body.id}`;
+  assert.equal(
+    (await call(personalKey.key, "PUT", path, { paused: true })).status,
+    403,
+  );
+  assert.equal((await call(personalKey.key, "DELETE", path)).status, 403);
+  const routines = await call(person.token, "GET", "/me/agent-routines");
+  assert.equal(routines.body.length, 1);
+  assert.equal(routines.body[0].paused, false);
+  const savedScopes = await call(
+    person.token,
+    "PUT",
+    "/me/assistant/approval-scopes",
+    {
+      tasks: { scope: "routine", id: made.body.id },
+    },
+  );
+  assert.equal(savedScopes.status, 200, savedScopes.raw.body);
+  assert.equal((await call(person.token, "DELETE", path)).status, 200);
 });
