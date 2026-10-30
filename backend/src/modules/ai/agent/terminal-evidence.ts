@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { HttpError } from "@orbyn/core";
 import type { ProviderError } from "../providers/adapters.js";
+import { goalExecutionOutput } from "@orbyn/core";
 
 const terminalCause = z.enum([
   "finished",
@@ -119,6 +120,7 @@ export const storedAssistantApplyResult = z
       .strict()
       .nullable(),
     why: z.array(z.string()),
+    goal_outputs: z.array(goalExecutionOutput).max(100).optional(),
   })
   .strict();
 

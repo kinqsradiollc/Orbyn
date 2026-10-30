@@ -213,7 +213,7 @@ async function available(
          AND i.status NOT IN ('done', 'cancelled') AND i.agent_attempts < 3
          AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.id = i.project_id AND p.assistant_off)`
       : next.source === "goal"
-        ? `SELECT 1 FROM goals g WHERE g.id = $1 AND g.user_id = $2 AND g.status = 'active' AND ${assistantSourceVisible("'goal'", "g.id", "$2")}
+        ? `SELECT 1 FROM goals g WHERE g.id = $1 AND g.user_id = $2 AND g.status = 'active' AND NOT EXISTS(SELECT 1 FROM assistant_goal_executions execution WHERE execution.goal_id=g.id AND execution.state NOT IN ('stopped','completed')) AND ${assistantSourceVisible("'goal'", "g.id", "$2")}
          AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.assistant_off AND (p.id = g.project_id OR EXISTS(SELECT 1 FROM docs d WHERE d.id = g.plan_doc_id AND d.project_id = p.id)))
          AND NOT EXISTS(SELECT 1 FROM goals_checkins c WHERE c.goal_id = g.id AND c.week_of = $3::date AND NOT ${checkinClaimable("c", "$4")})`
         : `SELECT 1 FROM agent_routines WHERE id = $1 AND user_id = $2 AND NOT paused AND current_job_id IS NULL`;
@@ -282,7 +282,7 @@ async function candidates(
       }>(
         `SELECT g.id, g.title, g.target, date_trunc('week', $2::timestamptz AT TIME ZONE $3)::date::text AS week
        FROM goals g LEFT JOIN goals_checkins c ON c.goal_id = g.id AND c.week_of = date_trunc('week', $2::timestamptz AT TIME ZONE $3)::date
-       WHERE g.user_id = $1 AND (g.project_id IS NULL OR EXISTS(SELECT 1 FROM projects source_project WHERE source_project.id=g.project_id AND ${visibleProjects("source_project", { user: "$1", ai: true })})) AND (g.plan_doc_id IS NULL OR EXISTS(SELECT 1 FROM docs source_doc WHERE source_doc.id=g.plan_doc_id AND ${visibleDocs("source_doc", { user: "$1", ai: true })})) AND g.status = 'active' AND (c.id IS NULL OR ${checkinClaimable("c", "$2")})
+       WHERE g.user_id = $1 AND (g.project_id IS NULL OR EXISTS(SELECT 1 FROM projects source_project WHERE source_project.id=g.project_id AND ${visibleProjects("source_project", { user: "$1", ai: true })})) AND (g.plan_doc_id IS NULL OR EXISTS(SELECT 1 FROM docs source_doc WHERE source_doc.id=g.plan_doc_id AND ${visibleDocs("source_doc", { user: "$1", ai: true })})) AND g.status = 'active' AND NOT EXISTS(SELECT 1 FROM assistant_goal_executions execution WHERE execution.goal_id=g.id AND execution.state NOT IN ('stopped','completed')) AND (c.id IS NULL OR ${checkinClaimable("c", "$2")})
          AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.assistant_off AND (p.id = g.project_id OR EXISTS(SELECT 1 FROM docs d WHERE d.id = g.plan_doc_id AND d.project_id = p.id)))
        ORDER BY g.updated_at, g.id LIMIT 50`,
         [userId, now, prefs.timezone],
@@ -547,6 +547,19 @@ async function claimSource(
     if (!changed.rowCount)
       throw new Error("This Tonight task is no longer available.");
   } else if (next.source === "goal") {
+    await db.query(
+      "SELECT id FROM goals WHERE id=$1 AND user_id=$2 FOR UPDATE",
+      [next.id, userId],
+    );
+    if (
+      (
+        await db.query(
+          "SELECT id FROM assistant_goal_executions WHERE goal_id=$1 AND state NOT IN ('stopped','completed')",
+          [next.id],
+        )
+      ).rowCount
+    )
+      throw new Error("This goal now has explicitly scoped work.");
     const changed = await db.query(
       `INSERT INTO goals_checkins(goal_id, user_id, week_of, summary, progress, status, job_id, claimed_at, attempts)
       VALUES($1, $2, $3::date, 'Night review in progress', '{}'::jsonb, 'running', $4, $5, 1)
@@ -754,6 +767,18 @@ export async function scanNightShift(
           });
           next = plan.candidates[++plan.cursor];
         }
+        if (
+          !next &&
+          night.runs < 10 &&
+          night.budget_used < budget &&
+          (
+            await db.query(
+              "SELECT id FROM assistant_goal_executions WHERE owner_id=$1 AND lane='overnight' AND state IN ('ready','active','waiting') AND NOT admissions_paused LIMIT 1",
+              [person.id],
+            )
+          ).rowCount
+        )
+          return 0;
         if (!next || night.runs >= 10 || night.budget_used >= budget) {
           const reason =
             night.runs >= 10

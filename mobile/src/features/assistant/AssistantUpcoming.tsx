@@ -1,3 +1,4 @@
+import { GoalWorkSheet } from "./GoalWorkSheet";
 import { RoutineRunHistory } from "./RoutineRunHistory";
 import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
@@ -128,6 +129,10 @@ function UpcomingBody({
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState<ApprovalScopes>({});
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [workGoal, setWorkGoal] = useState<{
+    goal: Goal;
+    mode: "start" | "history";
+  } | null>(null);
   const [checkins, setCheckins] = useState<Record<string, GoalCheckin[]>>({});
   const [routines, setRoutines] = useState<AgentRoutine[]>([]);
   const [historyRoutineId, setHistoryRoutineId] = useState<string | null>(null);
@@ -405,6 +410,15 @@ function UpcomingBody({
   const today = localDateKey(new Date(), timezone);
   const currentMonday = addDays(today, -((weekdayOf(today) + 6) % 7));
   const activeGoals = goals.filter((goal) => goal.status !== "done");
+  const permissionSummaryFor = (goal: Goal) => {
+    const rows = allowedRows.filter(
+      ([, rule]) =>
+        rule === "always" || (rule?.scope === "goal" && rule.id === goal.id),
+    );
+    return rows.length
+      ? `Saved automatic change permissions for this goal: ${rows.map(([kind]) => CHANGE_KIND_LABELS[kind] ?? kind).join(", ")}.`
+      : "No automatic change permissions are saved for this goal.";
+  };
   const goalPlanDocs = goalProject
     ? agentDocs.filter((doc) => doc.project_id === goalProject)
     : agentDocs;
@@ -461,6 +475,24 @@ function UpcomingBody({
       onPress: () => deleteRoutine(routine),
     },
   ];
+
+  if (workGoal && visible)
+    return (
+      <GoalWorkSheet
+        goal={workGoal.goal}
+        initialMode={workGoal.mode}
+        permissionSummary={permissionSummaryFor(workGoal.goal)}
+        onClose={() => setWorkGoal(null)}
+        onOpenChat={
+          onOpenChat
+            ? (id) => {
+                setWorkGoal(null);
+                onOpenChat(id);
+              }
+            : undefined
+        }
+      />
+    );
 
   return (
     <Sheet
@@ -723,6 +755,24 @@ function UpcomingBody({
                             onPress={() => void loadHistory(goal)}
                           />
                         )}
+                        <Button
+                          title="Work on this goal"
+                          secondary
+                          disabled={
+                            saving ||
+                            loading ||
+                            loadFailed ||
+                            !!form ||
+                            goal.status !== "active"
+                          }
+                          onPress={() => setWorkGoal({ goal, mode: "start" })}
+                        />
+                        <Button
+                          title="Work history"
+                          secondary
+                          disabled={saving || loading || loadFailed || !!form}
+                          onPress={() => setWorkGoal({ goal, mode: "history" })}
+                        />
                         {latest && (
                           <Text style={shared.small}>
                             Last check-in: {checkinStatusLabel(latest.status)}
@@ -752,6 +802,23 @@ function UpcomingBody({
                 !loadFailed && <Text style={shared.small}>No goals yet.</Text>
               )}
 
+              {goals.some((goal) => goal.status === "done") && (
+                <InlineDetails title="Completed planning goals">
+                  {goals
+                    .filter((goal) => goal.status === "done")
+                    .map((goal) => (
+                      <View key={goal.id}>
+                        <Text style={shared.body}>{goal.title}</Text>
+                        <Button
+                          title="Work history"
+                          secondary
+                          disabled={saving || loading || loadFailed || !!form}
+                          onPress={() => setWorkGoal({ goal, mode: "history" })}
+                        />
+                      </View>
+                    ))}
+                </InlineDetails>
+              )}
               <Text style={[shared.sectionTitle, s.section]}>Routines</Text>
               {loading ? (
                 <Text style={shared.small}>Loading…</Text>

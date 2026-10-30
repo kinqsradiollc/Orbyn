@@ -65,6 +65,16 @@ const finishInput = z
       .default([]),
   })
   .strict();
+export const goalUnitResult = z
+  .object({
+    criterion_id: z.uuid(),
+    decision: z.enum(["ready", "repair", "blocked"]),
+    note: z.string().trim().max(1000),
+  })
+  .strict();
+const goalFinishInput = finishInput
+  .extend({ goal_result: goalUnitResult })
+  .strict();
 
 export type LeadWaiting =
   | { kind: "person"; id: string; question: string; choices: string[] }
@@ -82,6 +92,7 @@ export type LeadWaiting =
     };
 
 export type LeadState = {
+  goal_result?: z.output<typeof goalUnitResult>;
   original_request: string;
   memory: string;
   context: unknown;
@@ -211,6 +222,7 @@ export async function runLead(input: {
   history: ChatTurn[];
   context: AgentContext;
   allowChanges: boolean;
+  goalExecution?: { criterion_id: string; mode: "work" | "verify" | "repair" };
   log?: FastifyBaseLogger;
   trace?: AgentTrace;
   progress?: LeadProgress;
@@ -437,7 +449,9 @@ export async function runLead(input: {
     }
 
     if (call.name === "finish") {
-      const parsed = finishInput.safeParse(args);
+      const parsed = (
+        input.goalExecution ? goalFinishInput : finishInput
+      ).safeParse(args);
       if (!parsed.success)
         return err(
           parsed.error.issues[0]?.message ?? "Check the final answer.",
@@ -463,6 +477,14 @@ export async function runLead(input: {
         );
       }
       state.selected_steps = steps;
+      if (input.goalExecution) {
+        const report = goalUnitResult.parse(
+          (parsed.data as z.output<typeof goalFinishInput>).goal_result,
+        );
+        if (report.criterion_id !== input.goalExecution.criterion_id)
+          return err("Report only on this execution's current criterion.");
+        state.goal_result = report;
+      }
       state.answer = parsed.data.answer;
       state.waiting = null;
       await input.checkpoint?.();
@@ -543,7 +565,17 @@ export async function runLead(input: {
     {
       systemPrompt,
       beforeProvider: input.beforeProvider,
-      tools: leadTools,
+      tools: input.goalExecution
+        ? leadTools.map((tool) =>
+            tool.name === "finish"
+              ? leadTool(
+                  "finish",
+                  "Finish this criterion unit with a structured readiness decision. ready requests person review after read-only verification; it never accepts the goal. repair explains remaining work on bound outputs; blocked identifies missing facts. Include goal_result for the exact criterion.",
+                  goalFinishInput,
+                )
+              : tool,
+          )
+        : leadTools,
       executeTool,
       maxSteps: Math.min(LEAD_MAX_STEPS - state.lead_steps, 8),
       maxToolCallsPerStep: 1,

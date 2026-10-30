@@ -41,6 +41,7 @@ type RunRow = {
   status: OvernightRun["status"];
   state: OvernightRun["state"];
   result: unknown;
+  goal_acceptance: unknown;
   apply_result: unknown;
   waiting: unknown;
   cancel_requested: boolean;
@@ -49,7 +50,7 @@ const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-const RUN_SELECT = `SELECT nr.*, j.chat_id, j.state, j.cancel_requested, j.result, j.apply_result, j.run_state->'state'->'waiting' AS waiting, coalesce(c.title, 'Night work') AS title
+const RUN_SELECT = `SELECT nr.*, j.chat_id, j.state, j.cancel_requested, j.result, (SELECT accepted.acceptance FROM assistant_goal_executions accepted WHERE accepted.owner_id=$1 AND accepted.state='completed' AND accepted.acceptance->>'job_id'=j.id::text LIMIT 1) AS goal_acceptance, j.apply_result, j.run_state->'state'->'waiting' AS waiting, coalesce(c.title, 'Night work') AS title
  FROM assistant_night_runs nr JOIN assistant_nights n ON n.id = nr.night_id
  JOIN ai_jobs j ON j.id = nr.job_id AND j.user_id = n.user_id
  LEFT JOIN ai_chats c ON c.id = j.chat_id AND c.user_id = n.user_id`;
@@ -254,6 +255,7 @@ async function card(
     object(object(row.result).assistant_run).execution_outcome,
     row.job_id,
     proposal?.status,
+    row.goal_acceptance,
   );
   const result = {
     ...(executionOutcome ? { execution_outcome: executionOutcome } : {}),

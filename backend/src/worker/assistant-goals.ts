@@ -71,6 +71,7 @@ export async function scanAssistantGoals(
          ) wk
          LEFT JOIN goals_checkins c ON c.goal_id = g.id AND c.week_of = wk.week_of
         WHERE g.status = 'active' AND ${assistantSourceVisible("'goal'", "g.id", "g.user_id")}
+          AND NOT EXISTS(SELECT 1 FROM assistant_goal_executions execution WHERE execution.goal_id=g.id AND execution.state NOT IN ('stopped','completed'))
           AND ${assistantActive("g.user_id")}
           AND ${assistantProviderAdmissionSql("g.user_id", options.ai)}
           AND NOT ${nightShiftOwns("g.user_id")}
@@ -96,6 +97,7 @@ export async function scanAssistantGoals(
       `INSERT INTO goals_checkins
          (goal_id, user_id, week_of, summary, progress, status, claimed_at, attempts)
        SELECT $1, $2, $3::date, 'Weekly review in progress', '{}'::jsonb, 'running', $4, 1 FROM goals g WHERE g.id=$1 AND g.user_id=$2 AND ${assistantSourceVisible("'goal'", "g.id", "$2")} AND NOT ${nightShiftOwns("g.user_id")}
+       AND NOT EXISTS(SELECT 1 FROM assistant_goal_executions execution WHERE execution.goal_id=g.id AND execution.state NOT IN ('stopped','completed'))
        ON CONFLICT (goal_id, week_of) DO UPDATE
          SET summary = 'Weekly review in progress', status = 'running',
              job_id = NULL, claimed_at = EXCLUDED.claimed_at,
@@ -122,6 +124,19 @@ export async function scanAssistantGoals(
           automation: { kind: "goal", id: goal.id, week_of: week },
           title: `Weekly check-in: ${goal.title}`,
           onQueued: async (db, id) => {
+            await db.query(
+              "SELECT id FROM goals WHERE id=$1 AND user_id=$2 FOR UPDATE",
+              [goal.id, goal.user_id],
+            );
+            if (
+              (
+                await db.query(
+                  "SELECT id FROM assistant_goal_executions WHERE goal_id=$1 AND state NOT IN ('stopped','completed')",
+                  [goal.id],
+                )
+              ).rowCount
+            )
+              throw new Error("This goal now has explicitly scoped work.");
             await db.query(
               `UPDATE goals_checkins SET job_id = $3, claimed_at = now(), status = 'running'
                 WHERE goal_id = $1 AND week_of = $2::date AND status = 'running'`,

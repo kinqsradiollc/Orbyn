@@ -1,3 +1,4 @@
+import { GoalWorkSheet } from "./GoalWorkSheet";
 import { RoutineRunHistory } from "./RoutineRunHistory";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
@@ -101,6 +102,10 @@ function UpcomingBody({
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState<ApprovalScopes>({});
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [workGoal, setWorkGoal] = useState<{
+    goal: Goal;
+    mode: "start" | "history";
+  } | null>(null);
   const [checkins, setCheckins] = useState<Record<string, GoalCheckin[]>>({});
   const [routines, setRoutines] = useState<AgentRoutine[]>([]);
   const [historyRoutineId, setHistoryRoutineId] = useState<string | null>(null);
@@ -271,6 +276,15 @@ function UpcomingBody({
     () => goals.filter((goal) => goal.status !== "done"),
     [goals],
   );
+  const permissionSummaryFor = (goal: Goal) => {
+    const rows = allowedRows.filter(
+      ([, rule]) =>
+        rule === "always" || (rule?.scope === "goal" && rule.id === goal.id),
+    );
+    return rows.length
+      ? `Saved automatic change permissions for this goal: ${rows.map(([kind]) => CHANGE_KIND_LABELS[kind] ?? kind).join(", ")}.`
+      : "No automatic change permissions are saved for this goal.";
+  };
   const goalPlanDocs = goalProject
     ? agentDocs.filter((doc) => doc.project_id === goalProject)
     : agentDocs;
@@ -698,6 +712,37 @@ function UpcomingBody({
                             : "Load history"}
                         </button>
                       )}
+                      <div className="button-row">
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={
+                            saving ||
+                            loading ||
+                            loadFailed ||
+                            !!goalForm ||
+                            !!routineForm ||
+                            goal.status !== "active"
+                          }
+                          onClick={() => setWorkGoal({ goal, mode: "start" })}
+                        >
+                          Work on this goal
+                        </button>
+                        <button
+                          type="button"
+                          className="text-button"
+                          disabled={
+                            saving ||
+                            loading ||
+                            loadFailed ||
+                            !!goalForm ||
+                            !!routineForm
+                          }
+                          onClick={() => setWorkGoal({ goal, mode: "history" })}
+                        >
+                          Work history
+                        </button>
+                      </div>
                       {latest && (
                         <small>
                           Last check-in: {checkinStatusLabel(latest.status)}
@@ -739,6 +784,33 @@ function UpcomingBody({
             goalForm !== "new" && <p className="muted">No goals yet.</p>
           )}
         </section>
+
+        {goals.some((goal) => goal.status === "done") && (
+          <details className="ai-upcoming-details">
+            <summary>Completed planning goals</summary>
+            {goals
+              .filter((goal) => goal.status === "done")
+              .map((goal) => (
+                <div key={goal.id}>
+                  <strong>{goal.title}</strong>
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={
+                      saving ||
+                      loading ||
+                      loadFailed ||
+                      !!goalForm ||
+                      !!routineForm
+                    }
+                    onClick={() => setWorkGoal({ goal, mode: "history" })}
+                  >
+                    Work history
+                  </button>
+                </div>
+              ))}
+          </details>
+        )}
 
         <section aria-labelledby="ai-routines-title">
           <div className="ai-upcoming-section-head">
@@ -841,6 +913,22 @@ function UpcomingBody({
         )}
       </div>
 
+      {workGoal && (
+        <GoalWorkSheet
+          goal={workGoal.goal}
+          initialMode={workGoal.mode}
+          permissionSummary={permissionSummaryFor(workGoal.goal)}
+          onClose={() => setWorkGoal(null)}
+          onOpenChat={
+            onOpenChat
+              ? (id) => {
+                  setWorkGoal(null);
+                  onOpenChat(id);
+                }
+              : undefined
+          }
+        />
+      )}
       {(goalForm || routineForm) && (
         <SettingsEditor
           title={

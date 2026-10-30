@@ -237,13 +237,40 @@ that path; failed rollback discards the connection. The runtime must not revise 
 apply. Internal `terminal_evidence` is optional, job-bound and not a retry command;
 older jobs stay unqualified rather than inheriting evidence from error prose.
 
-No fresh-attempt scheduler is enabled by this migration. Preserve the columns,
+Migrations 298–299 alone do not enable a fresh-attempt scheduler. Preserve the columns,
 markers, receipts, current permissions and retained history during recovery or
 rollback. An older atomic apply writer encountering tracked unmarked work will
 fail its transaction; use a compatible runtime to reconcile or hold it, rather
 than dropping the constraint or clearing a marker. Coordinate execution workers
 before enabling any future automatic retry policy. Local source and guarded tests
 do not establish that a hosted rollout or worker cutover occurred.
+
+Explicit goal work also requires migration 300 before starting its API or compatible
+Background/Overnight consumers. It adds execution intent/frontier and attempt
+records around the existing `ai_jobs` queue; it does not create a second provider
+or planner queue, convert weekly check-ins, or start existing goals automatically.
+The API, runtime and worker must agree on the execution generation, stable unit and
+source/configuration checks. New Start is a person action, and accepted completion
+requires a separate first-party person attestation of current criteria and evidence.
+See [Assistant](assistant.md#explicit-goal-work) and the
+[API contract](api.md#explicit-goal-executions-session-mutations-authenticated-reads).
+
+One unsettled attempt per execution serializes admission. A job waiting for an
+answer currently holds that execution's other criteria. Existing lane/night limits
+and cumulative execution attempt, estimated-token and deadline bounds apply across
+work, read-only verification and versioned repair. Unknown usage keeps conservative
+reservations. Unknown effects, changed permission/configuration, pruned required
+evidence and unsupported repairs hold work instead of replaying a create operation.
+An open explicit execution excludes competing weekly/night check-in admission.
+
+Pause prevents new admissions; Stop invalidates the generation and requests
+cancellation without undoing committed effects. Settlement must still charge each
+terminal or pruned attempt once after its current-job pointer is cleared, and must
+not reopen a stopped generation. During recovery, preserve units, bound artifact
+IDs/versions, attempt lineage, hashes, reservations and acceptance records. Do not
+clear markers or relabel held work as complete to drain the queue. Deployment
+worker cutover, production query costs, full Open Duet parity and installed-native
+qualification require their own evidence; local source/tests do not establish them.
 
 ## Assistant admission policy
 

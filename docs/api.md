@@ -954,6 +954,93 @@ failed output additions, state/summary or execution receipts. These bounded outp
 windows have no unread/reviewed or last-visit meaning. Source and chat access are
 rechecked; a retained activity event alone does not authorize its result.
 
+### Explicit goal executions (session mutations, authenticated reads)
+
+These routes use `packages/core/src/assistant/goal-executions.ts`. Starting work and
+pause/resume/stop/accept controls require a signed-in person using an Orbyn app;
+personal API keys and model/agent credentials cannot perform those mutations.
+They do not change the existing `/me/goals` or weekly `/me/goals/:id/checkins`
+contracts. An active planner goal does not implicitly start an execution.
+
+| Route                                  | Contract                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------ |
+| `POST /me/goals/:id/executions`        | Explicit start; returns `201 GoalExecutionDetails`                       |
+| `GET /me/goals/:id/executions`         | Owned execution metadata history: `{ goal_id, executions, next_cursor }` |
+| `GET /me/goal-executions/:id`          | Current source-authorized `GoalExecutionDetails`                         |
+| `GET /me/goal-executions/:id/attempts` | `{ execution_id, attempts, next_cursor }`                                |
+| `POST /me/goal-executions/:id/pause`   | Pause new admissions                                                     |
+| `POST /me/goal-executions/:id/resume`  | Revalidate and resume admissions                                         |
+| `POST /me/goal-executions/:id/stop`    | Close the generation and request cancellation of admitted work           |
+| `POST /me/goal-executions/:id/accept`  | Record person acceptance of the exact reviewed criteria and evidence     |
+
+Start accepts:
+
+```json
+{
+  "request_id": "uuid",
+  "expected_goal_revision": 1,
+  "criteria": [
+    { "id": "uuid", "text": "A criterion to review", "kind": "person" }
+  ],
+  "lane": "background",
+  "effect_ceiling": "existing_scopes",
+  "limits": {
+    "max_attempts": 6,
+    "token_limit": 200000,
+    "deadline": "2027-01-01T00:00:00Z"
+  }
+}
+```
+
+Criteria have distinct UUIDs, 1–10 entries and 1–500 characters of text. The lane is
+`background` or `overnight`; `effect_ceiling` is `suggest` or `existing_scopes` and
+can only restrict existing authority. Limits require 1–20 attempts, 1–1,000,000
+estimated tokens and a future ISO deadline. Execution allowance is cumulative;
+ordinary lane, night-window, provider and per-run limits continue to apply.
+
+Start is idempotent for the owner and `request_id`: the same body returns the same
+execution; different work with that ID returns `409`. Only one open execution is
+allowed per goal. Reviewed criteria/configuration hashes exclude worker progress;
+goal requirements, current sources and provider/scope changes can still hold work.
+
+Pause, resume and stop accept `{ request_id, expected_revision, generation }`.
+Resume also requires `expected_config_hash`. Accept additionally requires
+`expected_criteria_hash`, `expected_evidence_hash` and `accepted_criterion_ids`
+matching the complete criterion set. Stale controls or evidence return `409`;
+invalid bodies or incomplete criterion attestation return `422`. Replaying the
+most recent identical control does not repeat it. Controls return refreshed
+`GoalExecutionDetails`.
+
+Details always include execution metadata, reviewed hashes, limits and cumulative
+consumed/reserved estimates. `visibility: "available"` adds criteria, stable units,
+current job, latest authorized result, `evidence_hash`, `can_accept`, permission
+summary and any person acceptance record. Unit stages are `work`, `verify`, `repair`,
+`ready_for_acceptance`, `satisfied` and `blocked`. `effects_applied` and bound output
+IDs/versions prevent a consumed create plan from being recreated during repair.
+Results carry current job state, stop-request/recovery evidence, summary and optional
+execution outcome. A `restricted` response omits criteria, units, content, job/chat
+links and acceptance details. Attempt rows similarly restrict unavailable evidence.
+
+History queries accept `limit` (1–20, default 10) and optional opaque `cursor`.
+Pass a non-null `next_cursor` unchanged; it preserves database timestamp precision.
+Reads do not enqueue work or acknowledge results. Authority is rechecked on each
+page, including after job retention or source revocation.
+
+There is one unsettled attempt per execution. An unanswered in-run question
+currently blocks that execution's remaining criteria; a pending Review proposal
+keeps its existing identity. Verification is read-only. Repair currently supports
+versioned edits to bound tasks/documents, while unsupported repair, missing output
+identity and uncertain effects hold rather than recreate work. Pause does not undo
+or stop admitted work. Stop changes the generation, requests cancellation, preserves
+committed effects and permits terminal accounting to settle without another wake.
+
+`can_accept` requires current criteria/evidence, no active work, unresolved questions,
+pending approval, uncertain effects or nonpassing required checks. A person
+attestation is stored separately from model output and legacy chat turns. A finished
+job, a proposal decision or manually setting `goals.status=done` cannot mint accepted
+completion. These APIs reuse existing Orbyn workers/providers and require migration
+300; their presence does not qualify a hosted rollout or native client behavior.
+
 ### `GET /me/agent-routines/:id/runs` (auth)
 
 Read an owned routine's admitted occurrence history, newest scheduled time first,

@@ -414,6 +414,15 @@ export function HomeSection({
         onOpenChat={onOpenAgentOutput}
       />
       <AssistantUpcoming
+        onOpenChat={
+          canOpenAgentOutput
+            ? (id) => {
+                if (!canOpenAgentOutput) return;
+                setUpcoming(false);
+                onOpenAgentOutput(id);
+              }
+            : undefined
+        }
         agentName={agentName}
         conversationEnabled={conversationEnabled}
         visible={upcoming}

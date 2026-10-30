@@ -2,6 +2,10 @@ import { scanMaintainedPages } from "../worker/maintained-page-scan.js";
 import { claimMaintainedPageWork } from "../worker/maintained-pages.js";
 import { claimScheduledAgendaWork } from "../worker/agenda-summaries.js";
 import { pool } from "../db/pool.js";
+import {
+  scanGoalExecutions,
+  settleGoalExecutions,
+} from "../worker/goal-executions.js";
 import { flushConversationDeliveries } from "../modules/assistant-workspace/conversation-delivery.js";
 import { flushConversationAlerts } from "../modules/assistant-workspace/conversation-notifications.js";
 import { startAssistantRunner } from "../modules/ai/agent/runner.js";
@@ -41,6 +45,8 @@ export async function buildAssistantWorker(lane: "background" | "overnight") {
       },
       onTick: async () => {
         const now = Date.now();
+        await settleGoalExecutions(lane, new Date(now));
+        await scanGoalExecutions(lane, new Date(now));
         await settleAssistantHandoff(lane);
         await dispatchAssistantHandoff(lane);
         if (lane === "background") {

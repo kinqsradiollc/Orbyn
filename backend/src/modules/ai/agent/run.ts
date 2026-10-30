@@ -1,3 +1,8 @@
+import {
+  checkGoalExecutionBoundary,
+  captureGoalOutputs,
+  type GoalExecutionBinding,
+} from "./goal-execution.js";
 import { runtimeOutcome } from "./outcome.js";
 import {
   classifyTerminalEvidence,
@@ -211,6 +216,7 @@ const approvalInput = z
 export type AssistantAutomation = {
   /** A task handed to the agent (W3) carries its item's id. */
   kind: "idea" | "goal" | "routine" | "task" | "night" | "handoff";
+  goal_execution?: GoalExecutionBinding;
   recipient_lane?: "background" | "overnight";
   handoff_id?: string;
   night_id?: string;
@@ -528,13 +534,15 @@ async function currentWriteAuthority(
   ).rows[0];
   if (!grant || grant.suspended_at || grant.revoked_at)
     fail(409, "Assistant permission changed. This work was held.");
-  const fullTrust = isAutomation(request, "idea")
-    ? { level: "suggest", spaces: {}, acts_alone: [] }
-    : {
-        level: grant.trust,
-        spaces: grant.space_trust ?? {},
-        acts_alone: grant.acts_alone ?? [],
-      };
+  const fullTrust =
+    isAutomation(request, "idea") ||
+    request.automation?.goal_execution?.effect_ceiling === "suggest"
+      ? { level: "suggest", spaces: {}, acts_alone: [] }
+      : {
+          level: grant.trust,
+          spaces: grant.space_trust ?? {},
+          acts_alone: grant.acts_alone ?? [],
+        };
   const equal = (
     await db.query("SELECT $1::jsonb=$2::jsonb AS equal", [
       JSON.stringify(fullTrust),
@@ -563,6 +571,7 @@ async function principalFor(
   jobId: string,
 ) {
   await currentNightConsent(pool, user.id, request);
+  await checkGoalExecutionBoundary(user.id, jobId, request.automation);
   const lane =
     request.automation?.kind === "night" ||
     request.automation?.night_id ||
@@ -607,7 +616,10 @@ async function principalFor(
     !policy.spaces(principal).personal
   )
     fail(409, "This work is outside the assistant's permitted spaces.");
-  if (isAutomation(request, "idea"))
+  if (
+    isAutomation(request, "idea") ||
+    request.automation?.goal_execution?.effect_ceiling === "suggest"
+  )
     principal.trust = { level: "suggest", spaces: {}, acts_alone: [] };
   return principal;
 }
@@ -984,6 +996,9 @@ async function finishJob(
       assistant_run: {
         execution_outcome: executionOutcome,
         token_estimate: state.token_estimate,
+        ...(request.automation?.goal_execution && state.goal_result
+          ? { goal_result: state.goal_result }
+          : {}),
         reports: state.reports.map(({ steps, ...report }) => ({
           ...report,
           step_ids: steps.map((step) => step.id),
@@ -1482,6 +1497,13 @@ async function approvePlan(
     fail(409, "Assistant rules changed. Review this plan again.");
   const nightPrefs = await currentNightConsent(pool, user.id, request);
   const scopeSnapshot = await assistantApprovalScopes(user.id);
+  await checkGoalExecutionBoundary(
+    user.id,
+    jobId,
+    request.automation,
+    undefined,
+    state.selected_steps,
+  );
   const checked = await checkMergedPlan(pool, principal, state.selected_steps);
   if (!checked.steps.length)
     return { applied: false, structured: null, why: [] as string[] };
@@ -1543,6 +1565,13 @@ async function approvePlan(
                   409,
                   "Night review permission changed. This work was held.",
                 );
+              await checkGoalExecutionBoundary(
+                user.id,
+                jobId,
+                request.automation,
+                db,
+                checked.steps,
+              );
               await currentWriteAuthority(db, user, principal, request);
               const scopes = (
                 await db.query(
@@ -1567,6 +1596,17 @@ async function approvePlan(
                 [
                   jobId,
                   JSON.stringify({
+                    ...(request.automation?.goal_execution
+                      ? {
+                          goal_outputs: await captureGoalOutputs(
+                            db,
+                            user.id,
+                            jobId,
+                            answer.targets ?? [],
+                            structured,
+                          ),
+                        }
+                      : {}),
                     applied:
                       !pending && (answer.write?.outcome ?? "ok") === "ok",
                     structured,
@@ -2003,32 +2043,42 @@ export async function runAssistantJob(
               ? "Review the blocked report and revise the plan or explain why it cannot proceed."
               : currentMessage,
             history: request.history,
-            beforeProvider: request.conversation_context
-              ? async () => {
-                  if (!principal)
-                    fail(409, "The assistant is unavailable. Try again.");
-                  await currentAssistantPrincipal(pool, principal);
-                  await assertConversationContext(
-                    pool,
-                    user.id,
-                    request.conversation_context,
-                  );
-                  const visible = await pool.query(
-                    `SELECT j.id FROM ai_jobs j WHERE j.id=$2 AND ${assistantJobSourcesVisible("j", "$1", false)}`,
-                    [user.id, jobId],
-                  );
-                  if (!visible.rowCount)
-                    fail(
-                      409,
-                      "The sources for this reply changed. Refresh before continuing.",
+            goalExecution: request.automation?.goal_execution,
+            beforeProvider:
+              request.conversation_context || request.automation?.goal_execution
+                ? async () => {
+                    await checkGoalExecutionBoundary(
+                      user.id,
+                      jobId,
+                      request.automation,
                     );
-                }
-              : undefined,
+                    if (!principal)
+                      fail(409, "The assistant is unavailable. Try again.");
+                    await currentAssistantPrincipal(pool, principal);
+                    if (request.conversation_context)
+                      await assertConversationContext(
+                        pool,
+                        user.id,
+                        request.conversation_context,
+                      );
+                    const visible = await pool.query(
+                      `SELECT j.id FROM ai_jobs j WHERE j.id=$2 AND ${assistantJobSourcesVisible("j", "$1", false)}`,
+                      [user.id, jobId],
+                    );
+                    if (!visible.rowCount)
+                      fail(
+                        409,
+                        "The sources for this reply changed. Refresh before continuing.",
+                      );
+                  }
+                : undefined,
             context: prepared.context,
             recordSources,
             allowChanges:
+              request.automation?.goal_execution?.mode !== "verify" &&
               !reflecting &&
               (isAutomation(request, "idea") ||
+                !!request.automation?.goal_execution ||
                 mayChange(envelope.state.original_request)),
             log,
             trace: trace.record,

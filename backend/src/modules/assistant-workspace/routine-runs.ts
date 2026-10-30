@@ -54,12 +54,13 @@ export async function readRoutineRuns(
       chat_id: string | null;
       summary: string | null;
       execution_outcome: unknown;
+      goal_acceptance: unknown;
       review_status: string | null;
     }>(
       `SELECT r.id,to_char(r.scheduled_for AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS scheduled_for,
        r.state,r.last_observed_at,r.resume_count,j.id AS job_id,j.chat_id,
        left(j.result->>'answer',2000) AS summary,
-       j.result->'assistant_run'->'execution_outcome' AS execution_outcome,
+       j.result->'assistant_run'->'execution_outcome' AS execution_outcome,(SELECT accepted.acceptance FROM assistant_goal_executions accepted WHERE accepted.owner_id=$1 AND accepted.state='completed' AND accepted.acceptance->>'job_id'=j.id::text LIMIT 1) AS goal_acceptance,
        CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status
        FROM assistant_routine_runs r
        LEFT JOIN ai_jobs j ON j.id=r.job_id AND ${assistantJobSourcesVisible("j", "$1", false)}
@@ -91,6 +92,7 @@ export async function readRoutineRuns(
         row.execution_outcome,
         row.job_id,
         row.review_status,
+        row.goal_acceptance,
       );
       return {
         ...metadata,

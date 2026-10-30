@@ -165,6 +165,7 @@ import {
 import * as account from "./endpoints/account.js";
 import * as administration from "./endpoints/administration.js";
 import * as assistant from "./endpoints/assistant.js";
+import * as goalExecutions from "./endpoints/goal-executions.js";
 import * as booking from "./endpoints/booking.js";
 import * as capture from "./endpoints/capture.js";
 import * as connections from "./endpoints/connections.js";
@@ -1135,6 +1136,51 @@ export class OrbynClient {
   }
   deleteProjectChat(id: string) {
     return assistant.callDeleteProjectChat.call(this, id);
+  }
+  startGoalExecution(
+    id: string,
+    input: import("@orbyn/core").GoalExecutionStartInput,
+  ) {
+    return goalExecutions.callStartGoalExecution.call(this, id, input);
+  }
+  goalExecutions(
+    id: string,
+    query: import("@orbyn/core").GoalExecutionHistoryQuery = {},
+  ) {
+    return goalExecutions.callGoalExecutions.call(this, id, query);
+  }
+  goalExecution(id: string) {
+    return goalExecutions.callGoalExecution.call(this, id);
+  }
+  goalExecutionAttempts(
+    id: string,
+    query: import("@orbyn/core").GoalExecutionHistoryQuery = {},
+  ) {
+    return goalExecutions.callGoalExecutionAttempts.call(this, id, query);
+  }
+  pauseGoalExecution(
+    id: string,
+    input: import("@orbyn/core").GoalExecutionControlInput,
+  ) {
+    return goalExecutions.callPauseGoalExecution.call(this, id, input);
+  }
+  resumeGoalExecution(
+    id: string,
+    input: import("@orbyn/core").GoalExecutionResumeInput,
+  ) {
+    return goalExecutions.callResumeGoalExecution.call(this, id, input);
+  }
+  stopGoalExecution(
+    id: string,
+    input: import("@orbyn/core").GoalExecutionControlInput,
+  ) {
+    return goalExecutions.callStopGoalExecution.call(this, id, input);
+  }
+  acceptGoalExecution(
+    id: string,
+    input: import("@orbyn/core").GoalExecutionAcceptInput,
+  ) {
+    return goalExecutions.callAcceptGoalExecution.call(this, id, input);
   }
   listGoals() {
     return projects.callListGoals.call(this);

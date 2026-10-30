@@ -70,6 +70,54 @@ Actions follow current assistant grants and team permissions. Unattended deletio
 outside email, teammate notifications and publishing require Review. An answer or
 an excerpt is context for a request, never extra permission.
 
+## Explicit goal work
+
+A planner goal and an explicit goal execution are separate records. Starting goal
+work requires the signed-in person to review its criteria, choose Background or
+Overnight, and set an attempt limit, estimated token allowance and deadline. An
+active planner goal does not start this execution implicitly. Existing weekly
+check-ins remain a separate intent and do not compete with an open execution for
+the same goal.
+
+Each criterion has a stable work unit. A bounded job investigates or produces its
+result, a read-only verification job checks it, and a repair job can revise an
+existing bound output using its current version. Applied creation work is consumed;
+changing a title or starting another job does not authorize creating a second copy.
+Automatic repair currently supports versioned task updates and document edits.
+Unsupported repairs, missing output identities or uncertain effects hold the work
+for review. A structured blocked criterion may leave other criteria runnable.
+
+The execution uses the existing Orbyn runtime, configured provider routing,
+assistant grants, Review rules and result destinations. Starting or continuing work
+does not broaden those permissions. Current goal requirements, sources, provider
+choice and scope are checked again at execution boundaries. Changed or revoked
+evidence cannot silently be replaced by a new context. Repeating failed work
+requires positive no-effect or acknowledged-rollback evidence; an unknown effect
+is held. Repair after a known applied result uses the bound outputs instead. Attempt and token bounds are cumulative across jobs and recovery,
+with conservative reservations when usage is unknown; these are execution estimates,
+not provider billing totals.
+
+There is one current job and at most one unsettled attempt per execution. A job
+waiting for an answer currently serializes that execution: its other criteria do
+not start until the question is answered or the work is stopped. A pending Review
+proposal also remains attached to the same saved work. Pause blocks new admissions
+while already-admitted work may finish. Stop invalidates the execution generation
+and cancels admitted work, without undoing committed changes. Terminal attempts
+still settle their retained accounting after Stop; late results cannot reopen work.
+
+**Ready for your review** is not accepted completion. The person can accept only the
+current criteria and evidence, after active work, unanswered questions, pending
+approval, uncertain effects and nonpassing required checks have been resolved.
+Acceptance records an explicit person attestation. Model text, a finished job,
+opening a result, approving a proposal or manually marking the planner goal done
+cannot create that attestation. Result details and attempt history recheck current
+source access; restricted or pruned results retain metadata without content or
+job/chat links.
+
+These contracts do not establish full Open Duet behavior parity, a hosted worker
+rollout or installed-native qualification. The existing runtime and provider
+configuration remain sufficient; an external execution adapter is not required.
+
 ## Configuration and rollout
 
 Select providers and models in **Admin → AI**. Configure service encryption keys,
@@ -89,13 +137,14 @@ live external provider's availability. See [verification](verification.md).
 
 ## Contract owners
 
-| Contract                                                       | Source                                                                                                   |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Feed, source visibility, replies, read state and work controls | `backend/src/modules/assistant-workspace/`                                                               |
-| Interactive jobs and orchestration                             | `backend/src/modules/ai/`                                                                                |
-| Shared retained-entry and reply schemas                        | `packages/core/src/assistant/assistant-conversation.ts`, `packages/core/src/schemas.ts`                  |
-| Web UI                                                         | `desktop/src/features/assistant/`                                                                        |
-| Mobile UI                                                      | `mobile/src/features/assistant/AssistantScreen.tsx`, `mobile/src/features/assistant/AssistantDrawer.tsx` |
+| Contract                                                       | Source                                                                                                                                                  |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Feed, source visibility, replies, read state and work controls | `backend/src/modules/assistant-workspace/`                                                                                                              |
+| Interactive jobs and orchestration                             | `backend/src/modules/ai/`                                                                                                                               |
+| Explicit goal work and person acceptance                       | `backend/src/modules/assistant-workspace/goal-executions.ts`, `backend/src/worker/goal-executions.ts`, `packages/core/src/assistant/goal-executions.ts` |
+| Shared retained-entry and reply schemas                        | `packages/core/src/assistant/assistant-conversation.ts`, `packages/core/src/schemas.ts`                                                                 |
+| Web UI                                                         | `desktop/src/features/assistant/`                                                                                                                       |
+| Mobile UI                                                      | `mobile/src/features/assistant/AssistantScreen.tsx`, `mobile/src/features/assistant/AssistantDrawer.tsx`                                                |
 
 See the [API contract](api.md#retained-assistant-conversations),
 [architecture](architecture.md#assistant-conversations-and-execution) and
@@ -133,8 +182,9 @@ Current-runtime execution receipts are stored on server-owned jobs, separate fro
 proposal decisions and process termination. A normal answer remains **Outcome not
 verified**; budget limits and incomplete specialist reports produce **Partial
 result**; explicit stop, runtime failure and restart interruption stay distinct.
-Goal completion requires a trusted acceptance record and passing recorded checks;
-this change does not introduce an acceptance writer or infer acceptance from prose.
+Goal completion requires a trusted acceptance record and passing recorded checks.
+Explicit goal executions provide first-party person acceptance; ordinary chats and
+weekly check-ins do not acquire acceptance from their prose or process status.
 Both clients expose the recorded reason, checks and open questions in Outcome
 details. Reviewing a proposal resolves its waiting state without certifying the
 goal, and a newer neutral response cannot bury an earlier partial result in a chat.

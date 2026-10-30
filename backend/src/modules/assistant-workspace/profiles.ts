@@ -156,6 +156,7 @@ export async function readAssistantProfiles(
         title: string;
         completed_at: Date;
         execution_outcome: unknown;
+        goal_acceptance: unknown;
         state: "done" | "failed";
         summary: string;
         review_status: string | null;
@@ -166,7 +167,7 @@ export async function readAssistantProfiles(
           recipient_chat_id: string | null;
         } | null;
       }>(
-        `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at,j.result->'assistant_run'->'execution_outcome' AS execution_outcome,j.state,left(coalesce(j.result->>'answer',''),1200) AS summary,CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status,
+        `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at,j.result->'assistant_run'->'execution_outcome' AS execution_outcome,(SELECT accepted.acceptance FROM assistant_goal_executions accepted WHERE accepted.owner_id=$1 AND accepted.state='completed' AND accepted.acceptance->>'job_id'=j.id::text LIMIT 1) AS goal_acceptance,j.state,left(coalesce(j.result->>'answer',''),1200) AS summary,CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status,
          (SELECT jsonb_build_object('id',h.id,'status',h.status,'recipient_chat_id',r.chat_id)
           FROM assistant_handoffs h LEFT JOIN ai_jobs r ON r.id=h.recipient_job_id
           WHERE h.producer_job_id=j.id AND h.owner_id=$1
@@ -212,11 +213,19 @@ export async function readAssistantProfiles(
           }
         : {}),
       outputs: outputs.map(
-        ({ execution_outcome, review_status, state, summary, ...output }) => {
+        ({
+          execution_outcome,
+          goal_acceptance,
+          review_status,
+          state,
+          summary,
+          ...output
+        }) => {
           const receipt = projectOutcomeReceipt(
             execution_outcome,
             output.job_id,
             review_status,
+            goal_acceptance,
           );
           return {
             ...output,
