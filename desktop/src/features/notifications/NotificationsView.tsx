@@ -26,6 +26,7 @@ import {
   groupNotices,
   noticeGroupLabel,
   noticeGroupCount,
+  noticeSource,
   type AgentQuestion,
   type Notice,
   type PageMention,
@@ -335,6 +336,10 @@ export function NotificationsView({
               };
               // Answers to invitations point at the event.
               const eventId = n.kind === "rsvp" ? n.item_id : undefined;
+              const reminderSource =
+                (n.kind ?? "reminder") === "reminder" ? noticeSource(n) : null;
+              const reminderItemId =
+                reminderSource?.kind === "item" ? reminderSource.id : null;
               // An imported file that's ready points at its page ("doc:<id>").
               const docId =
                 (n.kind === "import" || n.kind === "mention") &&
@@ -401,6 +406,14 @@ export function NotificationsView({
                     </span>
                     {!n.read && <i aria-label="Unread" />}
                   </button>
+                  {reminderItemId && (
+                    <button
+                      className="secondary notice-action"
+                      onClick={() => openEvent(reminderItemId)}
+                    >
+                      <FileText size={14} /> Open task or event
+                    </button>
+                  )}
                   {n.kind === "conflict" && n.ref && !n.read && (
                     <button
                       className="secondary notice-action"

@@ -163,7 +163,9 @@ async function fixture(platform: "desktop" | "mobile") {
     entries: string[] = [],
     pages: string[] = [],
     sessions: string[] = [],
-    rescheduled: string[] = [];
+    rescheduled: string[] = [],
+    items: string[] = [],
+    itemNotices: string[] = [];
   let failReschedule = false;
   const render = async (notices: core.Notice[]) =>
     React.act(async () =>
@@ -186,7 +188,13 @@ async function fixture(platform: "desktop" | "mobile") {
             onRollForward: async () => {},
             onPlanIt: () => {},
             onOpenCalendar: () => {},
-            onOpenItem: () => {},
+            onOpenItem: (value: string | core.Notice) => {
+              if (typeof value === "string") items.push(value);
+              else {
+                items.push(value.item_id!);
+                itemNotices.push(value.id);
+              }
+            },
             onOpenBooking: () => {},
             onOpenReview: (proposal: string) => reviews.push(proposal),
             onOpenConversation: (...args: unknown[]) =>
@@ -218,6 +226,8 @@ async function fixture(platform: "desktop" | "mobile") {
     pages,
     sessions,
     rescheduled,
+    items,
+    itemNotices,
     failReschedule: (value: boolean) => {
       failReschedule = value;
     },
@@ -261,6 +271,54 @@ test("a failed action stays on its individual desktop notice and retries without
 });
 
 for (const platform of ["desktop", "mobile"] as const) {
+  test(`${platform} reminder actions open the exact linked item while row reads remain individual`, async () => {
+    const f = await fixture(platform);
+    const reminders = [
+      notice(21, { kind: "reminder", item_id: id(100) }),
+      notice(22, { item_id: id(100) }),
+      notice(23, { kind: "reminder", item_id: "not-an-item" }),
+      notice(24, { kind: "reminder" }),
+    ];
+    try {
+      await f.render(reminders);
+      assert.equal(
+        f.buttons("Open task or event").length,
+        2,
+        "Only valid linked reminders expose navigation",
+      );
+      await f.React.act(async () => f.buttons("Open task or event")[0].click());
+      assert.deepEqual(f.items, [id(100)]);
+      assert.deepEqual(f.itemNotices, platform === "mobile" ? [id(21)] : []);
+      assert.deepEqual(
+        f.read,
+        platform === "desktop" ? [id(21)] : [],
+        "Mobile delegates acknowledgement to its existing notice action owner",
+      );
+      f.read.length = 0;
+      const row = [...f.dom.window.document.querySelectorAll("button")].find(
+        (button: any) =>
+          platform === "desktop"
+            ? button.className === "notice-main" &&
+              button.querySelector("strong")?.textContent === "Notice 22"
+            : button.getAttribute("aria-label") === "Notice 22, unread",
+      );
+      assert.ok(row);
+      await f.React.act(async () => row.click());
+      assert.deepEqual(f.read, [id(22)]);
+      assert.deepEqual(
+        f.items,
+        [id(100)],
+        "Reading the row must not implicitly navigate",
+      );
+      assert.equal(
+        reminders[1].read,
+        false,
+        "Component callbacks do not mutate or acknowledge the entire source",
+      );
+    } finally {
+      await f.close();
+    }
+  });
   test(`${platform} source groups keep every notice, decision and exact entry/page/session action available`, async () => {
     const f = await fixture(platform);
     try {
