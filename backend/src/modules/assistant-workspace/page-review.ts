@@ -87,36 +87,41 @@ export async function readAssistantPageReview(
     AND comment.body ~* '(^|[[:space:]])@orbyn\\y'
     AND (comment.parent_id IS NULL OR EXISTS(SELECT 1 FROM doc_comments parent WHERE parent.id=comment.parent_id
       AND parent.doc_id=comment.doc_id AND parent.resolved_at IS NULL AND NOT parent.detached))))`;
-  const counts = (
-    await db.query<AssistantProfileCounts>(
-      `WITH eligible AS (${eligible}) SELECT
-  count(*) FILTER(WHERE state='running' AND lease_expires_at>$5)::int AS working,
-  count(*) FILTER(WHERE state='waiting')::int AS waiting,
-  count(*) FILTER(WHERE state='queued')::int AS queued,
-  count(*) FILTER(WHERE state='running' AND (lease_expires_at IS NULL OR lease_expires_at<=$5))::int AS recovering FROM eligible`,
-      params.values,
-    )
-  ).rows[0];
   type Row = {
     id: string;
     state: AssistantPageReviewRun["state"];
-    lease_expires_at: Date | null;
-    updated_at: Date;
+    lease_expires_at: string | null;
+    updated_at: string;
     doc_id: string;
     title: string;
     work_kind: AssistantPageReviewRun["work_kind"];
     origin: AssistantPageReviewRun["origin"];
   };
-  const rows = (
-    await db.query<Row>(
-      `WITH eligible AS (${eligible}),active AS (
+  // Authorize the complete set once, before either counts or display limits.
+  const result = (
+    await db.query<{
+      counts: AssistantProfileCounts;
+      runs: Row[] | null;
+    }>(
+      `WITH eligible AS MATERIALIZED (${eligible}),active AS (
   SELECT * FROM eligible WHERE state IN ('queued','running','waiting')
   ORDER BY CASE WHEN state='waiting' THEN 0 WHEN state='running' THEN 1 ELSE 2 END,updated_at DESC,id LIMIT 21
  ),terminal AS (SELECT * FROM eligible WHERE state IN ('done','failed','cancelled') ORDER BY updated_at DESC,id LIMIT 6)
- SELECT * FROM active UNION ALL SELECT * FROM terminal`,
+ SELECT
+  (SELECT jsonb_build_object(
+    'working',count(*) FILTER(WHERE state='running' AND lease_expires_at>$5)::int,
+    'waiting',count(*) FILTER(WHERE state='waiting')::int,
+    'queued',count(*) FILTER(WHERE state='queued')::int,
+    'recovering',count(*) FILTER(WHERE state='running' AND (lease_expires_at IS NULL OR lease_expires_at<=$5))::int
+   ) FROM eligible) AS counts,
+  (SELECT jsonb_agg(to_jsonb(selected) ORDER BY
+    CASE selected.state WHEN 'waiting' THEN 0 WHEN 'running' THEN 1 WHEN 'queued' THEN 2 ELSE 3 END,
+    selected.updated_at DESC,selected.id)
+   FROM (SELECT * FROM active UNION ALL SELECT * FROM terminal) selected) AS runs`,
       params.values,
     )
-  ).rows;
+  ).rows[0];
+  const rows = result.runs ?? [];
   const active = rows.filter((r) =>
       ["queued", "running", "waiting"].includes(r.state),
     ),
@@ -124,7 +129,7 @@ export async function readAssistantPageReview(
       (r) => !["queued", "running", "waiting"].includes(r.state),
     );
   return {
-    counts,
+    counts: result.counts,
     truncated: active.length > 20 || terminal.length > 5,
     runs: [...active.slice(0, 20), ...terminal.slice(0, 5)].map((r) => ({
       id: r.id,
@@ -134,8 +139,8 @@ export async function readAssistantPageReview(
       state: r.state,
       recovering:
         r.state === "running" &&
-        (!r.lease_expires_at || r.lease_expires_at <= now),
-      updated_at: r.updated_at.toISOString(),
+        (!r.lease_expires_at || new Date(r.lease_expires_at) <= now),
+      updated_at: new Date(r.updated_at).toISOString(),
       work_kind: r.work_kind,
     })),
   };

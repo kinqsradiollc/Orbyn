@@ -153,6 +153,7 @@ import {
   AssistantRunProgress,
   DocNews,
   LiveNews,
+  abortError,
   MAX_CACHED,
   OrbynClientOptions,
   pause,
@@ -317,7 +318,7 @@ export class OrbynClient {
     // A read begun after a mutation must not join an older in-flight read.
     const epoch = method === "GET" ? this.readEpoch : ++this.readEpoch;
     const token = options.anonymous ? null : await this.getToken();
-    options.signal?.throwIfAborted();
+    if (options.signal?.aborted) throw options.signal.reason ?? abortError();
     const share =
       method === "GET" &&
       !options.headers &&
@@ -371,7 +372,7 @@ export class OrbynClient {
         return true;
       };
       const cancel = () => {
-        if (release()) reject(options.signal!.reason);
+        if (release()) reject(options.signal!.reason ?? abortError());
       };
       options.signal?.addEventListener("abort", cancel, { once: true });
       if (options.signal?.aborted) cancel();
@@ -481,7 +482,7 @@ export class OrbynClient {
         response = await send();
       }
     }
-    options.signal?.throwIfAborted();
+    if (options.signal?.aborted) throw options.signal.reason ?? abortError();
     const noStore = response.headers
       .get("Cache-Control")
       ?.split(",")
@@ -535,7 +536,7 @@ export class OrbynClient {
     }
     if (response.status === 204) return undefined as T;
     const text = await response.text();
-    options.signal?.throwIfAborted();
+    if (options.signal?.aborted) throw options.signal.reason ?? abortError();
     const etag = response.headers.get("ETag");
     if (retain && etag) {
       this.cache.delete(key);
