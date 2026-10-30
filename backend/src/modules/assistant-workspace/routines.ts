@@ -1,4 +1,5 @@
 import { recordScheduleConversation } from "./conversation-schedules.js";
+import { readRoutineRuns } from "./routine-runs.js";
 import {
   agentRoutineInput,
   agentRoutineUpdate,
@@ -8,7 +9,12 @@ import {
   type AgentRoutine,
 } from "@orbyn/core";
 import type { FastifyInstance } from "fastify";
-import { pool, transaction, type Queryable } from "../../db/pool.js";
+import {
+  pool,
+  readTransaction,
+  transaction,
+  type Queryable,
+} from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { assistantPrincipal } from "../agents/assistant.js";
@@ -223,6 +229,13 @@ export async function assistantRoutineRoutes(app: FastifyInstance) {
   app.get("/me/agent-routines", async (r) => {
     const user = await authenticate(r);
     return listAgentRoutines(pool, user.id);
+  });
+  app.get("/me/agent-routines/:id/runs", async (r) => {
+    const user = await authenticate(r);
+    return readTransaction(
+      (db) => readRoutineRuns(db, user.id, idParam(r), r.query),
+      { primary: true, isolation: "repeatable read" },
+    );
   });
   app.post("/me/agent-routines", async (r, reply) => {
     const user = await authenticate(r);

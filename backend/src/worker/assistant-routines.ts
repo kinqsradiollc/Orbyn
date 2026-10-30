@@ -3,6 +3,7 @@ import { pool, transaction } from "../db/pool.js";
 import { startAssistantAutomation } from "../modules/ai/agent/run.js";
 import { assistantProviderAdmissionSql } from "../modules/ai/providers/admission.js";
 import type { ResolvedAi } from "../modules/ai/providers/adapters.js";
+import { recordRoutineRun } from "../modules/assistant-workspace/routine-runs.js";
 import {
   assistantActive,
   jobReleased,
@@ -21,6 +22,7 @@ type RoutineDue = {
   rrule: string;
   timezone: string;
   next_run_at: Date;
+  scheduled_for: string;
 };
 /** Claim and run due Orbyn Assistant routines without holding a DB lock in the model call. */
 export async function scanAssistantRoutines(
@@ -38,7 +40,7 @@ export async function scanAssistantRoutines(
     const rows = (
       await db.query<RoutineDue>(
         `SELECT r.id, r.user_id, u.name AS user_name, u.role, r.instruction,
-                r.rrule, r.timezone, r.next_run_at
+                r.rrule, r.timezone, r.next_run_at, r.next_run_at::text AS scheduled_for
            FROM agent_routines r JOIN users u ON u.id = r.user_id AND NOT u.disabled
           WHERE r.paused = false AND r.next_run_at <= $1
           AND ${assistantProviderAdmissionSql("r.user_id", options.ai)}
@@ -112,6 +114,13 @@ export async function scanAssistantRoutines(
             );
             if (!queued.rowCount)
               throw new Error("The routine claim expired before queueing.");
+            await recordRoutineRun(
+              db,
+              routine.user_id,
+              routine.id,
+              routine.scheduled_for,
+              id,
+            );
           },
         },
       );

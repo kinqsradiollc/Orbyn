@@ -38,6 +38,23 @@ export const assistantProfile = z
     counts: assistantProfileCounts,
     last_activity_at: z.iso.datetime().nullable(),
     recent_activity: z.array(assistantActivityEvent).max(8),
+    work: z
+      .array(
+        z
+          .object({
+            job_id: z.uuid(),
+            chat_id: z.uuid(),
+            title: z.string().max(120),
+            state: z.enum(["queued", "running", "waiting"]),
+            cancel_requested: z.boolean(),
+            recovering: z.boolean(),
+            updated_at: z.iso.datetime(),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
+    work_truncated: z.boolean().optional(),
     outputs: z
       .array(
         z
@@ -46,6 +63,8 @@ export const assistantProfile = z
             chat_id: z.uuid(),
             title: z.string().max(120),
             completed_at: z.iso.datetime(),
+            state: z.enum(["done", "failed"]).optional(),
+            summary: z.string().max(1200).optional(),
             execution_outcome: assistantOutcomeReceipt.optional(),
             handoff: z
               .object({

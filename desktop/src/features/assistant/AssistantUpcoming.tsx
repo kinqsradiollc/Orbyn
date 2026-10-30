@@ -1,3 +1,4 @@
+import { RoutineRunHistory } from "./RoutineRunHistory";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Check,
@@ -73,12 +74,14 @@ function UpcomingBody({
   onClose,
   modal = false,
   conversationEnabled = false,
+  onOpenChat,
 }: {
   id?: string;
   agentName: string;
   onClose: () => void;
   modal?: boolean;
   conversationEnabled?: boolean;
+  onOpenChat?: (id: string) => void;
 }) {
   const { ask } = useConfirm();
   const owner = session.get();
@@ -100,6 +103,7 @@ function UpcomingBody({
   const [goals, setGoals] = useState<Goal[]>([]);
   const [checkins, setCheckins] = useState<Record<string, GoalCheckin[]>>({});
   const [routines, setRoutines] = useState<AgentRoutine[]>([]);
+  const [historyRoutineId, setHistoryRoutineId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [agentDocs, setAgentDocs] = useState<DocSummary[]>([]);
   const [timezone, setTimezone] = useState("UTC");
@@ -766,12 +770,18 @@ function UpcomingBody({
                         : `Next ${new Date(routine.next_run_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short", timeZone: routine.timezone })}`}{" "}
                       · {describeRrule(routine.rrule)}
                     </small>
-                    {typeof routine.last_result?.summary === "string" && (
-                      <details className="ai-upcoming-details">
-                        <summary>Last run</summary>
-                        <p>{routine.last_result.summary}</p>
-                      </details>
-                    )}
+                    <RoutineRunHistory
+                      routineId={routine.id}
+                      timezone={routine.timezone}
+                      open={historyRoutineId === routine.id}
+                      disabled={saving || !!goalForm || !!routineForm}
+                      onToggle={() =>
+                        setHistoryRoutineId((id) =>
+                          id === routine.id ? null : routine.id,
+                        )
+                      }
+                      onOpenChat={onOpenChat}
+                    />
                   </div>
                   <button
                     type="button"

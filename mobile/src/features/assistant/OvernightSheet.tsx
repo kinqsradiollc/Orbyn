@@ -1,6 +1,12 @@
+import { LaneWorkControls } from "./LaneWorkControls";
 import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
-import type { OvernightNight, OvernightRun } from "@orbyn/core";
+import {
+  ASSISTANT_OUTCOME_LABELS,
+  assistantOutcomeDetails,
+  type OvernightNight,
+  type OvernightRun,
+} from "@orbyn/core";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
@@ -13,6 +19,12 @@ import { session } from "../../lib/session";
 import { onLive } from "../../lib/live";
 import { shared } from "../../styles";
 import { colors, themed } from "../../theme";
+
+/** Bookkeeping status alone does not establish any proposed or applied changes. */
+const hasChangeEvidence = (run: OvernightRun) =>
+  !run.restricted &&
+  run.kind !== "reflection" &&
+  !!(run.proposal || run.steps.length || run.changes.length);
 
 type Props = {
   nightId?: string;
@@ -48,6 +60,7 @@ function OvernightSession(props: Props) {
     };
   }, []);
   const [retry, setRetry] = useState(0);
+  const [historyLimit, setHistoryLimit] = useState(10);
   const [stale, setStale] = useState(false);
   const staleRef = useRef(false);
   const [bulkPrompt, setBulkPrompt] = useState<{
@@ -148,7 +161,44 @@ function OvernightSession(props: Props) {
   const bulk = (action: "keep" | "undo") => {
     if (night && !busy && !stale) setBulkPrompt({ night, action });
   };
-  const locked = busy || stale || loading;
+  const locked = busy || stale || loading || !!loadError;
+  const reviewRuns =
+    night?.runs.filter(
+      (run) =>
+        run.status !== "undone" &&
+        (run.state === "waiting" ||
+          run.state === "failed" ||
+          !!run.question ||
+          !!run.approval ||
+          run.proposal?.status === "pending" ||
+          (run.execution_outcome &&
+            [
+              "partial",
+              "waiting",
+              "failed",
+              "interrupted",
+              "uncertain",
+            ].includes(run.execution_outcome.outcome))),
+    ) ?? [];
+  const activeRuns =
+    night?.runs.filter(
+      (run) =>
+        !reviewRuns.includes(run) && ["queued", "running"].includes(run.state),
+    ) ?? [];
+  const historyRuns =
+    night?.runs.filter(
+      (run) => !reviewRuns.includes(run) && !activeRuns.includes(run),
+    ) ?? [];
+  const currentPages = (night?.page_runs ?? []).filter(
+    (run) => run.state !== "done" && run.state !== "cancelled",
+  );
+  const historyPages = (night?.page_runs ?? []).filter(
+    (run) => run.state === "done" || run.state === "cancelled",
+  );
+  const historicalCount = historyRuns.length + historyPages.length;
+  const renderRun = (run: OvernightRun) => (
+    <RunCard key={run.id} run={run} busy={locked} act={act} {...props} />
+  );
   return (
     <Sheet
       visible={props.visible}
@@ -158,6 +208,7 @@ function OvernightSession(props: Props) {
       closeDisabled={busy}
     >
       <ScrollView contentContainerStyle={sheetStyles.body}>
+        <LaneWorkControls lane="overnight" visible={props.visible} />
         <ErrorBanner
           error={error}
           onDismiss={() => {
@@ -185,60 +236,79 @@ function OvernightSession(props: Props) {
           </View>
         ) : (
           <>
-            <Text style={shared.sectionTitle}>{night.local_day}</Text>
+            <Text style={shared.sectionTitle}>Overnight review</Text>
+            <Text style={shared.small}>
+              {night.local_day} · {reviewRuns.length} to review ·{" "}
+              {activeRuns.length} active
+            </Text>
             <Text style={shared.small}>
               {night.status === "running" ? "In progress" : "Night summary"}
             </Text>
-            {night.runs.some((run) => run.kind !== "reflection") && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  marginVertical: 12,
-                }}
-              >
-                <Button
-                  title="Keep all"
-                  disabled={
-                    locked ||
-                    !night.runs.some(
-                      (run) =>
-                        run.kind !== "reflection" &&
-                        !run.restricted &&
-                        run.state === "done" &&
-                        run.status !== "undone",
-                    )
-                  }
-                  onPress={() => bulk("keep")}
-                />
-                <Button
-                  title="Undo all"
-                  secondary
-                  disabled={
-                    locked ||
-                    !night.runs.some(
-                      (run) =>
-                        run.kind !== "reflection" &&
-                        !run.restricted &&
-                        ["done", "failed"].includes(run.state) &&
-                        run.status !== "undone",
-                    )
-                  }
-                  onPress={() => bulk("undo")}
-                />
+            {night.runs.some(
+              (run) =>
+                hasChangeEvidence(run) &&
+                ["done", "failed"].includes(run.state) &&
+                run.status !== "undone",
+            ) && (
+              <InlineDetails title="Review finished runs">
+                <View
+                  style={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    marginVertical: 12,
+                  }}
+                >
+                  <Button
+                    title="Keep all"
+                    disabled={
+                      locked ||
+                      !night.runs.some(
+                        (run) =>
+                          hasChangeEvidence(run) &&
+                          !run.restricted &&
+                          run.state === "done" &&
+                          run.status !== "undone",
+                      )
+                    }
+                    onPress={() => bulk("keep")}
+                  />
+                  <Button
+                    title="Undo all"
+                    secondary
+                    disabled={
+                      locked ||
+                      !night.runs.some(
+                        (run) =>
+                          hasChangeEvidence(run) &&
+                          !run.restricted &&
+                          ["done", "failed"].includes(run.state) &&
+                          run.status !== "undone",
+                      )
+                    }
+                    onPress={() => bulk("undo")}
+                  />
+                </View>
+              </InlineDetails>
+            )}
+            {reviewRuns.length > 0 && (
+              <View style={{ gap: 12 }}>
+                <Text style={shared.sectionTitle}>Review first</Text>
+                {reviewRuns.map(renderRun)}
               </View>
             )}
-            {(night.page_runs ?? []).map((run) => (
+            {currentPages.map((run) => (
               <View key={run.id} style={s.section}>
                 <Text style={shared.sectionTitle}>
-                  Page update · {run.state}
+                  Page update ·{" "}
+                  {run.state === "waiting"
+                    ? "Waiting for review"
+                    : run.state === "failed"
+                      ? "Run failed"
+                      : run.state === "queued"
+                        ? "Queued"
+                        : "Running"}
                 </Text>
-                <InlineDetails title="Usage">
-                  <Text style={shared.small}>
-                    {run.estimated_tokens} estimated tokens
-                  </Text>
-                </InlineDetails>
                 <Button
                   title={
                     run.state === "waiting" ? "Review in page" : "Open page"
@@ -248,18 +318,46 @@ function OvernightSession(props: Props) {
                 />
               </View>
             ))}
-            {night.runs.map((run) => (
-              <RunCard
-                key={run.id}
-                run={run}
-                busy={locked}
-                act={act}
-                {...props}
-              />
-            ))}
+            {activeRuns.length > 0 && (
+              <View style={{ gap: 12 }}>
+                <Text style={shared.sectionTitle}>Running &amp; queued</Text>
+                {activeRuns.map(renderRun)}
+              </View>
+            )}
+            {historicalCount > 0 && (
+              <InlineDetails
+                title={`Finished run history · ${historicalCount}`}
+              >
+                {historyRuns.slice(0, historyLimit).map(renderRun)}
+                {historyPages
+                  .slice(0, Math.max(0, historyLimit - historyRuns.length))
+                  .map((run) => (
+                    <View key={run.id} style={s.section}>
+                      <Text style={shared.body}>
+                        Page update ·{" "}
+                        {run.state === "cancelled"
+                          ? "Cancelled"
+                          : "Run finished"}
+                      </Text>
+                      <Button
+                        title="Open page"
+                        secondary
+                        onPress={() => props.onOpen("doc", run.doc_id)}
+                      />
+                    </View>
+                  ))}
+                {historicalCount > historyLimit && (
+                  <Button
+                    title="Show 10 more results"
+                    secondary
+                    onPress={() => setHistoryLimit((value) => value + 10)}
+                  />
+                )}
+              </InlineDetails>
+            )}
             {!!night.not_done.length && (
               <View style={s.section}>
-                <Text style={shared.sectionTitle}>Not done tonight</Text>
+                <Text style={shared.sectionTitle}>Unfinished work</Text>
                 {night.not_done.map((entry, index) => (
                   <View key={index} style={{ marginVertical: 8 }}>
                     <Text style={shared.body}>{entry.title}</Text>
@@ -278,12 +376,12 @@ function OvernightSession(props: Props) {
         label="Review overnight"
         title={
           bulkPrompt?.action === "keep"
-            ? "Keep finished work?"
-            : "Undo finished work?"
+            ? "Keep finished runs?"
+            : "Undo finished runs?"
         }
         message={
           bulkPrompt?.action === "keep"
-            ? "Applies held changes. Active runs stay open."
+            ? "Keeps results and applies any held changes. Active runs stay open."
             : "Declines held work and restores applied changes where possible. Active runs stay open."
         }
         cancelLabel="Go back"
@@ -333,6 +431,9 @@ function RunCard({
   act: (operation: () => Promise<unknown>) => Promise<boolean>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [stopPrompt, setStopPrompt] = useState(false);
+  const [stopRequested, setStopRequested] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [answer, setAnswer] = useState("");
   const mounted = useRef(true);
   const current = useRef({ run, busy, answer });
@@ -362,6 +463,7 @@ function RunCard({
       .map((choice) => choice.key),
   );
   const pending = run.proposal?.status === "pending";
+  const hasChanges = hasChangeEvidence(run);
   const signature = JSON.stringify([
     run.proposal?.id,
     run.decision_token,
@@ -399,27 +501,101 @@ function RunCard({
     <View style={s.section}>
       <Text style={shared.sectionTitle}>{run.title}</Text>
       <Text style={shared.small}>
-        {run.state === "queued"
-          ? "Queued"
-          : run.state === "running"
-            ? "Working"
-            : run.state === "waiting"
-              ? "Needs you"
-              : run.state === "failed"
-                ? "Could not finish"
-                : run.kind === "reflection"
-                  ? "Reflection ready"
-                  : run.status === "partly"
-                    ? "Partly kept"
-                    : run.status === "undone"
-                      ? "Undone"
-                      : run.status === "pending"
-                        ? "Pending"
-                        : "Kept"}
+        {["queued", "running", "waiting"].includes(run.state) &&
+        (run.cancel_requested || stopRequested)
+          ? "Stop requested · Awaiting confirmation"
+          : run.state === "queued"
+            ? "Queued"
+            : run.state === "running"
+              ? "Running"
+              : run.state === "waiting"
+                ? "Waiting for you"
+                : run.execution_outcome
+                  ? ASSISTANT_OUTCOME_LABELS[run.execution_outcome.outcome]
+                  : run.state === "failed"
+                    ? "Run failed"
+                    : "Run finished · Review outcome"}
       </Text>
-      <Text style={[shared.body, { marginVertical: 12 }]}>
-        {run.summary || "Open the chat to see its progress."}
+      {hasChanges && (
+        <Text style={shared.small}>
+          Changes{" "}
+          {run.status === "partly"
+            ? "partly kept"
+            : run.status === "pending"
+              ? "pending review"
+              : run.status === "undone"
+                ? "undone"
+                : "kept"}
+        </Text>
+      )}
+
+      <Text
+        style={[shared.body, { marginVertical: 12 }]}
+        numberOfLines={
+          !summaryExpanded && run.summary.length > 360 ? 4 : undefined
+        }
+      >
+        {run.summary || "Open the work to inspect its current result."}
       </Text>
+      {run.summary.length > 360 && (
+        <Button
+          title={summaryExpanded ? "Show less" : "Read full result"}
+          secondary
+          onPress={() => setSummaryExpanded((value) => !value)}
+        />
+      )}
+      {run.execution_outcome && (
+        <InlineDetails title="Evidence & open questions">
+          {assistantOutcomeDetails(run.execution_outcome).map((line, index) => (
+            <Text key={index} style={shared.small}>
+              {line}
+            </Text>
+          ))}
+        </InlineDetails>
+      )}
+      {!run.restricted &&
+        ["queued", "running", "waiting"].includes(run.state) && (
+          <>
+            <Button
+              title={
+                stopRequested || run.cancel_requested
+                  ? "Stop requested"
+                  : "Stop this run"
+              }
+              secondary
+              disabled={busy || run.cancel_requested || stopRequested}
+              onPress={() => setStopPrompt(true)}
+            />
+            <ActionSheet
+              visible={stopPrompt}
+              label="Stop current run"
+              title="Stop this run?"
+              message="Requests cancellation. Changes already applied remain available for review and undo."
+              actions={[
+                {
+                  label: "Stop run",
+                  destructive: true,
+                  disabled: busy,
+                  onPress: () => {
+                    const live = current.current;
+                    if (
+                      live.busy ||
+                      live.run.cancel_requested ||
+                      !["queued", "running", "waiting"].includes(live.run.state)
+                    )
+                      return;
+                    setStopPrompt(false);
+                    void act(async () => {
+                      await client.stopAssistantRun(live.run.job_id);
+                      if (mounted.current) setStopRequested(true);
+                    });
+                  },
+                },
+              ]}
+              onClose={() => setStopPrompt(false)}
+            />
+          </>
+        )}
       {!!run.reflection_sources?.length && (
         <InlineDetails title="Sources">
           {run.reflection_sources.map((source) => (
@@ -530,7 +706,7 @@ function RunCard({
       >
         {run.chat_id && (
           <Button
-            title="Open chat"
+            title="Open work"
             secondary
             onPress={() => onOpenChat(run.chat_id!)}
           />
@@ -542,7 +718,7 @@ function RunCard({
             onPress={() => onOpenReview(run.proposal!.id)}
           />
         )}
-        {run.kind !== "reflection" && (
+        {hasChanges && (
           <>
             <Button
               title={
@@ -588,7 +764,7 @@ function RunCard({
           </>
         )}
       </View>
-      {run.kind !== "reflection" && (
+      {hasChanges && (
         <Button
           title={expanded ? "Hide changes" : "Show changes"}
           secondary
@@ -596,7 +772,7 @@ function RunCard({
           style={{ marginTop: 12 }}
         />
       )}
-      {run.kind !== "reflection" && expanded && (
+      {hasChanges && expanded && (
         <>
           {pending &&
             choices.map((choice) => (

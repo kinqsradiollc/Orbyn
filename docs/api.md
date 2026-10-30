@@ -927,6 +927,96 @@ Pausing a page-maintenance schedule prevents future occurrences while healthy
 admitted runs continue against their unchanged snapshot. Source edits, deletion,
 permission changes and instruction rebinding still invalidate affected runs.
 
+### `GET /me/assistant/profiles` (session)
+
+Read-only, current-access snapshot `{ observed_at, profiles }` with separate
+Background and Overnight profiles. Takes no query parameters; returns private,
+no-store data from a primary repeatable-read transaction. Counts distinguish
+working, waiting, queued and recovery-pending jobs. `runtime.reporting=false`
+means no current worker heartbeat is available, not confirmed worker failure.
+A configured schedule or provider alone is not evidence of active execution.
+
+Clients sending `x-orbyn-outcomes: 1` receive additive fields:
+
+- `work`: at most 20 currently accessible queued/running/waiting jobs, each
+  `{ job_id, chat_id, title, state, cancel_requested, recovering, updated_at }`.
+  Waiting jobs sort first. `recovering` means a running lease is missing or expired;
+  it does not confirm a successful resume. `work_truncated` signals additional work.
+- `outputs`: at most five recent accessible finished **or failed** job results.
+  Each includes `job_id`, `chat_id`, `title`, `completed_at`, `state` (`done` or
+  `failed`) and `summary` (up to 1,200 characters of the authorized result answer,
+  empty when absent), plus optional `handoff` and `execution_outcome`.
+  Internal specialist reports are not used as previews. Missing outcome evidence
+  does not turn a failed result into a success.
+
+Without that header the previous profile shape remains: no per-job work fields,
+failed output additions, state/summary or execution receipts. These bounded output
+windows have no unread/reviewed or last-visit meaning. Source and chat access are
+rechecked; a retained activity event alone does not authorize its result.
+
+### `GET /me/agent-routines/:id/runs` (auth)
+
+Read an owned routine's admitted occurrence history, newest scheduled time first,
+then occurrence UUID descending. Returns `404` for a routine the account does not
+own. Query parameters are `limit` (integer 1–50, default 25) and optional `cursor`;
+unknown query fields are rejected. Returns `{ routine_id, runs, next_cursor }`.
+
+Each row has `{ id, scheduled_for, state, last_observed_at, resume_count,
+visibility }`. `id` identifies the ledger occurrence, not the execution job.
+`state` is `queued`, `running`, `waiting`, `done` or `failed`; `done` means **Run
+finished**, not accepted goal completion. `resume_count` records recovery resumes,
+not a promise of automatic retry, catch-up or a user continuation action.
+
+An `available` row also includes `job_id`, `chat_id`, `summary` (up to 2,000 answer
+characters or null) and optional `execution_outcome`. A `restricted` row contains
+only the occurrence metadata above: it omits job/chat/source identifiers, summary
+and receipt. This covers retained occurrences whose job was deleted or whose
+current source/chat access is unavailable. Clients show **Result no longer
+available** and cannot offer Open result from this row. Reading does not admit a
+job, acknowledge a result, alter the routine or call a provider.
+
+Each page uses a primary repeatable-read transaction and current source/chat
+access. Pass a non-null `next_cursor` unchanged to request older rows. It encodes
+the last returned exact `scheduled_for` timestamp, including database microseconds,
+then `|` and the occurrence UUID. Do not reconstruct it with millisecond date
+formatting. A null cursor ends the available history. This is cursor pagination,
+not a fixed multi-page access snapshot: later pages recheck current authority.
+History starts with ledger admission; it does not reconstruct every older run.
+
+### `POST /ai/chat/:id/stop` (auth)
+
+Request a stop for an owned active execution job. Returns `{ stopped: true }` when
+the request is accepted, or `409` when the run is no longer active. This response
+is not a terminal execution receipt. Continue polling the existing work/result
+read: `cancel_requested=true` means **Stop requested**, while terminal state and
+any execution receipt describe the observed result. A stop does not undo already
+committed changes. Lane admission pauses, routine pauses, notification mute and
+access revocation remain separate controls.
+
+### Execution receipts and Overnight review
+
+Negotiated profile/chat/conversation reads and available routine/Overnight results
+may include `execution_outcome`, the versioned `AssistantOutcomeReceipt` from
+`packages/core/src/assistant/assistant-outcomes.ts`. It records `job_id`, `process`
+(`waiting`, `finished`, `failed`, `cancelled`), `outcome` (`unverified`, `completed`,
+`partial`, `waiting`, `failed`, `interrupted`, `uncertain`), structured `reason`,
+`observed_at`, artifact references, performed/not-run checks, open questions and
+optional trusted acceptance. Missing or invalid evidence remains unverified.
+A finished process, answer prose, proposal approval or opened result cannot prove
+accepted goal completion. `completed` requires explicit trusted acceptance, a
+finished process and no unresolved questions or recorded non-passing checks; the
+current runtime does not supply an acceptance writer.
+
+Overnight results expose optional `execution_outcome` and `cancel_requested` after
+current-access projection. Review status is interpreted against the current
+proposal, including expiry. Web/mobile render change-decision captions and
+Keep/Undo only for accessible non-reflection rows with a proposal, staged steps
+or recorded changes. An informational answer's bookkeeping status is insufficient.
+Bulk controls require eligible change evidence; mixed review preserves the exact
+server finished-set IDs and decision tokens rather than silently filtering them.
+Orbyn's existing runtime/providers handle these lanes; the disabled optional
+external execution adapter adds no provider, scheduler or continuation guarantee.
+
 ### `GET /me/assistant/conversations/:id/history` (session)
 
 Explicit read-only access to untracked messages still present in a registered

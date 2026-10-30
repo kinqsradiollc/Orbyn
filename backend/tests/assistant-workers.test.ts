@@ -61,8 +61,15 @@ function fakeStart(calls: StartInput[]) {
     return transaction(async (db) => {
       const id = (
         await db.query<{ id: string }>(
-          "INSERT INTO ai_jobs (user_id) VALUES ($1) RETURNING id",
-          [input.userId],
+          "INSERT INTO ai_jobs (user_id,run_state) VALUES ($1,$2) RETURNING id",
+          [
+            input.userId,
+            // Routine receipts verify execution identity. Keep the unrelated
+            // legacy goal/idea fakes' lifecycle behavior unchanged in this file.
+            input.automation.kind === "routine"
+              ? { version: 1, request: { automation: input.automation } }
+              : null,
+          ],
         )
       ).rows[0].id;
       await input.onQueued?.(db, id);

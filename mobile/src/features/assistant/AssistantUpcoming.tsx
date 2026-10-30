@@ -1,3 +1,4 @@
+import { RoutineRunHistory } from "./RoutineRunHistory";
 import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
@@ -89,12 +90,14 @@ function UpcomingBody({
   agentName,
   visible,
   conversationEnabled = false,
+  onOpenChat,
   onClose,
 }: {
   /** The name the person gave their assistant. */
   agentName: string;
   visible: boolean;
   conversationEnabled?: boolean;
+  onOpenChat?: (id: string) => void;
   onClose: () => void;
 }) {
   const owner = session.token;
@@ -127,6 +130,7 @@ function UpcomingBody({
   const [goals, setGoals] = useState<Goal[]>([]);
   const [checkins, setCheckins] = useState<Record<string, GoalCheckin[]>>({});
   const [routines, setRoutines] = useState<AgentRoutine[]>([]);
+  const [historyRoutineId, setHistoryRoutineId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [agentDocs, setAgentDocs] = useState<DocSummary[]>([]);
   const [timezone, setTimezone] = useState("UTC");
@@ -768,13 +772,18 @@ function UpcomingBody({
                             })}`}{" "}
                         · {describeRrule(routine.rrule)}
                       </Text>
-                      {typeof routine.last_result?.summary === "string" && (
-                        <InlineDetails title="Last run">
-                          <Text style={shared.small}>
-                            {routine.last_result.summary}
-                          </Text>
-                        </InlineDetails>
-                      )}
+                      <RoutineRunHistory
+                        routineId={routine.id}
+                        timezone={routine.timezone}
+                        open={visible && historyRoutineId === routine.id}
+                        disabled={saving || !!form}
+                        onToggle={() =>
+                          setHistoryRoutineId((id) =>
+                            id === routine.id ? null : routine.id,
+                          )
+                        }
+                        onOpenChat={onOpenChat}
+                      />
                     </View>
                     <MoreMenu
                       label={`Options for ${routine.instruction}`}

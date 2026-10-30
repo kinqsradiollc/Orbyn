@@ -6,6 +6,7 @@ import {
   type AgentKeyInput,
   type AgentRoutineInput,
   type AgentRoutineUpdate,
+  type AssistantRoutineRunsQuery,
   type AgentRuleInput,
   type AgentSettingsUpdate,
   type AgentToolset,
@@ -1156,6 +1157,9 @@ export class OrbynClient {
   }
   listAgentRoutines() {
     return assistant.callListAgentRoutines.call(this);
+  }
+  listAgentRoutineRuns(id: string, query: AssistantRoutineRunsQuery = {}) {
+    return assistant.callListAgentRoutineRuns.call(this, id, query);
   }
   createAgentRoutine(input: AgentRoutineInput) {
     return assistant.callCreateAgentRoutine.call(this, input);

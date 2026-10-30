@@ -11,8 +11,10 @@ const { registerOriginConversation, retainConversationTurn } =
   await import("../src/modules/assistant-workspace/conversation-storage.js");
 const { conversationFeed } =
   await import("../src/modules/assistant-workspace/conversation-feed.js");
-const { readAssistantProfiles } =
+const { readAssistantProfiles: readProfiles } =
   await import("../src/modules/assistant-workspace/profiles.js");
+const readAssistantProfiles = (db: typeof pool, owner: string) =>
+  readProfiles(db, owner, undefined, true);
 const { buildApiService } = await import("../src/app.js");
 const app = await buildApiService();
 const h = helpers(app);
@@ -176,5 +178,99 @@ test("server receipts survive reload, preserve legacy storage, and respect owner
     (await readAiChat(pool, user.id, chat)).turns[0].execution_outcome,
     undefined,
     "a receipt must match its server-owned job identity",
+  );
+});
+
+test("current work rows expose actionable owned jobs and distinguish stop requests, recovery and terminal failure", async () => {
+  const user = await h.register("current-work-owner");
+  const other = await h.register("current-work-foreign");
+  users.push(user.id, other.id);
+  const chat = randomUUID(),
+    job = randomUUID(),
+    turn = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title,origin) VALUES($1,$2,'Draft the project brief','task')",
+    [chat, user.id],
+  );
+  await pool.query(
+    "INSERT INTO ai_jobs(id,user_id,chat_id,turn_id,state,sources_checked,run_state) VALUES($1,$2,$3,$4,'queued',true,$5)",
+    [
+      job,
+      user.id,
+      chat,
+      turn,
+      { version: 1, request: { automation: { kind: "task" } } },
+    ],
+  );
+  const read = async (token: string, negotiated = true) => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/me/assistant/profiles",
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(negotiated ? { "x-orbyn-outcomes": "1" } : {}),
+      },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    return response.json().profiles[0];
+  };
+  let profile = await read(user.token);
+  assert.equal(profile.work.length, 1);
+  assert.equal(profile.work[0].job_id, job);
+  assert.equal(profile.work[0].chat_id, chat);
+  assert.equal(profile.work[0].state, "queued");
+  assert.equal(profile.work[0].cancel_requested, false);
+  assert.equal(
+    (await read(user.token, false)).work,
+    undefined,
+    "legacy strict readers receive no new fields",
+  );
+  assert.deepEqual((await read(other.token)).work, []);
+  await pool.query(
+    "UPDATE ai_jobs SET state='running',lease_until=now()+interval '1 minute',cancel_requested=true WHERE id=$1",
+    [job],
+  );
+  profile = await read(user.token);
+  assert.equal(profile.work[0].state, "running");
+  assert.equal(
+    profile.work[0].cancel_requested,
+    true,
+    "requesting a stop never claims the worker has stopped",
+  );
+  assert.equal(profile.work[0].recovering, false);
+  await pool.query(
+    "UPDATE ai_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",
+    [job],
+  );
+  assert.equal((await read(user.token)).work[0].recovering, true);
+  const receipt = runtimeOutcome({
+    jobId: job,
+    chatId: chat,
+    turnId: turn,
+    failed: true,
+  });
+  await pool.query("UPDATE ai_jobs SET state='failed',result=$2 WHERE id=$1", [
+    job,
+    { turn_id: turn, assistant_run: { execution_outcome: receipt } },
+  ]);
+  profile = await read(user.token);
+  assert.deepEqual(profile.work, []);
+  assert.equal(profile.outputs[0].state, "failed");
+  assert.equal(profile.outputs[0].execution_outcome.outcome, "failed");
+  assert.deepEqual(
+    (await read(user.token, false)).outputs,
+    [],
+    "failed-run cards are opt-in for older strict clients",
+  );
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [job, randomUUID()],
+  );
+  profile = await read(user.token);
+  assert.deepEqual(profile.work, []);
+  assert.deepEqual(profile.outputs, []);
+  assert.equal(
+    JSON.stringify(profile).includes("Draft the project brief"),
+    false,
   );
 });

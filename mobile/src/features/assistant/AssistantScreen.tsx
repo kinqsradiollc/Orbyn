@@ -155,7 +155,7 @@ export function AssistantScreen({
   conversationVisibility = 0,
   conversationVisible = true,
   centerComposer = false,
-  openActivity = 0,
+  openActivity = null,
   onActivityOpened,
 }: {
   assistant: Assistant;
@@ -174,7 +174,7 @@ export function AssistantScreen({
   conversationVisibility?: number;
   conversationVisible?: boolean;
   centerComposer?: boolean;
-  openActivity?: number;
+  openActivity?: "menu" | "background" | null;
   onActivityOpened?: () => void;
   items: Item[];
   busy: boolean;
@@ -297,12 +297,6 @@ export function AssistantScreen({
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [activityOpen, setActivityOpen] = useState(false);
-  useEffect(() => {
-    if (openActivity > 0) {
-      setActivityOpen(true);
-      onActivityOpened?.();
-    }
-  }, [openActivity]);
   const [detailsEntryId, setDetailsEntryId] = useState<string | null>(null);
   const detailsEntry = assistant.conversation.entries.find(
     (entry) => entry.id === detailsEntryId,
@@ -360,6 +354,15 @@ export function AssistantScreen({
     setDetailsEntryId(null);
     afterDrawer.current = null;
   }, [owner]);
+  // Activity links may mount this screen: apply the destination
+  // after account reset so that the first navigation is not immediately erased.
+  useEffect(() => {
+    if (openActivity) {
+      if (openActivity === "background") setAgentLane("background");
+      else setActivityOpen(true);
+      onActivityOpened?.();
+    }
+  }, [openActivity]);
   const chatActions = (chat: AiChatSummary): MoreAction[] => [
     {
       label: chat.pinned ? "Unpin chat" : "Pin chat",
@@ -503,7 +506,11 @@ export function AssistantScreen({
         onClose={() => setActivityOpen(false)}
         actions={[
           { label: "Background", onPress: () => setAgentLane("background") },
-          { label: "Overnight", onPress: () => setAgentLane("overnight") },
+          {
+            label: "Overnight",
+            onPress: () =>
+              onOpenOvernight ? onOpenOvernight() : setAgentLane("overnight"),
+          },
           { label: "Upcoming", onPress: () => setUpcomingOpen(true) },
         ]}
       />
@@ -656,6 +663,17 @@ export function AssistantScreen({
         </Text>
       ) : null}
       <AssistantUpcoming
+        onOpenChat={
+          locked
+            ? undefined
+            : (id) => {
+                setUpcomingOpen(false);
+                void runHistoryAction(
+                  () => openChat(id),
+                  "Couldn't open result. Try again.",
+                );
+              }
+        }
         conversationEnabled={assistant.conversationEnabled}
         agentName={agentName}
         visible={upcomingOpen}

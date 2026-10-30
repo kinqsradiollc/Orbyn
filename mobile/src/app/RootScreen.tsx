@@ -238,7 +238,9 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
   const assistant = useAssistant({ token, act, refresh, items });
   /** The assistant's side menu of chats and shortcuts. */
   const [assistantMenu, setAssistantMenu] = useState(false);
-  const [assistantActivity, setAssistantActivity] = useState(0);
+  const [assistantActivity, setAssistantActivity] = useState<
+    "menu" | "background" | null
+  >(null);
   // News from another device may be a session: planned time is asked again.
   usePresence(
     token,
@@ -1597,7 +1599,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                   assistant={assistant}
                   busy={busy}
                   onMenu={() => setAssistantMenu(true)}
-                  onActivity={() => setAssistantActivity((value) => value + 1)}
+                  onActivity={() => setAssistantActivity("menu")}
                 />
               </View>
             </View>
@@ -1749,7 +1751,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                           present({ sheet: "overnight" });
                         else {
                           setTab("AI");
-                          setAssistantActivity((value) => value + 1);
+                          setAssistantActivity("background");
                         }
                       }}
                       conversationEnabled={assistant.conversationEnabled}
@@ -1916,7 +1918,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                       centerComposer={centerNewChat}
                       assistant={assistant}
                       openActivity={assistantActivity}
-                      onActivityOpened={() => setAssistantActivity(0)}
+                      onActivityOpened={() => setAssistantActivity(null)}
                       drawerOpen={assistantMenu}
                       onDrawerChange={setAssistantMenu}
                       onOpenMemory={() => present({ sheet: "memory" })}
@@ -2279,7 +2281,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                   else {
                     closeSheet();
                     setTab("AI");
-                    setAssistantActivity((value) => value + 1);
+                    setAssistantActivity("background");
                   }
                 }}
                 onBusyChange={(pending) => {

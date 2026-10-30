@@ -1,3 +1,4 @@
+import { recordRoutineRun } from "../modules/assistant-workspace/routine-runs.js";
 import type { UserRow } from "../lib/auth.js";
 import { maintainedPageContext } from "../modules/documents/maintenance.js";
 import { queueMaintainedPageRun } from "../modules/documents/maintenance-runs.js";
@@ -557,6 +558,14 @@ async function claimSource(
     if (!changed.rowCount)
       throw new Error("This goal has already been reviewed.");
   } else if (next.source === "routine") {
+    if (!next.id) throw new Error("This routine is no longer due.");
+    const occurrence = (
+      await db.query<{ scheduled_for: string }>(
+        "SELECT next_run_at::text AS scheduled_for FROM agent_routines WHERE id=$1 AND user_id=$2 FOR UPDATE",
+        [next.id, userId],
+      )
+    ).rows[0];
+    if (!occurrence) throw new Error("This routine is no longer due.");
     const changed = await db.query(
       `UPDATE agent_routines SET current_job_id = $3, claimed_at = $4,
       next_run_at = coalesce($5::timestamptz, next_run_at), paused = ($5::timestamptz IS NULL), updated_at = now()
@@ -564,6 +573,13 @@ async function claimSource(
       [next.id, userId, jobId, now, next.next],
     );
     if (!changed.rowCount) throw new Error("This routine is no longer due.");
+    await recordRoutineRun(
+      db,
+      userId,
+      next.id,
+      occurrence.scheduled_for,
+      jobId,
+    );
   }
 }
 

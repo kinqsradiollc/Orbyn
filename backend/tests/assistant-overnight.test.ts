@@ -782,3 +782,51 @@ test("reflections stay read-only while bulk review handles the night's actual ch
     );
   }
 });
+
+test("night cards expose durable outcomes and stop requests only while the work remains accessible", async () => {
+  const me = await person();
+  const fixture = await held(me);
+  const job = (
+    await pool.query<{ id: string; chat_id: string }>(
+      "SELECT j.id,j.chat_id FROM ai_jobs j JOIN assistant_night_runs r ON r.job_id=j.id WHERE r.id=$1",
+      [fixture.run],
+    )
+  ).rows[0];
+  const { runtimeOutcome } = await import("../src/modules/ai/agent/outcome.js");
+  const receipt = runtimeOutcome({
+    jobId: job.id,
+    chatId: job.chat_id,
+    turnId: randomUUID(),
+    timedOut: true,
+  });
+  await pool.query(
+    "UPDATE ai_jobs SET result=jsonb_set(result,'{assistant_run,execution_outcome}',$2::jsonb),cancel_requested=true WHERE id=$1",
+    [job.id, JSON.stringify(receipt)],
+  );
+  let response = await h.call(
+    me.token,
+    "GET",
+    `/me/assistant/nights/${fixture.night}`,
+  );
+  assert.equal(response.statusCode, 200, response.body);
+  let card = response
+    .json()
+    .runs.find((r: { id: string }) => r.id === fixture.run);
+  assert.deepEqual(card.execution_outcome, receipt);
+  assert.equal(card.cancel_requested, true);
+  assert.match(card.decision_token, /^[a-f0-9]{64}$/);
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [job.id, randomUUID()],
+  );
+  response = await h.call(
+    me.token,
+    "GET",
+    `/me/assistant/nights/${fixture.night}`,
+  );
+  card = response.json().runs.find((r: { id: string }) => r.id === fixture.run);
+  assert.equal(card.restricted, true);
+  assert.equal(card.execution_outcome, undefined);
+  assert.equal(card.cancel_requested, undefined);
+  assert.equal(card.chat_id, null);
+});

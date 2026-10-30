@@ -63,7 +63,7 @@ export async function readAssistantProfiles(
   db: Queryable,
   owner: string,
   now?: Date,
-  includeOutcomes = true,
+  includeOutcomes = false,
 ) {
   const row = (
     await db.query<{
@@ -127,6 +127,27 @@ export async function readAssistantProfiles(
         [owner, observedAt, lane],
       )
     ).rows[0];
+    const work = includeOutcomes
+      ? (
+          await db.query<{
+            job_id: string;
+            chat_id: string;
+            title: string;
+            state: "queued" | "running" | "waiting";
+            cancel_requested: boolean;
+            recovering: boolean;
+            updated_at: Date;
+          }>(
+            `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,j.state,j.cancel_requested,
+      (j.state='running' AND (j.lease_until IS NULL OR j.lease_until<=$2)) AS recovering,
+      greatest(j.heartbeat_at,j.created_at) AS updated_at FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id
+      WHERE j.user_id=$1 AND j.runtime_lane=$3 AND j.state IN ('queued','running','waiting')
+      AND ${assistantChatVisible("c", "$1")} AND ${assistantJobSourcesVisible("j", "$1", false)}
+      ORDER BY (j.state='waiting') DESC,j.created_at,j.id LIMIT 20`,
+            [owner, observedAt, lane],
+          )
+        ).rows
+      : [];
     const lastActivity = await assistantLastActivity(db, owner, lane);
     const outputs = (
       await db.query<{
@@ -135,6 +156,8 @@ export async function readAssistantProfiles(
         title: string;
         completed_at: Date;
         execution_outcome: unknown;
+        state: "done" | "failed";
+        summary: string;
         review_status: string | null;
         handoff: {
           id: string;
@@ -143,14 +166,14 @@ export async function readAssistantProfiles(
           recipient_chat_id: string | null;
         } | null;
       }>(
-        `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at,j.result->'assistant_run'->'execution_outcome' AS execution_outcome,CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status,
+        `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at,j.result->'assistant_run'->'execution_outcome' AS execution_outcome,j.state,left(coalesce(j.result->>'answer',''),1200) AS summary,CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status,
          (SELECT jsonb_build_object('id',h.id,'status',h.status,'recipient_chat_id',r.chat_id)
           FROM assistant_handoffs h LEFT JOIN ai_jobs r ON r.id=h.recipient_job_id
           WHERE h.producer_job_id=j.id AND h.owner_id=$1
           ORDER BY h.created_at DESC,h.id DESC LIMIT 1) AS handoff
        FROM assistant_activity_events e JOIN ai_jobs j ON j.id=e.job_id
        JOIN ai_chats c ON c.id=j.chat_id LEFT JOIN proposals p ON p.user_id=$1 AND p.id=CASE WHEN j.result->'assistant_run'->>'proposal_id' ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN (j.result->'assistant_run'->>'proposal_id')::uuid END WHERE e.owner_id=$1 AND e.runtime_lane=$2
-       AND e.kind='done' AND j.state='done' AND j.result IS NOT NULL
+       AND ((e.kind='done' AND j.state='done') ${includeOutcomes ? "OR (e.kind='failed' AND j.state='failed')" : ""}) AND j.result IS NOT NULL
        AND j.runtime_lane=$2 AND ${assistantChatVisible("c", "$1")}
        AND ${assistantJobSourcesVisible("j", "$1", false)}
        GROUP BY j.id,j.chat_id,c.title,p.status,p.expires_at ORDER BY max(e.created_at) DESC,j.id DESC LIMIT 5`,
@@ -174,8 +197,22 @@ export async function readAssistantProfiles(
       ),
       last_activity_at: lastActivity,
       recent_activity: await assistantRecentActivity(db, owner, lane),
+      ...(includeOutcomes
+        ? {
+            work: work.map((row) => ({
+              ...row,
+              updated_at: row.updated_at.toISOString(),
+            })),
+            work_truncated:
+              counts.working +
+                counts.waiting +
+                counts.queued +
+                counts.recovering >
+              work.length,
+          }
+        : {}),
       outputs: outputs.map(
-        ({ execution_outcome, review_status, ...output }) => {
+        ({ execution_outcome, review_status, state, summary, ...output }) => {
           const receipt = projectOutcomeReceipt(
             execution_outcome,
             output.job_id,
@@ -183,6 +220,7 @@ export async function readAssistantProfiles(
           );
           return {
             ...output,
+            ...(includeOutcomes ? { state, summary } : {}),
             completed_at: output.completed_at.toISOString(),
             ...(includeOutcomes && receipt
               ? { execution_outcome: receipt }

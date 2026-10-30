@@ -1776,6 +1776,14 @@ export function AssistantView({
         )}
       {upcomingOpen && (
         <AssistantUpcoming
+          onOpenChat={
+            locked
+              ? undefined
+              : (id) => {
+                  closePanels();
+                  chatAction(() => openChat(id), "Couldn't open result.");
+                }
+          }
           conversationEnabled={assistant.conversationEnabled}
           id={upcomingId}
           agentName={agentName}

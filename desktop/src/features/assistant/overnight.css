@@ -100,3 +100,40 @@
   font-size: 13px;
   font-weight: 600;
 }
+
+.overnight-run-group {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.overnight-run-group > h3 {
+  margin: 4px 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.overnight-history > summary,
+.overnight-head summary {
+  min-height: var(--button-h);
+  align-content: center;
+  cursor: pointer;
+  font-size: 13px;
+}
+.overnight-history > div {
+  margin-top: 8px;
+}
+.overnight-summary.is-collapsed {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+.overnight-card > .muted,
+.overnight-card > details {
+  font-size: 13px;
+}
+.overnight-card button,
+.overnight-card li {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

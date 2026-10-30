@@ -58,6 +58,9 @@ import {
   assistantHandoffSource,
   type AssistantIdea,
   assistantProfiles,
+  assistantRoutineRunsPage,
+  assistantRoutineRunsQuery,
+  type AssistantRoutineRunsQuery,
   assistantRulesInput,
   assistantRulesSnapshot,
   assistantSavedHistory,
@@ -324,6 +327,25 @@ export function callDeleteProjectChat(this: OrbynClient, id: string) {
 
 export function callListAgentRoutines(this: OrbynClient) {
   return this.request<AgentRoutine[]>("/me/agent-routines");
+}
+
+export async function callListAgentRoutineRuns(
+  this: OrbynClient,
+  id: string,
+  input: AssistantRoutineRunsQuery = {},
+) {
+  const query = assistantRoutineRunsQuery.parse(input);
+  const params = new URLSearchParams({ limit: String(query.limit) });
+  if (query.cursor) params.set("cursor", query.cursor);
+  const page = assistantRoutineRunsPage.parse(
+    await this.request<unknown>(
+      `/me/agent-routines/${encodeURIComponent(id)}/runs?${params}`,
+      { fresh: true },
+    ),
+  );
+  if (page.routine_id !== id || page.runs.length > query.limit)
+    throw new Error("Run history does not match the requested routine.");
+  return page;
 }
 
 export function callCreateAgentRoutine(
