@@ -16,7 +16,7 @@
 }
 .notice-source-heading span {
   color: var(--color-textMuted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .notice-source-group > .notice {
   flex-wrap: wrap;

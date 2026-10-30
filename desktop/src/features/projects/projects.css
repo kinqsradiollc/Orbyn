@@ -326,9 +326,8 @@
   min-width: 0;
 }
 .project-card small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-size: 13px;
 }
 .project-card-foot {

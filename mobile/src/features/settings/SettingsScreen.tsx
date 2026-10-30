@@ -862,8 +862,8 @@ function SettingsBody({
           {onPresetsChange && (
             <SettingsSection title="Workspace presets">
               <Text style={shared.small}>
-                Combine shortcuts for your work. Projects and saved views stay
-                yours.
+                Combine workspace shortcuts while keeping your projects and
+                saved views.
               </Text>
               {(["engineer", "student"] as const).map((preset) => (
                 <View key={preset} style={s.preference}>

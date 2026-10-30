@@ -85,7 +85,7 @@ test("both project clients retain open/create/manage actions while using shared 
   assert.match(mobile, /setHeldProject\(p\)/);
   assert.match(mobile, /getProject\(p.id\)/);
 });
-test("project library uses bounded cards, wrapping metadata and separated phone rows", () => {
+test("project portfolio uses bounded aligned rows, wrapping metadata and a single column in narrow panes", () => {
   const css = readFileSync(
     new URL(
       "../../desktop/src/features/projects/projects.css",
@@ -95,19 +95,23 @@ test("project library uses bounded cards, wrapping metadata and separated phone 
   );
   assert.match(
     css,
-    /\.project-grid\s*\{[^}]*grid-template-columns: repeat\(auto-fill, minmax\(min\(300px, 100%\), 1fr\)\)/,
+    /\.project-grid\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/,
   );
   assert.match(
     css,
-    /\.project-card\s*\{[^}]*display: flex;\s*flex-direction: column;/,
+    /\.project-card\s*\{[^}]*display: grid;\s*grid-template-columns: minmax\(160px, 1fr\) minmax\(200px, 1\.3fr\) minmax\(\s*160px,\s*0\.8fr\s*\)/,
   );
   assert.match(
     css,
-    /\.project-card \.project-card-top strong,\s*\.project-card small\s*\{\s*white-space: normal;\s*overflow-wrap: anywhere;/,
+    /\.project-open,\s*\.project-task-link\s*\{[^}]*min-width: 0;[^}]*white-space: normal;\s*overflow-wrap: anywhere;/,
   );
   assert.match(
     css,
-    /\.project-grid \.project-card\s*\{[^}]*border-bottom: 1px solid var\(--color-divider\);\s*border-radius: 0;/,
+    /\.project-card\s*\{[^}]*border-bottom: 1px solid var\(--color-divider\);[^}]*min-width: 0;/,
+  );
+  assert.match(
+    css,
+    /\.project-card small\s*\{\s*white-space: normal;\s*overflow-wrap: anywhere;/,
   );
   assert.match(
     css,
@@ -115,6 +119,10 @@ test("project library uses bounded cards, wrapping metadata and separated phone 
   );
   assert.match(
     css,
-    /@media \(max-width: 640px\) \{\s*\.project-grid\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/,
+    /@media \(max-width: 640px\) \{\s*\.project-card\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/,
+  );
+  assert.match(
+    css,
+    /\.projects-view\.is-compact \.project-card\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/,
   );
 });

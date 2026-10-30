@@ -340,42 +340,59 @@ test("a session on a day: someone else's task is not found, an event can't", asy
 });
 
 test("a task dropped on a day goes in that day's first free working time", async () => {
-  assert.equal((await workAllWeek(me)).statusCode, 200);
-  const day = addDays(localDateKey(new Date(), "UTC"), 3);
-  const task = (
-    await call(me, "POST", "/items", {
-      title: "Write lab report",
-      estimate_minutes: 90,
-      // Due the day before: the session is still made, and flagged late.
-      due_at: `${addDays(day, -1)}T12:00:00.000Z`,
-    })
-  ).json();
-  const first = await call(me, "POST", "/blocks", {
-    item_id: task.id,
-    day,
-  });
-  assert.equal(first.statusCode, 201, first.body);
-  const a = first.json();
-  assert.equal(a.start_at, `${day}T09:00:00.000Z`);
-  assert.equal(a.end_at, `${day}T10:30:00.000Z`, "the estimate's length");
-  // The deadline is never written.
-  const after = (await call(me, "GET", `/items/${task.id}`)).json();
-  assert.equal(after.due_at, `${addDays(day, -1)}T12:00:00.000Z`);
-  // A second one on the same day goes after the first.
-  const second = await call(me, "POST", "/blocks", {
-    item_id: task.id,
-    day,
-    minutes: 30,
-  });
-  assert.equal(second.statusCode, 201);
-  assert.ok(
-    Date.parse(second.json().start_at) >= Date.parse(a.end_at),
-    "no clash with the first",
-  );
-  assert.equal(
-    Date.parse(second.json().end_at) - Date.parse(second.json().start_at),
-    30 * 60_000,
-  );
+  // Other Info-panel scenarios own calendar events, including a fixed
+  // 2026-11-02 meeting. Use an isolated calendar rather than letting today's
+  // date make those unrelated fixtures occupy the requested day.
+  const planner = await register("Isolated day-drop planner");
+  try {
+    assert.equal((await workAllWeek(planner)).statusCode, 200);
+    const day = addDays(localDateKey(new Date(), "UTC"), 3);
+    const task = (
+      await call(planner, "POST", "/items", {
+        title: "Write lab report",
+        estimate_minutes: 90,
+        // Due the day before: the session is still made, and flagged late.
+        due_at: `${addDays(day, -1)}T12:00:00.000Z`,
+      })
+    ).json();
+    const first = await call(planner, "POST", "/blocks", {
+      item_id: task.id,
+      day,
+    });
+    assert.equal(first.statusCode, 201, first.body);
+    const a = first.json();
+    assert.equal(a.start_at, `${day}T09:00:00.000Z`);
+    assert.equal(a.end_at, `${day}T10:30:00.000Z`, "the estimate's length");
+    // The deadline is never written.
+    const after = (await call(planner, "GET", `/items/${task.id}`)).json();
+    assert.equal(after.due_at, `${addDays(day, -1)}T12:00:00.000Z`);
+    // Make the later collision explicit: the next session must respect both
+    // the first session and an owned calendar event, regardless of today's date.
+    const meeting = await call(planner, "POST", "/items", {
+      title: "Day-drop fixture meeting",
+      kind: "event",
+      due_at: `${day}T10:30:00.000Z`,
+      end_at: `${day}T11:00:00.000Z`,
+    });
+    assert.equal(meeting.statusCode, 201, meeting.body);
+    const second = await call(planner, "POST", "/blocks", {
+      item_id: task.id,
+      day,
+      minutes: 30,
+    });
+    assert.equal(second.statusCode, 201);
+    assert.equal(
+      second.json().start_at,
+      `${day}T11:00:00.000Z`,
+      "the first free slot after both the session and calendar event",
+    );
+    assert.equal(
+      Date.parse(second.json().end_at) - Date.parse(second.json().start_at),
+      30 * 60_000,
+    );
+  } finally {
+    await pool.query("DELETE FROM users WHERE id=$1", [planner.id]);
+  }
 });
 
 test("a day with no free time, or one that's over, says so (409)", async () => {
