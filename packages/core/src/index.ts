@@ -182,3 +182,4 @@ export * from "./assistant/routine-retries.js";
 export * from "./assistant/routine-quiet-checks.js";
 
 export * from "./assistant/assistant-review.js";
+export * from "./assistant/routine-setup.js";

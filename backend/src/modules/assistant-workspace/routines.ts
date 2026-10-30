@@ -1,4 +1,5 @@
 import { routineQuietCheckRoutes } from "./quiet-check-routes.js";
+import { routineSetupRoutes } from "./routine-setup-routes.js";
 import { routineRecoveryRoutes } from "./routine-recovery-routes.js";
 import { recordScheduleConversation } from "./conversation-schedules.js";
 import { readRoutineRuns } from "./routine-runs.js";
@@ -228,6 +229,7 @@ export async function deleteAgentRoutine(
 }
 
 export async function assistantRoutineRoutes(app: FastifyInstance) {
+  await routineSetupRoutes(app);
   await routineRecoveryRoutes(app);
   await routineQuietCheckRoutes(app);
   app.get("/me/agent-routines", async (r) => {

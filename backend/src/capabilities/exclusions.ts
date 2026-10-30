@@ -383,6 +383,8 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "GET /me/agent-routines/setup-context": "assistant_control",
+  "POST /me/agent-routines/setup": "assistant_control",
   "GET /items/reconcile": "planner_sync",
   "GET /docs/:id/content": "editor_sync",
   "PUT /docs/:id/content": "editor_sync",

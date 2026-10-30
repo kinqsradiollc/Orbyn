@@ -21,6 +21,7 @@ type Script = {
   mode: "fail" | "finish" | "create" | "question";
   calls: number;
   title: string;
+  beforeFinish?: () => Promise<void>;
 };
 const scripts = new Map<string, Script>(),
   providerErrors: string[] = [];
@@ -86,6 +87,9 @@ const provider = createServer(async (req, res) => {
         }[];
         const steps = reports.flatMap((report) => report.staged_step_ids ?? []);
         assert.equal(steps.length, 1, JSON.stringify(reports));
+        const beforeFinish = script.beforeFinish;
+        script.beforeFinish = undefined;
+        await beforeFinish?.();
         reply = {
           name: "finish",
           arguments: { answer: "Created the one requested task.", steps },
@@ -162,6 +166,7 @@ const { settleRoutineRecoveries, scanRoutineRetries } =
   await import("../src/worker/routine-recovery.js");
 const { stopRoutineRecovery } =
   await import("../src/modules/assistant-workspace/routine-recovery.js");
+const { stopAssistantJob } = await import("../src/modules/ai/agent/run.js");
 const app = await buildApiService(),
   users: string[] = [];
 let providerId: string | undefined,
@@ -222,6 +227,7 @@ async function fixture(
     policy?: Partial<RoutineRetryPolicy>;
     mode?: Script["mode"];
     final?: boolean;
+    upfrontSetup?: boolean;
   } = {},
 ) {
   const registered = await app.inject({
@@ -262,15 +268,40 @@ async function fixture(
       .toISOString()
       .replace(/[-:]/g, "")
       .replace(/\.\d{3}Z$/, "Z");
-  const made = await request("POST", "/me/agent-routines", {
+  const routineInput = {
     instruction: `RoutineCase:${marker} ${script.mode === "create" ? "Create exactly one personal task." : "Summarize my saved routine notes."}`,
     rrule: options.final ? `FREQ=DAILY;UNTIL=${until}` : "FREQ=DAILY",
     timezone: "UTC",
     next_run_at: due.toISOString(),
-  });
-  assert.equal(made.statusCode, 201, made.body);
+  };
+  let made;
+  if (options.upfrontSetup) {
+    const existing = await request("PUT", "/me/assistant/approval-scopes", {
+      pages: "always",
+      study: { scope: "goal", id: randomUUID() },
+    });
+    assert.equal(existing.statusCode, 200, existing.body);
+    const context = await request("GET", "/me/agent-routines/setup-context");
+    assert.equal(context.statusCode, 200, context.body);
+    assert.equal(context.json().can_preauthorize, true);
+    made = await request("POST", "/me/agent-routines/setup", {
+      request_id: randomUUID(),
+      expected_snapshot: context.json().snapshot,
+      routine: routineInput,
+      allow_changes: ["tasks"],
+    });
+    assert.equal(made.statusCode, 200, made.body);
+    const scopes = await request("GET", "/me/assistant/approval-scopes");
+    assert.deepEqual(scopes.json(), {
+      ...context.json().approval_scopes,
+      tasks: { scope: "routine", id: made.json().id },
+    });
+  } else {
+    made = await request("POST", "/me/agent-routines", routineInput);
+    assert.equal(made.statusCode, 201, made.body);
+  }
   const routine = made.json();
-  if (script.mode === "create") {
+  if (script.mode === "create" && !options.upfrontSetup) {
     const scopes = await request("PUT", "/me/assistant/approval-scopes", {
       tasks: { scope: "routine", id: routine.id },
     });
@@ -374,6 +405,242 @@ async function stopRuntimeNow() {
   await stopRuntime?.();
   stopRuntime = undefined;
 }
+
+async function admitSetup(f: Fixture, lane: "background" | "overnight") {
+  if (lane === "background") return initial(f);
+  const now = new Date(),
+    clock = (date: Date) =>
+      `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
+  const settings = await f.request("PUT", "/me/assistant/night-shift", {
+    enabled: true,
+    start: clock(new Date(now.getTime() - 3600000)),
+    end: clock(new Date(now.getTime() + 3600000)),
+    timezone: "UTC",
+    kinds: {
+      plan: false,
+      deadlines: false,
+      study: false,
+      meetings: false,
+      tidy: false,
+      handed: false,
+      follow_through: true,
+      reflection: false,
+    },
+    wait_for_ok: false,
+  });
+  assert.equal(settings.statusCode, 200, settings.body);
+  await pool.query(
+    "UPDATE sessions SET last_seen_at=$2::timestamptz - interval '16 minutes' WHERE user_id=$1",
+    [f.user.id, now],
+  );
+  assert.equal(
+    await scanNightShift(new Date(f.due.getTime() + 1), { only: [f.user.id] }),
+    1,
+  );
+  const run = (
+    await pool.query(
+      "SELECT id,job_id FROM assistant_routine_runs WHERE routine_id=$1",
+      [f.routine.id],
+    )
+  ).rows;
+  assert.equal(run.length, 1);
+  return run[0] as { id: string; job_id: string };
+}
+
+test("upfront setup authorizes one actual scheduled Personal task in Background and Overnight without another approval", async () => {
+  for (const lane of ["background", "overnight"] as const) {
+    const f = await fixture({
+      mode: "create",
+      upfrontSetup: true,
+      enabled: false,
+    });
+    const before = (
+      await pool.query(
+        "SELECT assistant_rules_revision,assistant_rules FROM agent_grants WHERE user_id=$1 AND kind='assistant'",
+        [f.user.id],
+      )
+    ).rows[0];
+    const run = await admitSetup(f, lane);
+    try {
+      stopRuntime = await startTestAssistantRuntime(lane);
+      const done = await waitJob(run.job_id, ["done", "failed", "waiting"]);
+      assert.equal(done.state, "done", JSON.stringify(done));
+      assert.equal(done.apply_result?.applied, true, JSON.stringify(done));
+      assert.equal(done.apply_result.structured.status, "done");
+      assert.match(done.apply_result.structured.job, /^plan_/);
+      assert.equal(done.apply_result.structured.pending, null);
+      assert.equal(done.terminal_evidence.effects, "applied");
+      assert.equal(
+        done.run_state,
+        null,
+        "Finished jobs prune their live plan state",
+      );
+      const items = (
+        await pool.query(
+          "SELECT id,team_id,user_id FROM items WHERE user_id=$1 AND title=$2",
+          [f.user.id, f.script.title],
+        )
+      ).rows;
+      assert.equal(items.length, 1);
+      assert.equal(items[0].team_id, null);
+      const identity = (
+        await pool.query(
+          "SELECT runtime_lane,work_source_kind,work_source_id,chat_id,turn_id,sources_checked FROM ai_jobs WHERE id=$1 AND user_id=$2",
+          [run.job_id, f.user.id],
+        )
+      ).rows[0];
+      assert.equal(identity.runtime_lane, lane);
+      assert.equal(identity.work_source_kind, "routine");
+      assert.equal(identity.work_source_id, f.routine.id);
+      assert.ok(
+        identity.chat_id && identity.turn_id && identity.sources_checked,
+      );
+      const sources = (
+        await pool.query(
+          "SELECT source_kind,source_id FROM assistant_job_sources WHERE job_id=$1 AND source_kind='routine' AND source_id=$2",
+          [run.job_id, f.routine.id],
+        )
+      ).rows;
+      assert.equal(sources.length, 1);
+      const activity = (
+        await pool.query(
+          "SELECT target_ids,request_id FROM agent_activity WHERE user_id=$1 AND tool='apply_plan' AND request_id=$2",
+          [f.user.id, done.apply_result.structured.job],
+        )
+      ).rows;
+      assert.equal(activity.length, 1);
+      assert.equal(activity[0].request_id, done.apply_result.structured.job);
+      assert.ok(JSON.stringify(activity[0].target_ids).includes(items[0].id));
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT request_id FROM assistant_routine_setup_receipts WHERE owner_id=$1 AND routine_id=$2",
+            [f.user.id, f.routine.id],
+          )
+        ).rowCount,
+        1,
+      );
+      assert.deepEqual(
+        (
+          await pool.query(
+            "SELECT assistant_rules_revision,assistant_rules FROM agent_grants WHERE user_id=$1 AND kind='assistant'",
+            [f.user.id],
+          )
+        ).rows[0],
+        before,
+      );
+      const scopes = (
+        await f.request("GET", "/me/assistant/approval-scopes")
+      ).json();
+      assert.equal(scopes.pages, "always");
+      assert.equal(scopes.study.scope, "goal");
+      assert.deepEqual(scopes.tasks, { scope: "routine", id: f.routine.id });
+      assert.equal(
+        f.script.calls,
+        4,
+        "Delegate, stage, report and finish: no permission/replanning round",
+      );
+    } finally {
+      await stopRuntimeNow();
+    }
+  }
+});
+
+test("upfront setup respects current ask rules added before accepted-plan apply", async () => {
+  const f = await fixture({
+    mode: "create",
+    upfrontSetup: true,
+    enabled: false,
+  });
+  const run = await admitSetup(f, "background");
+  f.script.beforeFinish = async () => {
+    const current = (await f.request("GET", "/me/assistant/rules")).json();
+    const changed = await f.request("PUT", "/me/assistant/rules", {
+      expected_revision: current.revision,
+      rules: [
+        ...current.rules,
+        {
+          id: randomUUID(),
+          lane: "background",
+          action: "create",
+          scope: { kind: "personal" },
+          decision: "ask",
+        },
+      ],
+    });
+    assert.equal(changed.statusCode, 200, changed.body);
+  };
+  try {
+    stopRuntime = await startTestAssistantRuntime("background");
+    const held = await waitJob(run.job_id, ["waiting", "done", "failed"]);
+    assert.equal(held.state, "failed", JSON.stringify(held));
+    assert.equal(held.apply_result, null);
+    assert.equal(held.terminal_evidence.effects, "none");
+    assert.deepEqual(
+      (await f.request("GET", "/me/assistant/approval-scopes")).json().tasks,
+      { scope: "routine", id: f.routine.id },
+    );
+    assert.equal(
+      (
+        await pool.query("SELECT id FROM items WHERE user_id=$1 AND title=$2", [
+          f.user.id,
+          f.script.title,
+        ])
+      ).rowCount,
+      0,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT id FROM agent_activity WHERE user_id=$1 AND tool='apply_plan'",
+          [f.user.id],
+        )
+      ).rowCount,
+      0,
+    );
+  } finally {
+    await stopRuntimeNow();
+  }
+});
+
+test("upfront setup does not bypass Stop after a real plan is staged and before any effect", async () => {
+  const f = await fixture({
+    mode: "create",
+    upfrontSetup: true,
+    enabled: false,
+  });
+  const run = await admitSetup(f, "background");
+  f.script.beforeFinish = async () => {
+    assert.equal(await stopAssistantJob(run.job_id, f.user, app.log), true);
+  };
+  try {
+    stopRuntime = await startTestAssistantRuntime("background");
+    const stopped = await waitJob(run.job_id);
+    assert.equal(stopped.apply_result, null);
+    assert.equal(stopped.terminal_evidence.cause, "stopped");
+    assert.equal(stopped.terminal_evidence.effects, "none");
+    assert.equal(
+      (
+        await pool.query("SELECT id FROM items WHERE user_id=$1 AND title=$2", [
+          f.user.id,
+          f.script.title,
+        ])
+      ).rowCount,
+      0,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT id FROM agent_activity WHERE user_id=$1 AND tool='apply_plan'",
+          [f.user.id],
+        )
+      ).rowCount,
+      0,
+    );
+  } finally {
+    await stopRuntimeNow();
+  }
+});
 
 test("a real transient failure retries one same occurrence after backoff; concurrent scans and settlement are idempotent", async () => {
   const f = await fixture();

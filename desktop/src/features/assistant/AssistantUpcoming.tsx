@@ -1,3 +1,4 @@
+import { RoutineSetupReview } from "./RoutineSetupReview";
 import { RoutineQuietPolicyEditor } from "./RoutineQuietCheck";
 import { RoutineRetryPolicyEditor } from "./RoutineRecovery";
 import { GoalWorkSheet } from "./GoalWorkSheet";
@@ -21,6 +22,7 @@ import {
   nextOccurrence,
   weekdayOf,
   type AgentRoutine,
+  type AgentRoutineInput,
   type ApprovalScopes,
   type AssistantChangeKind,
   type DocSummary,
@@ -122,6 +124,10 @@ function UpcomingBody({
   const [goalDate, setGoalDate] = useState("");
   const [goalProject, setGoalProject] = useState("");
   const [goalDoc, setGoalDoc] = useState("");
+  const [routineSetup, setRoutineSetup] = useState<AgentRoutineInput | null>(
+    null,
+  );
+  const [routineSetupUncertain, setRoutineSetupUncertain] = useState(false);
   const [routineText, setRoutineText] = useState("");
   const [routineDay, setRoutineDay] = useState(() =>
     localDateKey(new Date(), "UTC"),
@@ -354,6 +360,8 @@ function UpcomingBody({
       setRoutineTime("09:00");
       setRepeat("daily");
     }
+    setRoutineSetup(null);
+    setRoutineSetupUncertain(false);
     setRoutineForm(routine?.id ?? "new");
   };
 
@@ -389,8 +397,11 @@ function UpcomingBody({
         timezone: zone,
         next_run_at: next.toISOString(),
       };
-      if (routineForm === "new") await client.createAgentRoutine(input);
-      else await client.updateAgentRoutine(routineForm, input);
+      if (routineForm === "new") {
+        setRoutineSetup(input);
+        return;
+      }
+      await client.updateAgentRoutine(routineForm, input);
       if (!current()) return;
       setRoutineForm(null);
       await refreshSaved();
@@ -531,7 +542,45 @@ function UpcomingBody({
     </form>
   );
 
-  const routineFields = (
+  const closeRoutineSetup = async () => {
+    if (!current() || saving) return;
+    const unknown = routineSetupUncertain;
+    setRoutineSetup(null);
+    setRoutineForm(null);
+    setRoutineSetupUncertain(false);
+    if (unknown) {
+      setSaving(true);
+      await refreshSaved();
+      if (current()) {
+        setSaving(false);
+        setError(
+          "Save status was unknown. Check your routines before adding another.",
+        );
+      }
+    }
+  };
+  const routineFields = routineSetup ? (
+    <RoutineSetupReview
+      input={routineSetup}
+      ruleLabel={ruleLabel}
+      onBusy={setSaving}
+      onUncertain={setRoutineSetupUncertain}
+      onBack={() => {
+        setRoutineSetup(null);
+        setError("");
+      }}
+      onCheckUpcoming={() => void closeRoutineSetup()}
+      onSaved={async () => {
+        if (!current()) return;
+        setSaving(true);
+        setRoutineSetup(null);
+        setRoutineForm(null);
+        setRoutineSetupUncertain(false);
+        await refreshSaved();
+        if (current()) setSaving(false);
+      }}
+    />
+  ) : (
     <form
       className="settings-subform ai-upcoming-form"
       aria-label={routineForm === "new" ? "New routine" : "Edit routine"}
@@ -601,7 +650,7 @@ function UpcomingBody({
           {saving
             ? "Saving…"
             : routineForm === "new"
-              ? "Add routine"
+              ? "Review routine"
               : "Save routine"}
         </button>
       </div>
@@ -955,7 +1004,12 @@ function UpcomingBody({
           }
           pending={saving}
           onClose={() => {
+            if (routineSetupUncertain) {
+              void closeRoutineSetup();
+              return;
+            }
             setGoalForm(null);
+            setRoutineSetup(null);
             setRoutineForm(null);
             setError("");
           }}
@@ -978,7 +1032,7 @@ function UpcomingBody({
               />
             </>
           )}
-          {routineForm === "new" && (
+          {routineForm === "new" && !routineSetup && (
             <p className="muted">
               Retries are off. Save this routine before configuring bounded
               recovery.

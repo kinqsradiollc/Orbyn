@@ -168,6 +168,7 @@ import * as assistant from "./endpoints/assistant.js";
 import * as goalExecutions from "./endpoints/goal-executions.js";
 import * as routineRetries from "./endpoints/routine-retries.js";
 import * as routineQuiet from "./endpoints/routine-quiet-checks.js";
+import * as routineSetup from "./endpoints/routine-setup.js";
 import * as booking from "./endpoints/booking.js";
 import * as capture from "./endpoints/capture.js";
 import * as connections from "./endpoints/connections.js";
@@ -1255,6 +1256,14 @@ export class OrbynClient {
   }
   createAgentRoutine(input: AgentRoutineInput) {
     return assistant.callCreateAgentRoutine.call(this, input);
+  }
+  routineSetupContext() {
+    return routineSetup.callRoutineSetupContext.call(this);
+  }
+  setupAgentRoutine(
+    input: Parameters<typeof routineSetup.callSetupAgentRoutine>[0],
+  ) {
+    return routineSetup.callSetupAgentRoutine.call(this, input);
   }
   updateAgentRoutine(id: string, input: AgentRoutineUpdate) {
     return assistant.callUpdateAgentRoutine.call(this, id, input);

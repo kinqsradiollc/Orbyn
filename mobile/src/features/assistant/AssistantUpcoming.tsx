@@ -1,3 +1,4 @@
+import { RoutineSetupReview } from "./RoutineSetupReview";
 import { RoutineQuietPolicyEditor } from "./RoutineQuietCheck";
 import { RoutineRetryPolicyEditor } from "./RoutineRecovery";
 import { GoalWorkSheet } from "./GoalWorkSheet";
@@ -12,6 +13,7 @@ import {
   nextOccurrence,
   weekdayOf,
   type AgentRoutine,
+  type AgentRoutineInput,
   type ApprovalScopes,
   type AssistantChangeKind,
   type DocSummary,
@@ -147,6 +149,10 @@ function UpcomingBody({
   const [goalDate, setGoalDate] = useState<string | null>(null);
   const [goalProject, setGoalProject] = useState("");
   const [goalDoc, setGoalDoc] = useState("");
+  const [routineSetup, setRoutineSetup] = useState<AgentRoutineInput | null>(
+    null,
+  );
+  const [routineSetupUncertain, setRoutineSetupUncertain] = useState(false);
   const [routineText, setRoutineText] = useState("");
   const [routineDay, setRoutineDay] = useState(localDateKey(new Date(), "UTC"));
   const [routineTime, setRoutineTime] = useState(inAnHour);
@@ -331,6 +337,8 @@ function UpcomingBody({
       setRepeat("daily");
     }
     setError("");
+    setRoutineSetup(null);
+    setRoutineSetupUncertain(false);
     setForm({ kind: "routine", id: routine?.id ?? null });
   };
 
@@ -363,13 +371,15 @@ function UpcomingBody({
           rrule: rule,
           next_run_at: next.toISOString(),
         });
-      else
-        await client.createAgentRoutine({
+      else {
+        setRoutineSetup({
           instruction: routineText.trim(),
           rrule: rule,
           timezone: zone,
           next_run_at: next.toISOString(),
         });
+        return;
+      }
       if (!live.current || session.token !== owner) return;
       setForm(null);
       if (current()) await refreshSaved();
@@ -507,6 +517,25 @@ function UpcomingBody({
       />
     );
 
+  const closeRoutineSetup = async () => {
+    if (!current() || saving) return;
+    const unknown = routineSetupUncertain;
+    setRoutineSetup(null);
+    setRoutineSetupUncertain(false);
+    setForm(null);
+    if (unknown) {
+      setSaving(true);
+      try {
+        await refreshSaved();
+        if (current())
+          setError(
+            "Save status was unknown. Check your routines before adding another.",
+          );
+      } finally {
+        if (live.current && session.token === owner) setSaving(false);
+      }
+    }
+  };
   return (
     <Sheet
       visible={visible}
@@ -514,7 +543,12 @@ function UpcomingBody({
       closeDisabled={saving}
       onClose={() => {
         if (saving) return;
+        if (routineSetupUncertain) {
+          void closeRoutineSetup();
+          return;
+        }
         if (form) {
+          setRoutineSetup(null);
           setForm(null);
           setError("");
         } else onClose();
@@ -625,92 +659,122 @@ function UpcomingBody({
               </View>
             </View>
           ) : form?.kind === "routine" ? (
-            <View>
-              <Field label={`What should ${agentName} do?`}>
-                <TextInput
-                  editable={!saving}
-                  accessibilityLabel={`What should ${agentName} do?`}
-                  value={routineText}
-                  onChangeText={setRoutineText}
-                  maxLength={4000}
-                  multiline
-                  placeholder="Summarise what's due this week"
-                  placeholderTextColor={colors.faint}
-                  style={[shared.input, s.multiline]}
-                />
-              </Field>
-              <Field label={form.id ? "Next run" : "First run"}>
-                <DateField
-                  disabled={saving}
-                  label={form.id ? "Next run" : "First run"}
-                  value={routineDay}
-                  onChange={(day) => day && setRoutineDay(day)}
-                  minimumDate={new Date()}
-                />
-              </Field>
-              <Field label="Time">
-                <TimeField
-                  disabled={saving}
-                  label="Time"
-                  value={routineTime}
-                  onChange={setRoutineTime}
-                />
-              </Field>
-              <Field label="Repeat">
-                <ChipRow label="Repeat">
-                  {(
-                    [
-                      ["daily", "Daily"],
-                      ["weekdays", "Weekdays"],
-                      ["weekly", "Weekly"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <Chip
-                      disabled={saving}
-                      key={value}
-                      label={label}
-                      selected={repeat === value}
-                      onPress={() => setRepeat(value)}
+            routineSetup ? (
+              <RoutineSetupReview
+                input={routineSetup}
+                active={visible}
+                ruleLabel={ruleLabel}
+                onBusy={setSaving}
+                onUncertain={setRoutineSetupUncertain}
+                onBack={() => {
+                  setRoutineSetup(null);
+                  setError("");
+                }}
+                onCheckUpcoming={() => void closeRoutineSetup()}
+                onSaved={async () => {
+                  if (!current()) return;
+                  setSaving(true);
+                  setRoutineSetup(null);
+                  setRoutineSetupUncertain(false);
+                  setForm(null);
+                  await refreshSaved();
+                  if (live.current && session.token === owner) setSaving(false);
+                }}
+              />
+            ) : (
+              <View>
+                <Field label={`What should ${agentName} do?`}>
+                  <TextInput
+                    editable={!saving}
+                    accessibilityLabel={`What should ${agentName} do?`}
+                    value={routineText}
+                    onChangeText={setRoutineText}
+                    maxLength={4000}
+                    multiline
+                    placeholder="Summarise what's due this week"
+                    placeholderTextColor={colors.faint}
+                    style={[shared.input, s.multiline]}
+                  />
+                </Field>
+                <Field label={form.id ? "Next run" : "First run"}>
+                  <DateField
+                    disabled={saving}
+                    label={form.id ? "Next run" : "First run"}
+                    value={routineDay}
+                    onChange={(day) => day && setRoutineDay(day)}
+                    minimumDate={new Date()}
+                  />
+                </Field>
+                <Field label="Time">
+                  <TimeField
+                    disabled={saving}
+                    label="Time"
+                    value={routineTime}
+                    onChange={setRoutineTime}
+                  />
+                </Field>
+                <Field label="Repeat">
+                  <ChipRow label="Repeat">
+                    {(
+                      [
+                        ["daily", "Daily"],
+                        ["weekdays", "Weekdays"],
+                        ["weekly", "Weekly"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <Chip
+                        disabled={saving}
+                        key={value}
+                        label={label}
+                        selected={repeat === value}
+                        onPress={() => setRepeat(value)}
+                      />
+                    ))}
+                  </ChipRow>
+                </Field>
+                <View style={s.formActions}>
+                  <Button
+                    title={
+                      saving
+                        ? "Saving…"
+                        : form.id
+                          ? "Save routine"
+                          : "Review routine"
+                    }
+                    disabled={saving || !routineText.trim()}
+                    style={s.formAction}
+                    onPress={() => void saveRoutine()}
+                  />
+                  <Button
+                    title="Cancel"
+                    secondary
+                    disabled={saving}
+                    style={s.formAction}
+                    onPress={() => {
+                      setForm(null);
+                      setError("");
+                    }}
+                  />
+                </View>
+                {form.id ? (
+                  <>
+                    <RoutineRetryPolicyEditor
+                      routineId={form.id}
+                      disabled={saving || routineDraftKey !== routineBaseline}
                     />
-                  ))}
-                </ChipRow>
-              </Field>
-              <View style={s.formActions}>
-                <Button
-                  title={saving ? "Saving…" : "Save routine"}
-                  disabled={saving || !routineText.trim()}
-                  style={s.formAction}
-                  onPress={() => void saveRoutine()}
-                />
-                <Button
-                  title="Cancel"
-                  secondary
-                  disabled={saving}
-                  style={s.formAction}
-                  onPress={() => {
-                    setForm(null);
-                    setError("");
-                  }}
-                />
+                    <RoutineQuietPolicyEditor
+                      routineId={form.id}
+                      disabled={saving || routineDraftKey !== routineBaseline}
+                    />
+                  </>
+                ) : (
+                  <Text style={shared.small}>
+                    Retries are off. Save this routine before configuring
+                    bounded recovery.
+                  </Text>
+                )}
               </View>
-              {form.id ? (
-                <>
-                  <RoutineRetryPolicyEditor
-                    routineId={form.id}
-                    disabled={saving || routineDraftKey !== routineBaseline}
-                  />
-                  <RoutineQuietPolicyEditor
-                    routineId={form.id}
-                    disabled={saving || routineDraftKey !== routineBaseline}
-                  />
-                </>
-              ) : (
-                <Text style={shared.small}>
-                  Retries are off. Save this routine before configuring bounded
-                  recovery.
-                </Text>
-              )}
-            </View>
+            )
           ) : (
             <View style={s.formActions}>
               <Button
