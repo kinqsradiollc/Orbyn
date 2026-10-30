@@ -287,8 +287,9 @@ async function fixture(
   const { user, token } = registered.json();
   users.push(user.id);
   await assistantPrincipal({ id: user.id, name: user.name, role: "member" });
-  const {openPersonalConversation}=await import("../src/modules/assistant-workspace/conversation-storage.js");
-  await transaction(db=>openPersonalConversation(db,user.id));
+  const { openPersonalConversation } =
+    await import("../src/modules/assistant-workspace/conversation-storage.js");
+  await transaction((db) => openPersonalConversation(db, user.id));
   const request = (
     method: "GET" | "POST" | "PUT",
     url: string,
@@ -494,7 +495,10 @@ test("real runtime records a visible baseline then verifies a fresh unchanged ch
       [second.run.job_id],
     )
   ).rows[0];
-  assert.ok(intent,"Expected the routine result delivery intent in its captured destination");
+  assert.ok(
+    intent,
+    "Expected the routine result delivery intent in its captured destination",
+  );
   assert.equal(
     await transaction((db) => publishConversationIntent(db, intent.id)),
     false,
