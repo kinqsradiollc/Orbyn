@@ -1,4 +1,5 @@
 import type { LiveNews } from "@orbyn/api-client";
+import { client } from "./api";
 
 /**
  * News from the server, handed to whichever part of the app cares: the
@@ -14,6 +15,9 @@ export function onLive(listener: Listener) {
 }
 
 export function emitLive(news: LiveNews) {
+  // Fence pre-change reads before any listener starts its refresh. This also
+  // covers reconnect catch-up, where the exact missed changes are unknown.
+  if (news.kind === "changed") client.noteExternalMutation();
   for (const l of listeners) l(news);
 }
 

@@ -571,6 +571,11 @@
     min-height: 44px;
     justify-content: center;
   }
+  .docs-workspace:not(:has(.document-workspace))
+    > .docs-navigation.is-open
+    .docs-nav-title {
+    padding-left: 44px;
+  }
   .docs-workspace:not(:has(.document-workspace)) .docs-library-toggle-label {
     display: none;
   }
