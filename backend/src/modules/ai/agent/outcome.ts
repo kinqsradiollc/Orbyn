@@ -20,6 +20,8 @@ export function runtimeOutcome(input: {
   interrupted?: boolean;
   waiting?: boolean;
   expiredWaiting?: boolean;
+  /** A started effect or private inference dispatch has no reconciled result. */
+  uncertain?: boolean;
   planJob?: string;
   proposalId?: string;
   now?: string;
@@ -35,32 +37,36 @@ export function runtimeOutcome(input: {
   const terminalFailure = input.failed || input.expiredWaiting;
   const interrupted = input.interrupted || input.stopped;
   const needsReview = input.waiting || input.proposalOutcome === "pending";
-  const outcome: AssistantOutcomeReceipt["outcome"] = terminalFailure
-    ? "failed"
-    : interrupted
-      ? "interrupted"
-      : needsReview
-        ? "waiting"
-        : input.timedOut || incomplete || limited
-          ? "partial"
-          : "unverified";
-  const reason: AssistantOutcomeReceipt["reason"] = input.expiredWaiting
-    ? "waiting_expired"
-    : input.failed
-      ? "runtime_failure"
-      : input.interrupted
-        ? "worker_interrupted"
-        : input.stopped
-          ? "stopped"
-          : needsReview
-            ? "review_required"
-            : input.timedOut
-              ? "timed_out"
-              : limited
-                ? "execution_limit"
-                : incomplete
-                  ? "specialist_incomplete"
-                  : "response_ready";
+  const outcome: AssistantOutcomeReceipt["outcome"] = input.uncertain
+    ? "uncertain"
+    : terminalFailure
+      ? "failed"
+      : interrupted
+        ? "interrupted"
+        : needsReview
+          ? "waiting"
+          : input.timedOut || incomplete || limited
+            ? "partial"
+            : "unverified";
+  const reason: AssistantOutcomeReceipt["reason"] = input.uncertain
+    ? "dispatch_uncertain"
+    : input.expiredWaiting
+      ? "waiting_expired"
+      : input.failed
+        ? "runtime_failure"
+        : input.interrupted
+          ? "worker_interrupted"
+          : input.stopped
+            ? "stopped"
+            : needsReview
+              ? "review_required"
+              : input.timedOut
+                ? "timed_out"
+                : limited
+                  ? "execution_limit"
+                  : incomplete
+                    ? "specialist_incomplete"
+                    : "response_ready";
   const artifacts: AssistantOutcomeReceipt["artifacts"] = [
     { kind: "response", id: `${input.chatId}:${input.turnId}` },
   ];

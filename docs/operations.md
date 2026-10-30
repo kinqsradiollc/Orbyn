@@ -213,6 +213,38 @@ migrations, encryption keys and intent records; do not return to inline SMTP or
 start legacy notifier replicas that do not honor the pause flag. This procedure
 is a deployment requirement, not evidence that a production cutover has occurred.
 
+## Assistant apply recovery
+
+Apply migrations 298–299 before starting the compatible runtime. New chat and automation
+admissions explicitly set `ai_jobs.apply_tracking_version=1`; old rows and older
+admission writers keep null, with no backfill or stamping on resume. The current
+writer commits `apply_started_at` under its job lease before starting the effect
+transaction, which commits `apply_result` atomically with changes or a proposal.
+The database rejects that reviewed atomic writer on a tracked job without the
+marker, rolling back its effects. This guards the existing apply contract; it
+does not fence arbitrary writers that omit its receipt entirely.
+
+On an apply exception, primary reconciliation locks the same job, waits for any
+effect transaction, checks lease and current source/chat access, and validates the
+receipt. A confirmed receipt survives a lost commit acknowledgement. Missing,
+malformed, inaccessible or unavailable evidence remains unknown. Only a tracked
+job with positive current-writer knowledge, no marker and no receipt can establish
+that applying never began. A failed effect transaction can also record positive
+rollback evidence, provided COMMIT was never attempted and ROLLBACK was acknowledged.
+This evidence binds the exact apply marker and current lease. A new attempt clears
+it while renewing the marker. Failed COMMIT acknowledgement never qualifies for
+that path; failed rollback discards the connection. The runtime must not revise or repeat an uncertain
+apply. Internal `terminal_evidence` is optional, job-bound and not a retry command;
+older jobs stay unqualified rather than inheriting evidence from error prose.
+
+No fresh-attempt scheduler is enabled by this migration. Preserve the columns,
+markers, receipts, current permissions and retained history during recovery or
+rollback. An older atomic apply writer encountering tracked unmarked work will
+fail its transaction; use a compatible runtime to reconcile or hold it, rather
+than dropping the constraint or clearing a marker. Coordinate execution workers
+before enabling any future automatic retry policy. Local source and guarded tests
+do not establish that a hosted rollout or worker cutover occurred.
+
 ## Assistant admission policy
 
 Migration 294 seeds one policy at revision 1, retaining the existing ceilings:

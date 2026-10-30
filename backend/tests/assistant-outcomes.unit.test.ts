@@ -76,6 +76,20 @@ test("client history imports cannot mint a trusted execution receipt", () => {
   });
   assert.equal("execution_outcome" in imported.turns[0], false);
 });
+test("unreconciled execution stays uncertain across failure, stop and expired-wait signals", () => {
+  for (const [flags, process] of [
+    [{ failed: true }, "failed"],
+    [{ stopped: true }, "cancelled"],
+    [{ expiredWaiting: true }, "failed"],
+    [{}, "finished"],
+  ] as const) {
+    const receipt = runtimeOutcome({ ...ids(), ...flags, uncertain: true });
+    assert.equal(receipt.outcome, "uncertain");
+    assert.equal(receipt.reason, "dispatch_uncertain");
+    assert.equal(receipt.process, process);
+    assert.equal(receipt.acceptance, undefined);
+  }
+});
 test("lost dispatch reconciles one external identity before completion; no blind retry", () => {
   let state = executionIntent({
     jobId: "job",

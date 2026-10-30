@@ -1,4 +1,14 @@
 import { runtimeOutcome } from "./outcome.js";
+import {
+  classifyTerminalEvidence,
+  type TerminalCause,
+  type TerminalErrorContext,
+} from "./terminal-evidence.js";
+import {
+  withAssistantApplyTransaction,
+  reconcileAssistantApply,
+} from "./effect-reconciliation.js";
+import { ProviderError } from "../providers/adapters.js";
 import { scheduledConversationRoute } from "../../assistant-workspace/conversation-schedules.js";
 import { env } from "../../../config/env.js";
 import { readAutomationIdentity } from "../../agent-context/identities.js";
@@ -25,6 +35,7 @@ import {
   nightShiftInput,
   AGENT_TOOLSETS,
   fail,
+  HttpError,
   type ChatScope,
   type ChatTurn,
   type SystemRole,
@@ -90,6 +101,102 @@ export const ASSISTANT_STALE_MS = 60_000;
 /** A question or approval card nobody answered expires after a week. */
 const WAITING_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000;
 const STOPPED_TEXT = "Stopped. Nothing was changed.";
+class AssistantStopRequested extends Error {}
+class AssistantApplyUncertain extends Error {
+  constructor() {
+    super(
+      "The change outcome could not be confirmed. Review the saved work before trying again.",
+    );
+  }
+}
+
+function terminalError(error: unknown): TerminalErrorContext {
+  if (error instanceof ProviderError)
+    return { kind: "provider", reason: error.reason };
+  if (error instanceof AssistantPausedError) return { kind: "paused" };
+  if (error instanceof HttpError)
+    return { kind: "http", statusCode: error.statusCode };
+  return { kind: "runtime" };
+}
+
+/** Call under the completion/recovery transaction's job lock. Old writers stay unqualified. */
+async function terminalFacts(
+  db: Queryable,
+  jobId: string,
+  owner: string,
+  facts: { cause?: TerminalCause; error?: TerminalErrorContext },
+  observedAt = new Date().toISOString(),
+) {
+  const row = (
+    await db.query<{
+      apply_result: unknown;
+      apply_started_at: Date | null;
+      apply_tracking_version: number | null;
+      rollback_confirmed: boolean;
+      cancel_requested: boolean;
+    }>(
+      `SELECT apply_result,apply_started_at,apply_tracking_version,cancel_requested,
+       (apply_tracking_version=1 AND apply_rolled_back_at>=apply_started_at AND apply_result IS NULL) AS rollback_confirmed FROM ai_jobs
+      WHERE id=$1 AND user_id=$2 FOR UPDATE`,
+      [jobId, owner],
+    )
+  ).rows[0];
+  return classifyTerminalEvidence({
+    job_id: jobId,
+    ...facts,
+    ...(row?.cancel_requested ? { cause: "stopped" as const } : {}),
+    effects: {
+      mode: "live",
+      apply_result: row?.apply_result,
+      applyStarted: row ? !!row.apply_started_at : undefined,
+      originalKnownNoWrite: row?.apply_tracking_version === 1,
+      confirmedRollback: row?.rollback_confirmed === true,
+    },
+    observed_at: observedAt,
+  });
+}
+
+async function interruptedApplyResult(
+  jobId: string,
+  owner: string,
+  deadline = false,
+) {
+  const observed = await reconcileAssistantApply(jobId, owner, {
+    knownNotStarted: true,
+  });
+  const prefix = deadline ? "I ran out of time before finishing." : "Stopped.";
+  const extra: Record<string, unknown> = {
+    stopped: !deadline,
+    timed_out: deadline,
+  };
+  if (observed.kind === "receipt") {
+    const result = observed.receipt.structured;
+    if (!result) throw new AssistantApplyUncertain();
+    return {
+      summary: `${prefix} ${observed.effect === "applied" ? "The checked plan completed as one undoable change." : "The checked plan is waiting in Review."}`,
+      outcome:
+        observed.effect === "applied"
+          ? ("applied" as const)
+          : ("pending" as const),
+      extra: {
+        ...extra,
+        plan_job: result.job,
+        ...(result.pending ? { proposal_id: result.pending.proposal_id } : {}),
+      },
+    };
+  }
+  return observed.kind === "none"
+    ? {
+        summary: `${prefix} Nothing was changed.`,
+        outcome: "discarded" as const,
+        extra,
+      }
+    : {
+        summary: `${prefix} The change outcome could not be confirmed. Review the saved work before trying again.`,
+        outcome: "info" as const,
+        extra: { ...extra, execution_uncertain: true },
+      };
+}
 const pendingInput = z
   .object({ answer: z.string().trim().min(1).max(4000), waiting_id: z.uuid() })
   .strict();
@@ -382,6 +489,15 @@ async function currentWriteAuthority(
   principal: Principal,
   request: PersistedChatRequest,
 ) {
+  // Serialize Stop with effect admission; polling alone leaves a cancellation gap.
+  const execution = (
+    await db.query<{ cancel_requested: boolean }>(
+      "SELECT cancel_requested FROM ai_jobs WHERE id=$1 AND user_id=$2 AND state='running' FOR UPDATE",
+      [principal.assistant_job_id ?? null, user.id],
+    )
+  ).rows[0];
+  if (!execution) throw new AssistantLeaseLost();
+  if (execution.cancel_requested) throw new AssistantStopRequested();
   if (request.conversation_context) {
     await assertConversationContext(db, user.id, request.conversation_context);
     const visible = await db.query(
@@ -810,10 +926,20 @@ async function finishJob(
   summary: string,
   outcome: "info" | "applied" | "pending" | "discarded" = "info",
   extra: Record<string, unknown> = {},
+  terminalContext?: TerminalErrorContext,
 ) {
   await settleSaves(jobId);
   await transaction(async (db) => {
     await assertAssistantLease(jobId, db, true);
+    const terminal = await terminalFacts(db, jobId, user.id, {
+      error: terminalContext,
+      cause:
+        extra.stopped === true
+          ? "stopped"
+          : extra.timed_out === true
+            ? "deadline"
+            : "finished",
+    });
     await finishChatTurn(
       user.id,
       request.chat_id,
@@ -836,8 +962,12 @@ async function finishJob(
       proposalOutcome: outcome,
       proposalId:
         typeof extra.proposal_id === "string" ? extra.proposal_id : undefined,
-      stopped: extra.stopped === true,
+      stopped: extra.stopped === true || terminal.cause === "stopped",
       timedOut: extra.timed_out === true,
+      uncertain:
+        extra.execution_uncertain === true ||
+        (terminalContext?.kind === "provider" &&
+          terminal.retry === "reconcile"),
       planJob: typeof extra.plan_job === "string" ? extra.plan_job : undefined,
     });
     const result = {
@@ -865,11 +995,12 @@ async function finishJob(
     };
     await db.query(
       `UPDATE ai_jobs SET state = 'done', result = $2::jsonb, run_state = NULL,
-       progress = $3::jsonb, heartbeat_at = now(), lease_until = NULL, claimed_by = NULL WHERE id = $1`,
+       progress = $3::jsonb, terminal_evidence=$4::jsonb, heartbeat_at = now(), lease_until = NULL, claimed_by = NULL WHERE id = $1`,
       [
         jobId,
         JSON.stringify(result),
         JSON.stringify({ label: "Answer ready", outcome }),
+        JSON.stringify(terminal),
       ],
     );
     await notifyAssistantAway(db, jobId, "done");
@@ -1139,8 +1270,8 @@ export async function startAssistantAutomation(input: {
   const enqueue = async (db: Queryable) => {
     const row = (
       await db.query<{ id: string }>(
-        `INSERT INTO ai_jobs (user_id, progress, run_state, chat_id, turn_id, state, run_origin)
-         VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, 'queued', $6) RETURNING id`,
+        `INSERT INTO ai_jobs (user_id, progress, run_state, chat_id, turn_id, state, run_origin, apply_tracking_version)
+         VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, 'queued', $6, 1) RETURNING id`,
         [
           user.id,
           JSON.stringify({ label: "Starting a scheduled run" }),
@@ -1327,21 +1458,21 @@ async function approvePlan(
 ) {
   if (request.automation?.night_kind === "reflection")
     fail(409, "Reflection suggestions require a separate reviewed request.");
-  const receipt = (
-    await pool.query<{ apply_result: unknown }>(
-      "SELECT apply_result FROM ai_jobs WHERE id = $1 AND user_id = $2",
+  const priorApply = (
+    await pool.query<{ apply_result: unknown; apply_started_at: Date | null }>(
+      "SELECT apply_result,apply_started_at FROM ai_jobs WHERE id = $1 AND user_id = $2",
       [jobId, user.id],
     )
-  ).rows[0]?.apply_result;
+  ).rows[0];
+  const receipt = priorApply?.apply_result;
+  if (priorApply?.apply_started_at && !receipt) {
+    const observed = await reconcileAssistantApply(jobId, user.id);
+    if (observed.kind !== "none") throw new AssistantApplyUncertain();
+  }
   if (receipt) {
-    await assertAssistantLease(jobId);
-    return z
-      .object({
-        applied: z.boolean(),
-        structured: z.unknown(),
-        why: z.array(z.string()),
-      })
-      .parse(receipt);
+    const observed = await reconcileAssistantApply(jobId, user.id);
+    if (observed.kind !== "receipt") throw new AssistantApplyUncertain();
+    return observed.receipt;
   }
   principal = await principalFor(user, request, jobId);
   if (
@@ -1371,6 +1502,7 @@ async function approvePlan(
         trust: { level: "suggest" as const, spaces: {}, acts_alone: [] },
       }
     : nightPrincipal;
+  let boundaryFailure: unknown;
   const result = await execute(
     registry,
     applyingPrincipal,
@@ -1393,43 +1525,72 @@ async function approvePlan(
             request,
             checked.steps,
           ))),
-      write: (run) =>
-        transaction(async (db) => {
-          await assertAssistantLease(jobId, db, true);
-          const prefs = await currentNightConsent(db, user.id, request, true);
-          if (prefs?.wait_for_ok && !nightReview)
-            fail(409, "Night review permission changed. This work was held.");
-          await currentWriteAuthority(db, user, principal, request);
-          const scopes = (
-            await db.query(
-              "SELECT approval_scopes=$2::jsonb AS equal FROM agent_grants WHERE id=$1",
-              [principal.grant_id, JSON.stringify(scopeSnapshot)],
-            )
-          ).rows[0];
-          if (!scopes?.equal)
-            fail(409, "Saved approval permission changed. This work was held.");
-          const answer = (await run(db)) as CapabilityResult<unknown>;
-          const structured = answer.structured;
-          const pending =
-            structured &&
-            typeof structured === "object" &&
-            "status" in structured &&
-            structured.status === "pending_review";
-          await db.query(
-            "UPDATE ai_jobs SET apply_result = $2::jsonb WHERE id = $1",
-            [
-              jobId,
-              JSON.stringify({
-                applied: !pending && (answer.write?.outcome ?? "ok") === "ok",
-                structured,
-                why: checked.approvals,
-              }),
-            ],
+      write: async (run) => {
+        try {
+          return await withAssistantApplyTransaction(
+            jobId,
+            user.id,
+            async (db) => {
+              await assertAssistantLease(jobId, db, true);
+              const prefs = await currentNightConsent(
+                db,
+                user.id,
+                request,
+                true,
+              );
+              if (prefs?.wait_for_ok && !nightReview)
+                fail(
+                  409,
+                  "Night review permission changed. This work was held.",
+                );
+              await currentWriteAuthority(db, user, principal, request);
+              const scopes = (
+                await db.query(
+                  "SELECT approval_scopes=$2::jsonb AS equal FROM agent_grants WHERE id=$1",
+                  [principal.grant_id, JSON.stringify(scopeSnapshot)],
+                )
+              ).rows[0];
+              if (!scopes?.equal)
+                fail(
+                  409,
+                  "Saved approval permission changed. This work was held.",
+                );
+              const answer = (await run(db)) as CapabilityResult<unknown>;
+              const structured = answer.structured;
+              const pending =
+                structured &&
+                typeof structured === "object" &&
+                "status" in structured &&
+                structured.status === "pending_review";
+              await db.query(
+                "UPDATE ai_jobs SET apply_result = $2::jsonb WHERE id = $1",
+                [
+                  jobId,
+                  JSON.stringify({
+                    applied:
+                      !pending && (answer.write?.outcome ?? "ok") === "ok",
+                    structured,
+                    why: checked.approvals,
+                  }),
+                ],
+              );
+              return answer;
+            },
           );
-          return answer;
-        }),
+        } catch (error) {
+          // execute turns capability failures into display results. These
+          // execution-control signals must retain their identity at the runner.
+          boundaryFailure = error;
+          throw error;
+        }
+      },
     },
   );
+  if (
+    boundaryFailure instanceof AssistantStopRequested ||
+    boundaryFailure instanceof AssistantLeaseLost
+  )
+    throw boundaryFailure;
   if (result.ask)
     return {
       applied: false,
@@ -1518,10 +1679,15 @@ async function failJob(
   user: UserRow,
   request: PersistedChatRequest,
   message: string,
+  failure?: unknown,
 ) {
   await settleSaves(jobId);
   await transaction(async (db) => {
     await assertAssistantLease(jobId, db, true);
+    const errorContext = terminalError(failure);
+    const terminal = await terminalFacts(db, jobId, user.id, {
+      error: errorContext,
+    });
     await finishChatTurn(
       user.id,
       request.chat_id,
@@ -1537,13 +1703,17 @@ async function failJob(
       jobId,
       chatId: request.chat_id,
       turnId: request.turn_id,
-      failed: true,
+      failed: terminal.cause !== "stopped",
+      stopped: terminal.cause === "stopped",
+      uncertain:
+        failure instanceof AssistantApplyUncertain ||
+        (errorContext.kind === "provider" && terminal.retry === "reconcile"),
     });
     await db.query(
       `UPDATE ai_jobs SET state = 'failed', error_status = 502,
        error_message = $2, run_state = NULL, progress = $3::jsonb,
        result = jsonb_build_object('chat_id',$4::text,'turn_id',$5::text,'assistant_run', jsonb_build_object('execution_outcome',$6::jsonb,'token_estimate', coalesce((run_state->'state'->>'token_estimate')::int, 0))),
-       heartbeat_at = now(), lease_until = NULL, claimed_by = NULL WHERE id = $1`,
+       terminal_evidence=$7::jsonb, heartbeat_at = now(), lease_until = NULL, claimed_by = NULL WHERE id = $1`,
       [
         jobId,
         message,
@@ -1551,6 +1721,7 @@ async function failJob(
         request.chat_id,
         request.turn_id,
         JSON.stringify(executionOutcome),
+        JSON.stringify(terminal),
       ],
     );
     await notifyAssistantAway(db, jobId, "failed");
@@ -1680,7 +1851,6 @@ export async function runAssistantJob(
   const stopHeartbeat = keepAlive(jobId);
   const trace = traceWriter(user.id, request, log);
   let applyPlanAttempted = false;
-  let appliedStatus: "applied" | "pending" | "not_applied" = "not_applied";
   let principal: Principal | null = null;
   const envelope: RunEnvelope = loaded ?? {
     version: 1,
@@ -1970,23 +2140,39 @@ export async function runAssistantJob(
           envelope.approved_rules_revision,
         );
       } catch (error) {
-        // The apply ran in one transaction that rolled back: nothing changed.
-        applyPlanAttempted = false;
-        if (controller.signal.aborted) throw error;
-        envelope.reviewed = false;
-        delete envelope.state.loop;
-        blockRejectedPlan(
-          result.state,
-          error instanceof Error
-            ? error.message
-            : "The checked plan could not be applied.",
-          "The code checker blocked the plan",
-        );
-        await saveProgress(jobId, envelope, {
-          label: "Revising a blocked plan",
-          step: result.state.lead_steps,
+        if (error instanceof AssistantStopRequested) {
+          interrupt("stop");
+          throw error;
+        }
+        if (error instanceof AssistantLeaseLost) throw error;
+        const observed = await reconcileAssistantApply(jobId, user.id, {
+          knownNotStarted: true,
         });
-        continue;
+        if (observed.kind === "receipt") {
+          applied = observed.receipt;
+          if (controller.signal.aborted) throw error;
+        } else if (observed.kind === "none") {
+          // Positive current-writer evidence: the effect callback never began.
+          applyPlanAttempted = false;
+          if (controller.signal.aborted) throw error;
+          envelope.reviewed = false;
+          delete envelope.state.loop;
+          blockRejectedPlan(
+            result.state,
+            error instanceof Error
+              ? error.message
+              : "The checked plan could not be applied.",
+            "The code checker blocked the plan",
+          );
+          await saveProgress(jobId, envelope, {
+            label: "Revising a blocked plan",
+            step: result.state.lead_steps,
+          });
+          continue;
+        } else {
+          // Never feed an unconfirmed commit back to the model as a rejection.
+          throw new AssistantApplyUncertain();
+        }
       }
       if (
         !applied.applied &&
@@ -2018,12 +2204,6 @@ export async function runAssistantJob(
         pending?: { proposal_id?: string } | null;
       } | null;
       const status = structured?.status;
-      appliedStatus =
-        status === "pending_review"
-          ? "pending"
-          : applied.applied
-            ? "applied"
-            : "not_applied";
       const summary =
         status === "pending_review"
           ? `${leadSummary(result.state, fallback)}\n\nI’ve put these changes in Review for you.`
@@ -2078,6 +2258,7 @@ export async function runAssistantJob(
       leadSummary(envelope.state, fallback),
     );
   } catch (error) {
+    if (error instanceof AssistantStopRequested) interrupt("stop");
     if (error instanceof AssistantLeaseLost || stopReason === "lease") {
       controller.abort();
       return;
@@ -2151,8 +2332,11 @@ export async function runAssistantJob(
         request,
         error instanceof AssistantPausedError
           ? error.message
-          : (privateProviderFailureMessage(error) ??
+          : error instanceof AssistantApplyUncertain
+            ? error.message
+            : (privateProviderFailureMessage(error) ??
               "This run could not be completed. Please try again."),
+        error,
       );
       return;
     }
@@ -2160,23 +2344,20 @@ export async function runAssistantJob(
       await trace.flush();
       await settleSaves(jobId);
       if (applyPlanAttempted) {
-        // The apply had already started: say only what is known.
+        const interrupted = await interruptedApplyResult(
+          jobId,
+          user.id,
+          stopReason === "deadline",
+        );
         await finishJob(
           jobId,
           user,
           request,
           envelope.state,
-          appliedStatus === "applied"
-            ? "I stopped. The checked plan completed as one undoable change before the stop was handled."
-            : appliedStatus === "pending"
-              ? "I stopped. The checked plan is waiting in Review."
-              : "I stopped while a checked plan was being applied. Check Review and the change history to see whether it went through.",
-          appliedStatus === "applied"
-            ? "applied"
-            : appliedStatus === "pending"
-              ? "pending"
-              : "info",
-          { stopped: true },
+          interrupted.summary,
+          interrupted.outcome,
+          interrupted.extra,
+          terminalError(error),
         );
         return;
       }
@@ -2213,39 +2394,45 @@ export async function runAssistantJob(
           if (await waitFor(jobId, envelope, request, user, log)) return;
           state.waiting = null;
           state.selected_steps = [];
+          const interrupted = await interruptedApplyResult(jobId, user.id);
           await finishJob(
             jobId,
             user,
             request,
             state,
-            STOPPED_TEXT,
-            "discarded",
-            { stopped: true },
+            interrupted.summary,
+            interrupted.outcome,
+            interrupted.extra,
+            terminalError(error),
           );
           return;
         }
+        const interrupted = await interruptedApplyResult(jobId, user.id, true);
         await finishJob(
           jobId,
           user,
           request,
           state,
-          "I ran out of time before finishing. Nothing was changed.",
-          "info",
-          { timed_out: true },
+          interrupted.summary,
+          interrupted.outcome,
+          interrupted.extra,
+          terminalError(error),
         );
         return;
       }
-      // The person's Stop never applies anything: staged work is dropped.
+      // Stop drops staged work and preserves any effects from an earlier worker.
       envelope.state.waiting = null;
       envelope.state.selected_steps = [];
+      const interrupted = await interruptedApplyResult(jobId, user.id);
       await finishJob(
         jobId,
         user,
         request,
         envelope.state,
-        STOPPED_TEXT,
-        "discarded",
-        { stopped: true },
+        interrupted.summary,
+        interrupted.outcome,
+        interrupted.extra,
+        terminalError(error),
       );
     } catch (stopError) {
       log.error(
@@ -2257,6 +2444,7 @@ export async function runAssistantJob(
         user,
         request,
         "This run could not be completed. Please try again.",
+        stopError,
       );
     }
   } finally {
@@ -2510,23 +2698,33 @@ export async function stopAssistantJob(
   if (row.state === "waiting" || row.state === "queued") {
     const envelope = envelopeOf(row.run_state);
     if (!envelope) {
-      await pool.query(
-        `UPDATE ai_jobs SET state = 'failed', error_status = 409,
-           error_message = $2, run_state = NULL WHERE id = $1`,
-        [jobId, STOPPED_TEXT],
-      );
+      await transaction(async (db) => {
+        const terminal = await terminalFacts(db, jobId, user.id, {
+          cause: "stopped",
+        });
+        await db.query(
+          `UPDATE ai_jobs SET state = 'failed', error_status = 409,
+           error_message = $2, run_state = NULL, terminal_evidence=$3::jsonb WHERE id = $1`,
+          [
+            jobId,
+            "Stopped. Review any earlier changes in the change history.",
+            JSON.stringify(terminal),
+          ],
+        );
+      });
       return true;
     }
     envelope.state.waiting = null;
     envelope.state.selected_steps = [];
+    const interrupted = await interruptedApplyResult(jobId, user.id);
     await finishJob(
       jobId,
       user,
       envelope.request,
       envelope.state,
-      STOPPED_TEXT,
-      "discarded",
-      { stopped: true },
+      interrupted.summary,
+      interrupted.outcome,
+      interrupted.extra,
     ).catch((error) =>
       log.error({ err: error }, "Assistant stop could not be recorded"),
     );
@@ -2570,8 +2768,9 @@ export async function failStaleAssistantJobs(
         was: string;
         resume_count: number;
         heartbeat_at: Date;
+        apply_started_at: Date | null;
       }>(
-        `SELECT id, user_id, run_state, state AS was, resume_count, heartbeat_at FROM ai_jobs
+        `SELECT id, user_id, run_state, state AS was, resume_count, heartbeat_at,apply_started_at FROM ai_jobs
        WHERE (state = 'running' AND
          (lease_until <= $1 OR (lease_until IS NULL AND heartbeat_at < $1::timestamptz - interval '180 seconds')))
        OR (state = 'waiting' AND heartbeat_at < $1::timestamptz - make_interval(secs => $2::double precision / 1000))
@@ -2625,6 +2824,20 @@ export async function failStaleAssistantJobs(
             : row.resume_count >= 3
               ? exhausted
               : interrupted;
+        const terminal = await terminalFacts(
+          db,
+          row.id,
+          row.user_id,
+          {
+            cause:
+              row.was === "waiting"
+                ? "waiting_expired"
+                : row.resume_count >= 3
+                  ? "recovery_exhausted"
+                  : "worker_interrupted",
+          },
+          now.toISOString(),
+        );
         if (envelope)
           await finishChatTurn(
             row.user_id,
@@ -2638,8 +2851,13 @@ export async function failStaleAssistantJobs(
               jobId: row.id,
               chatId: envelope.request.chat_id,
               turnId: envelope.request.turn_id,
-              interrupted: row.was !== "waiting",
-              expiredWaiting: row.was === "waiting",
+              interrupted:
+                row.was !== "waiting" && terminal.cause !== "stopped",
+              expiredWaiting:
+                row.was === "waiting" && terminal.cause !== "stopped",
+              stopped: terminal.cause === "stopped",
+              uncertain:
+                !!row.apply_started_at && terminal.effects === "uncertain",
               now: now.toISOString(),
             })
           : null;
@@ -2647,7 +2865,7 @@ export async function failStaleAssistantJobs(
           `UPDATE ai_jobs SET state = 'failed', error_status = $2, error_message = $3,
            result = jsonb_build_object('chat_id',$5::text,'turn_id',$6::text,'assistant_run', jsonb_build_object('execution_outcome',$7::jsonb,'token_estimate',
              coalesce((run_state->'state'->>'token_estimate')::int, (result->'assistant_run'->>'token_estimate')::int, 0))),
-           run_state = NULL, lease_until = NULL, claimed_by = NULL,
+           run_state = NULL, lease_until = NULL, claimed_by = NULL, terminal_evidence=$8::jsonb,
            progress = jsonb_build_object('label', $3::text), heartbeat_at = $4 WHERE id = $1`,
           [
             row.id,
@@ -2657,6 +2875,7 @@ export async function failStaleAssistantJobs(
             envelope?.request.chat_id ?? null,
             envelope?.request.turn_id ?? null,
             executionOutcome ? JSON.stringify(executionOutcome) : null,
+            JSON.stringify(terminal),
           ],
         );
         ended.push(row);

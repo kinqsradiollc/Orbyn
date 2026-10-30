@@ -139,6 +139,15 @@ Both clients expose the recorded reason, checks and open questions in Outcome
 details. Reviewing a proposal resolves its waiting state without certifying the
 goal, and a newer neutral response cannot bury an earlier partial result in a chat.
 
+A failed acknowledgement does not prove that a change rolled back. The runtime
+records the start of an apply separately from its atomic effect/result transaction,
+then reconciles the same job's authorized receipt before revising or replaying.
+A confirmed change or Review proposal is retained. An unreconciled apply or private
+inference dispatch shows **Execution uncertain** and needs review; it cannot
+silently become a fresh attempt. Internal terminal qualification distinguishes
+provider configuration, transient failure, stop, deadline and recovery exhaustion.
+It does not itself admit retries or continue a goal.
+
 Receipts are projected onto currently accessible chat and retained-conversation
 turns. The legacy stored turn shape is unchanged; client history imports cannot
 create trusted receipts. First-party clients negotiate additive receipt fields with

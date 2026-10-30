@@ -448,7 +448,7 @@ export async function aiRoutes(app: FastifyInstance) {
       const prepared = await prepareChatTurn(u, submission, db);
       const job = (
         await db.query(
-          "INSERT INTO ai_jobs(user_id, progress, chat_id, turn_id, submission_key, state, run_state) VALUES($1, $2::jsonb, $3, $4, $4, 'queued', $5::jsonb) RETURNING id",
+          "INSERT INTO ai_jobs(user_id, progress, chat_id, turn_id, submission_key, state, run_state, apply_tracking_version) VALUES($1, $2::jsonb, $3, $4, $4, 'queued', $5::jsonb, 1) RETURNING id",
           [
             u.id,
             JSON.stringify({ label: "Starting the lead assistant" }),
