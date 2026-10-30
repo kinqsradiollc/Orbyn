@@ -289,18 +289,26 @@ try {
     ),
   );
 } finally {
-  await c?.end();
-  if (created) {
-    const row = (
-      await admin.query(
-        "SELECT shobj_description(oid,'pg_database') AS owner FROM pg_database WHERE datname=$1",
-        [database],
-      )
-    ).rows[0];
-    if (row?.owner !== ownership)
-      throw new Error("Disposable DB ownership changed; refusing cleanup");
-    await admin.query(`DROP DATABASE ${database}`);
+  try {
+    await c?.end();
+    if (created) {
+      const row = (
+        await admin.query(
+          "SELECT shobj_description(oid,'pg_database') AS owner FROM pg_database WHERE datname=$1",
+          [database],
+        )
+      ).rows[0];
+      if (row?.owner !== ownership)
+        throw new Error("Disposable DB ownership changed; refusing cleanup");
+      await admin.query(`DROP DATABASE ${database}`);
+    }
+  } finally {
+    // A refused/failed DROP preserves the database, but must not retain its
+    // temporary connection configuration or leave the admin connection open.
+    try {
+      await admin.end();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
   }
-  await admin.end();
-  rmSync(temp, { recursive: true, force: true });
 }

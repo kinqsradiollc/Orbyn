@@ -6,7 +6,10 @@ It creates fictional data for development without calling AI providers or sendin
 
 ## Quick setup
 
-Start PostgreSQL and apply migrations using the README setup commands. Verify that
+Complete the README local-development setup first, including `npm ci`,
+`npm run build:packages` and migrations. The seed runs on the host and imports
+the installed PostgreSQL/Argon2 dependencies and built shared packages, even if
+the API runs in Docker. Start PostgreSQL using that setup, then verify that
 the selected database belongs to your local development stack, then mark that
 specific database once. For the default Compose configuration:
 
