@@ -179,6 +179,7 @@ export function OverviewView({
 
   const morningReview = (
     <MorningReview
+      onOpenReview={() => onNavigate("Review")}
       onOpenActivity={(lane) =>
         onNavigate(lane === "background" ? "Background" : "Overnight")
       }

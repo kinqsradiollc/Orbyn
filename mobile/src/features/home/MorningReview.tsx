@@ -1,7 +1,17 @@
-import React, { useEffect, useMemo, useSyncExternalStore } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { AppState, StyleSheet, Text, View } from "react-native";
 import { AssistantProfileStore } from "@orbyn/api-client";
-import { recentAssistantWork, type AssistantReviewRow } from "@orbyn/core";
+import {
+  groupAssistantReview,
+  assistantReviewGroupSummary,
+  assistantOutcomeDetails,
+  type AssistantMorningReviewItem,
+} from "@orbyn/core";
 import { client } from "../../lib/api";
 import { session, subscribeSession } from "../../lib/session";
 import { InlineDetails } from "../../components/InlineDetails";
@@ -18,9 +28,11 @@ type Lane = "background" | "overnight";
 export function MorningReview({
   onOpenActivity,
   onOpenChat,
+  onOpenReview,
 }: {
   onOpenActivity: (lane: Lane) => void;
   onOpenChat?: (id: string) => void;
+  onOpenReview?: () => void;
 }) {
   const owner = useSyncExternalStore(subscribeSession, sessionKey);
   const store = useMemo(
@@ -28,6 +40,8 @@ export function MorningReview({
     [owner],
   );
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => setShowAll(false), [owner]);
   useEffect(() => {
     const refresh = () => {
       if (owner && sessionKey() === owner && AppState.currentState === "active")
@@ -45,22 +59,41 @@ export function MorningReview({
     };
   }, [store, owner]);
   if (!owner) return null;
-  const rows = snapshot.data ? recentAssistantWork(snapshot.data) : [];
-  const active = rows.filter((row) => row.priority !== 4);
-  const finished = rows.filter((row) => row.priority === 4);
-  const finishedLabel = `Finished run history · latest ${finished.length}${finished[0]?.at ? ` · ${new Date(finished[0].at).toLocaleDateString()}` : ""}`;
-  if (snapshot.data && !snapshot.error && !rows.length) return null;
-  const open = (row: AssistantReviewRow) => {
+  const groups = snapshot.data ? groupAssistantReview(snapshot.data) : [];
+  if (snapshot.data && !snapshot.error && !groups.length) return null;
+  const open = (row: AssistantMorningReviewItem) => {
     if (sessionKey() !== owner) return;
-    if (row.chatId && onOpenChat) onOpenChat(row.chatId);
+    if (row.target === "review" && onOpenReview) onOpenReview();
+    else if (row.chatId && onOpenChat) onOpenChat(row.chatId);
     else onOpenActivity(row.lane);
   };
-  const renderRow = (row: AssistantReviewRow) => (
+  const renderRow = (row: AssistantMorningReviewItem) => (
     <View key={row.id} style={s.row}>
       <Text style={shared.body}>{row.title}</Text>
       <Text style={shared.small}>{row.detail}</Text>
       {row.at && (
         <Text style={shared.small}>{new Date(row.at).toLocaleString()}</Text>
+      )}
+      {row.summary && (
+        <Text style={shared.small}>
+          {row.summary.length > 240
+            ? `${row.summary.slice(0, 240)}…`
+            : row.summary}
+        </Text>
+      )}
+      {row.summary && row.summary.length > 240 && (
+        <InlineDetails title="Full result summary">
+          <Text style={shared.body}>{row.summary}</Text>
+        </InlineDetails>
+      )}
+      {row.execution_outcome && (
+        <InlineDetails title="Evidence & open questions">
+          {assistantOutcomeDetails(row.execution_outcome).map((line, index) => (
+            <Text key={index} style={shared.small}>
+              {line}
+            </Text>
+          ))}
+        </InlineDetails>
       )}
       <SmallAction
         label={row.action}
@@ -69,11 +102,19 @@ export function MorningReview({
       />
     </View>
   );
+  const kinds = {
+    goal: "Goal",
+    routine: "Routine",
+    project: "Project",
+    task: "Task",
+    chat: "Conversation",
+    activity: "Activity",
+  };
   return (
     <View style={s.section}>
       <View style={s.header}>
         <Text style={shared.sectionTitle} accessibilityRole="header">
-          Recent agent work
+          Since you were away
         </Text>
         <SmallAction
           quiet
@@ -90,6 +131,9 @@ export function MorningReview({
           }}
         />
       </View>
+      <Text style={shared.small}>
+        Latest results and active work, grouped by source.
+      </Text>
       {snapshot.data && (
         <Text style={shared.small}>
           Observed {new Date(snapshot.data.observed_at).toLocaleString()}
@@ -105,18 +149,52 @@ export function MorningReview({
         </Text>
       ) : (
         <>
-          {active.slice(0, 6).map(renderRow)}
-          {active.length > 6 && (
+          {(showAll ? groups : groups.slice(0, 4)).map((group) => (
+            <View key={group.id} style={s.group}>
+              <Text style={shared.small}>{kinds[group.kind]}</Text>
+              <Text style={shared.body} accessibilityRole="header">
+                {group.title}
+              </Text>
+              <Text style={shared.small}>
+                {assistantReviewGroupSummary(group)}
+              </Text>
+              <InlineDetails
+                title={`Review ${group.items.length} ${group.items.length === 1 ? "run" : "runs"} for ${group.title}`}
+              >
+                {group.items.map(renderRow)}
+              </InlineDetails>
+            </View>
+          ))}
+          {groups.length > 4 && (
+            <SmallAction
+              label={
+                showAll
+                  ? "Show fewer groups"
+                  : `Show all recent work (${groups.length} groups)`
+              }
+              disabled={false}
+              onPress={() => setShowAll((value) => !value)}
+            />
+          )}
+          {snapshot.data.profiles.some(
+            (profile) => profile.work_truncated || profile.outputs_truncated,
+          ) && (
             <Text style={shared.small}>
-              Showing 6 of {active.length} activity entries.
+              More runs are available in agent activity and Review. This review
+              shows the latest results and a bounded list of active work.
             </Text>
           )}
-          {finished.length > 0 && (
-            <InlineDetails title={finishedLabel}>
-              {finished.map(renderRow)}
-            </InlineDetails>
-          )}
           <View style={s.header}>
+            {onOpenReview && (
+              <SmallAction
+                quiet
+                label="All decisions & changes"
+                disabled={false}
+                onPress={() => {
+                  if (sessionKey() === owner) onOpenReview();
+                }}
+              />
+            )}
             {(["background", "overnight"] as const).map((lane) => (
               <SmallAction
                 key={lane}
@@ -148,6 +226,7 @@ const s = themed(() =>
       justifyContent: "space-between",
       gap: 8,
     },
+    group: { gap: 6, paddingTop: 12 },
     row: {
       gap: 6,
       paddingVertical: 12,

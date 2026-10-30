@@ -1,3 +1,4 @@
+import { assistantReviewOrigin } from "./assistant-review.js";
 import {
   assistantOutcomeReceipt,
   ASSISTANT_OUTCOME_LABELS,
@@ -43,6 +44,7 @@ export const assistantProfile = z
         z
           .object({
             job_id: z.uuid(),
+            origin: assistantReviewOrigin.nullable().optional(),
             chat_id: z.uuid(),
             title: z.string().max(120),
             state: z.enum(["queued", "running", "waiting"]),
@@ -55,17 +57,20 @@ export const assistantProfile = z
       .max(20)
       .optional(),
     work_truncated: z.boolean().optional(),
+    outputs_truncated: z.boolean().optional(),
     outputs: z
       .array(
         z
           .object({
             job_id: z.uuid(),
+            origin: assistantReviewOrigin.nullable().optional(),
             chat_id: z.uuid(),
             title: z.string().max(120),
             completed_at: z.iso.datetime(),
             state: z.enum(["done", "failed"]).optional(),
             summary: z.string().max(1200).optional(),
             execution_outcome: assistantOutcomeReceipt.optional(),
+            review_pending: z.boolean().optional(),
             handoff: z
               .object({
                 id: z.uuid(),

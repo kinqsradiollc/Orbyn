@@ -24,7 +24,12 @@ test("profile client refreshes evidence and refuses inconsistent runtime snapsho
   const client = new OrbynClient({
     baseUrl: "https://fixture.invalid",
     getToken: () => "fixture",
-    fetch: async (url) => {
+    fetch: async (url, init) => {
+      assert.equal(
+        new Headers(init?.headers).get("x-orbyn-review-origins"),
+        "1",
+      );
+      assert.equal(new Headers(init?.headers).get("x-orbyn-outcomes"), "1");
       calls++;
       assert.equal(new URL(String(url)).pathname, "/me/assistant/profiles");
       return Response.json(response);

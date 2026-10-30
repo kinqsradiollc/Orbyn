@@ -51,6 +51,7 @@ export function TodayScreen({
   canOpenAgentOutput,
   onOpenAgentOutput,
   onOpenAgentActivity,
+  onOpenAgentReview,
   items,
   onPlanDay,
   onOpenPlanner,
@@ -76,6 +77,7 @@ export function TodayScreen({
   canOpenAgentOutput: boolean;
   onOpenAgentOutput: (id: string) => void;
   onOpenAgentActivity: (lane: "background" | "overnight") => void;
+  onOpenAgentReview: () => void;
   /** Home's layout (W1): its hubs and which panels show, in order. */
   homeLayout?: HomeLayout;
   presets?: WorkspacePreset[];
@@ -261,6 +263,7 @@ export function TodayScreen({
         </View>
       )}
       <MorningReview
+        onOpenReview={onOpenAgentReview}
         onOpenActivity={onOpenAgentActivity}
         onOpenChat={canOpenAgentOutput ? onOpenAgentOutput : undefined}
       />

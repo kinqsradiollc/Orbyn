@@ -672,7 +672,7 @@ export async function callAssistantProfiles(
   return assistantProfiles.parse(
     await this.request<unknown>("/me/assistant/profiles", {
       fresh: true,
-      headers: { "x-orbyn-outcomes": "1" },
+      headers: { "x-orbyn-outcomes": "1", "x-orbyn-review-origins": "1" },
       signal,
     }),
   );

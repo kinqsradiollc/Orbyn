@@ -202,3 +202,22 @@ access, worker/profile evidence and on-demand usage. Provider configuration does
 not establish live availability, and observed Orbyn usage does not establish a
 provider entitlement, remaining quota or monetary cost. Configuration forms,
 permissions and activity remain with their existing owners and leave guards.
+
+## Morning review by work source
+
+Today’s “Since you were away” region groups selected agent work by its current,
+authorized goal, routine or project identity. Repeated chats and runtime lanes do
+not create separate source groups. Standalone tasks retain task identity; older
+work without source metadata uses its conversation identity. An unavailable
+explicit origin stays isolated instead of inheriting a broader context.
+
+Group summaries keep decision and failure counts visible. Expand a group to read
+each selected run, its result preview, recorded evidence and open questions, and
+its existing result or Review action. A later result never replaces an older
+selected decision. Pending proposed changes are ordered before recent ordinary
+results and open the existing Review inbox. Bounded lists disclose additional
+history; “All decisions & changes” remains available alongside lane activity.
+Source grouping and successful execution do not imply accepted goal completion.
+Verified unchanged results stay quiet only after the server’s retained check and
+exact delivery classification qualify them. Refresh failure and account changes
+clear source names and result links before presenting an error or new account.

@@ -1,3 +1,4 @@
+import { readAssistantReviewOrigins } from "./review-origins.js";
 import { projectOutcomeReceipt } from "../ai/outcome-receipts.js";
 import {
   assistantProfiles,
@@ -64,6 +65,7 @@ export async function readAssistantProfiles(
   owner: string,
   now?: Date,
   includeOutcomes = false,
+  includeOrigins = false,
 ) {
   const row = (
     await db.query<{
@@ -155,6 +157,7 @@ export async function readAssistantProfiles(
         chat_id: string;
         title: string;
         completed_at: Date;
+        total_rows: number;
         execution_outcome: unknown;
         goal_acceptance: unknown;
         state: "done" | "failed";
@@ -167,7 +170,7 @@ export async function readAssistantProfiles(
           recipient_chat_id: string | null;
         } | null;
       }>(
-        `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at,j.result->'assistant_run'->'execution_outcome' AS execution_outcome,(SELECT accepted.acceptance FROM assistant_goal_executions accepted WHERE accepted.owner_id=$1 AND accepted.state='completed' AND accepted.acceptance->>'job_id'=j.id::text LIMIT 1) AS goal_acceptance,j.state,left(coalesce(j.result->>'answer',''),1200) AS summary,CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status,
+        `SELECT count(*) OVER()::int AS total_rows,j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at,j.result->'assistant_run'->'execution_outcome' AS execution_outcome,(SELECT accepted.acceptance FROM assistant_goal_executions accepted WHERE accepted.owner_id=$1 AND accepted.state='completed' AND accepted.acceptance->>'job_id'=j.id::text LIMIT 1) AS goal_acceptance,j.state,left(coalesce(j.result->>'answer',''),1200) AS summary,CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status,
          (SELECT jsonb_build_object('id',h.id,'status',h.status,'recipient_chat_id',r.chat_id)
           FROM assistant_handoffs h LEFT JOIN ai_jobs r ON r.id=h.recipient_job_id
           WHERE h.producer_job_id=j.id AND h.owner_id=$1
@@ -177,10 +180,26 @@ export async function readAssistantProfiles(
        AND ((e.kind='done' AND j.state='done') ${includeOutcomes ? "OR (e.kind='failed' AND j.state='failed')" : ""}) AND j.result IS NOT NULL
        AND j.runtime_lane=$2 AND ${assistantChatVisible("c", "$1")}
        AND ${assistantJobSourcesVisible("j", "$1", false)}
-       GROUP BY j.id,j.chat_id,c.title,p.status,p.expires_at ORDER BY max(e.created_at) DESC,j.id DESC LIMIT 5`,
+       ${
+         includeOutcomes && includeOrigins
+           ? `AND NOT (j.state='done'
+         AND EXISTS(SELECT 1 FROM assistant_quiet_checks quiet WHERE quiet.owner_id=$1 AND quiet.job_id=j.id AND quiet.status='verified_unchanged')
+         AND EXISTS(SELECT 1 FROM assistant_delivery_bindings binding JOIN assistant_delivery_intents intent ON intent.binding_id=binding.id
+           WHERE binding.owner_id=$1 AND binding.work_kind='job' AND binding.work_id=j.id
+             AND intent.event_key='result' AND intent.payload->>'event'='result' AND intent.state='suppressed' AND intent.reason='unchanged'))`
+           : ""
+       }
+       GROUP BY j.id,j.chat_id,c.title,p.status,p.expires_at ORDER BY ${includeOutcomes && includeOrigins ? "CASE WHEN p.status='pending' AND p.expires_at>now() THEN 0 WHEN j.state='failed' THEN 1 ELSE 2 END," : ""} max(e.created_at) DESC,j.id DESC LIMIT 5`,
         [owner, lane],
       )
     ).rows;
+    const origins =
+      includeOutcomes && includeOrigins
+        ? await readAssistantReviewOrigins(db, owner, [
+            ...work.map((row) => row.job_id),
+            ...outputs.map((row) => row.job_id),
+          ])
+        : null;
     profiles.push({
       lane,
       identity: await readAutomationIdentity(db, owner, lane),
@@ -203,6 +222,7 @@ export async function readAssistantProfiles(
             work: work.map((row) => ({
               ...row,
               updated_at: row.updated_at.toISOString(),
+              ...(origins ? { origin: origins.get(row.job_id) ?? null } : {}),
             })),
             work_truncated:
               counts.working +
@@ -212,9 +232,13 @@ export async function readAssistantProfiles(
               work.length,
           }
         : {}),
+      ...(includeOutcomes && includeOrigins
+        ? { outputs_truncated: (outputs[0]?.total_rows ?? 0) > outputs.length }
+        : {}),
       outputs: outputs.map(
         ({
           execution_outcome,
+          total_rows,
           goal_acceptance,
           review_status,
           state,
@@ -231,6 +255,12 @@ export async function readAssistantProfiles(
             ...output,
             ...(includeOutcomes ? { state, summary } : {}),
             completed_at: output.completed_at.toISOString(),
+            ...(origins
+              ? {
+                  origin: origins.get(output.job_id) ?? null,
+                  review_pending: review_status === "pending",
+                }
+              : {}),
             ...(includeOutcomes && receipt
               ? { execution_outcome: receipt }
               : {}),
@@ -265,6 +295,7 @@ export async function assistantProfileRoutes(app: FastifyInstance) {
             user.id,
             undefined,
             request.headers["x-orbyn-outcomes"] === "1",
+            request.headers["x-orbyn-review-origins"] === "1",
           );
         },
         { primary: true },

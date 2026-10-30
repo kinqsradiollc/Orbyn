@@ -1746,6 +1746,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                   )}
                   {tab === "Today" && (
                     <TodayScreen
+                      onOpenAgentReview={() => present({ sheet: "review" })}
                       onOpenAgentActivity={(lane) => {
                         if (lane === "overnight")
                           present({ sheet: "overnight" });
