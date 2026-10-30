@@ -1,11 +1,24 @@
-/** Synthetic UI fixtures. Refuses every target except the marked local preview DB.
- * Usage: node backend/scripts/seed-ui-demo.mjs --apply --date=2026-10-29
- * Without --apply this only checks readiness. Existing content is never replaced.
+/** Synthetic development catalog. Dry-run by default; --apply requires an
+ * independently marked loopback development database. Never resets existing data.
+ * See seed-ui-demo-support.mjs for fixed public local-only accounts and guards.
  */
 import { readFileSync } from "node:fs";
-import { createHash, randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import {
+  FIXTURE,
+  DEMO_PASSWORD,
+  DEMO_ACCOUNTS,
+  SCENARIOS,
+  fixtureId,
+  seedOptions,
+  seedTarget,
+  assertSeedDatabase,
+  assertAccountOwnership,
+} from "./seed-ui-demo-support.mjs";
 import { parse } from "dotenv";
 import pg from "pg";
+import { seedMemberCatalog } from "./seed-ui-demo-member.mjs";
+import { seedAgentHistory } from "./seed-ui-demo-agent-history.mjs";
 import argon2 from "argon2";
 import {
   viewDefinition,
@@ -16,17 +29,16 @@ import {
   parseVersionedDocContent,
 } from "@orbyn/core";
 
-const config = parse(readFileSync(new URL("../../.env", import.meta.url)));
-const target = new URL(config.DATABASE_URL);
-if (
-  !["127.0.0.1", "localhost"].includes(target.hostname) ||
-  target.port !== "5433" ||
-  target.pathname !== "/orbyn"
-) {
-  throw new Error("UI demo seed is restricted to localhost:5433/orbyn.");
-}
+const options = seedOptions(
+  process.argv.slice(2),
+  fileURLToPath(new URL("../../", import.meta.url)),
+);
+const config = parse(readFileSync(options.envFile));
+const target = seedTarget(config.DATABASE_URL, options);
+if ([config.NODE_ENV, process.env.NODE_ENV].includes("production"))
+  throw new Error("Refusing a production process/environment file.");
 const day =
-  process.argv.find((x) => x.startsWith("--date="))?.slice(7) ??
+  options.date ??
   new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Melbourne" }).format(
     new Date(),
   );
@@ -36,54 +48,127 @@ if (
   new Date(day).toISOString().slice(0, 10) !== day
 )
   throw new Error("Use --date=YYYY-MM-DD.");
-const id = (key) => {
-  const hex = createHash("sha256")
-    .update(`orbyn-ui-demo-v1:${key}`)
-    .digest("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-};
+const id = fixtureId;
 const at = (offset, hour = 17, minute = 0) =>
   dayTime(
     addDays(day, offset),
     hour * 60 + minute,
     "Australia/Melbourne",
   ).toISOString();
-const c = new pg.Client({ connectionString: config.DATABASE_URL });
+const c = new pg.Client({
+  connectionString: target.connectionString,
+  options: "",
+  application_name: "orbyn-ui-demo-seed",
+  connectionTimeoutMillis: 10000,
+});
 const counts = {};
 async function put(table, row, conflict = "id") {
   const cols = Object.keys(row),
-    vals = Object.values(row);
+    keys = conflict.split(",");
+  if (![table, ...cols, ...keys].every((value) => /^[a-z_]+$/.test(value)))
+    throw new Error("Invalid seed SQL identifier.");
+  const read = async () =>
+    (
+      await c.query(
+        `SELECT * FROM ${table} WHERE ${keys.map((key, i) => `${key}=$${i + 1}`).join(" AND ")}`,
+        keys.map((key) => row[key]),
+      )
+    ).rows[0];
+  const preserve = (existing) => {
+    if (
+      !existing ||
+      ["user_id", "owner_id", "created_by"].some(
+        (key) => row[key] !== undefined && existing[key] !== row[key],
+      )
+    )
+      throw new Error(
+        `Fixture identity collision in ${table}; existing content was preserved.`,
+      );
+    counts[table] ??= 0;
+    return false;
+  };
+  const existing = await read();
+  if (existing) return preserve(existing);
   const result = await c.query(
     `INSERT INTO ${table} (${cols.join(",")}) VALUES (${cols.map((_, i) => "$" + (i + 1)).join(",")}) ON CONFLICT (${conflict}) DO NOTHING`,
-    vals,
+    Object.values(row),
   );
   counts[table] = (counts[table] ?? 0) + result.rowCount;
+  return result.rowCount > 0 ? true : preserve(await read());
 }
+
 try {
   await c.connect();
-  const marker = (
-    await c.query("select current_setting('orbyn.ui_fixture',true) marker")
-  ).rows[0]?.marker;
-  if (marker !== "ui-ux-polish")
-    throw new Error(
-      "Database must be marked orbyn.ui_fixture=ui-ux-polish after verifying its local Docker owner.",
-    );
-  const admin = (
-    await c.query("select id from users where email='admin@example.com'")
+  const guard = (
+    await c.query(`SELECT current_database() AS database,
+    (SELECT substring(setting FROM length('orbyn.ui_fixture=')+1) FROM pg_db_role_setting r CROSS JOIN LATERAL unnest(r.setconfig) setting WHERE r.setdatabase=(SELECT oid FROM pg_database WHERE datname=current_database()) AND r.setrole=0 AND setting LIKE 'orbyn.ui_fixture=%') AS marker,
+    current_setting('orbyn.environment',true) AS environment`)
   ).rows[0];
-  if (!admin) throw new Error("Local admin fixture is missing.");
-  if (!process.argv.includes("--apply")) {
-    console.log({
-      mode: "read-only",
-      date: day,
-      fixture: "orbyn-ui-demo-v1",
-      target: "localhost:5433/orbyn",
-      ready: true,
-    });
+  assertSeedDatabase(guard, target.database);
+  await c.query(options.apply ? "BEGIN" : "BEGIN READ ONLY");
+  if (options.apply)
+    await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [FIXTURE]);
+  const existingAccounts = (
+    await c.query(
+      "SELECT id,email,role FROM users WHERE id=ANY($1::uuid[]) OR lower(email)=ANY($2::text[])",
+      [
+        DEMO_ACCOUNTS.map((account) => account.id),
+        DEMO_ACCOUNTS.map((account) => account.email.toLowerCase()),
+      ],
+    )
+  ).rows;
+  assertAccountOwnership(DEMO_ACCOUNTS, existingAccounts);
+  let existingMember = null;
+  if (options.existingMemberId) {
+    existingMember = (
+      await c.query(
+        "SELECT id,email,role FROM users WHERE id=$1 AND lower(email)='demo@orbyn.local'",
+        [options.existingMemberId],
+      )
+    ).rows[0];
+    if (!existingMember || existingMember.role !== "member")
+      throw new Error(
+        "The verified existing demo member does not match its ID, email and member role.",
+      );
+  }
+  if (!options.apply) {
+    console.log(
+      JSON.stringify(
+        {
+          mode: "dry-run",
+          date: day,
+          fixture: FIXTURE,
+          target: target.display,
+          ready: true,
+          accounts: DEMO_ACCOUNTS.map(({ email, role, onboarding }) => ({
+            email,
+            role,
+            onboarding,
+          })),
+          existing_member: existingMember?.email ?? null,
+          scenarios: SCENARIOS,
+        },
+        null,
+        2,
+      ),
+    );
+    await c.query("ROLLBACK");
   } else {
-    await c.query("BEGIN");
-    const owner = admin.id;
-    const password = await argon2.hash(randomBytes(32).toString("hex"));
+    const password = await argon2.hash(DEMO_PASSWORD);
+    for (const account of DEMO_ACCOUNTS) {
+      await put("users", {
+        id: account.id,
+        email: account.email,
+        name: account.name,
+        role: account.role,
+        password_hash: password,
+        email_reminders: false,
+        email_verified: true,
+        analytics_opt_out: true,
+        first_run_at: account.onboarding ? null : new Date().toISOString(),
+      });
+    }
+    const owner = DEMO_ACCOUNTS.find((account) => account.key === "admin").id;
     const people = [
       "Maya Chen",
       "Jordan Lee",
@@ -95,12 +180,13 @@ try {
     for (let n = 0; n < people.length; n++)
       await put("users", {
         id: id(`person-${n}`),
-        email: `person-${n}@ui-demo.example`,
+        email: `v2-person-${n}@ui-demo.example`,
         name: people[n],
         password_hash: password,
         email_reminders: false,
         email_verified: true,
         analytics_opt_out: true,
+        first_run_at: new Date().toISOString(),
       });
     const teams = [
       "Design studio · Demo",
@@ -302,22 +388,7 @@ try {
         },
         "item_id,tag_id",
       );
-      if (process.argv.includes("--repair")) {
-        await c.query(
-          "UPDATE items SET list_id=$2,assignee_id=$3,version=version+1 WHERE id=$1 AND user_id=$4 AND (list_id IS DISTINCT FROM $2 OR assignee_id IS DISTINCT FROM $3)",
-          [
-            id(`task-${n}`),
-            id(team ? `team-list-${project}-${n % 4}` : `list-${n % 4}`),
-            team && n % 4 === 0 ? id(`person-${project}`) : owner,
-            owner,
-          ],
-        );
-        if (team)
-          await c.query(
-            "DELETE FROM item_tags WHERE item_id=$1 AND tag_id=$2",
-            [id(`task-${n}`), id(`tag-${n % 6}`)],
-          );
-      }
+
       if (n < 6)
         await put("item_updates", {
           id: id(`update-${n}`),
@@ -444,21 +515,7 @@ try {
         },
         "doc_id,tag_id",
       );
-      if (process.argv.includes("--repair") && n < 3) {
-        await c.query(
-          "UPDATE docs SET team_id=$2,folder_id=$3,version=version+1 WHERE id=$1 AND user_id=$4 AND (team_id IS DISTINCT FROM $2 OR folder_id IS DISTINCT FROM $3)",
-          [
-            id(`doc-${n}`),
-            id(`team-${n}`),
-            id(`team-folder-${n}-${n % 4}`),
-            owner,
-          ],
-        );
-        await c.query("DELETE FROM doc_tags WHERE doc_id=$1 AND tag_id=$2", [
-          id(`doc-${n}`),
-          id(`tag-${n % 6}`),
-        ]);
-      }
+
       if (n < 4)
         await put("doc_comments", {
           id: id(`comment-${n}`),
@@ -728,27 +785,13 @@ A longer passage tests reading measure and line wrapping. We keep source text, m
         source: "assistant",
         changes: "[]",
       });
-      if (process.argv.includes("--repair"))
-        await c.query(
-          "UPDATE proposals SET actions=$2::jsonb WHERE id=$1 AND user_id=$3 AND status='pending' AND actions='[]'::jsonb",
-          [id(`proposal-${n}`), JSON.stringify(actions), owner],
-        );
     }
-    if (process.argv.includes("--repair")) {
-      await c.query(
-        "UPDATE saved_views SET name='Open tasks' WHERE id=$1 AND user_id=$2 AND name='In progress'",
-        [id("view-1"), owner],
-      );
-      await c.query(
-        "UPDATE doc_comments SET user_id=$2 WHERE id=$1 AND doc_id=$3",
-        [id("comment-3"), owner, id("doc-3")],
-      );
-    }
+
     for (let n = 0; n < 3; n++) {
       await put("booking_pages", {
         id: id(`booking-page-${n}`),
         owner_id: owner,
-        slug: `ui-demo-${n}`,
+        slug: `orbyn-demo-v2-${n}`,
         title: [
           "Design office hours",
           "Research interview",
@@ -757,7 +800,7 @@ A longer passage tests reading measure and line wrapping. We keep source text, m
         description:
           "Synthetic booking page for the local UI preview. No real bookings or emails.",
         durations: [30, 45],
-        active: true,
+        active: false,
         color: ["#2563eb", "#8b5cf6", "#0d9488"][n],
         remind_before_minutes: [],
       });
@@ -774,10 +817,62 @@ A longer passage tests reading measure and line wrapping. We keep source text, m
         assigned_user_id: owner,
       });
     }
+    await seedAgentHistory({
+      db: c,
+      put,
+      id,
+      owner,
+      taskId: id("task-0"),
+      projectId: id("project-0"),
+      at,
+      withNight: true,
+    });
+    for (const member of [
+      DEMO_ACCOUNTS.find((account) => account.key === "member"),
+      ...(existingMember ? [existingMember] : []),
+    ]) {
+      await seedMemberCatalog({
+        put,
+        id,
+        owner: member.id,
+        at,
+        day,
+        adminTeams: teams.map((_, n) => id(`team-${n}`)),
+      });
+      await seedAgentHistory({
+        db: c,
+        put,
+        id,
+        owner: member.id,
+        taskId: id(`member:${member.id}:task-0`),
+        projectId: id(`member:${member.id}:project-0`),
+        at,
+        withNight: member.id !== existingMember?.id,
+      });
+    }
+    // These newly owned accounts commit paused. No execution grants or live
+    // jobs exist at any point; imported terminal history was never admitted.
+    for (const account of DEMO_ACCOUNTS)
+      await put(
+        "agent_settings",
+        {
+          user_id: account.id,
+          background_paused: true,
+          overnight_paused: true,
+        },
+        "user_id",
+      );
     await c.query("COMMIT");
     console.log(
       JSON.stringify(
-        { fixture: "orbyn-ui-demo-v1", date: day, inserted: counts },
+        {
+          fixture: FIXTURE,
+          date: day,
+          inserted: counts,
+          accounts: DEMO_ACCOUNTS.map(({ email, role }) => ({ email, role })),
+          password: DEMO_PASSWORD,
+          scenarios: SCENARIOS,
+        },
         null,
         2,
       ),

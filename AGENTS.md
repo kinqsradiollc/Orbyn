@@ -43,3 +43,13 @@ Orbyn owners and maintainers with verified write permission may use the canonica
 `kinqsradiollc/Orbyn` upstream directly. Other contributors follow its contribution
 and permission rules. Cloning the skills library for use does not require a fork;
 contributing changes to that library is a separate delivery task.
+
+## Local development fixtures
+
+Use the canonical `npm run dev:seed` script and read [local demo setup](docs/local-demo.md)
+before applying fixtures. Verify the local database owner and persisted development
+marker; the default is a read-only preview. Apply only within authorized local
+setup scope. Do not create parallel ad hoc seed scripts or copy private configuration.
+Preserve existing IDs, user edits, passwords, roles and unrelated data. Adding the
+catalog to the established demo member requires its verified UUID. Sample terminal
+agent history is UI data, never evidence of model execution or recovery qualification.
