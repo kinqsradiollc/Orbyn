@@ -8,6 +8,53 @@ import {
   type Scope,
 } from "./visibility.js";
 
+/** A direct-source proof belongs to one statement and one authority context.
+ * Callers supply source identities, never authorization results. Materialize
+ * before reusing the predicate; derived turn/binding guards remain separate. */
+export function assistantSourceVisibilitySet(
+  name: string,
+  sources: string,
+  user = "$1",
+  scope?: Scope,
+  includeDerived = true,
+) {
+  if (!/^[a-z_][a-z0-9_]{0,39}$/.test(name))
+    throw new Error("Invalid source visibility relation.");
+  const context = (
+    owner: string,
+    restriction: Scope | undefined,
+    derived: boolean,
+  ) =>
+    JSON.stringify([
+      owner,
+      restriction?.user,
+      restriction?.teams,
+      restriction?.personal,
+      restriction?.ai,
+      derived,
+    ]);
+  const binding = context(user, scope, includeDerived);
+  return {
+    cte: `${name} AS MATERIALIZED (
+      SELECT source_root.kind,source_root.id,
+        ${assistantSourceVisible("source_root.kind", "source_root.id", user, false, scope, includeDerived)} AS visible
+      FROM (SELECT DISTINCT kind,id FROM (${sources}) direct_sources) source_root
+    )`,
+    predicate(
+      kind: string,
+      id: string,
+      owner: string,
+      restriction: Scope | undefined,
+      derived: boolean,
+    ) {
+      if (binding !== context(owner, restriction, derived))
+        throw new Error("Source visibility cannot cross authority contexts.");
+      return `EXISTS(SELECT 1 FROM ${name} source_proof
+        WHERE source_proof.kind=${kind} AND source_proof.id=${id} AND source_proof.visible)`;
+    },
+  };
+}
+
 /** Item facts and derived busy time must also honor the team's current AI consent. */
 export function visibleAiItems(alias = "i", user = "$1"): string {
   return `${visibleItems(alias, { user, ai: true })} AND NOT EXISTS(SELECT 1 FROM teams ai_team WHERE ai_team.id=${alias}.team_id AND NOT ai_team.assistant_allowed)`;

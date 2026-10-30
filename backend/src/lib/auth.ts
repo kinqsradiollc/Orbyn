@@ -365,23 +365,30 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   // A Clipper key saves clips and nothing else (see modules/clip).
   if (token.startsWith("ocl_")) fail(401, CLIP_KEY_MESSAGE);
   if (token.startsWith("ok_")) return keyUser(r, token);
-  const u = (
-    await pool.query<UserRow>(
-      "SELECT u.* FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=$1 AND s.expires_at>now()",
-      [digest(token)],
+  const hash = digest(token);
+  const session = (
+    await pool.query<UserRow & { session_touch_due: boolean | null }>(
+      `SELECT u.*, s.last_seen_at < now() - interval '1 minute' AS session_touch_due
+       FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=$1 AND s.expires_at>now()`,
+      [hash],
     )
   ).rows[0];
-  if (!u) fail(401, "Session expired. Please sign in again.");
+  if (!session) fail(401, "Session expired. Please sign in again.");
+  const { session_touch_due: touchDue, ...u } = session;
   if (u.disabled) fail(403, DISABLED_MESSAGE);
   requireVerified(r, u);
-  // Recorded at most once a minute, so it doesn't write on every request.
+  // The authentication read also checks whether a touch is due, avoiding a
+  // second database round trip on requests within the same minute. Authority
+  // still comes from the primary on every request; no session is cached.
+  // Keep the UPDATE guard for concurrent requests that both observed a due touch.
   // Using the app keeps you signed in: a session expires after 30 days
   // without use, not 30 days after signing in.
-  await pool.query(
-    `UPDATE sessions SET last_seen_at=now(), expires_at=greatest(expires_at, now() + interval '30 days')
+  if (touchDue)
+    await pool.query(
+      `UPDATE sessions SET last_seen_at=now(), expires_at=greatest(expires_at, now() + interval '30 days')
       WHERE token_hash=$1 AND last_seen_at < now() - interval '1 minute'`,
-    [digest(token)],
-  );
+      [hash],
+    );
   requestUser.set(r, u.id);
   if (u.analytics_opt_out) analyticsOptOut.add(r);
   sessionUsers.add(u);

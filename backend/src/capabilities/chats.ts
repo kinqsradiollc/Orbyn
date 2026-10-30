@@ -118,6 +118,9 @@ export const getChats = defineCapability({
   access: "read",
   toolset: "core",
   mode: "read",
+  // The expanded source checks cost far more to compile than to execute.
+  // Keep JIT off only for this read, including its retained-history projection.
+  readJit: false,
   tier: "R",
   async run(ctx, args) {
     if (!ctx.spaces.personal)

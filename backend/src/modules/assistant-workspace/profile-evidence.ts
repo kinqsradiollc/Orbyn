@@ -3,8 +3,12 @@ import {
   type AssistantProfileCounts,
 } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
-import { assistantChatVisible } from "../../lib/assistant-visibility.js";
+import {
+  assistantChatContainerVisible,
+  assistantChatVisible,
+} from "../../lib/assistant-visibility.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
+import { assistantSourceVisibilitySet } from "../../lib/assistant-source-visibility.js";
 
 type WorkRow = {
   job_id: string;
@@ -45,6 +49,14 @@ export async function readAssistantProfileEvidence(
   includeOutcomes: boolean,
   includeOrigins: boolean,
 ) {
+  const sources = assistantSourceVisibilitySet(
+    "authorized_direct_sources",
+    `SELECT dependency.source_kind AS kind,dependency.source_id AS id
+      FROM assistant_job_sources dependency JOIN relevant_jobs relevant ON relevant.id=dependency.job_id
+      JOIN container_chats chat ON chat.id=relevant.chat_id
+      UNION SELECT dependency.source_kind,dependency.source_id
+      FROM assistant_chat_sources dependency JOIN container_chats chat ON chat.id=dependency.chat_id`,
+  );
   const counts = `SELECT count(*) FILTER(WHERE j.state='running' AND j.lease_until>$2)::int AS working,
        count(*) FILTER(WHERE j.state='waiting')::int AS waiting,count(*) FILTER(WHERE j.state='queued')::int AS queued,
        count(*) FILTER(WHERE j.state='running' AND (j.lease_until IS NULL OR j.lease_until<=$2))::int AS recovering
@@ -94,13 +106,22 @@ export async function readAssistantProfileEvidence(
       last_activity: { last_activity_at: string | null }[];
       recent: unknown[] | null;
     }>(
-      `WITH authorized_jobs AS MATERIALIZED (
-    SELECT j.id FROM ai_jobs j LEFT JOIN ai_chats c ON c.id=j.chat_id
-    WHERE j.user_id=$1 AND ((j.runtime_lane=$3 AND j.state IN ('queued','running','waiting')) OR EXISTS(
+      `WITH relevant_jobs AS MATERIALIZED (
+    SELECT j.id,j.chat_id FROM ai_jobs j
+    WHERE j.user_id=$1 AND j.sources_checked AND ((j.runtime_lane=$3 AND j.state IN ('queued','running','waiting')) OR EXISTS(
       SELECT 1 FROM assistant_activity_events relevant
       WHERE relevant.owner_id=$1 AND relevant.runtime_lane=$3 AND relevant.job_id=j.id))
-      AND ${assistantChatVisible("c", "$1")}
-      AND ${assistantJobSourcesVisible("j", "$1", false)}
+  ),container_chats AS MATERIALIZED (
+    SELECT c.id FROM ai_chats c
+    JOIN (SELECT DISTINCT chat_id FROM relevant_jobs) relevant_chat ON relevant_chat.chat_id=c.id
+    WHERE ${assistantChatContainerVisible("c", "$1")}
+  ),${sources.cte},authorized_chats AS MATERIALIZED (
+    SELECT c.id FROM ai_chats c JOIN container_chats candidate ON candidate.id=c.id
+    WHERE ${assistantChatVisible("c", "$1", undefined, sources)}
+  ),authorized_jobs AS MATERIALIZED (
+    SELECT j.id FROM relevant_jobs relevant JOIN ai_jobs j ON j.id=relevant.id
+    JOIN authorized_chats c ON c.id=j.chat_id
+    WHERE ${assistantJobSourcesVisible("j", "$1", false, undefined, true, sources)}
   )
   SELECT (SELECT jsonb_agg(to_jsonb(projection)) FROM (${counts}) projection) AS counts,
     ${includeOutcomes ? `(SELECT jsonb_agg(to_jsonb(projection)) FROM (${work}) projection)` : "NULL::jsonb"} AS work,

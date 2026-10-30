@@ -1,6 +1,7 @@
 import {
   assistantSourceVisible,
   assistantChatEntrySourcesVisible,
+  type assistantSourceVisibilitySet,
 } from "./assistant-source-visibility.js";
 import { visibleItems, visibleProjects, type Scope } from "./visibility.js";
 
@@ -44,8 +45,24 @@ export function assistantChatVisible(
   chat = "c",
   user = "$1",
   restriction?: Scope,
+  sourceSet?: ReturnType<typeof assistantSourceVisibilitySet>,
 ): string {
-  return `(${assistantChatContainerVisible(chat, user, restriction)} AND NOT EXISTS(SELECT 1 FROM assistant_chat_sources chat_dependency WHERE chat_dependency.chat_id=${chat}.id AND NOT ${assistantSourceVisible("chat_dependency.source_kind", "chat_dependency.source_id", user, false, restriction)}) AND ${assistantChatEntrySourcesVisible(`${chat}.id`, user, restriction)})`;
+  const directSource = sourceSet
+    ? sourceSet.predicate(
+        "chat_dependency.source_kind",
+        "chat_dependency.source_id",
+        user,
+        restriction,
+        true,
+      )
+    : assistantSourceVisible(
+        "chat_dependency.source_kind",
+        "chat_dependency.source_id",
+        user,
+        false,
+        restriction,
+      );
+  return `(${assistantChatContainerVisible(chat, user, restriction)} AND NOT EXISTS(SELECT 1 FROM assistant_chat_sources chat_dependency WHERE chat_dependency.chat_id=${chat}.id AND NOT ${directSource}) AND ${assistantChatEntrySourcesVisible(`${chat}.id`, user, restriction)})`;
 }
 
 /** Only callers that filter individual saved turns and execution context may use this. */

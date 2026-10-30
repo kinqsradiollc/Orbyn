@@ -136,12 +136,51 @@ test("using the app keeps a session alive; an idle one still expires", async () 
   assert.equal((await get("/me", token)).statusCode, 401);
 });
 
+async function assertRecentSessionRead(token: string) {
+  const { digest } = await import("../src/lib/auth.js");
+  const hash = digest(token);
+  const session = async () =>
+    (
+      await pool.query<{ last_seen_at: Date; expires_at: Date }>(
+        "SELECT last_seen_at,expires_at FROM sessions WHERE token_hash=$1",
+        [hash],
+      )
+    ).rows[0];
+  const before = await session();
+  const queries: string[] = [];
+  const query = pool.query;
+  pool.query = function (this: unknown, text: unknown, ...args: unknown[]) {
+    if (typeof text === "string") queries.push(text);
+    return Reflect.apply(query, this, [text, ...args]);
+  } as typeof pool.query;
+  try {
+    assert.equal((await get("/me", token)).statusCode, 200);
+  } finally {
+    pool.query = query;
+  }
+  assert.equal(
+    queries.filter((sql) => sql.includes("JOIN sessions s ON")).length,
+    1,
+    "every request still checks session and user authority",
+  );
+  assert.equal(
+    queries.filter((sql) => /UPDATE sessions SET last_seen_at/.test(sql))
+      .length,
+    0,
+  );
+  assert.deepEqual(await session(), before);
+  // The optimization must not keep an authenticated principal after revocation.
+  await pool.query("DELETE FROM sessions WHERE token_hash=$1", [hash]);
+  assert.equal((await get("/me", token)).statusCode, 401);
+}
+
 test("new sessions have a namespace distinct from API and agent credentials", async () => {
   const token = await signIn("Namespaced session");
   assert.match(token, /^os_[A-Za-z0-9_-]{64}$/);
   assert.equal((await get("/me", token)).statusCode, 200);
   assert.equal((await get("/me", "ok_not-a-real-api-key")).statusCode, 401);
   assert.equal((await get("/me", "oak_not-a-real-agent-key")).statusCode, 401);
+  await assertRecentSessionRead(token);
 });
 
 test("existing unprefixed session tokens remain usable", async () => {

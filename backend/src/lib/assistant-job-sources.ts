@@ -7,6 +7,7 @@ import {
   assistantTurnSourcesVisible,
   assistantBindingEntrySourcesVisible,
   assistantChatEvidenceKnown,
+  type assistantSourceVisibilitySet,
 } from "./assistant-source-visibility.js";
 
 /** Current access to every recorded source; unknown legacy background snapshots are restricted. */
@@ -16,9 +17,26 @@ export function assistantJobSourcesVisible(
   allowLegacyPerson = true,
   scope?: Scope,
   includeDerived = true,
+  sourceSet?: ReturnType<typeof assistantSourceVisibilitySet>,
 ): string {
+  const directSource = sourceSet
+    ? sourceSet.predicate(
+        "dependency.source_kind",
+        "dependency.source_id",
+        user,
+        scope,
+        includeDerived,
+      )
+    : assistantSourceVisible(
+        "dependency.source_kind",
+        "dependency.source_id",
+        user,
+        false,
+        scope,
+        includeDerived,
+      );
   return `(${job}.user_id=${user} AND (${job}.sources_checked${allowLegacyPerson ? ` OR ${job}.run_origin='person'` : ""})
-    AND NOT EXISTS(SELECT 1 FROM assistant_job_sources dependency WHERE dependency.job_id=${job}.id AND NOT ${assistantSourceVisible("dependency.source_kind", "dependency.source_id", user, false, scope, includeDerived)})
+    AND NOT EXISTS(SELECT 1 FROM assistant_job_sources dependency WHERE dependency.job_id=${job}.id AND NOT ${directSource})
     ${
       includeDerived
         ? `AND ${assistantTurnSourcesVisible(`${job}.chat_id`, `${job}.turn_id`, user, scope)} AND NOT EXISTS(
