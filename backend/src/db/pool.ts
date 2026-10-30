@@ -111,6 +111,8 @@ export async function readTransaction<T>(
     primary?: boolean;
     timeoutMs?: number;
     isolation?: "repeatable read";
+    /** Measured privacy-heavy reads can avoid LLVM compilation for this transaction only. */
+    jit?: false;
   } = {},
 ): Promise<T> {
   const db = await (options.primary ? pool : readPool).connect();
@@ -120,6 +122,7 @@ export async function readTransaction<T>(
         ? "BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY"
         : "BEGIN READ ONLY",
     );
+    if (options.jit === false) await db.query("SET LOCAL jit = off");
     if (options.timeoutMs)
       await db.query(
         `SET LOCAL statement_timeout = ${Math.max(100, Math.round(options.timeoutMs))}`,

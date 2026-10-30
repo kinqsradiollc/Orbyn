@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { fail } from "@orbyn/core";
-import { pool, reader } from "../../db/pool.js";
+import { pool, reader, readTransaction } from "../../db/pool.js";
 import { listNotifications, markNotificationsRead } from "./service.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
@@ -12,7 +12,10 @@ import { idParam } from "../../lib/params.js";
 export async function notificationRoutes(app: FastifyInstance) {
   app.get("/notifications", async (r) => {
     const u = await authenticate(r);
-    return listNotifications(reader(r.headers), u.id);
+    return readTransaction((db) => listNotifications(db, u.id), {
+      primary: reader(r.headers) === pool,
+      jit: false,
+    });
   });
 
   app.post("/notifications/:id/read", async (r, reply) => {
