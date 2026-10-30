@@ -55,10 +55,10 @@ test("an account switch cannot reuse another account’s pending read", async ()
     },
     () => token,
   );
-  const one = api.request("/me");
+  const one = api.request("/me", { signal: new AbortController().signal });
   await tick();
   token = "fixture-b";
-  const two = api.request("/me");
+  const two = api.request("/me", { signal: new AbortController().signal });
   await tick();
   hold.release();
   await Promise.all([one, two]);
@@ -75,20 +75,41 @@ test("post-mutation reads never join pre-mutation reads", async () => {
     }
     return Response.json({});
   });
-  const old = api.request("/items");
+  const old = api.request("/items", { signal: new AbortController().signal });
   await tick();
   await api.request("/items", { method: "POST", body: {} });
-  await api.request("/items");
+  await api.request("/items", { signal: new AbortController().signal });
   assert.equal(reads, 2);
   hold.release();
   await old;
 });
 
-test("signals, custom headers, fresh reads and raw responses have independent transports", async () => {
+test("external mutation fences pending reads and asks the primary for the replacement", async () => {
+  const hold = gate();
+  const consistency: (string | null)[] = [];
+  const api = client(async (_url, init) => {
+    consistency.push(new Headers(init?.headers).get("X-Orbyn-Consistency"));
+    const read = consistency.length;
+    if (read === 1) await hold.waiting;
+    return Response.json({ read });
+  });
+  const old = api.request("/today", { signal: new AbortController().signal });
+  await tick();
+  api.noteExternalMutation();
+  const replacement = await api.request("/today", {
+    signal: new AbortController().signal,
+  });
+  assert.deepEqual(replacement, { read: 2 });
+  assert.deepEqual(consistency, [null, "primary"]);
+  hold.release();
+  assert.deepEqual(await old, { read: 1 });
+});
+
+test("custom headers, fresh reads, bodies and raw responses have independent transports", async () => {
   for (const options of [
-    { signal: new AbortController().signal },
     { headers: { "X-Mode": "a" } },
     { fresh: true },
+    { body: {} },
     { raw: true },
   ]) {
     const hold = gate();
@@ -107,6 +128,171 @@ test("signals, custom headers, fresh reads and raw responses have independent tr
   }
 });
 
+test("one subscriber can cancel while other readers retain one transport and independent results", async () => {
+  const hold = gate();
+  const stop = new AbortController();
+  const signals: AbortSignal[] = [];
+  const api = client(async (_url, init) => {
+    signals.push(init!.signal!);
+    await hold.waiting;
+    return Response.json({ rows: [{ title: "original" }] });
+  });
+  const abandoned = api.request("/lists", { signal: stop.signal });
+  const failure = assert.rejects(abandoned, { name: "AbortError" });
+  const one = api.request<{ rows: { title: string }[] }>("/lists", {
+    signal: new AbortController().signal,
+  });
+  const two = api.request<{ rows: { title: string }[] }>("/lists");
+  await tick();
+  assert.equal(signals.length, 1);
+  stop.abort();
+  await failure;
+  assert.equal(signals[0].aborted, false);
+  hold.release();
+  const [a, b] = await Promise.all([one, two]);
+  a.rows[0].title = "changed";
+  assert.equal(b.rows[0].title, "original");
+});
+
+test("the last cancellation aborts and evicts transport before an immediate new reader", async () => {
+  const hold = gate();
+  const first = new AbortController();
+  const second = new AbortController();
+  const signals: AbortSignal[] = [];
+  const validators: (string | null)[] = [];
+  const api = client(async (_url, init) => {
+    signals.push(init!.signal!);
+    validators.push(new Headers(init?.headers).get("If-None-Match"));
+    const read = signals.length;
+    if (read === 1) await hold.waiting;
+    // Deliberately ignore abort to exercise late completion and cache fencing.
+    return Response.json(
+      { read },
+      {
+        headers: { ETag: `"fixture-${read}"` },
+      },
+    );
+  });
+  const one = api.request("/lists", { signal: first.signal });
+  const two = api.request("/lists", { signal: second.signal });
+  const failures = Promise.all([
+    assert.rejects(one, { name: "AbortError" }),
+    assert.rejects(two, { name: "AbortError" }),
+  ]);
+  await tick();
+  first.abort();
+  assert.equal(signals[0].aborted, false);
+  second.abort();
+  assert.equal(signals[0].aborted, true);
+  assert.deepEqual(await api.request("/lists"), { read: 2 });
+  assert.equal(signals.length, 2);
+  hold.release();
+  await failures;
+  await tick();
+  assert.deepEqual(await api.request("/lists"), { read: 3 });
+  assert.equal(
+    validators[2],
+    '"fixture-2"',
+    "abandoned late read cannot replace the current validator",
+  );
+});
+
+test("already-cancelled readers never dispatch or join a live read", async () => {
+  const stop = new AbortController();
+  stop.abort();
+  let count = 0;
+  const api = client(async () => {
+    count++;
+    return Response.json({});
+  });
+  await assert.rejects(api.request("/lists", { signal: stop.signal }), {
+    name: "AbortError",
+  });
+  assert.equal(count, 0);
+  await api.request("/lists");
+  assert.equal(count, 1);
+});
+
+test("custom header variants and fresh reads cannot reuse or overwrite ordinary validators", async () => {
+  const seen: Headers[] = [];
+  const api = client(async (_url, init) => {
+    const headers = new Headers(init?.headers);
+    seen.push(headers);
+    if (headers.has("X-Mode"))
+      return Response.json(
+        { mode: "variant" },
+        { headers: { ETag: '"variant"' } },
+      );
+    if (headers.has("Cache-Control"))
+      return Response.json({ mode: "fresh" }, { headers: { ETag: '"fresh"' } });
+    if (headers.get("If-None-Match") === '"ordinary"')
+      return new Response(null, { status: 304 });
+    return Response.json(
+      { mode: "ordinary" },
+      { headers: { ETag: '"ordinary"' } },
+    );
+  });
+  await api.request("/me");
+  assert.deepEqual(await api.request("/me", { headers: { "X-Mode": "a" } }), {
+    mode: "variant",
+  });
+  assert.equal(seen[1].has("If-None-Match"), false);
+  assert.deepEqual(await api.request("/me"), { mode: "ordinary" });
+  assert.equal(seen[2].get("If-None-Match"), '"ordinary"');
+  await api.request("/me", { fresh: true });
+  assert.equal(seen[3].has("If-None-Match"), false);
+  assert.deepEqual(await api.request("/me"), { mode: "ordinary" });
+  assert.equal(seen[4].get("If-None-Match"), '"ordinary"');
+});
+
+test("no-store and Vary star responses remove existing ordinary validators", async () => {
+  for (const policy of [
+    { "Cache-Control": "private, No-Store" },
+    { Vary: "Origin, *" },
+  ]) {
+    const validators: (string | null)[] = [];
+    let count = 0;
+    const api = client(async (_url, init) => {
+      validators.push(new Headers(init?.headers).get("If-None-Match"));
+      count++;
+      return Response.json(
+        {},
+        {
+          headers: {
+            ETag: `"fixture-${count}"`,
+            ...(count > 1 ? policy : {}),
+          },
+        },
+      );
+    });
+    await api.request("/me");
+    await api.request("/me");
+    await api.request("/me");
+    assert.deepEqual(validators, [null, '"fixture-1"', null]);
+  }
+});
+
+test("a 304 that forbids retention serves its validated body once and drops the validator", async () => {
+  for (const policy of [{ "Cache-Control": "no-store" }, { Vary: "*" }]) {
+    const validators: (string | null)[] = [];
+    const api = client(async (_url, init) => {
+      validators.push(new Headers(init?.headers).get("If-None-Match"));
+      if (validators.length === 2)
+        return new Response(null, { status: 304, headers: policy });
+      return Response.json(
+        { title: "validated" },
+        {
+          headers: { ETag: '"fixture"' },
+        },
+      );
+    });
+    await api.request("/me");
+    assert.deepEqual(await api.request("/me"), { title: "validated" });
+    await api.request("/me");
+    assert.deepEqual(validators, [null, '"fixture"', null]);
+  }
+});
+
 test("failed shared reads are evicted so a later refresh can recover", async () => {
   const hold = gate();
   let count = 0;
@@ -117,7 +303,10 @@ test("failed shared reads are evicted so a later refresh can recover", async () 
       ? Response.json({ message: "Blocked" }, { status: 403 })
       : Response.json({ recovered: true });
   });
-  const results = Promise.allSettled([api.request("/me"), api.request("/me")]);
+  const results = Promise.allSettled([
+    api.request("/me", { signal: new AbortController().signal }),
+    api.request("/me", { signal: new AbortController().signal }),
+  ]);
   await tick();
   hold.release();
   assert.ok((await results).every((r) => r.status === "rejected"));

@@ -68,6 +68,22 @@ The default backend suite selects `tests/*.test.ts`, not every integration file.
 See [test setup](setup.md#4-tests) and [verification](verification.md). Application
 checks do not qualify vendored REA engines or live external providers.
 
+## Client read caching
+
+`OrbynClient` coalesces concurrent ordinary GETs by token, path and mutation
+generation. Each caller receives its own parsed value and can cancel independently;
+the transport stops when its last caller leaves. Completed reads are revalidated
+with server ETags, rather than kept fresh for a client-selected time window.
+Fresh reads, custom-header representations and requests with bodies bypass the
+ordinary validator cache; `no-store` and `Vary: *` responses are not retained.
+
+Both clients advance the read generation before dispatching live change events,
+including reconnect catch-up. A refresh after an external change must not join a
+read started before it. Account and view owners still reject stale completions;
+transport sharing does not replace their session or request guards. Hashed web
+assets cache successful responses for a year; missing or failed assets use
+`no-store` so a deployment race cannot become a persistent cached failure.
+
 ## Project-owned CI and deployment decisions
 
 [CI scope policy](../.github/ci-scope.json) is interpreted by

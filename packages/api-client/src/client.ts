@@ -220,7 +220,12 @@ export class OrbynClient {
   /** Concurrent ordinary reads share transport, but never mutable result objects. */
   private readonly pendingReads = new Map<
     string,
-    Promise<string | undefined>
+    {
+      promise: Promise<string | undefined>;
+      abort: AbortController;
+      subscribers: number;
+      settled: boolean;
+    }
   >();
   /**
    * This client's own id, made fresh each time the app starts. Two tabs are
@@ -312,9 +317,9 @@ export class OrbynClient {
     // A read begun after a mutation must not join an older in-flight read.
     const epoch = method === "GET" ? this.readEpoch : ++this.readEpoch;
     const token = options.anonymous ? null : await this.getToken();
+    options.signal?.throwIfAborted();
     const share =
       method === "GET" &&
-      !options.signal &&
       !options.headers &&
       !options.fresh &&
       !options.raw &&
@@ -322,28 +327,64 @@ export class OrbynClient {
     if (!share)
       return this.requestTransport<T>(path, options, token, idempotencyKey);
     const key = `${epoch} ${token ?? ""} ${path}`;
-    const existing = this.pendingReads.get(key);
-    if (existing) {
-      const text = await existing;
-      return (text === undefined ? undefined : JSON.parse(text)) as T;
+    let pending = this.pendingReads.get(key);
+    if (!pending) {
+      if (this.pendingReads.size >= MAX_CACHED)
+        return this.requestTransport<T>(path, options, token, idempotencyKey);
+      const abort = new AbortController();
+      const entry = {
+        promise: this.requestTransport<T>(
+          path,
+          { ...options, signal: abort.signal },
+          token,
+          idempotencyKey,
+        ).then((value) =>
+          value === undefined ? undefined : JSON.stringify(value),
+        ),
+        abort,
+        subscribers: 0,
+        settled: false,
+      };
+      entry.promise = entry.promise.finally(() => {
+        entry.settled = true;
+        if (this.pendingReads.get(key) === entry) this.pendingReads.delete(key);
+      });
+      this.pendingReads.set(key, entry);
+      pending = entry;
     }
-    if (this.pendingReads.size >= MAX_CACHED)
-      return this.requestTransport<T>(path, options, token, idempotencyKey);
-    const pending = this.requestTransport<T>(
-      path,
-      options,
-      token,
-      idempotencyKey,
-    ).then((value) =>
-      value === undefined ? undefined : JSON.stringify(value),
-    );
-    this.pendingReads.set(key, pending);
-    try {
-      const text = await pending;
-      return (text === undefined ? undefined : JSON.parse(text)) as T;
-    } finally {
-      if (this.pendingReads.get(key) === pending) this.pendingReads.delete(key);
-    }
+    const read = pending;
+    read.subscribers++;
+    return new Promise<T>((resolve, reject) => {
+      let finished = false;
+      const release = () => {
+        if (finished) return false;
+        finished = true;
+        options.signal?.removeEventListener("abort", cancel);
+        read.subscribers--;
+        if (!read.settled && read.subscribers === 0) {
+          // Evict before aborting: a new reader must get a live transport even
+          // when the abandoned fetch has not observed its cancellation yet.
+          if (this.pendingReads.get(key) === read)
+            this.pendingReads.delete(key);
+          read.abort.abort();
+        }
+        return true;
+      };
+      const cancel = () => {
+        if (release()) reject(options.signal!.reason);
+      };
+      options.signal?.addEventListener("abort", cancel, { once: true });
+      if (options.signal?.aborted) cancel();
+      read.promise.then(
+        (text) => {
+          if (release())
+            resolve((text === undefined ? undefined : JSON.parse(text)) as T);
+        },
+        (error: unknown) => {
+          if (release()) reject(error);
+        },
+      );
+    });
   }
 
   private async requestTransport<T>(
@@ -354,8 +395,14 @@ export class OrbynClient {
   ): Promise<T> {
     const method = options.method ?? "GET";
     const key = `${token ?? ""} ${path}`;
-    const cached =
-      method === "GET" && !options.fresh ? this.cache.get(key) : undefined;
+    // Extra headers can select a different representation at the same path.
+    // Keep those variants and explicit fresh reads out of ordinary validators.
+    const cacheable =
+      method === "GET" &&
+      !options.fresh &&
+      !options.headers &&
+      options.body === undefined;
+    const cached = cacheable ? this.cache.get(key) : undefined;
     // Read-your-writes: right after this client writes, its reads go to the
     // primary database rather than a replica that may lag a moment behind.
     const fresh =
@@ -434,6 +481,17 @@ export class OrbynClient {
         response = await send();
       }
     }
+    options.signal?.throwIfAborted();
+    const noStore = response.headers
+      .get("Cache-Control")
+      ?.split(",")
+      .some((directive) => directive.trim().toLowerCase() === "no-store");
+    const variesByAnything = response.headers
+      .get("Vary")
+      ?.split(",")
+      .some((name) => name.trim() === "*");
+    const retain = cacheable && !noStore && !variesByAnything;
+    if (cacheable && !retain) this.cache.delete(key);
     // Nothing changed since last time: reuse the body we already have. It is
     // parsed afresh so callers can never mutate the remembered copy.
     if (response.status === 304 && cached)
@@ -477,8 +535,9 @@ export class OrbynClient {
     }
     if (response.status === 204) return undefined as T;
     const text = await response.text();
+    options.signal?.throwIfAborted();
     const etag = response.headers.get("ETag");
-    if (method === "GET" && etag) {
+    if (retain && etag) {
       this.cache.delete(key);
       this.cache.set(key, { etag, text });
       if (this.cache.size > MAX_CACHED)
