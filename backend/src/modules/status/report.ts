@@ -11,6 +11,7 @@ import { lastDays, overallState, ratio, stateFromRecent } from "./uptime.js";
 
 const CACHE_MS = 15_000;
 let cache: { at: number; report: StatusReport } | null = null;
+let pending: Promise<StatusReport> | null = null;
 
 /** Clears the in-process cache (tests). */
 export const clearStatusCache = () => {
@@ -24,6 +25,14 @@ export const clearStatusCache = () => {
  */
 export async function statusReport(): Promise<StatusReport> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.report;
+  if (pending) return pending;
+  pending = buildStatusReport().finally(() => {
+    pending = null;
+  });
+  return pending;
+}
+
+async function buildStatusReport(): Promise<StatusReport> {
   const { maintenance } = await settings();
   const list = components();
   const ids = list.map((c) => c.id);
@@ -48,12 +57,14 @@ export async function statusReport(): Promise<StatusReport> {
       [ids],
     ),
     readPool.query(
-      `SELECT service,
-         to_char(date_trunc('day', checked_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+      `SELECT service,to_char(day,'YYYY-MM-DD') AS day,
          avg(ok::int) AS uptime
-       FROM status_checks
-       WHERE service = ANY($1) AND checked_at > now() - interval '90 days'
-       GROUP BY 1, 2`,
+       FROM (
+         SELECT service,(checked_at AT TIME ZONE 'UTC')::date AS day,ok
+         FROM status_checks
+         WHERE service = ANY($1) AND checked_at > now() - interval '90 days'
+       ) checks
+       GROUP BY service,day`,
       [ids],
     ),
     // Incidents are runs of two or more failed checks in a row (gaps and islands).
