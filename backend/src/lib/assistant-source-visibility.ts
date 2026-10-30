@@ -27,6 +27,45 @@ function retainedEntryContainerVisible(
       AND ${assistantChatContainerVisible("lineage_chat", user, restriction)})`;
 }
 
+/** Every outgoing document edge, shared by traversal and the leaf proof. */
+function documentSourceEdges(kind: string, id: string): string[] {
+  return [
+    `SELECT s.source_type AS kind,s.source_id AS id FROM memory_sources s
+        WHERE ${kind}='doc' AND s.doc_id=${id} AND s.source_id IS NOT NULL AND s.source_type IN ('task','doc','project','chat') AND NOT (s.source_type='chat' AND s.retained_entries)`,
+    `SELECT 'entry',s.source_entry_id FROM memory_entry_sources s WHERE ${kind}='doc' AND s.doc_id=${id}`,
+  ];
+}
+
+/** Complete installed function body, including the one-node document shortcut.
+ * These are exactly the graph's outgoing document edges. A STABLE function
+ * observes the same statement snapshot for the base check and edge checks.
+ */
+export function assistantSourceGraphBody(): string {
+  const scope = { user: "p_user", personal: "p_personal", teams: "p_teams" };
+  const documentVisible = assistantSourceVisible(
+    "'doc'",
+    "p_id",
+    "p_user",
+    false,
+    scope,
+    false,
+  );
+  const noDocumentEdges = documentSourceEdges("p_kind", "p_id")
+    .map((select) => `NOT EXISTS (\n      ${select}\n    )`)
+    .join(" AND ");
+  return `BEGIN
+  IF p_kind='doc' THEN
+    IF NOT ${documentVisible} THEN
+      RETURN false;
+    END IF;
+    IF ${noDocumentEdges} THEN
+      RETURN true;
+    END IF;
+  END IF;
+  RETURN ${assistantSourceGraphSql("SELECT p_kind AS kind,p_id AS id", "p_user", scope)};
+END`;
+}
+
 /** Current transitive authority for retained entries, Memory and legacy chats.
  * Scope travels with each edge: a narrower grant cannot borrow the owner's
  * broader access through a nested Memory document. UNION terminates cycles.
@@ -65,9 +104,7 @@ export function assistantSourceGraphSql(
       LEFT JOIN assistant_delivery_bindings edge_binding ON parent.kind='binding' AND edge_binding.id=parent.id
       LEFT JOIN agent_grants edge_grant ON edge_grant.id=edge_binding.grant_id
       CROSS JOIN LATERAL (
-        SELECT s.source_type AS kind,s.source_id AS id FROM memory_sources s
-        WHERE parent.kind='doc' AND s.doc_id=parent.id AND s.source_id IS NOT NULL AND s.source_type IN ('task','doc','project','chat') AND NOT (s.source_type='chat' AND s.retained_entries)
-        UNION SELECT 'entry',s.source_entry_id FROM memory_entry_sources s WHERE parent.kind='doc' AND s.doc_id=parent.id
+        ${documentSourceEdges("parent.kind", "parent.id").join("\n        UNION ")}
         UNION SELECT s.source_kind,s.source_id FROM assistant_chat_sources s WHERE parent.kind='chat' AND s.chat_id=parent.id
         UNION SELECT 'entry',s.source_entry_id FROM assistant_turn_entry_sources s WHERE parent.kind='chat' AND s.chat_id=parent.id
         UNION SELECT 'doc',r.source_doc_id FROM work_records r WHERE parent.kind='record' AND r.id=parent.id AND r.source_doc_id IS NOT NULL

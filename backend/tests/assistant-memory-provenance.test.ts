@@ -14,8 +14,11 @@ const { openPersonalConversation, retainConversationTurn } =
   await import("../src/modules/assistant-workspace/conversation-storage.js");
 const { conversationFeed } =
   await import("../src/modules/assistant-workspace/conversation-feed.js");
-const { assistantSourceVisible, assistantSourceGraphSql } =
-  await import("../src/lib/assistant-source-visibility.js");
+const {
+  assistantSourceVisible,
+  assistantSourceGraphSql,
+  assistantSourceGraphBody,
+} = await import("../src/lib/assistant-source-visibility.js");
 const { prepareConversationContext } =
   await import("../src/modules/assistant-workspace/conversation-context.js");
 const { bindConversationWork, publishConversationIntent } =
@@ -28,7 +31,7 @@ after(async () => {
   await pool.end();
 });
 
-test("the installed graph matches the canonical source predicate", async () => {
+test("the installed graph matches the complete canonical body and general predicate", async () => {
   const expected = assistantSourceGraphSql(
     "SELECT p_kind AS kind,p_id AS id",
     "p_user",
@@ -36,7 +39,7 @@ test("the installed graph matches the canonical source predicate", async () => {
   );
   const migration = await readFile(
     new URL(
-      "../migrations/289_assistant_delivery_windows.sql",
+      "../migrations/306_assistant_source_graph_leaf_documents.sql",
       import.meta.url,
     ),
     "utf8",
@@ -44,13 +47,28 @@ test("the installed graph matches the canonical source predicate", async () => {
   // Generated SQL may normalize blank-line indentation. Keep all non-trailing
   // characters exact so formatting cannot conceal an authority change.
   const normalize = (sql: string) => sql.replace(/[ \t]+$/gm, "");
+  const previous = await readFile(
+    new URL(
+      "../migrations/289_assistant_delivery_windows.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.ok(normalize(previous).includes(normalize(`RETURN ${expected};`)));
   assert.ok(normalize(migration).includes(normalize(`RETURN ${expected};`)));
-  const installed = (
+  const body = normalize(assistantSourceGraphBody());
+  assert.equal(normalize(migration.split("$graph$")[1]).trim(), body);
+  const installedFunction = (
     await pool.query(
-      "SELECT prosrc FROM pg_proc WHERE oid='assistant_source_graph_visible(text,uuid,uuid,boolean,uuid[])'::regprocedure",
+      "SELECT prosrc,provolatile,prosecdef,proconfig FROM pg_proc WHERE oid='assistant_source_graph_visible(text,uuid,uuid,boolean,uuid[])'::regprocedure",
     )
-  ).rows[0].prosrc;
+  ).rows[0];
+  const installed = installedFunction.prosrc;
   assert.ok(normalize(installed).includes(normalize(`RETURN ${expected};`)));
+  assert.equal(normalize(installed).trim(), body);
+  assert.equal(installedFunction.provolatile, "s");
+  assert.equal(installedFunction.prosecdef, false);
+  assert.deepEqual(installedFunction.proconfig, ["jit=off"]);
 });
 
 test("nested Memory and chat dependencies terminate cycles and recheck document deletion", async () => {
