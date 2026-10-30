@@ -1,3 +1,4 @@
+import { assistantOutcomeDetails } from "@orbyn/core";
 import { session, onSessionChange } from "../../lib/session";
 import { providerDetailLines } from "@orbyn/core";
 import {
@@ -1048,6 +1049,18 @@ export function AssistantView({
                       <p className="ai-reply-status">
                         {replyStatusLabel(turn)}
                       </p>
+                      {turn.executionOutcome && (
+                        <details className="ai-outcome-details">
+                          <summary>Outcome details</summary>
+                          {assistantOutcomeDetails(turn.executionOutcome).map(
+                            (line, index) => (
+                              <p className="muted" key={index}>
+                                {line}
+                              </p>
+                            ),
+                          )}
+                        </details>
+                      )}
                       <ProposalReview
                         hideSourceDetails={!!retained}
                         proposal={turn.proposal}

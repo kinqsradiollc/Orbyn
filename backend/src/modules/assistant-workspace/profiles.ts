@@ -1,3 +1,4 @@
+import { projectOutcomeReceipt } from "../ai/outcome-receipts.js";
 import {
   assistantProfiles,
   assistantProfileState,
@@ -62,6 +63,7 @@ export async function readAssistantProfiles(
   db: Queryable,
   owner: string,
   now?: Date,
+  includeOutcomes = true,
 ) {
   const row = (
     await db.query<{
@@ -132,6 +134,8 @@ export async function readAssistantProfiles(
         chat_id: string;
         title: string;
         completed_at: Date;
+        execution_outcome: unknown;
+        review_status: string | null;
         handoff: {
           id: string;
           status:
@@ -139,17 +143,17 @@ export async function readAssistantProfiles(
           recipient_chat_id: string | null;
         } | null;
       }>(
-        `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at,
+        `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at,j.result->'assistant_run'->'execution_outcome' AS execution_outcome,CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status,
          (SELECT jsonb_build_object('id',h.id,'status',h.status,'recipient_chat_id',r.chat_id)
           FROM assistant_handoffs h LEFT JOIN ai_jobs r ON r.id=h.recipient_job_id
           WHERE h.producer_job_id=j.id AND h.owner_id=$1
           ORDER BY h.created_at DESC,h.id DESC LIMIT 1) AS handoff
        FROM assistant_activity_events e JOIN ai_jobs j ON j.id=e.job_id
-       JOIN ai_chats c ON c.id=j.chat_id WHERE e.owner_id=$1 AND e.runtime_lane=$2
+       JOIN ai_chats c ON c.id=j.chat_id LEFT JOIN proposals p ON p.user_id=$1 AND p.id=CASE WHEN j.result->'assistant_run'->>'proposal_id' ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN (j.result->'assistant_run'->>'proposal_id')::uuid END WHERE e.owner_id=$1 AND e.runtime_lane=$2
        AND e.kind='done' AND j.state='done' AND j.result IS NOT NULL
        AND j.runtime_lane=$2 AND ${assistantChatVisible("c", "$1")}
        AND ${assistantJobSourcesVisible("j", "$1", false)}
-       GROUP BY j.id,j.chat_id,c.title ORDER BY max(e.created_at) DESC,j.id DESC LIMIT 5`,
+       GROUP BY j.id,j.chat_id,c.title,p.status,p.expires_at ORDER BY max(e.created_at) DESC,j.id DESC LIMIT 5`,
         [owner, lane],
       )
     ).rows;
@@ -170,10 +174,22 @@ export async function readAssistantProfiles(
       ),
       last_activity_at: lastActivity,
       recent_activity: await assistantRecentActivity(db, owner, lane),
-      outputs: outputs.map((output) => ({
-        ...output,
-        completed_at: output.completed_at.toISOString(),
-      })),
+      outputs: outputs.map(
+        ({ execution_outcome, review_status, ...output }) => {
+          const receipt = projectOutcomeReceipt(
+            execution_outcome,
+            output.job_id,
+            review_status,
+          );
+          return {
+            ...output,
+            completed_at: output.completed_at.toISOString(),
+            ...(includeOutcomes && receipt
+              ? { execution_outcome: receipt }
+              : {}),
+          };
+        },
+      ),
       window: lane === "overnight" ? window : null,
       budget: lane === "overnight" ? budget : null,
     });
@@ -197,7 +213,12 @@ export async function assistantProfileRoutes(app: FastifyInstance) {
       return readTransaction(
         async (db) => {
           await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-          return readAssistantProfiles(db, user.id);
+          return readAssistantProfiles(
+            db,
+            user.id,
+            undefined,
+            request.headers["x-orbyn-outcomes"] === "1",
+          );
         },
         { primary: true },
       );

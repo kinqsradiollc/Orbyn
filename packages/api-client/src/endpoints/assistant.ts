@@ -270,7 +270,9 @@ export function callAiChats(
 }
 
 export function callProjectChat(this: OrbynClient, id: string) {
-  return this.request<AiChat>(`/ai/chats/${id}`);
+  return this.request<AiChat>(`/ai/chats/${id}`, {
+    headers: { "x-orbyn-outcomes": "1" },
+  });
 }
 
 export function callAiChat(
@@ -278,7 +280,11 @@ export function callAiChat(
   id: string,
   signal?: AbortSignal,
 ) {
-  return this.request<AiChat>(`/ai/chats/${id}`, { signal, fresh: true });
+  return this.request<AiChat>(`/ai/chats/${id}`, {
+    signal,
+    fresh: true,
+    headers: { "x-orbyn-outcomes": "1" },
+  });
 }
 
 /** Save a project chat after a reply; the same id updates the same chat. */
@@ -644,6 +650,7 @@ export async function callAssistantProfiles(
   return assistantProfiles.parse(
     await this.request<unknown>("/me/assistant/profiles", {
       fresh: true,
+      headers: { "x-orbyn-outcomes": "1" },
       signal,
     }),
   );
@@ -809,7 +816,7 @@ export async function callAssistantConversationFeed(
   const page = assistantConversationPage.parse(
     await this.request<unknown>(
       `/me/assistant/conversations/${encodeURIComponent(destinationId)}?${new URLSearchParams({ after: query.after, limit: String(query.limit), ...(query.through ? { through: query.through } : {}) })}`,
-      { fresh: true, signal },
+      { fresh: true, signal, headers: { "x-orbyn-outcomes": "1" } },
     ),
   );
   if (
@@ -896,7 +903,7 @@ export async function callAssistantConversationEntry(
   const location = assistantConversationLocation.parse(
     await this.request<unknown>(
       `/me/assistant/conversations/${encodeURIComponent(destinationId)}/entries/${encodeURIComponent(entryId)}`,
-      { fresh: true, signal },
+      { fresh: true, signal, headers: { "x-orbyn-outcomes": "1" } },
     ),
   );
   if (

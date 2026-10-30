@@ -1,3 +1,4 @@
+import { readOutcomeReceipts } from "./outcome-receipts.js";
 import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -467,6 +468,7 @@ export async function readAiChat(
   db: Queryable,
   userId: string,
   id: string,
+  includeOutcomes = true,
 ): Promise<AiChat> {
   const row = (
     await db.query<
@@ -521,6 +523,25 @@ export async function readAiChat(
       !turn.nudge ||
       visibleNudges.has(turn.nudge.id),
   );
+  // Keep storage/wire compatibility with old strict turn readers. Receipts remain
+  // on server-owned jobs and are projected only while their sources are accessible.
+  for (const turn of visibleTurns) delete turn.execution_outcome;
+  const receiptByTurn = includeOutcomes
+    ? await readOutcomeReceipts(
+        db,
+        userId,
+        id,
+        visibleTurns.flatMap((turn) => (turn.turn_id ? [turn.turn_id] : [])),
+      )
+    : new Map();
+  for (const turn of visibleTurns) {
+    if (
+      turn.role === "assistant" &&
+      turn.turn_id &&
+      receiptByTurn.has(turn.turn_id)
+    )
+      turn.execution_outcome = receiptByTurn.get(turn.turn_id);
+  }
   const activeJob =
     (
       await db.query<NonNullable<AiChat["active_job"]>>(
@@ -719,7 +740,12 @@ export async function projectChatRoutes(app: FastifyInstance) {
 
   app.get("/ai/chats/:id", async (r): Promise<AiChat> => {
     const u = await authenticate(r);
-    return readAiChat(reader(r.headers), u.id, idParam(r));
+    return readAiChat(
+      reader(r.headers),
+      u.id,
+      idParam(r),
+      r.headers["x-orbyn-outcomes"] === "1",
+    );
   });
 
   // Metadata and proposal outcome updates for the new clients.
@@ -727,7 +753,12 @@ export async function projectChatRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     await updateChat(u.id, id, updateAiChatInput.parse(r.body));
-    return readAiChat(reader({ "x-orbyn-consistency": "primary" }), u.id, id);
+    return readAiChat(
+      reader({ "x-orbyn-consistency": "primary" }),
+      u.id,
+      id,
+      r.headers["x-orbyn-outcomes"] === "1",
+    );
   });
 
   // Keep accepting the prior project-chat save shape while older clients roll forward.
@@ -782,7 +813,12 @@ export async function projectChatRoutes(app: FastifyInstance) {
       );
       if (!made.rowCount) fail(404, "Chat not found");
     });
-    return readAiChat(reader({ "x-orbyn-consistency": "primary" }), u.id, id);
+    return readAiChat(
+      reader({ "x-orbyn-consistency": "primary" }),
+      u.id,
+      id,
+      r.headers["x-orbyn-outcomes"] === "1",
+    );
   });
 
   app.post("/ai/chats/:id/save-note", async (r) => {

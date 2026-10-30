@@ -1,3 +1,5 @@
+import { InlineDetails } from "../../../components/InlineDetails";
+import { ChoicePicker } from "../../../components/ChoicePicker";
 import { BottomSheet } from "../../../components/BottomSheet";
 import { DocumentLibraryContext } from "./DocumentWorkspace";
 import { usePaneWidth } from "../../../hooks/usePaneWidth";
@@ -322,6 +324,9 @@ function DocsBody({
   const [failed, setFailed] = useState(false);
   /** Only pages with this tag, by id; "" for every page. */
   const [tagFilter, setTagFilter] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
+  const [scopeFilter, setScopeFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
   /** Whether "New page from a template" is showing in place of the list. */
   const [templating, setTemplating] = useState(false);
   /**
@@ -830,10 +835,17 @@ function DocsBody({
     team_id?: string | null;
     team_name?: string | null;
     tags?: DocSummary["tags"];
+    project_id?: string | null;
+    project_name?: string | null;
+    imported_from?: DocSummary["imported_from"];
+    original?: DocSummary["original"];
+    discoveryKnown?: boolean;
   };
 
   const narrowed: Row[] = hits
     ? hits.map((h) => ({
+        ...docs?.find((doc) => doc.id === h.id),
+        discoveryKnown: !!docs?.some((doc) => doc.id === h.id),
         id: h.id,
         title: h.title,
         updated_at: h.updated_at,
@@ -845,6 +857,7 @@ function DocsBody({
         kind: h.kind,
       }))
     : (docs ?? [])
+        .map((doc) => ({ ...doc, discoveryKnown: true }))
         .filter((d) =>
           fixedKind
             ? d.kind === fixedKind
@@ -901,9 +914,75 @@ function DocsBody({
       ),
     ).values(),
   ].sort((a, b) => a.name.localeCompare(b.name));
+  const discoveryRows = narrowed.filter((doc) => {
+    if (kindFilter && doc.kind !== kindFilter) return false;
+    if ((projectFilter || scopeFilter || sourceFilter) && !doc.discoveryKnown)
+      return false;
+    return (
+      (!projectFilter ||
+        (projectFilter === "none"
+          ? !doc.project_id
+          : doc.project_id === projectFilter)) &&
+      (!scopeFilter ||
+        (scopeFilter === "personal"
+          ? !doc.team_id
+          : doc.team_id === scopeFilter)) &&
+      (!sourceFilter ||
+        (sourceFilter === "original"
+          ? !!doc.original
+          : !!(doc.imported_from || doc.original)))
+    );
+  });
   const tagged = tagFilter
-    ? narrowed.filter((d) => d.tags?.some((t) => t.id === tagFilter))
-    : narrowed;
+    ? discoveryRows.filter((d) => d.tags?.some((t) => t.id === tagFilter))
+    : discoveryRows;
+  const projectOptions = [
+    ...new Map(
+      (docs ?? []).flatMap((doc) =>
+        doc.project_id
+          ? [
+              [
+                doc.project_id,
+                {
+                  value: doc.project_id,
+                  label: `${doc.project_name || "Linked project"} · ${doc.team_id ? teamNames[doc.team_id] || doc.team_name || "Shared" : "Personal"}`,
+                },
+              ] as const,
+            ]
+          : [],
+      ),
+    ).values(),
+  ];
+  const scopeOptions = [
+    ...new Map(
+      (docs ?? []).flatMap((doc) =>
+        doc.team_id
+          ? [
+              [
+                doc.team_id,
+                {
+                  value: doc.team_id,
+                  label:
+                    teamNames[doc.team_id] || doc.team_name || "Shared team",
+                },
+              ] as const,
+            ]
+          : [],
+      ),
+    ).values(),
+  ];
+  const selectedProject = (docs ?? []).find(
+    (doc) => doc.project_id === projectFilter,
+  );
+  const resetDiscovery = () => {
+    setQuery("");
+    setHits(null);
+    setProjectFilter("");
+    setScopeFilter("");
+    setSourceFilter("");
+    setTagFilter("");
+    setKindFilter(fixedKind ?? null);
+  };
 
   /** When an agenda row is filed: the day it's for. */
   const dayOf = (row: Row) =>
@@ -1998,6 +2077,94 @@ function DocsBody({
                           : "Search pages and notes"
                     }
                   />
+                  {!trashOnly && !uploadsOnly && (
+                    <View>
+                      <InlineDetails title="Project, type, source & scope">
+                        <ChoicePicker
+                          label="Project"
+                          value={projectFilter}
+                          options={[
+                            { value: "", label: "All projects" },
+                            { value: "none", label: "Without a project" },
+                            ...projectOptions,
+                          ]}
+                          onChange={setProjectFilter}
+                        />
+                        {!fixedKind && (
+                          <ChoicePicker
+                            label="Type"
+                            value={kindFilter ?? ""}
+                            options={[
+                              { value: "", label: "All documents" },
+                              { value: "doc", label: "Pages" },
+                              { value: "note", label: "Notes" },
+                              { value: "meeting", label: "Meeting notes" },
+                              { value: "agenda", label: "Daily briefs" },
+                            ]}
+                            onChange={(value) =>
+                              setKindFilter(
+                                value === "doc" ||
+                                  value === "note" ||
+                                  value === "meeting" ||
+                                  value === "agenda"
+                                  ? value
+                                  : null,
+                              )
+                            }
+                          />
+                        )}
+                        <ChoicePicker
+                          label="Sharing scope"
+                          value={scopeFilter}
+                          options={[
+                            { value: "", label: "All accessible spaces" },
+                            { value: "personal", label: "Personal" },
+                            ...scopeOptions,
+                          ]}
+                          onChange={setScopeFilter}
+                        />
+                        <ChoicePicker
+                          label="Source"
+                          value={sourceFilter}
+                          options={[
+                            { value: "", label: "All sources" },
+                            { value: "imported", label: "Imported material" },
+                            { value: "original", label: "With original file" },
+                          ]}
+                          onChange={setSourceFilter}
+                        />
+                        {selectedProject && onOpenProject && (
+                          <SmallAction
+                            label={`Open ${selectedProject.project_name || "project"}`}
+                            disabled={busy}
+                            onPress={() =>
+                              leavePage(() =>
+                                onOpenProject(selectedProject.project_id!),
+                              )
+                            }
+                          />
+                        )}
+                      </InlineDetails>
+                      <Text style={styles.found}>
+                        {shown.length} {shown.length === 1 ? "page" : "pages"} ·{" "}
+                        {scopeFilter === "personal"
+                          ? "Personal"
+                          : "Accessible material"}
+                      </Text>
+                      {(query ||
+                        projectFilter ||
+                        scopeFilter ||
+                        sourceFilter ||
+                        tagFilter ||
+                        (!fixedKind && kindFilter)) && (
+                        <SmallAction
+                          label="Clear filters"
+                          disabled={busy}
+                          onPress={resetDiscovery}
+                        />
+                      )}
+                    </View>
+                  )}
                   {hits !== null && (
                     <Text style={styles.found}>
                       {hits.length === 0
@@ -2442,6 +2609,28 @@ function DocsBody({
                             </Text>
                             {"  ·  " + (doc.preview || "Empty document")}
                           </Text>
+                          {doc.project_name && (
+                            <Text style={styles.rowWhen}>
+                              {doc.project_name}
+                            </Text>
+                          )}
+                          {(doc.imported_from || doc.original) && (
+                            <Text style={styles.rowWhen}>
+                              Source:{" "}
+                              {doc.imported_from?.file_name ||
+                                doc.original?.file_name}
+                            </Text>
+                          )}
+                          <Text style={styles.rowWhen}>
+                            {doc.team_id
+                              ? teamNames[doc.team_id] ||
+                                doc.team_name ||
+                                "Shared team"
+                              : "Personal"}
+                            {canWriteDoc && !canWriteDoc(doc.team_id ?? null)
+                              ? " · Read only"
+                              : ""}
+                          </Text>
                           <View style={styles.rowActions}>
                             <Text style={styles.rowKind} numberOfLines={1}>
                               {doc.kind === "memory"
@@ -2451,7 +2640,7 @@ function DocsBody({
                                   : doc.kind === "note"
                                     ? "Note"
                                     : doc.kind === "agenda"
-                                      ? "Agenda"
+                                      ? "Daily brief"
                                       : "Document"}
                               {doc.tags?.length ? (
                                 <Text style={styles.rowTags}>

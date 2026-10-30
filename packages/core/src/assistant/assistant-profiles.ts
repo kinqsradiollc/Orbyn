@@ -1,3 +1,7 @@
+import {
+  assistantOutcomeReceipt,
+  ASSISTANT_OUTCOME_LABELS,
+} from "./assistant-outcomes.js";
 import { z } from "zod";
 import { automationAgentIdentity, nightShiftInput } from "./agent-settings.js";
 import { assistantActivityEvent } from "./assistant-activity.js";
@@ -42,6 +46,7 @@ export const assistantProfile = z
             chat_id: z.uuid(),
             title: z.string().max(120),
             completed_at: z.iso.datetime(),
+            execution_outcome: assistantOutcomeReceipt.optional(),
             handoff: z
               .object({
                 id: z.uuid(),
@@ -204,6 +209,11 @@ export function recentAssistantWork(
         detail: `${profile.counts.working} ${profile.counts.working === 1 ? "run" : "runs"}${profile.runtime.reporting ? " working." : " recorded; worker heartbeat unavailable."}`,
         action: "View activity",
       });
+    const needsReview = (output: (typeof profile.outputs)[number]) =>
+      !!output.execution_outcome &&
+      ["partial", "waiting", "failed", "interrupted", "uncertain"].includes(
+        output.execution_outcome.outcome,
+      );
     const chats = new Map<
       string,
       { latest: (typeof profile.outputs)[number]; count: number }
@@ -212,7 +222,10 @@ export function recentAssistantWork(
       const group = chats.get(output.chat_id);
       chats.set(output.chat_id, {
         latest:
-          !group || output.completed_at > group.latest.completed_at
+          !group ||
+          (needsReview(output) && !needsReview(group.latest)) ||
+          (needsReview(output) === needsReview(group.latest) &&
+            output.completed_at > group.latest.completed_at)
             ? output
             : group.latest,
         count: (group?.count ?? 0) + 1,
@@ -222,9 +235,15 @@ export function recentAssistantWork(
       rows.push({
         id: `${lane}:chat:${chatId}`,
         lane,
-        priority: 4,
+        priority:
+          group.latest.execution_outcome &&
+          ["partial", "waiting", "failed", "interrupted", "uncertain"].includes(
+            group.latest.execution_outcome.outcome,
+          )
+            ? 2
+            : 4,
         title: group.latest.title || `${name} result`,
-        detail: `${name} · ${group.count === 1 ? "Run finished" : `${group.count} recent runs finished`} · Review outcome`,
+        detail: `${name} · ${group.latest.execution_outcome ? ASSISTANT_OUTCOME_LABELS[group.latest.execution_outcome.outcome] : group.count === 1 ? "Run finished" : `${group.count} recent runs finished`} · Review outcome`,
         at: group.latest.completed_at,
         chatId,
         action: "Review result",

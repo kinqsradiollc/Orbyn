@@ -187,3 +187,18 @@ saved turns without durable execution-outcome evidence remain neutral; do not
 infer success from prose, elapsed time or a zero-exit worker. Background/Overnight
 results remain reviewable with their actual source and delivery state. The Open
 Duet execution adapter is not enabled by this UI work.
+
+The optional Engineer and Student workspace presets compose on existing data.
+Project creation offers the existing Sprint planning, Retrospective and Weekly
+review starters through their normal preview/review flows. Suggestions never
+replace an authored draft silently or create projects before review. The Student
+entry also retains direct manual course/assignment creation and material-first
+Study entry. Library discovery and project portfolio composition have equivalent
+mobile owners, preserving the account-scoped outbox and existing draft guards.
+
+Settings retains its stable category and section IDs. The AI & connections
+overview collects saved provider choice, current admission configuration, granted
+access, worker/profile evidence and on-demand usage. Provider configuration does
+not establish live availability, and observed Orbyn usage does not establish a
+provider entitlement, remaining quota or monetary cost. Configuration forms,
+permissions and activity remain with their existing owners and leave guards.

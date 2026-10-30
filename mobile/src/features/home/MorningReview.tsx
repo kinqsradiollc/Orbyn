@@ -46,8 +46,8 @@ export function MorningReview({
   }, [store, owner]);
   if (!owner) return null;
   const rows = snapshot.data ? recentAssistantWork(snapshot.data) : [];
-  const active = rows.filter((row) => !row.chatId);
-  const finished = rows.filter((row) => row.chatId);
+  const active = rows.filter((row) => row.priority !== 4);
+  const finished = rows.filter((row) => row.priority === 4);
   const finishedLabel = `Finished run history · latest ${finished.length}${finished[0]?.at ? ` · ${new Date(finished[0].at).toLocaleDateString()}` : ""}`;
   if (snapshot.data && !snapshot.error && !rows.length) return null;
   const open = (row: AssistantReviewRow) => {

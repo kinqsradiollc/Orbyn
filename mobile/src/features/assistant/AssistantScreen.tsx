@@ -1,3 +1,4 @@
+import { assistantOutcomeDetails } from "@orbyn/core";
 import { providerDetailLines } from "@orbyn/core";
 import { ReminderNudge } from "./ReminderNudge";
 import {
@@ -843,6 +844,17 @@ export function AssistantScreen({
               <View key={turn.id} style={s.botRow}>
                 <View style={s.botBubble}>
                   <Text style={shared.small}>{replyStatusLabel(turn)}</Text>
+                  {turn.executionOutcome && (
+                    <InlineDetails title="Outcome details">
+                      {assistantOutcomeDetails(turn.executionOutcome).map(
+                        (line, index) => (
+                          <Text style={shared.small} key={index}>
+                            {line}
+                          </Text>
+                        ),
+                      )}
+                    </InlineDetails>
+                  )}
                   <ProposalReview
                     hideSourceDetails={!!retainedEntry}
                     proposal={turn.proposal}

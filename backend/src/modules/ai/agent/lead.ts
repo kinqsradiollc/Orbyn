@@ -96,6 +96,8 @@ export type LeadState = {
   stagnant_rounds: number;
   token_estimate: number;
   token_budget: number;
+  /** A structured loop limit was reached; survives worker checkpoints. */
+  completion_limited?: boolean;
   answer_to_person?: string;
   loop?: AgentLoopCheckpoint;
   completed_delegate?: { call_id: string; content: string };
@@ -265,6 +267,7 @@ export async function runLead(input: {
       },
     );
     state.answer = `${state.answer || last.summary || "I couldn't finish the request."}\n\n${LIMIT_NOTE}`;
+    state.completion_limited = true;
     return { state, partial: true };
   }
 
@@ -576,6 +579,7 @@ export async function runLead(input: {
     },
   );
   if (!state.answer && !state.waiting) state.answer = result.summary;
+  if (result.partial) state.completion_limited = true;
   if (result.partial)
     state.answer = `${state.answer || "I couldn't finish the request."}\n\n${LIMIT_NOTE}`;
   delete state.loop;

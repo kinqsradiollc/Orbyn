@@ -123,11 +123,18 @@ export async function assistantConversationRoutes(app: FastifyInstance) {
             )
           ).rows[0];
           if (!row) fail(404, "Message is no longer available.");
-          const page = await conversationFeed(db, user.id, id, {
-            after: (BigInt(row.sequence) - 1n).toString(),
-            through: row.sequence,
-            limit: 1,
-          });
+          const page = await conversationFeed(
+            db,
+            user.id,
+            id,
+            {
+              after: (BigInt(row.sequence) - 1n).toString(),
+              through: row.sequence,
+              limit: 1,
+            },
+            false,
+            request.headers["x-orbyn-outcomes"] === "1",
+          );
           const entry = page.entries.find((value) => value.id === entryId);
           if (!entry) fail(404, "Message is no longer available.");
           const sources = (
@@ -252,7 +259,15 @@ export async function assistantConversationRoutes(app: FastifyInstance) {
     reply.header("Cache-Control", "private, no-store");
     const id = idParam(request);
     return readTransaction(
-      (db) => conversationFeed(db, user.id, id, request.query),
+      (db) =>
+        conversationFeed(
+          db,
+          user.id,
+          id,
+          request.query,
+          false,
+          request.headers["x-orbyn-outcomes"] === "1",
+        ),
       { primary: true },
     );
   });

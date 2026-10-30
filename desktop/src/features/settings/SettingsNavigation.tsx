@@ -11,7 +11,7 @@ import { Select } from "../../components/Select";
 export const SETTINGS_CATEGORIES = [
   { id: "account", label: "Account", icon: UserRound },
   { id: "planning", label: "Planning", icon: CalendarCog },
-  { id: "assistants", label: "Assistants", icon: Bot },
+  { id: "assistants", label: "AI & connections", icon: Bot },
   { id: "tags", label: "Tags", icon: Tags },
   { id: "connections", label: "Connections", icon: Plug },
   { id: "privacy", label: "Privacy", icon: ShieldCheck },

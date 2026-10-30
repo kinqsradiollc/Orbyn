@@ -1,3 +1,4 @@
+import { AiConnectionsOverview } from "./AiConnectionsOverview";
 import { AgentWarmStartCards } from "../connections/AgentContext";
 import * as Crypto from "expo-crypto";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -147,7 +148,7 @@ export function SettingsScreen(
 const CATEGORIES = [
   { id: "account", label: "Account" },
   { id: "planning", label: "Planning" },
-  { id: "assistants", label: "Assistants" },
+  { id: "assistants", label: "AI & connections" },
   { id: "connections", label: "Connections" },
   { id: "privacy", label: "Privacy" },
 ] as const;
@@ -193,6 +194,7 @@ function SettingsBody({
   onOpenStatus,
   onOpenPlanning,
   onOpenConnections,
+  onOpenAgentActivity,
   onOpenTags,
   onOpenHabits,
   onOpenSync,
@@ -226,6 +228,7 @@ function SettingsBody({
   onOpenStatus: () => void;
   onOpenPlanning: () => void;
   onOpenConnections: () => void;
+  onOpenAgentActivity?: (lane: "background" | "overnight") => void;
   onOpenTags: () => void;
   onOpenHabits: () => void;
   /** Sync and devices: what's waiting on this phone, and where Orbyn is open. */
@@ -711,6 +714,30 @@ function SettingsBody({
           <ChatgptModelsSection userId={user?.id ?? ""} />
         </SettingsGroup>
         <SettingsGroup category="assistants" selected={category}>
+          <SettingsOverview>
+            <AiConnectionsOverview
+              userId={user?.id ?? ""}
+              visible={category === "assistants"}
+              onProviders={() => {
+                setCategory("account");
+                setFocus({
+                  key: sectionKey("AI connections & models"),
+                  seq: Date.now(),
+                });
+              }}
+              onAccess={onOpenConnections}
+              onRules={() =>
+                setFocus({
+                  key: sectionKey("Assistant rules"),
+                  seq: Date.now(),
+                })
+              }
+              onLimits={() =>
+                setFocus({ key: sectionKey("Work limits"), seq: Date.now() })
+              }
+              onOpenActivity={onOpenAgentActivity}
+            />
+          </SettingsOverview>
           <AgentWarmStartCards busy={busy} run={act} />
           <AssistantRulesSection userId={user?.id ?? ""} />
           <AssistantBudgetSection userId={user?.id ?? ""} />

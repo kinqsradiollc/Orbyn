@@ -2842,6 +2842,10 @@ function WorkspaceController({
           busy={busy}
           report={report}
           initialSetting={settingAsked}
+          onOpenAgentActivity={(lane) => {
+            if (closeSettings())
+              navigate(lane === "overnight" ? "Overnight" : "Background");
+          }}
           onOpenWhatsNew={() => {
             if (closeSettings()) setWhatsNewOpen(true);
           }}

@@ -1,4 +1,8 @@
 import {
+  ASSISTANT_OUTCOME_LABELS,
+  type AssistantOutcomeReceipt,
+} from "@orbyn/core";
+import {
   agentWorkWords,
   type AgentActivity,
   type AssistantChangeKind,
@@ -318,7 +322,10 @@ export function replyStatusLabel(reply: {
   state: "pending" | "applied" | "discarded" | "info";
   trace: readonly ChatTraceEntry[];
   execution?: "stopped" | "timed_out";
+  executionOutcome?: AssistantOutcomeReceipt;
 }): string {
+  if (reply.executionOutcome)
+    return ASSISTANT_OUTCOME_LABELS[reply.executionOutcome.outcome];
   if (reply.execution === "stopped") return "Run stopped";
   if (reply.execution === "timed_out") return "Run timed out";
   if (reply.trace.some((entry) => entry.kind === "error"))

@@ -2273,6 +2273,15 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
           >
             <View style={sheetStyles.column}>
               <SettingsScreen
+                onOpenAgentActivity={(lane) => {
+                  if (settingsLock.current) return;
+                  if (lane === "overnight") present({ sheet: "overnight" });
+                  else {
+                    closeSheet();
+                    setTab("AI");
+                    setAssistantActivity((value) => value + 1);
+                  }
+                }}
                 onBusyChange={(pending) => {
                   settingsLock.current = pending;
                   setSettingsWriting(pending);
@@ -2467,6 +2476,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
           onItemsChanged={() => void refresh()}
         />
         <ProjectsSheet
+          presets={workspacePresets(accountPrefs.prefs.views.workspace)}
           beforeLeave={projectBeforeLeave}
           initialProjectId={projectToOpen}
           initialSection={projectSectionToOpen}

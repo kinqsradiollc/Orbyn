@@ -1,3 +1,4 @@
+import { readOutcomeReceipts } from "../ai/outcome-receipts.js";
 import {
   assistantConversationPage,
   assistantConversationQuery,
@@ -35,6 +36,7 @@ export async function conversationFeed(
   destinationId: string,
   value: unknown,
   personalOnly = false,
+  includeOutcomes = true,
 ) {
   const destination = await conversationDestination(db, ownerId, destinationId);
   if (!destination) fail(404, "Conversation not found.");
@@ -71,6 +73,31 @@ export async function conversationFeed(
       [ownerId, destinationId, after, upper, limit + 1],
     )
   ).rows;
+  // Export keeps its existing personal-source projection. Runtime receipts are
+  // optional display evidence and must pass current job-source access as well.
+  const receipts =
+    personalOnly || !includeOutcomes
+      ? new Map()
+      : await readOutcomeReceipts(
+          db,
+          ownerId,
+          destination.chat_id,
+          rows
+            .slice(0, limit)
+            .flatMap((row) =>
+              row.kind === "turn" && row.turn_id ? [row.turn_id] : [],
+            ),
+        );
+  for (const row of rows) {
+    delete row.payload.execution_outcome;
+    if (
+      row.kind === "turn" &&
+      row.payload.role === "assistant" &&
+      row.turn_id &&
+      receipts.has(row.turn_id)
+    )
+      row.payload.execution_outcome = receipts.get(row.turn_id);
+  }
   const hasMore = rows.length > limit;
   const entries = rows.slice(0, limit).map((row) => ({
     ...(row.kind === "turn"

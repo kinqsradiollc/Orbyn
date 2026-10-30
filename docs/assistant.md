@@ -106,6 +106,29 @@ of overnight completion. Each row opens its existing result or lane activity.
 Failed reads expose Retry rather than an empty-success state. Web/mobile share
 the profile derivation and retain account-generation cancellation fences.
 
+Current-runtime execution receipts are stored on server-owned jobs, separate from
+proposal decisions and process termination. A normal answer remains **Outcome not
+verified**; budget limits and incomplete specialist reports produce **Partial
+result**; explicit stop, runtime failure and restart interruption stay distinct.
+Goal completion requires a trusted acceptance record and passing recorded checks;
+this change does not introduce an acceptance writer or infer acceptance from prose.
+Both clients expose the recorded reason, checks and open questions in Outcome
+details. Reviewing a proposal resolves its waiting state without certifying the
+goal, and a newer neutral response cannot bury an earlier partial result in a chat.
+
+Receipts are projected onto currently accessible chat and retained-conversation
+turns. The legacy stored turn shape is unchanged; client history imports cannot
+create trusted receipts. First-party clients negotiate additive receipt fields with
+`x-orbyn-outcomes: 1`, preserving strict older profile/conversation readers. Older
+servers ignore that header and return their previous shape. Missing, malformed,
+foreign-job or expired evidence stays neutral. Personal-only exports retain their
+existing source projection and omit these optional runtime receipts.
+
+The isolated execution protocol has local contract checks for lost acceptance,
+reconciliation, event identity, generation fencing, cancellation and effect
+admission. It registers no transport or scheduler. Those pure checks do not qualify
+a real worker, atomic external effects, tenancy or an operational Duet pilot.
+
 Open Duet remains a candidate isolated execution adapter. It is not enabled or
 required for manual planning, presets, Library discovery or this presentation.
 Orbyn remains the schedule, job, grant and review authority. Before enabling an

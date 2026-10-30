@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { LayoutTemplate, Plus, Sparkles, X } from "lucide-react";
 import {
   DEFAULT_STAGES,
+  TEMPLATE_STARTERS,
+  workspacePresets,
   hasTeamPermission,
   projectDeadlineAt,
   type Item,
@@ -11,6 +13,7 @@ import {
 } from "@orbyn/core";
 import { useModalFocus } from "../../hooks/useModalFocus";
 import { useConfirm } from "../../components/Confirm";
+import { usePrefs } from "../../app/prefs";
 import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import { DateField } from "../../components/DateField";
@@ -41,9 +44,20 @@ export function NewProjectDialog({
   onClose: () => void;
   /** A project made by hand opens straight away; a drafted one reloads the list. */
   onCreated: (project: Project | null) => void;
-  onTemplates: () => void;
+  onTemplates: (initialId?: string) => void;
   report: (e: unknown) => void;
 }) {
+  const presets = workspacePresets(usePrefs().viewChoice("workspace"));
+  const engineer = presets.includes("engineer");
+  const student = presets.includes("student");
+  // Discover existing starters; the server-backed template review remains the owner.
+  const starterIds = new Set([
+    ...(engineer ? ["starter:sprint", "starter:retro"] : []),
+    ...(student ? ["starter:weekly"] : []),
+  ]);
+  const suggestedStarters = TEMPLATE_STARTERS.filter((starter) =>
+    starterIds.has(starter.id),
+  );
   const [mode, setMode] = useState<Mode>("manual");
   const [name, setName] = useState("");
   const [summary, setSummary] = useState("");
@@ -265,6 +279,29 @@ export function NewProjectDialog({
         </div>
 
         <div className="new-project-body">
+          {suggestedStarters.length > 0 && (
+            <section aria-label="Project starters">
+              <h3>Project starters</h3>
+              <p className="muted new-project-note">
+                Review the tasks and brief before creating a project.
+              </p>
+              <div className="button-row">
+                {suggestedStarters.map((starter) => (
+                  <button
+                    key={starter.id}
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    title={starter.description}
+                    onClick={() => void close(() => onTemplates(starter.id))}
+                  >
+                    <LayoutTemplate size={14} aria-hidden="true" />{" "}
+                    {starter.name}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
           <div className="segmented" role="group" aria-label="How to start">
             <button
               disabled={busy}
@@ -304,7 +341,15 @@ export function NewProjectDialog({
                     autoFocus
                     value={name}
                     maxLength={120}
-                    placeholder="Launch the new pricing page"
+                    placeholder={
+                      engineer && student
+                        ? "Project, course or assignment"
+                        : student
+                          ? "Course or assignment"
+                          : engineer
+                            ? "Feature or investigation"
+                            : "Launch the new pricing page"
+                    }
                     onChange={(e) => setName(e.target.value)}
                   />
                 </label>
@@ -314,7 +359,11 @@ export function NewProjectDialog({
                     rows={3}
                     value={summary}
                     maxLength={2000}
-                    placeholder="The goal, and how you'll know it's done."
+                    placeholder={
+                      student && !engineer
+                        ? "Course material, assessment dates and what you need to prepare."
+                        : "The goal, and how you'll know it's done."
+                    }
                     onChange={(e) => setSummary(e.target.value)}
                   />
                 </label>

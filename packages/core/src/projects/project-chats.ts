@@ -1,3 +1,4 @@
+import { assistantOutcomeReceipt } from "../assistant/assistant-outcomes.js";
 import { z } from "zod";
 import { reminderNudgeCard } from "../assistant/reminder-nudges.js";
 import type { AssistantSource } from "../documents/docs.js";
@@ -33,6 +34,7 @@ export const savedChatTurn = z
     /** Capability job containing the changes and their Undo records. */
     changes_job: z.string().min(1).max(64).optional(),
     outcome: z.enum(["pending", "applied", "discarded", "info"]).optional(),
+    execution_outcome: assistantOutcomeReceipt.optional(),
     sources: z.array(chatSource).max(20).optional(),
     /** Templated Reminders cards use ordinary mutations, never a model call. */
     nudge: reminderNudgeCard.optional(),
@@ -137,7 +139,15 @@ export const projectChatInput = z
   .object({
     project_id: z.uuid(),
     title: z.string().trim().min(1).max(120).optional(),
-    turns: z.array(savedChatTurn).min(1).max(CHAT_TURNS_MAX),
+    // Execution receipts are server-projected; a history import cannot assert acceptance.
+    turns: z
+      .array(
+        savedChatTurn.transform(
+          ({ execution_outcome: _receipt, ...turn }) => turn,
+        ),
+      )
+      .min(1)
+      .max(CHAT_TURNS_MAX),
   })
   .strict();
 export type ProjectChatInput = z.input<typeof projectChatInput>;

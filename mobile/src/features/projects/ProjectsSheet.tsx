@@ -17,6 +17,10 @@ import {
   projectDeadlineParts,
   projectPlanStatus,
   projectProgress,
+  TEMPLATE_STARTERS,
+  type WorkspacePreset,
+  isClosed,
+  statusLabels,
   searchProjects,
   projectReentry,
   deadlineOf,
@@ -133,6 +137,7 @@ function ProjectsBody({
   visible,
   items,
   teams = [],
+  presets = [],
   openTemplate = null,
   initialProjectId = null,
   initialSection = null,
@@ -162,6 +167,8 @@ function ProjectsBody({
   items: Item[];
   /** For starting a template's project in a team. */
   teams?: Team[];
+  /** Optional presentation presets; selecting a starter still requires review. */
+  presets?: WorkspacePreset[];
   /** Open on this template (from a "ready to start" notice). */
   openTemplate?: string | null;
   initialProjectId?: string | null;
@@ -182,6 +189,15 @@ function ProjectsBody({
   onItemsChanged?: () => void;
 }) {
   const sheet = sheetStyles;
+  const engineer = presets.includes("engineer");
+  const student = presets.includes("student");
+  const starterIds = new Set([
+    ...(engineer ? ["starter:sprint", "starter:retro"] : []),
+    ...(student ? ["starter:weekly"] : []),
+  ]);
+  const suggestedStarters = TEMPLATE_STARTERS.filter((starter) =>
+    starterIds.has(starter.id),
+  );
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [libraryQuery, setLibraryQuery] = useState("");
   const visibleProjects = searchProjects(projects ?? [], libraryQuery);
@@ -1130,7 +1146,15 @@ function ProjectsBody({
         value={draft ?? ""}
         autoFocus
         maxLength={120}
-        placeholder="What is it called?"
+        placeholder={
+          engineer && student
+            ? "Project, course or assignment"
+            : student
+              ? "Course or assignment"
+              : engineer
+                ? "Feature or investigation"
+                : "What is it called?"
+        }
         placeholderTextColor={colors.faint}
         accessibilityLabel="New project name"
         onChangeText={setDraft}
@@ -1332,26 +1356,50 @@ function ProjectsBody({
   // One full-width way in, and the two quicker starts side by side: the
   // same on an empty list as above a full one.
   const createButtons = (
-    <View style={styles.createMore}>
-      <Button
-        title="New project"
-        icon="plus"
-        disabled={busy}
-        style={styles.createHalf}
-        onPress={() => setDraft("")}
-      />
-      <MoreMenu
-        label="New project options"
-        disabled={busy}
-        actions={[
-          { label: "Draft with AI", icon: "sparkles", onPress: startAiDraft },
-          {
-            label: "Use a template",
-            icon: "layoutGrid",
-            onPress: () => setTemplatesOpen(true),
-          },
-        ]}
-      />
+    <View style={styles.projectStarters}>
+      <View style={styles.createMore}>
+        <Button
+          title="New project"
+          icon="plus"
+          disabled={busy}
+          style={styles.createHalf}
+          onPress={() => setDraft("")}
+        />
+        <MoreMenu
+          label="New project options"
+          disabled={busy}
+          actions={[
+            { label: "Draft with AI", icon: "sparkles", onPress: startAiDraft },
+            {
+              label: "Use a template",
+              icon: "layoutGrid",
+              onPress: () => {
+                setSavedTemplateId(null);
+                setTemplatesOpen(true);
+              },
+            },
+          ]}
+        />
+      </View>
+      {suggestedStarters.length > 0 && (
+        <View style={styles.projectStarters}>
+          <Text style={styles.portfolioLabel}>Project starters</Text>
+          <Text style={styles.meta}>
+            Review the tasks and brief before creating a project.
+          </Text>
+          {suggestedStarters.map((starter) => (
+            <SmallAction
+              key={starter.id}
+              label={starter.name}
+              disabled={busy}
+              onPress={() => {
+                setSavedTemplateId(starter.id);
+                setTemplatesOpen(true);
+              }}
+            />
+          ))}
+        </View>
+      )}
     </View>
   );
   return (
@@ -2740,67 +2788,152 @@ function ProjectsBody({
                   workspace.
                 </Text>
               )}
-              {visibleProjects.map((p) => (
-                <Pressable
-                  key={p.id}
-                  accessibilityRole="button"
-                  disabled={busy}
-                  accessibilityState={{ disabled: busy }}
-                  accessibilityLabel={`Open project ${p.name}`}
-                  style={({ pressed }) => [
-                    styles.card,
-                    pressed && styles.rowPressed,
-                  ]}
-                  onPress={() =>
-                    void run(async () => {
-                      setOpen(await client.getProject(p.id));
-                      setSection("tasks");
-                    })
-                  }
-                  delayLongPress={380}
-                  onLongPress={() => {
-                    tap();
-                    setHeldProject(p);
-                  }}
-                  accessibilityHint="Touch and hold for more"
-                  accessibilityActions={[
-                    { name: "longpress", label: "More for this project" },
-                  ]}
-                  onAccessibilityAction={(e) => {
-                    if (e.nativeEvent.actionName === "longpress")
-                      setHeldProject(p);
-                  }}
-                >
-                  <View style={styles.cardTop}>
-                    <Icon name="boxes" size={16} color={colors.muted} />
-                    <Text style={styles.cardName}>{p.name}</Text>
-                  </View>
-                  {!!p.summary && (
-                    <Text style={styles.meta} numberOfLines={2}>
-                      {p.summary}
-                    </Text>
-                  )}
-                  <Text style={styles.meta}>
-                    {p.team_name ||
-                      (p.team_id
-                        ? teams.find((team) => team.id === p.team_id)?.name ||
-                          "Shared"
-                        : "Personal")}
-                  </Text>
-                  <View style={styles.bar}>
-                    <View
-                      style={[
-                        styles.barFill,
-                        { width: `${projectProgress(p)}%` },
+              {visibleProjects.map((p) => {
+                const work = items.filter(
+                  (item) =>
+                    item.project_id === p.id &&
+                    item.kind === "task" &&
+                    !isClosed(item.status),
+                );
+                const next = [...work].sort(
+                  (a, b) =>
+                    Number(b.status === "blocked") -
+                      Number(a.status === "blocked") ||
+                    Number(b.status === "in_progress") -
+                      Number(a.status === "in_progress") ||
+                    (a.due_at ? Date.parse(a.due_at) : Infinity) -
+                      (b.due_at ? Date.parse(b.due_at) : Infinity) ||
+                    a.title.localeCompare(b.title),
+                )[0];
+                const nearest = work
+                  .filter((item) => item.due_at)
+                  .sort(
+                    (a, b) => Date.parse(a.due_at!) - Date.parse(b.due_at!),
+                  )[0];
+                const openProject = () =>
+                  void run(async () => {
+                    setOpen(await client.getProject(p.id));
+                    setSection("home");
+                  });
+                return (
+                  <View key={p.id} style={styles.card}>
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={busy}
+                      accessibilityState={{ disabled: busy }}
+                      accessibilityLabel={`Open project ${p.name}`}
+                      style={({ pressed }) => [
+                        styles.cardTop,
+                        styles.portfolioOpen,
+                        pressed && styles.rowPressed,
                       ]}
-                    />
+                      onPress={openProject}
+                      delayLongPress={380}
+                      onLongPress={() => {
+                        tap();
+                        setHeldProject(p);
+                      }}
+                      accessibilityHint="Touch and hold for more"
+                      accessibilityActions={[
+                        { name: "longpress", label: "More for this project" },
+                      ]}
+                      onAccessibilityAction={(event) => {
+                        if (event.nativeEvent.actionName === "longpress")
+                          setHeldProject(p);
+                      }}
+                    >
+                      <Icon name="boxes" size={16} color={colors.muted} />
+                      <Text style={styles.cardName}>{p.name}</Text>
+                      <Icon
+                        name="chevronRight"
+                        size={16}
+                        color={colors.faint}
+                      />
+                    </Pressable>
+                    <Text style={styles.meta}>
+                      {p.team_name ||
+                        (p.team_id
+                          ? teams.find((team) => team.id === p.team_id)?.name ||
+                            "Shared"
+                          : "Personal")}
+                      {p.status === "active"
+                        ? ""
+                        : p.status === "done"
+                          ? " · Completed"
+                          : " · Archived"}
+                    </Text>
+                    <View style={styles.portfolioNext}>
+                      <Text style={styles.portfolioLabel}>
+                        {next?.status === "blocked"
+                          ? "Needs a decision"
+                          : "Next action"}
+                      </Text>
+                      {next && onOpenItem ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Open task ${next.title}`}
+                          onPress={() => onOpenItem(next)}
+                          disabled={busy}
+                          style={({ pressed }) => [
+                            styles.portfolioOpen,
+                            pressed && styles.rowPressed,
+                          ]}
+                        >
+                          <Text style={styles.cardName}>{next.title}</Text>
+                        </Pressable>
+                      ) : (
+                        <SmallAction
+                          label={
+                            p.task_count > p.done_count
+                              ? "Choose the next task"
+                              : "Open project"
+                          }
+                          disabled={busy}
+                          onPress={openProject}
+                        />
+                      )}
+                      {next && (
+                        <Text
+                          style={[
+                            styles.meta,
+                            next.status === "blocked" &&
+                              styles.portfolioBlocked,
+                          ]}
+                        >
+                          {statusLabels[next.status]}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={styles.meta}>
+                      {p.deadline
+                        ? `Project due ${dueLabel(p.deadline)}`
+                        : nearest?.due_at
+                          ? `Task due ${dueLabel(nearest.due_at)}`
+                          : "No deadline"}{" "}
+                      · {p.done_count} of {p.task_count} tasks done
+                    </Text>
+                    {p.task_count > 0 && (
+                      <View
+                        style={styles.bar}
+                        accessible
+                        accessibilityLabel={`${Math.round(projectProgress(p))}% of tasks completed`}
+                      >
+                        <View
+                          style={[
+                            styles.barFill,
+                            { width: `${projectProgress(p)}%` },
+                          ]}
+                        />
+                      </View>
+                    )}
+                    {!!p.summary && (
+                      <InlineDetails title="Project brief">
+                        <Text style={styles.summary}>{p.summary}</Text>
+                      </InlineDetails>
+                    )}
                   </View>
-                  <Text style={styles.meta}>
-                    {p.done_count} of {p.task_count} done ·{" "}
-                    {dueLabel(p.deadline)}
-                  </Text>
-                </Pressable>
-              ))}
+                );
+              })}
             </View>
           )}
         </View>
@@ -3045,6 +3178,15 @@ const styles = themed(() =>
       textAlign: "center",
       color: colors.muted,
     },
+    projectStarters: { gap: 8 },
+    portfolioOpen: { minHeight: 44, justifyContent: "center" },
+    portfolioNext: { gap: 2, marginVertical: 8 },
+    portfolioLabel: {
+      color: colors.muted,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+    },
+    portfolioBlocked: { color: colors.warning },
     card: {
       gap: 6,
       minHeight: 44,

@@ -127,7 +127,7 @@ export function ProjectsView({
   };
   const [creating, setCreating] = useState(false);
   const [templates, setTemplates] = useState(!!openTemplate);
-  const [initialTemplate] = useState(openTemplate);
+  const [initialTemplate, setInitialTemplate] = useState(openTemplate);
   useEffect(() => {
     if (!openTemplate) return;
     setTemplates(true);
@@ -288,7 +288,8 @@ export function ProjectsView({
           items={items}
           report={report}
           onClose={() => setCreating(false)}
-          onTemplates={() => {
+          onTemplates={(id) => {
+            setInitialTemplate(id ?? null);
             setCreating(false);
             setTemplates(true);
           }}

@@ -1,3 +1,4 @@
+import { runtimeOutcome } from "./outcome.js";
 import { scheduledConversationRoute } from "../../assistant-workspace/conversation-schedules.js";
 import { env } from "../../../config/env.js";
 import { readAutomationIdentity } from "../../agent-context/identities.js";
@@ -827,6 +828,18 @@ async function finishJob(
       },
       db,
     );
+    const executionOutcome = runtimeOutcome({
+      jobId,
+      chatId: request.chat_id,
+      turnId: request.turn_id,
+      state,
+      proposalOutcome: outcome,
+      proposalId:
+        typeof extra.proposal_id === "string" ? extra.proposal_id : undefined,
+      stopped: extra.stopped === true,
+      timedOut: extra.timed_out === true,
+      planJob: typeof extra.plan_job === "string" ? extra.plan_job : undefined,
+    });
     const result = {
       answer: summary,
       chat_id: request.chat_id,
@@ -839,6 +852,7 @@ async function finishJob(
           )
         ).rows[0]?.trace ?? [],
       assistant_run: {
+        execution_outcome: executionOutcome,
         token_estimate: state.token_estimate,
         reports: state.reports.map(({ steps, ...report }) => ({
           ...report,
@@ -1519,15 +1533,24 @@ async function failJob(
       },
       db,
     );
+    const executionOutcome = runtimeOutcome({
+      jobId,
+      chatId: request.chat_id,
+      turnId: request.turn_id,
+      failed: true,
+    });
     await db.query(
       `UPDATE ai_jobs SET state = 'failed', error_status = 502,
        error_message = $2, run_state = NULL, progress = $3::jsonb,
-       result = jsonb_build_object('assistant_run', jsonb_build_object('token_estimate', coalesce((run_state->'state'->>'token_estimate')::int, 0))),
+       result = jsonb_build_object('chat_id',$4::text,'turn_id',$5::text,'assistant_run', jsonb_build_object('execution_outcome',$6::jsonb,'token_estimate', coalesce((run_state->'state'->>'token_estimate')::int, 0))),
        heartbeat_at = now(), lease_until = NULL, claimed_by = NULL WHERE id = $1`,
       [
         jobId,
         message,
         JSON.stringify({ label: "This run could not be completed" }),
+        request.chat_id,
+        request.turn_id,
+        JSON.stringify(executionOutcome),
       ],
     );
     await notifyAssistantAway(db, jobId, "failed");
@@ -2559,6 +2582,7 @@ export async function failStaleAssistantJobs(
     const ended: typeof rows = [];
     const resumed: typeof rows = [];
     for (const row of rows) {
+      const envelope = envelopeOf(row.run_state);
       if (
         row.was === "running" &&
         envelopeOf(row.run_state) &&
@@ -2601,13 +2625,39 @@ export async function failStaleAssistantJobs(
             : row.resume_count >= 3
               ? exhausted
               : interrupted;
+        if (envelope)
+          await finishChatTurn(
+            row.user_id,
+            envelope.request.chat_id,
+            envelope.request.turn_id,
+            { summary: message, trace: [], failed: true },
+            db,
+          );
+        const executionOutcome = envelope
+          ? runtimeOutcome({
+              jobId: row.id,
+              chatId: envelope.request.chat_id,
+              turnId: envelope.request.turn_id,
+              interrupted: row.was !== "waiting",
+              expiredWaiting: row.was === "waiting",
+              now: now.toISOString(),
+            })
+          : null;
         await db.query(
           `UPDATE ai_jobs SET state = 'failed', error_status = $2, error_message = $3,
-           result = jsonb_build_object('assistant_run', jsonb_build_object('token_estimate',
+           result = jsonb_build_object('chat_id',$5::text,'turn_id',$6::text,'assistant_run', jsonb_build_object('execution_outcome',$7::jsonb,'token_estimate',
              coalesce((run_state->'state'->>'token_estimate')::int, (result->'assistant_run'->>'token_estimate')::int, 0))),
            run_state = NULL, lease_until = NULL, claimed_by = NULL,
            progress = jsonb_build_object('label', $3::text), heartbeat_at = $4 WHERE id = $1`,
-          [row.id, row.was === "waiting" ? 410 : 503, message, now],
+          [
+            row.id,
+            row.was === "waiting" ? 410 : 503,
+            message,
+            now,
+            envelope?.request.chat_id ?? null,
+            envelope?.request.turn_id ?? null,
+            executionOutcome ? JSON.stringify(executionOutcome) : null,
+          ],
         );
         ended.push(row);
         await notifyAssistantAway(db, row.id, "failed");
@@ -2629,25 +2679,6 @@ export async function failStaleAssistantJobs(
     }
     return { ended, resumed };
   });
-  for (const row of changed.ended) {
-    const envelope = envelopeOf(row.run_state);
-    if (!envelope) continue;
-    await finishChatTurn(
-      row.user_id,
-      envelope.request.chat_id,
-      envelope.request.turn_id,
-      {
-        summary:
-          row.was === "waiting"
-            ? expired
-            : row.resume_count >= 3
-              ? exhausted
-              : interrupted,
-        trace: [],
-        failed: true,
-      },
-    ).catch(() => undefined);
-  }
   return changed.ended.map((row) => row.id);
 }
 
