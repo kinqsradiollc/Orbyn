@@ -132,7 +132,7 @@ async function resultFixture(f: Awaited<ReturnType<typeof fixture>>) {
       ],
     );
     await db.query(
-      `INSERT INTO assistant_goal_attempts(id,execution_id,owner_id,unit_id,ordinal,mode,relation,job_id,generation,input_frontier_revision,allocated_tokens,settled_tokens,state,result_digest,settled_at) VALUES($1,$2,$3,$4,1,'work','initial',$5,1,1,20,10,'done',$6,now())`,
+      `INSERT INTO assistant_goal_attempts(id,execution_id,owner_id,unit_id,ordinal,mode,relation,job_id,generation,input_frontier_revision,allocated_tokens,settled_tokens,state,result_digest,settled_at,processed_at) VALUES($1,$2,$3,$4,1,'work','initial',$5,1,1,20,10,'done',$6,now(),now())`,
       [
         attempt,
         row.id,

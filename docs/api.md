@@ -1013,7 +1013,7 @@ most recent identical control does not repeat it. Controls return refreshed
 
 Details always include execution metadata, reviewed hashes, limits and cumulative
 consumed/reserved estimates. `visibility: "available"` adds criteria, stable units,
-current job, latest authorized result, `evidence_hash`, `can_accept`, permission
+current job, latest authorized result, `waiting_results`, `evidence_hash`, `can_accept`, permission
 summary and any person acceptance record. Unit stages are `work`, `verify`, `repair`,
 `ready_for_acceptance`, `satisfied` and `blocked`. `effects_applied` and bound output
 IDs/versions prevent a consumed create plan from being recreated during repair.
@@ -1021,25 +1021,38 @@ Results carry current job state, stop-request/recovery evidence, summary and opt
 execution outcome. A `restricted` response omits criteria, units, content, job/chat
 links and acceptance details. Attempt rows similarly restrict unavailable evidence.
 
+`current_job_id` is a presentation focus, not execution ownership. `waiting_results`
+contains at most one entry per parked unit (maximum 10). Each entry has the result
+fields plus `unit_id`, `criterion_id`, `mode` (`work`, `verify` or `repair`) and
+`waiting_kind` (`person`, `approval` or `review`). Entries preserve their original
+job/chat identity and current source authorization. Restricted details omit this
+collection. Answering an available question resumes its saved job through the
+existing Answer API; it does not start a new goal attempt.
+
 History queries accept `limit` (1–20, default 10) and optional opaque `cursor`.
 Pass a non-null `next_cursor` unchanged; it preserves database timestamp precision.
 Reads do not enqueue work or acknowledge results. Authority is rechecked on each
 page, including after job retention or source revocation.
 
-There is one unsettled attempt per execution. An unanswered in-run question
-currently blocks that execution's remaining criteria; a pending Review proposal
-keeps its existing identity. Verification is read-only. Repair currently supports
-versioned edits to bound tasks/documents, while unsupported repair, missing output
-identity and uncertain effects hold rather than recreate work. Pause does not undo
-or stop admitted work. Stop changes the generation, requests cancellation, preserves
-committed effects and permits terminal accounting to settle without another wake.
+There is one open attempt per unit. An unanswered in-run question, approval or
+pending Review parks that unit while other runnable criteria may continue within
+the same shared allowance. A parked question retains its reservation; answering it
+requeues the same job. The existing ownership guard prevents two jobs for the same
+goal from running simultaneously. Verification is read-only. Repair currently
+supports versioned edits to bound tasks/documents, while unsupported repair,
+missing output identity and uncertain effects hold rather than recreate work.
+Budget settlement and frontier consumption are separate: pending Review can remain
+open after its producer's terminal accounting has settled. Pause does not stop
+admitted work. Stop changes the generation and requests cancellation of all
+execution jobs, including queued and parked jobs, while preserving committed
+effects and permitting accounting to settle without another wake.
 
 `can_accept` requires current criteria/evidence, no active work, unresolved questions,
 pending approval, uncertain effects or nonpassing required checks. A person
 attestation is stored separately from model output and legacy chat turns. A finished
 job, a proposal decision or manually setting `goals.status=done` cannot mint accepted
 completion. These APIs reuse existing Orbyn workers/providers and require migration
-300; their presence does not qualify a hosted rollout or native client behavior.
+300–301; their presence does not qualify a hosted rollout or native client behavior.
 
 ### `GET /me/agent-routines/:id/runs` (auth)
 

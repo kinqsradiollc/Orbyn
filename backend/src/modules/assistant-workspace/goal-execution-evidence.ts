@@ -36,6 +36,7 @@ export type AttemptRow = {
   allocated_tokens: number;
   settled_tokens: number | null;
   settled_at: Date | null;
+  processed_at: Date | null;
   created_at: Date;
   terminal_evidence: unknown;
   result_digest: string | null;
@@ -50,6 +51,7 @@ type JobEvidence = {
   apply_result: any;
   terminal_evidence: any;
   review_status: string | null;
+  waiting_kind: string | null;
 };
 export async function attempts(db: Queryable, row: GoalExecutionRow) {
   return (
@@ -71,7 +73,7 @@ export async function authorizedJobs(
   const proposalId =
     "regexp_replace(coalesce(j.result->'assistant_run'->>'proposal_id',j.apply_result->'structured'->'pending'->>'proposal_id'),'^proposal:','')";
   const jobs = await db.query<JobEvidence>(
-    `SELECT j.id,j.chat_id,j.state,j.cancel_requested,(j.state='running' AND (j.lease_until IS NULL OR j.lease_until<=now())) AS recovering,j.result,j.apply_result,j.terminal_evidence,CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status
+    `SELECT j.id,j.chat_id,j.state,j.cancel_requested,j.run_state->'state'->'waiting'->>'kind' AS waiting_kind,(j.state='running' AND (j.lease_until IS NULL OR j.lease_until<=now())) AS recovering,j.result,j.apply_result,j.terminal_evidence,CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status
      FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id LEFT JOIN proposals p ON p.user_id=${scope.user} AND p.id=CASE WHEN ${proposalId} ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN (${proposalId})::uuid END
      WHERE j.id=ANY($1::uuid[]) AND ${assistantJobSourcesVisible("j", scope.user, false, scope)} AND ${assistantChatVisible("c", scope.user, scope)}`,
     params.values,
@@ -144,9 +146,8 @@ export async function evidence(db: Queryable, row: GoalExecutionRow) {
   if (all.some((a) => !a.job_id || !jobs.has(a.job_id))) visible = false;
   let ready =
     row.state === "awaiting_acceptance" &&
-    !row.current_job_id &&
     all.length > 0 &&
-    all.every((a) => a.settled_at !== null) &&
+    all.every((a) => a.settled_at !== null && a.processed_at !== null) &&
     row.units.every(
       (u) =>
         u.stage === "ready_for_acceptance" &&
@@ -229,6 +230,7 @@ export async function evidence(db: Queryable, row: GoalExecutionRow) {
           a.job_id,
           a.result_digest,
           a.settled_tokens,
+          a.processed_at,
         ]),
         jobs: [...jobs.values()].map((j) => [
           j.id,
@@ -253,41 +255,64 @@ export async function goalExecutionDetailsFor(
   const base = publicMetadata(row);
   if (!facts.visible)
     return goalExecutionDetails.parse({ ...base, visibility: "restricted" });
-  const latest = facts.all.at(-1),
-    job = latest?.job_id ? facts.jobs.get(latest.job_id) : null;
+  const resultFor = (attempt: AttemptRow, job: JobEvidence) => ({
+    attempt_id: attempt.id,
+    job_id: job.id,
+    chat_id: job.chat_id,
+    state: job.state,
+    cancel_requested: job.cancel_requested,
+    recovering: job.recovering,
+    summary:
+      typeof job.result?.answer === "string"
+        ? job.result.answer.slice(0, 4000)
+        : null,
+    ...(readAssistantOutcome(job.result?.assistant_run?.execution_outcome)
+      ? {
+          execution_outcome: projectOutcomeReceipt(
+            job.result.assistant_run.execution_outcome,
+            job.id,
+            job.review_status,
+            row.acceptance,
+          ),
+        }
+      : {}),
+  });
+  const latest =
+    facts.all.find((a) => a.job_id === row.current_job_id) ?? facts.all.at(-1);
+  const job = latest?.job_id ? facts.jobs.get(latest.job_id) : null;
+  const waiting_results = row.units.flatMap((unit) => {
+    const attempt = facts.all.find(
+      (a) => a.unit_id === unit.id && a.processed_at === null,
+    );
+    const parked = attempt?.job_id ? facts.jobs.get(attempt.job_id) : null;
+    if (!attempt || !parked) return [];
+    const waiting_kind =
+      parked.state === "waiting" &&
+      ["person", "approval"].includes(parked.waiting_kind ?? "")
+        ? (parked.waiting_kind as "person" | "approval")
+        : unit.pending_proposal_id && parked.review_status === "pending"
+          ? ("review" as const)
+          : null;
+    return waiting_kind
+      ? [
+          {
+            ...resultFor(attempt, parked),
+            unit_id: unit.id,
+            criterion_id: unit.criterion_id,
+            mode: attempt.mode,
+            waiting_kind,
+          },
+        ]
+      : [];
+  });
   return goalExecutionDetails.parse({
     ...base,
     visibility: "available",
     criteria: row.criteria,
     units: row.units,
     current_job_id: row.current_job_id,
-    result:
-      job && latest
-        ? {
-            attempt_id: latest.id,
-            job_id: job.id,
-            chat_id: job.chat_id,
-            state: job.state,
-            cancel_requested: job.cancel_requested,
-            recovering: job.recovering,
-            summary:
-              typeof job.result?.answer === "string"
-                ? job.result.answer.slice(0, 4000)
-                : null,
-            ...(readAssistantOutcome(
-              job.result?.assistant_run?.execution_outcome,
-            )
-              ? {
-                  execution_outcome: projectOutcomeReceipt(
-                    job.result.assistant_run.execution_outcome,
-                    job.id,
-                    job.review_status,
-                    row.acceptance,
-                  ),
-                }
-              : {}),
-          }
-        : null,
+    result: job && latest ? resultFor(latest, job) : null,
+    waiting_results,
     evidence_hash: facts.hash,
     can_accept: facts.ready,
     permission_summary:

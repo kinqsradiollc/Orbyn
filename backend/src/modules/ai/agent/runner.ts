@@ -91,7 +91,8 @@ export async function claimAssistantJob(
            AND (candidate.work_source_id IS NULL OR NOT EXISTS (
              SELECT 1 FROM ai_jobs busy WHERE busy.id<>candidate.id
                AND busy.work_source_kind=candidate.work_source_kind AND busy.work_source_id=candidate.work_source_id
-               AND busy.state IN ('running','waiting')))
+               AND busy.state IN ('running','waiting')
+               AND NOT assistant_goal_waiting_overlap(candidate.id,busy.id)))
          ORDER BY candidate.created_at, candidate.id FOR UPDATE OF candidate SKIP LOCKED LIMIT 1`,
         [lane, LEAD_TOKEN_BUDGET],
       )

@@ -165,9 +165,11 @@ async function interruptedApplyResult(
   jobId: string,
   owner: string,
   deadline = false,
+  cancelledParked = false,
 ) {
   const observed = await reconcileAssistantApply(jobId, owner, {
     knownNotStarted: true,
+    cancelledParked,
   });
   const prefix = deadline ? "I ran out of time before finishing." : "Stopped.";
   const extra: Record<string, unknown> = {
@@ -2726,7 +2728,7 @@ export async function answerAssistantApproval(
 export async function stopAssistantJob(
   jobId: string,
   user: UserRow,
-  log: FastifyBaseLogger,
+  log?: FastifyBaseLogger,
 ) {
   const row = await transaction(async (db) => {
     const current = (
@@ -2738,7 +2740,7 @@ export async function stopAssistantJob(
     ).rows[0];
     if (!current) return null;
     await db.query(
-      `UPDATE ai_jobs SET state = 'running', cancel_requested = true,
+      `UPDATE ai_jobs SET cancel_requested = true,
          progress = jsonb_build_object('label', 'Stopping the run') WHERE id = $1`,
       [jobId],
     );
@@ -2766,7 +2768,12 @@ export async function stopAssistantJob(
     }
     envelope.state.waiting = null;
     envelope.state.selected_steps = [];
-    const interrupted = await interruptedApplyResult(jobId, user.id);
+    const interrupted = await interruptedApplyResult(
+      jobId,
+      user.id,
+      false,
+      true,
+    );
     await finishJob(
       jobId,
       user,
@@ -2775,9 +2782,10 @@ export async function stopAssistantJob(
       interrupted.summary,
       interrupted.outcome,
       interrupted.extra,
-    ).catch((error) =>
-      log.error({ err: error }, "Assistant stop could not be recorded"),
-    );
+    ).catch((error) => {
+      log?.error({ err: error }, "Assistant stop could not be recorded");
+      throw error;
+    });
     return true;
   }
   activeRuns.get(jobId)?.();

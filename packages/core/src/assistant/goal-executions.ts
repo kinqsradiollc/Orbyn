@@ -151,6 +151,18 @@ export const goalExecutionResult = z
     execution_outcome: assistantOutcomeReceipt.optional(),
   })
   .strict();
+export const goalExecutionWaitingResult = goalExecutionResult
+  .extend({
+    unit_id: z.uuid(),
+    criterion_id: z.uuid(),
+    mode: z.enum(["work", "verify", "repair"]),
+    waiting_kind: z.enum(["person", "approval", "review"]),
+  })
+  .strict();
+export type GoalExecutionWaitingResult = z.output<
+  typeof goalExecutionWaitingResult
+>;
+
 export const goalExecutionDetails = z
   .discriminatedUnion("visibility", [
     z
@@ -164,6 +176,10 @@ export const goalExecutionDetails = z
         units: z.array(goalExecutionUnit).min(1).max(10),
         current_job_id: z.uuid().nullable(),
         result: goalExecutionResult.nullable(),
+        waiting_results: z
+          .array(goalExecutionWaitingResult)
+          .max(10)
+          .default([]),
         evidence_hash: hash.nullable(),
         can_accept: z.boolean(),
         permission_summary: z.string().max(1000),
@@ -191,10 +207,29 @@ export const goalExecutionDetails = z
         code: "custom",
         message: "Result evidence must belong to its job.",
       });
+    const parkedUnits = new Set<string>();
+    for (const waiting of value.waiting_results) {
+      if (
+        parkedUnits.has(waiting.unit_id) ||
+        !value.units.some(
+          (unit) =>
+            unit.id === waiting.unit_id &&
+            unit.criterion_id === waiting.criterion_id,
+        ) ||
+        (waiting.execution_outcome &&
+          waiting.execution_outcome.job_id !== waiting.job_id)
+      )
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "Waiting results must belong to distinct reviewed units and their exact jobs.",
+        });
+      parkedUnits.add(waiting.unit_id);
+    }
     if (
       value.can_accept &&
       (value.state !== "awaiting_acceptance" ||
-        value.current_job_id ||
+        value.waiting_results.length > 0 ||
         !value.evidence_hash ||
         value.units.some((unit) => unit.stage !== "ready_for_acceptance"))
     )

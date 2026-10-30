@@ -253,7 +253,7 @@ function GoalWorkBody({
   const confirmStop = () =>
     confirmChoice(
       "Stop this work?",
-      "Stops future attempts and requests cancellation of current work. Existing changes remain.",
+      "Stops future attempts and requests cancellation of active and waiting runs. Existing changes remain.",
     );
   const owner = useRef(binding()).current;
   const mounted = useRef(true);
@@ -794,25 +794,82 @@ function GoalWorkBody({
                 ) : (
                   <Block>
                     <Copy>{detail.permission_summary}</Copy>
+                    {detail.waiting_results.length > 0 && (
+                      <Block>
+                        <Copy>
+                          Waiting decisions ({detail.waiting_results.length})
+                        </Copy>
+                        {detail.waiting_results.map((waiting) => (
+                          <Block key={waiting.attempt_id}>
+                            <Copy>
+                              {
+                                detail.criteria.find(
+                                  (criterion) =>
+                                    criterion.id === waiting.criterion_id,
+                                )?.text
+                              }
+                            </Copy>
+                            <Copy>
+                              {waiting.cancel_requested
+                                ? "Stop requested · Awaiting confirmation"
+                                : waiting.waiting_kind === "person"
+                                  ? "Your answer is needed"
+                                  : waiting.waiting_kind === "approval"
+                                    ? "Your approval is needed"
+                                    : "Changes are waiting in Review"}{" "}
+                              ·{" "}
+                              {waiting.mode === "verify"
+                                ? "Verification"
+                                : waiting.mode === "repair"
+                                  ? "Repair"
+                                  : "Work"}
+                            </Copy>
+                            {onOpenChat && (
+                              <Action
+                                label={
+                                  waiting.waiting_kind === "person"
+                                    ? "Open question"
+                                    : waiting.waiting_kind === "review"
+                                      ? "Open Review result"
+                                      : "Open approval"
+                                }
+                                disabled={busy || loading || staleSnapshot}
+                                onPress={() => void openChat(waiting.chat_id)}
+                              />
+                            )}
+                          </Block>
+                        ))}
+                      </Block>
+                    )}
+
                     {detail.criteria.map((c) => {
                       const unit = detail.units.find(
                         (unit) => unit.criterion_id === c.id,
+                      );
+                      const waiting = detail.waiting_results.find(
+                        (w) => w.unit_id === unit?.id,
                       );
                       return (
                         <Block key={c.id}>
                           <Copy>{c.text}</Copy>
                           <Copy>
-                            {unit?.stage === "ready_for_acceptance"
-                              ? "Ready for your review"
-                              : unit?.stage === "satisfied"
-                                ? "Accepted by you"
-                                : unit?.stage === "blocked"
-                                  ? "Blocked"
-                                  : unit?.stage === "verify"
-                                    ? "Checking result"
-                                    : unit?.stage === "repair"
-                                      ? "Repairing result"
-                                      : "Work pending"}
+                            {waiting
+                              ? waiting.waiting_kind === "person"
+                                ? "Waiting for your answer"
+                                : waiting.waiting_kind === "review"
+                                  ? "Waiting in Review"
+                                  : "Waiting for your approval"
+                              : unit?.stage === "ready_for_acceptance"
+                                ? "Ready for your review"
+                                : unit?.stage === "satisfied"
+                                  ? "Accepted by you"
+                                  : unit?.stage === "blocked"
+                                    ? "Blocked"
+                                    : unit?.stage === "verify"
+                                      ? "Checking result"
+                                      : unit?.stage === "repair"
+                                        ? "Repairing result"
+                                        : "Work pending"}
                           </Copy>
                           {unit?.outputs.map((output) => (
                             <OutputEvidence
@@ -869,9 +926,9 @@ function GoalWorkBody({
                     {!detail.acceptance && (
                       <Block>
                         <Copy>
-                          Pause controls future attempts; it does not stop the
-                          current run. Stop requests cancellation and keeps
-                          existing results.
+                          Pause controls future attempts; it does not stop
+                          admitted runs. Stop requests cancellation of active
+                          and waiting runs; existing changes remain.
                         </Copy>
                         <Action
                           label={
@@ -892,14 +949,11 @@ function GoalWorkBody({
                           }
                         />
                         <Action
-                          label={
-                            working ? "Stop current work" : "Stop this scope"
-                          }
+                          label="Stop all work in this scope"
                           disabled={
                             busy ||
                             loading ||
                             staleSnapshot ||
-                            !!result?.cancel_requested ||
                             ["completed", "stopped"].includes(detail.state)
                           }
                           onPress={() => void control("stop")}

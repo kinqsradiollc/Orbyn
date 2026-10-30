@@ -20,6 +20,15 @@ type Scenario = {
   verifyReports: number;
   repairFinishes: number;
   rejected: boolean;
+  questionBeforeWork?: boolean;
+  answered?: boolean;
+  questionAsked?: number;
+  gate?: {
+    entered: Promise<void>;
+    enter: () => void;
+    released: Promise<void>;
+    release: () => void;
+  };
 };
 const scenarios = new Map<string, Scenario>();
 const requests: { criterion: string; mode: "work" | "verify" | "repair" }[] =
@@ -76,6 +85,21 @@ function replyFor(
       scenario.verifyReports++ === 0 ? "repair" : "ready",
     );
   }
+  if (
+    scenario.questionBeforeWork &&
+    !scenario.answered &&
+    mode === "work" &&
+    names.includes("ask_person")
+  ) {
+    scenario.questionAsked = (scenario.questionAsked ?? 0) + 1;
+    return {
+      name: "ask_person",
+      arguments: {
+        question: "Which first task should I create?",
+        choices: ["Product", "Marketing"],
+      },
+    };
+  }
   if (names.includes("delegate")) {
     if (
       scenario.badRepair &&
@@ -110,7 +134,7 @@ function replyFor(
     assert.equal(
       steps.length,
       1,
-      "Exactly one checked specialist step reaches the lead",
+      `Exactly one checked specialist step reaches the lead: ${JSON.stringify(reports)}`,
     );
     return finishReply(criterion, mode, "ready", steps);
   }
@@ -171,14 +195,29 @@ const provider = createServer(async (request, response) => {
     const prompt = (body.messages ?? [])
       .map((message) => message.content ?? "")
       .join("\n");
-    const criterion = /Work on criterion ([0-9a-f-]{36}):/i.exec(prompt)?.[1];
+    const scopePrompt =
+      [...(body.messages ?? [])]
+        .reverse()
+        .find(
+          (message) =>
+            message.role === "user" &&
+            message.content?.includes("Work on criterion"),
+        )?.content ?? prompt;
+    const criterion = [
+      ...scopePrompt.matchAll(/Work on criterion ([0-9a-f-]{36}):/gi),
+    ].at(-1)?.[1];
     assert.ok(criterion, "Provider must receive the exact scoped criterion");
-    const mode = prompt.includes("This is one repair unit")
+    const mode = scopePrompt.includes("This is one repair unit")
       ? "repair"
-      : prompt.includes("This is one verify unit")
+      : scopePrompt.includes("This is one verify unit")
         ? "verify"
         : "work";
     requests.push({ criterion, mode });
+    const gate = scenarios.get(criterion)?.gate;
+    if (gate && mode === "work") {
+      gate.enter();
+      await gate.released;
+    }
     const reply = replyFor(body, criterion, mode);
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(
@@ -215,15 +254,18 @@ const provider = createServer(async (request, response) => {
   }
 });
 
-const { pool } = await import("../src/db/pool.js");
+const { pool, transaction } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { buildApiService } = await import("../src/app.js");
+const { buildApiService, buildAiService } = await import("../src/app.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
+const { controlGoalExecution } =
+  await import("../src/modules/assistant-workspace/goal-executions.js");
 const { scanGoalExecutions, settleGoalExecutions } =
   await import("../src/worker/goal-executions.js");
 const app = await buildApiService();
+const aiApp = await buildAiService();
 const users: string[] = [];
 let providerId: string | undefined;
 let stopRuntime: (() => Promise<void>) | undefined;
@@ -268,6 +310,7 @@ after(async () => {
   if (providerId)
     await pool.query("DELETE FROM ai_providers WHERE id=$1", [providerId]);
   invalidateSettings();
+  await aiApp.close();
   await app.close();
   await new Promise<void>((resolve, reject) =>
     provider.close((error) => (error ? reject(error) : resolve())),
@@ -281,6 +324,7 @@ async function fixture(
   badRepair = false,
   review = false,
   lane: "background" | "overnight" = "background",
+  independent = false,
 ) {
   const registered = await app.inject({
     method: "POST",
@@ -341,6 +385,16 @@ async function fixture(
       rejected: false,
     });
   }
+  const secondCriterion = independent ? randomUUID() : null;
+  if (secondCriterion && mutation && !review)
+    scenarios.set(secondCriterion, {
+      project: project!,
+      badRepair: false,
+      verifyReports: 1,
+      repairFinishes: 0,
+      rejected: false,
+    });
+  if (independent && mutation) scenarios.get(criterion)!.verifyReports = 1;
   const input = {
     request_id: randomUUID(),
     expected_goal_revision: goal.revision,
@@ -352,12 +406,23 @@ async function fixture(
           : "The answer contains a concise outline",
         kind: "person",
       },
+      ...(secondCriterion
+        ? [
+            {
+              id: secondCriterion,
+              text: review
+                ? "Produce an independent concise explanation for review"
+                : "Create one independent task in the same project for review",
+              kind: "person",
+            },
+          ]
+        : []),
     ],
     lane,
     effect_ceiling: mutation && !review ? "existing_scopes" : "suggest",
     limits: {
-      max_attempts: mutation ? 6 : 4,
-      token_limit: 100000,
+      max_attempts: independent ? 8 : mutation ? 6 : 4,
+      token_limit: independent ? 300000 : 100000,
       deadline: new Date(Date.now() + 86400000).toISOString(),
     },
   };
@@ -368,7 +433,17 @@ async function fixture(
   );
   assert.equal(started.statusCode, 201, started.body);
   const execution = goalExecutionDetails.parse(started.json());
-  return { user, goal, criterion, input, request, execution, project };
+  return {
+    user,
+    token,
+    goal,
+    criterion,
+    secondCriterion,
+    input,
+    request,
+    execution,
+    project,
+  };
 }
 async function details(f: Awaited<ReturnType<typeof fixture>>) {
   const response = await f.request(
@@ -1179,4 +1254,616 @@ test("Overnight scoped goals require consent and the current window, use the rea
     await stopRuntime?.();
     stopRuntime = undefined;
   }
+});
+
+async function waitingQuestion(
+  f: Awaited<ReturnType<typeof fixture>>,
+  id: string,
+) {
+  let last = "";
+  for (let tick = 0; tick < 400; tick++) {
+    const response = await aiApp.inject({
+      method: "GET",
+      url: `/ai/chat/${id}`,
+      headers: { authorization: `Bearer ${f.token}` },
+    });
+    last = response.body;
+    if (response.statusCode === 200 && response.json().state === "waiting") {
+      const waiting = response.json().waiting;
+      assert.equal(waiting.kind, "person");
+      assert.ok(waiting.id);
+      return waiting as { id: string; question: string };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.fail(`Goal question did not park: ${last}`);
+}
+async function acceptScope(
+  f: Awaited<ReturnType<typeof fixture>>,
+  review: GoalExecutionDetails,
+) {
+  const current = available(review);
+  return f.request("POST", `/me/goal-executions/${current.id}/accept`, {
+    request_id: randomUUID(),
+    expected_revision: current.revision,
+    generation: current.generation,
+    expected_criteria_hash: current.criteria_hash,
+    expected_evidence_hash: current.evidence_hash ?? "0".repeat(64),
+    accepted_criterion_ids: current.criteria.map((criterion) => criterion.id),
+  });
+}
+async function parkedQuestionFixture() {
+  const f = await fixture(true, false, false, "background", true);
+  const scenario = scenarios.get(f.criterion)!;
+  scenario.questionBeforeWork = true;
+  scenario.answered = false;
+  const first = await scanOnce(f);
+  stopRuntime = await startTestAssistantRuntime("background");
+  const question = await waitingQuestion(f, first.job);
+  await settleGoalExecutions("background", new Date(), [f.user.id]);
+  const parked = available(await details(f));
+  assert.equal(parked.waiting_results.length, 1);
+  assert.equal(parked.waiting_results[0].job_id, first.job);
+  assert.equal(parked.waiting_results[0].criterion_id, f.criterion);
+  assert.equal(parked.waiting_results[0].waiting_kind, "person");
+  assert.equal(parked.can_accept, false);
+  assert.ok(
+    parked.reserved_tokens > 0,
+    "A parked live question retains its original attempt reservation",
+  );
+  return { f, first, question, parked };
+}
+
+test("a real question parks one criterion while another creates and verifies, then the original job resumes without a duplicate attempt", async () => {
+  try {
+    const { f, first, question } = await parkedQuestionFixture();
+    const independentWork = await finishUnit(f);
+    assert.equal(
+      independentWork.job.result.assistant_run.goal_result.criterion_id,
+      f.secondCriterion,
+    );
+    const independentVerify = await finishUnit(f);
+    assert.equal(
+      independentVerify.job.result.assistant_run.goal_result.criterion_id,
+      f.secondCriterion,
+    );
+    const whileWaiting = independentVerify.detail;
+    assert.equal(
+      whileWaiting.units.find((unit) => unit.criterion_id === f.secondCriterion)
+        ?.stage,
+      "ready_for_acceptance",
+    );
+    assert.equal(whileWaiting.waiting_results[0].job_id, first.job);
+    assert.equal(whileWaiting.can_accept, false);
+    assert.equal(
+      (await ownedTasks(f)).length,
+      1,
+      "The unanswered unit has created nothing",
+    );
+    assert.equal(
+      (await acceptScope(f, whileWaiting)).statusCode,
+      409,
+      "Independent readiness cannot accept an unanswered criterion",
+    );
+    const beforeAnswer = (
+      await pool.query(
+        "SELECT id,settled_at,processed_at FROM assistant_goal_attempts WHERE job_id=$1",
+        [first.job],
+      )
+    ).rows[0];
+    assert.equal(beforeAnswer.settled_at, null);
+    assert.equal(beforeAnswer.processed_at, null);
+    scenarios.get(f.criterion)!.answered = true;
+    const answer = await aiApp.inject({
+      method: "POST",
+      url: `/ai/chat/${first.job}/answer`,
+      headers: { authorization: `Bearer ${f.token}` },
+      payload: { waiting_id: question.id, answer: "Product" },
+    });
+    assert.equal(answer.statusCode, 202, answer.body);
+    await waitJob(first.job);
+    await settleGoalExecutions("background", new Date(), [f.user.id]);
+    const resumed = available(await details(f));
+    assert.equal(
+      resumed.attempt_count,
+      3,
+      "Answer resumes the original attempt instead of admitting a fresh job",
+    );
+    assert.equal(resumed.waiting_results.length, 0);
+    assert.equal(
+      resumed.units.find((unit) => unit.criterion_id === f.criterion)?.stage,
+      "verify",
+    );
+    const same = (
+      await pool.query(
+        "SELECT id,settled_at,processed_at FROM assistant_goal_attempts WHERE job_id=$1",
+        [first.job],
+      )
+    ).rows;
+    assert.equal(same.length, 1);
+    assert.equal(same[0].id, beforeAnswer.id);
+    assert.ok(same[0].settled_at);
+    assert.ok(same[0].processed_at);
+    const verified = await finishUnit(f);
+    assert.equal(verified.detail.state, "awaiting_acceptance");
+    assert.equal(verified.detail.can_accept, true);
+    assert.equal(verified.detail.waiting_results.length, 0);
+    const tasks = await ownedTasks(f);
+    assert.equal(tasks.length, 2, "Exactly one task exists for each criterion");
+    const references = verified.detail.units.flatMap((unit) =>
+      unit.outputs
+        .filter((output) => output.kind === "task")
+        .map((output) => output.id),
+    );
+    assert.equal(new Set(references).size, 2);
+    assert.deepEqual(
+      new Set(references),
+      new Set(tasks.map((task) => task.id)),
+    );
+    const accepted = await acceptScope(f, verified.detail);
+    assert.equal(accepted.statusCode, 200, accepted.body);
+    assert.equal(accepted.json().state, "completed");
+    const usage = (
+      await pool.query(
+        "SELECT count(*)::int AS n,sum(settled_tokens)::int AS used FROM assistant_goal_attempts WHERE execution_id=$1",
+        [f.execution.id],
+      )
+    ).rows[0];
+    assert.equal(usage.n, 4);
+    assert.equal(verified.detail.consumed_tokens, usage.used);
+    assert.equal(verified.detail.reserved_tokens, 0);
+    assert.equal(scenarios.get(f.criterion)?.questionAsked, 1);
+  } finally {
+    await stopRuntime?.();
+    stopRuntime = undefined;
+  }
+});
+
+test("a saved Review parks its original plan while an independent criterion reaches review readiness", async () => {
+  const f = await fixture(true, false, true, "background", true);
+  const admission = await scanOnce(f);
+  stopRuntime = await startTestAssistantRuntime("background");
+  try {
+    const work = await waitJob(admission.job);
+    const proposal = (
+      work.apply_result.structured.pending.proposal_id as string
+    )
+      .split(":")
+      .at(-1)!;
+    await settleGoalExecutions("background", new Date(), [f.user.id]);
+    const parked = available(await details(f));
+    assert.equal(parked.waiting_results.length, 1);
+    assert.equal(parked.waiting_results[0].waiting_kind, "review");
+    assert.equal(parked.waiting_results[0].job_id, admission.job);
+    const waitingAttempt = (
+      await pool.query(
+        "SELECT settled_at,processed_at FROM assistant_goal_attempts WHERE job_id=$1",
+        [admission.job],
+      )
+    ).rows[0];
+    assert.ok(waitingAttempt.settled_at);
+    assert.equal(
+      waitingAttempt.processed_at,
+      null,
+      "A charged Review attempt still has an unconsumed frontier decision",
+    );
+    await finishUnit(f);
+    const independent = await finishUnit(f);
+    assert.equal(
+      independent.detail.units.find(
+        (unit) => unit.criterion_id === f.secondCriterion,
+      )?.stage,
+      "ready_for_acceptance",
+    );
+    assert.equal(independent.detail.can_accept, false);
+    assert.equal(independent.detail.waiting_results[0].job_id, admission.job);
+    assert.equal((await ownedTasks(f)).length, 0);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM proposals WHERE user_id=$1",
+          [f.user.id],
+        )
+      ).rows[0].n,
+      1,
+    );
+    assert.equal((await acceptScope(f, independent.detail)).statusCode, 409);
+    const applied = await f.request("POST", `/proposals/${proposal}/apply`, {});
+    assert.equal(applied.statusCode, 200, applied.body);
+    await settleGoalExecutions("background", new Date(), [f.user.id]);
+    const after = available(await details(f));
+    assert.equal(after.waiting_results.length, 0);
+    assert.equal(after.attempt_count, 3);
+    assert.equal(
+      after.units.find((unit) => unit.criterion_id === f.criterion)?.stage,
+      "verify",
+    );
+    assert.equal((await ownedTasks(f)).length, 1);
+    const verified = await finishUnit(f);
+    assert.equal(verified.detail.state, "awaiting_acceptance");
+    assert.equal(verified.detail.can_accept, true);
+    const accepted = await acceptScope(f, verified.detail);
+    assert.equal(accepted.statusCode, 200, accepted.body);
+    assert.equal(accepted.json().state, "completed");
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM proposals WHERE user_id=$1",
+          [f.user.id],
+        )
+      ).rows[0].n,
+      1,
+    );
+    assert.equal((await ownedTasks(f)).length, 1);
+    assert.equal(verified.detail.attempt_count, 4);
+    assert.equal(verified.detail.reserved_tokens, 0);
+  } finally {
+    await stopRuntime?.();
+    stopRuntime = undefined;
+  }
+});
+
+function providerGate() {
+  let enter!: () => void, release!: () => void;
+  return {
+    entered: new Promise<void>((resolve) => (enter = resolve)),
+    enter: () => enter(),
+    released: new Promise<void>((resolve) => (release = resolve)),
+    release: () => release(),
+  };
+}
+test("Stop cancels parked and active criterion attempts and accounts both without letting an old answer wake work", async () => {
+  let gate: ReturnType<typeof providerGate> | undefined;
+  try {
+    const { f, first, question } = await parkedQuestionFixture();
+    gate = providerGate();
+    scenarios.get(f.secondCriterion!)!.gate = gate;
+    const other = await scanOnce(f);
+    const entered = await Promise.race([
+      gate.entered.then(() => true),
+      new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => resolve(false), 10000);
+        timeout.unref();
+      }),
+    ]);
+    assert.equal(
+      entered,
+      true,
+      "Independent active attempt reaches the local provider gate",
+    );
+    const before = await details(f);
+    const stop = await f.request(
+      "POST",
+      `/me/goal-executions/${before.id}/stop`,
+      {
+        request_id: randomUUID(),
+        expected_revision: before.revision,
+        generation: before.generation,
+      },
+    );
+    assert.equal(stop.statusCode, 200, stop.body);
+    assert.equal(stop.json().state, "stopped");
+    gate.release();
+    await Promise.all([waitJob(first.job, false), waitJob(other.job, false)]);
+    await settleGoalExecutions("background", new Date(), [f.user.id]);
+    const stopped = await details(f);
+    assert.equal(stopped.state, "stopped");
+    assert.equal(stopped.reserved_tokens, 0);
+    const attempts = (
+      await pool.query(
+        "SELECT job_id,settled_at,processed_at,settled_tokens FROM assistant_goal_attempts WHERE execution_id=$1",
+        [f.execution.id],
+      )
+    ).rows;
+    assert.equal(attempts.length, 2);
+    assert.ok(
+      attempts.every((attempt) => attempt.settled_at && attempt.processed_at),
+    );
+    assert.equal(
+      stopped.consumed_tokens,
+      attempts.reduce((sum, attempt) => sum + attempt.settled_tokens, 0),
+    );
+    const jobs = (
+      await pool.query(
+        "SELECT state,apply_result FROM ai_jobs WHERE id=ANY($1::uuid[])",
+        [[first.job, other.job]],
+      )
+    ).rows;
+    assert.ok(
+      jobs.every(
+        (job) =>
+          ["done", "failed"].includes(job.state) && job.apply_result === null,
+      ),
+    );
+    assert.equal((await ownedTasks(f)).length, 0);
+    scenarios.get(f.criterion)!.answered = true;
+    const stale = await aiApp.inject({
+      method: "POST",
+      url: `/ai/chat/${first.job}/answer`,
+      headers: { authorization: `Bearer ${f.token}` },
+      payload: { waiting_id: question.id, answer: "Product" },
+    });
+    assert.equal(stale.statusCode, 409, stale.body);
+    assert.equal(
+      await scanGoalExecutions("background", new Date(), { only: [f.user.id] }),
+      0,
+    );
+    await settleGoalExecutions("background", new Date(), [f.user.id]);
+    assert.equal((await details(f)).consumed_tokens, stopped.consumed_tokens);
+  } finally {
+    gate?.release();
+    await stopRuntime?.();
+    stopRuntime = undefined;
+  }
+});
+
+async function enteredGate(gate: ReturnType<typeof providerGate>) {
+  const entered = await Promise.race([
+    gate.entered.then(() => true),
+    new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => resolve(false), 10000);
+      timeout.unref();
+    }),
+  ]);
+  assert.equal(
+    entered,
+    true,
+    "The local fixture reaches its controlled provider barrier",
+  );
+}
+
+test("answering A while B is running queues the same attempt behind B across two runtime replicas", async () => {
+  let gate: ReturnType<typeof providerGate> | undefined;
+  let secondRuntime: (() => Promise<void>) | undefined;
+  try {
+    const { f, first, question } = await parkedQuestionFixture();
+    gate = providerGate();
+    scenarios.get(f.secondCriterion!)!.gate = gate;
+    const other = await scanOnce(f);
+    await enteredGate(gate);
+    secondRuntime = await startTestAssistantRuntime("background");
+    const initialCalls = requests.filter(
+      (request) => request.criterion === f.criterion,
+    ).length;
+    const originalAttempt = (
+      await pool.query(
+        "SELECT id FROM assistant_goal_attempts WHERE job_id=$1",
+        [first.job],
+      )
+    ).rows[0].id;
+    scenarios.get(f.criterion)!.answered = true;
+    const answer = await aiApp.inject({
+      method: "POST",
+      url: `/ai/chat/${first.job}/answer`,
+      headers: { authorization: `Bearer ${f.token}` },
+      payload: { waiting_id: question.id, answer: "Product" },
+    });
+    assert.equal(answer.statusCode, 202, answer.body);
+    for (let observation = 0; observation < 12; observation++) {
+      const jobs = (
+        await pool.query(
+          "SELECT id,state FROM ai_jobs WHERE id=ANY($1::uuid[])",
+          [[first.job, other.job]],
+        )
+      ).rows;
+      assert.equal(
+        jobs.find((job) => job.id === first.job)?.state,
+        "queued",
+        "Answered A waits behind the already-running independent job",
+      );
+      assert.equal(jobs.find((job) => job.id === other.job)?.state, "running");
+      assert.equal(
+        jobs.filter((job) => job.state === "running").length,
+        1,
+        "Replicas never claim two running jobs for one execution",
+      );
+      assert.equal(
+        requests.filter((request) => request.criterion === f.criterion).length,
+        initialCalls,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM assistant_goal_attempts WHERE execution_id=$1",
+          [f.execution.id],
+        )
+      ).rows[0].n,
+      2,
+    );
+    assert.equal(
+      await scanGoalExecutions("background", new Date(), { only: [f.user.id] }),
+      0,
+      "An answered queued unit cannot admit a replacement attempt",
+    );
+    gate.release();
+    await Promise.all([waitJob(other.job), waitJob(first.job)]);
+    for (let pass = 0; pass < 3; pass++)
+      await settleGoalExecutions("background", new Date(), [f.user.id]);
+    const settled = available(await details(f));
+    assert.equal(settled.waiting_results.length, 0);
+    assert.equal(settled.attempt_count, 2);
+    assert.equal(settled.reserved_tokens, 0);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT id FROM assistant_goal_attempts WHERE job_id=$1",
+          [first.job],
+        )
+      ).rows[0].id,
+      originalAttempt,
+    );
+    assert.equal((await ownedTasks(f)).length, 2);
+    await finishUnit(f);
+    const final = await finishUnit(f);
+    assert.equal(final.detail.state, "awaiting_acceptance");
+    assert.equal(final.detail.can_accept, true);
+    assert.equal(final.detail.attempt_count, 4);
+    const accepted = await acceptScope(f, final.detail);
+    assert.equal(accepted.statusCode, 200, accepted.body);
+    assert.equal(accepted.json().state, "completed");
+    const usage = (
+      await pool.query(
+        "SELECT sum(settled_tokens)::int AS used FROM assistant_goal_attempts WHERE execution_id=$1",
+        [f.execution.id],
+      )
+    ).rows[0];
+    assert.equal(final.detail.consumed_tokens, usage.used);
+    assert.equal(final.detail.reserved_tokens, 0);
+    assert.equal((await ownedTasks(f)).length, 2);
+  } finally {
+    gate?.release();
+    await secondRuntime?.();
+    await stopRuntime?.();
+    stopRuntime = undefined;
+  }
+});
+
+test("more than forty unchanged parked questions and a saved Review cannot starve a newly terminal result", async () => {
+  const old: Awaited<ReturnType<typeof fixture>>[] = [];
+  // Synthetic waiting state is installed on real admitted, exactly bound jobs.
+  // This avoids forty model calls; actual question parking is covered above.
+  for (let index = 0; index < 41; index++) {
+    const f = await fixture();
+    old.push(f);
+    const admitted = await scanOnce(f);
+    await pool.query(
+      "UPDATE ai_jobs SET state='waiting',sources_checked=true,run_state=jsonb_set(run_state,'{state,waiting}',$2::jsonb),heartbeat_at=now()-interval '1 hour' WHERE id=$1",
+      [
+        admitted.job,
+        {
+          kind: "person",
+          id: randomUUID(),
+          question: "Old fixture decision",
+          choices: [],
+        },
+      ],
+    );
+    await settleGoalExecutions("background", new Date(), [f.user.id]);
+  }
+  const oldIds = old.map((f) => f.execution.id);
+  const parked = (
+    await pool.query(
+      "SELECT count(*)::int AS n FROM assistant_goal_executions e JOIN assistant_goal_attempts a ON a.execution_id=e.id WHERE e.id=ANY($1::uuid[]) AND e.state='waiting' AND a.processed_at IS NULL AND a.settled_at IS NULL",
+      [oldIds],
+    )
+  ).rows[0];
+  assert.equal(parked.n, 41);
+  const held = await fixture(true, false, true);
+  const pending = await scanOnce(held);
+  stopRuntime = await startTestAssistantRuntime("background");
+  try {
+    const pendingJob = await waitJob(pending.job);
+    assert.equal(pendingJob.apply_result.structured.status, "pending_review");
+    await settleGoalExecutions("background", new Date(), [held.user.id]);
+    const waiting = available(await details(held));
+    assert.equal(waiting.waiting_results[0].waiting_kind, "review");
+    const fresh = await fixture();
+    const admission = await scanOnce(fresh);
+    await waitJob(admission.job);
+    const changes = await settleGoalExecutions("background", new Date());
+    assert.ok(
+      changes >= 1,
+      "Global observation reaches a new terminal producer despite the older parked backlog",
+    );
+    const result = available(await details(fresh));
+    assert.equal(result.state, "ready", result.last_transition_reason);
+    assert.equal(result.units[0].stage, "verify");
+    assert.equal(result.reserved_tokens, 0);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM assistant_goal_attempts WHERE execution_id=ANY($1::uuid[]) AND processed_at IS NULL AND settled_at IS NULL",
+          [oldIds],
+        )
+      ).rows[0].n,
+      41,
+      "Unchanged questions remain parked and are not falsely settled",
+    );
+    const stillWaiting = available(await details(held));
+    assert.equal(
+      stillWaiting.revision,
+      waiting.revision,
+      "An unchanged pending Review does not consume observation capacity or churn revisions",
+    );
+    assert.equal(stillWaiting.waiting_results[0].job_id, pending.job);
+    assert.equal((await ownedTasks(held)).length, 0);
+  } finally {
+    await stopRuntime?.();
+    stopRuntime = undefined;
+  }
+});
+
+test("settlement recovers cancellation after a crash immediately following the committed Stop control", async () => {
+  const { f, first, question } = await parkedQuestionFixture();
+  await stopRuntime?.();
+  stopRuntime = undefined;
+  const other = await scanOnce(f);
+  const before = await details(f);
+  const providerCalls = requests.length;
+  // Simulate process loss between domain control COMMIT and route-level stop calls.
+  await transaction((db) =>
+    controlGoalExecution(db, f.user.id, f.execution.id, "stop", {
+      request_id: randomUUID(),
+      expected_revision: before.revision,
+      generation: before.generation,
+    }),
+  );
+  const committed = (
+    await pool.query(
+      "SELECT state,cancel_requested FROM ai_jobs WHERE id=ANY($1::uuid[])",
+      [[first.job, other.job]],
+    )
+  ).rows;
+  assert.ok(committed.every((job) => job.cancel_requested));
+  assert.ok(committed.some((job) => job.state === "waiting"));
+  assert.ok(committed.some((job) => job.state === "queued"));
+  await settleGoalExecutions("background", new Date(), [f.user.id]);
+  const terminal = (
+    await pool.query(
+      "SELECT state,apply_result FROM ai_jobs WHERE id=ANY($1::uuid[])",
+      [[first.job, other.job]],
+    )
+  ).rows;
+  assert.ok(
+    terminal.every(
+      (job) =>
+        ["done", "failed"].includes(job.state) && job.apply_result === null,
+    ),
+    "The normal settler finishes both cancellations without a worker wake",
+  );
+  await settleGoalExecutions("background", new Date(), [f.user.id]);
+  const stopped = await details(f);
+  assert.equal(stopped.state, "stopped");
+  assert.equal(stopped.reserved_tokens, 0);
+  const attempts = (
+    await pool.query(
+      "SELECT settled_at,processed_at,settled_tokens FROM assistant_goal_attempts WHERE execution_id=$1",
+      [f.execution.id],
+    )
+  ).rows;
+  assert.equal(attempts.length, 2);
+  assert.ok(
+    attempts.every((attempt) => attempt.settled_at && attempt.processed_at),
+  );
+  assert.equal(
+    stopped.consumed_tokens,
+    attempts.reduce((sum, attempt) => sum + attempt.settled_tokens, 0),
+  );
+  await settleGoalExecutions("background", new Date(), [f.user.id]);
+  assert.equal((await details(f)).consumed_tokens, stopped.consumed_tokens);
+  assert.equal(requests.length, providerCalls);
+  assert.equal((await ownedTasks(f)).length, 0);
+  assert.equal(
+    await scanGoalExecutions("background", new Date(), { only: [f.user.id] }),
+    0,
+  );
+  const stale = await aiApp.inject({
+    method: "POST",
+    url: `/ai/chat/${first.job}/answer`,
+    headers: { authorization: `Bearer ${f.token}` },
+    payload: { waiting_id: question.id, answer: "Product" },
+  });
+  assert.equal(stale.statusCode, 409, stale.body);
 });

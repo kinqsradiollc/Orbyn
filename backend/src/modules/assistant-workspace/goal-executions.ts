@@ -258,13 +258,24 @@ export async function assertGoalExecutionCurrent(
 ) {
   if (
     row.owner_id !== owner ||
-    (options.generation !== undefined &&
-      row.generation !== options.generation) ||
-    (options.jobId && row.current_job_id !== options.jobId)
+    (options.generation !== undefined && row.generation !== options.generation)
   )
     fail(409, "Goal execution changed. Refresh before continuing.");
-  if (["stopped", "completed", "held", "failed", "limited"].includes(row.state))
+  if (
+    ["stopped", "completed", "held", "failed"].includes(row.state) ||
+    (row.state === "limited" && !options.jobId)
+  )
     fail(409, "This goal execution cannot continue.");
+  if (
+    options.jobId &&
+    !(
+      await db.query(
+        `SELECT id FROM assistant_goal_attempts WHERE execution_id=$1 AND owner_id=$2 AND job_id=$3 AND generation=$4 AND processed_at IS NULL`,
+        [row.id, owner, options.jobId, row.generation],
+      )
+    ).rowCount
+  )
+    fail(409, "This job no longer owns goal work.");
   const goal = await goalFacts(db, owner, row.goal_id, row.lane);
   if (
     !goal ||
@@ -300,8 +311,7 @@ export async function assertGoalExecutionCurrent(
     fail(409, "This execution reached its deadline.");
   if (
     options.admit &&
-    (row.state !== "ready" ||
-      row.current_job_id ||
+    (!["ready", "active", "waiting"].includes(row.state) ||
       row.admissions_paused ||
       !(await assistantAdmissionOpen(db, owner, row.lane)) ||
       row.attempt_count >= row.limits.max_attempts ||
@@ -315,6 +325,16 @@ export async function assertGoalExecutionCurrent(
       ["satisfied", "ready_for_acceptance", "blocked"].includes(unit.stage)
     )
       fail(409, "This work unit cannot run.");
+    if (
+      options.admit &&
+      (
+        await db.query(
+          "SELECT id FROM assistant_goal_attempts WHERE execution_id=$1 AND unit_id=$2 AND processed_at IS NULL",
+          [row.id, unit.id],
+        )
+      ).rowCount
+    )
+      fail(409, "This work unit already has saved work in progress.");
     if (options.mode && unit.stage !== options.mode)
       fail(409, "The work unit changed stage.");
     if (options.write && options.mode === "verify")
@@ -323,8 +343,15 @@ export async function assertGoalExecutionCurrent(
       options.jobId &&
       !(
         await db.query(
-          `SELECT id FROM assistant_goal_attempts WHERE execution_id=$1 AND owner_id=$2 AND job_id=$3 AND unit_id=$4 AND generation=$5 AND settled_at IS NULL`,
-          [row.id, owner, options.jobId, options.unitId, row.generation],
+          `SELECT id FROM assistant_goal_attempts WHERE execution_id=$1 AND owner_id=$2 AND job_id=$3 AND unit_id=$4 AND generation=$5 AND mode=$6 AND processed_at IS NULL`,
+          [
+            row.id,
+            owner,
+            options.jobId,
+            options.unitId,
+            row.generation,
+            options.mode ?? unit.stage,
+          ],
         )
       ).rowCount
     )
@@ -428,35 +455,30 @@ export async function startGoalExecution(
     )
   ).rows[0].id;
 }
-/** Lock the current job first; retry the control when admission changed its pointer. */
-async function lockControl(
-  db: Queryable,
-  owner: string,
-  id: string,
-  accepting = false,
-) {
+/** Lock every retained job before the execution; never invert runtime job -> execution order. */
+async function lockControl(db: Queryable, owner: string, id: string) {
   const seen = await readGoalExecution(db, owner, id);
   if (!seen) fail(404, "Goal execution not found.");
-  const evidenceJob = accepting
-    ? (
-        await db.query<{ job_id: string | null }>(
-          "SELECT job_id FROM assistant_goal_attempts WHERE execution_id=$1 AND owner_id=$2 ORDER BY ordinal DESC LIMIT 1",
-          [id, owner],
-        )
-      ).rows[0]?.job_id
-    : null;
-  if (seen.current_job_id || evidenceJob)
-    await db.query(
-      "SELECT id FROM ai_jobs WHERE id=$2 AND user_id=$1 FOR UPDATE",
-      [owner, seen.current_job_id ?? evidenceJob],
-    );
+  const identities = async () =>
+    (
+      await db.query<{ id: string; job_id: string | null }>(
+        "SELECT id,job_id FROM assistant_goal_attempts WHERE execution_id=$1 AND owner_id=$2 ORDER BY id",
+        [id, owner],
+      )
+    ).rows;
+  const before = await identities();
+  const jobIds = before.flatMap((a) => (a.job_id ? [a.job_id] : [])).sort();
+  await db.query(
+    "SELECT id FROM ai_jobs WHERE user_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE",
+    [owner, jobIds],
+  );
   const row = await lockGoalExecution(db, owner, id);
   if (
-    row.current_job_id !== seen.current_job_id ||
-    row.evidence_revision !== seen.evidence_revision
+    row.revision !== seen.revision ||
+    goalExecutionDigest(before) !== goalExecutionDigest(await identities())
   )
-    fail(409, "Work started while this control was opening. Try again.");
-  return row;
+    fail(409, "Work changed while this control was opening. Try again.");
+  return { row, jobIds };
 }
 export async function controlGoalExecution(
   db: Queryable,
@@ -472,11 +494,11 @@ export async function controlGoalExecution(
         ? goalExecutionResume.parse(raw)
         : goalExecutionControl.parse(raw);
   const digest = goalExecutionDigest({ action, input });
-  const row = await lockControl(db, owner, id, action === "accept");
+  const { row, jobIds } = await lockControl(db, owner, id);
   if (row.last_control?.id === input.request_id) {
     if (row.last_control.digest !== digest)
       fail(409, "This request already controls different work.");
-    return { job: null as string | null };
+    return { jobs: action === "stop" ? jobIds : [] };
   }
   if (
     row.revision !== input.expected_revision ||
@@ -506,8 +528,8 @@ export async function controlGoalExecution(
     state = "stopped";
     paused = true;
     await db.query(
-      "UPDATE ai_jobs SET cancel_requested=true WHERE id=$2 AND user_id=$1 AND state IN ('queued','running','waiting')",
-      [owner, currentJob],
+      "UPDATE ai_jobs SET cancel_requested=true WHERE id=ANY($2::uuid[]) AND user_id=$1 AND state IN ('queued','running','waiting')",
+      [owner, jobIds],
     );
     currentJob = null;
   }
@@ -570,7 +592,7 @@ export async function controlGoalExecution(
       }[action],
     ],
   );
-  return { job: action === "stop" ? row.current_job_id : null };
+  return { jobs: action === "stop" ? jobIds : [] };
 }
 
 export { goalExecutionDetailsFor } from "./goal-execution-evidence.js";

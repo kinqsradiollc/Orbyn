@@ -7,7 +7,11 @@ import {
   type SystemRole,
 } from "@orbyn/core";
 import { pool, transaction, type Queryable } from "../db/pool.js";
-import { startAssistantAutomation } from "../modules/ai/agent/run.js";
+import {
+  startAssistantAutomation,
+  stopAssistantJob,
+} from "../modules/ai/agent/run.js";
+import type { UserRow } from "../lib/auth.js";
 import { LEAD_TOKEN_BUDGET, goalUnitResult } from "../modules/ai/agent/lead.js";
 import {
   goalEvidenceDigest,
@@ -38,16 +42,62 @@ type Attempt = {
   generation: number;
   allocated_tokens: number;
   settled_at: Date | null;
+  processed_at: Date | null;
   job_id: string | null;
 };
+/** Presentation state follows every open unit; a parked unit does not own the queue. */
 async function transition(
   db: Queryable,
   row: GoalExecutionRow,
   state: string,
   reason: string,
   units = row.units,
-  currentJob: string | null = null,
+  _currentJob: string | null = null,
+  observation = false,
 ) {
+  const open = (
+    await db.query<{
+      unit_id: string;
+      job_id: string | null;
+      state: string | null;
+    }>(
+      `SELECT a.unit_id,a.job_id,j.state FROM assistant_goal_attempts a LEFT JOIN ai_jobs j ON j.id=a.job_id
+     WHERE a.execution_id=$1 AND a.processed_at IS NULL ORDER BY a.ordinal`,
+      [row.id],
+    )
+  ).rows;
+  const active =
+    open.find((a) => a.job_id && a.state === "running") ??
+    open.find((a) => a.job_id && a.state === "queued");
+  const pending = new Set(open.map((a) => a.unit_id));
+  const runnable = units.some(
+    (u) =>
+      ["work", "verify", "repair"].includes(u.stage) &&
+      !pending.has(u.id) &&
+      !u.pending_proposal_id,
+  );
+  const bounded =
+    row.attempt_count >= row.limits.max_attempts ||
+    row.consumed_tokens + row.reserved_tokens >= row.limits.token_limit ||
+    Date.now() >= Date.parse(row.limits.deadline);
+  if (["ready", "active", "waiting", "awaiting_acceptance"].includes(state)) {
+    state = active
+      ? "active"
+      : units.every((u) => u.stage === "ready_for_acceptance") && !open.length
+        ? "awaiting_acceptance"
+        : runnable && !bounded
+          ? "ready"
+          : open.length
+            ? "waiting"
+            : runnable && bounded
+              ? "limited"
+              : "held";
+  }
+  const currentJob = ["stopped", "completed"].includes(state)
+    ? null
+    : (active?.job_id ?? null);
+  if (observation && row.state === state && row.current_job_id === currentJob)
+    return;
   await db.query(
     `UPDATE assistant_goal_executions SET state=$2,last_transition_reason=$3,units=$4::jsonb,current_job_id=$5,
     revision=revision+1,frontier_revision=frontier_revision+1,evidence_revision=evidence_revision+1,updated_at=now() WHERE id=$1`,
@@ -65,19 +115,31 @@ export async function settleGoalExecutions(
     await pool.query<{
       id: string;
       owner_id: string;
-      current_job_id: string | null;
+      attempt_id: string;
+      job_id: string | null;
     }>(
-      `SELECT e.id,e.owner_id,coalesce(e.current_job_id,(SELECT a.job_id FROM assistant_goal_attempts a WHERE a.execution_id=e.id AND a.settled_at IS NULL ORDER BY a.ordinal DESC LIMIT 1)) AS current_job_id FROM assistant_goal_executions e
-    WHERE lane=$1 AND (e.current_job_id IS NOT NULL OR state IN ('active','waiting') OR EXISTS(SELECT 1 FROM assistant_goal_attempts a WHERE a.execution_id=e.id AND a.settled_at IS NULL))
-    AND ($2::uuid[] IS NULL OR owner_id=ANY($2::uuid[])) ORDER BY updated_at,id LIMIT 20`,
+      `SELECT e.id,e.owner_id,a.id AS attempt_id,a.job_id FROM assistant_goal_executions e
+       JOIN assistant_goal_attempts a ON a.execution_id=e.id AND a.processed_at IS NULL
+       LEFT JOIN ai_jobs j ON j.id=a.job_id
+       LEFT JOIN LATERAL (SELECT u->>'pending_proposal_id' AS proposal_id FROM jsonb_array_elements(e.units) u WHERE u->>'id'=a.unit_id::text) pending ON true
+       LEFT JOIN proposals p ON p.id::text=pending.proposal_id AND p.user_id=e.owner_id
+       WHERE e.lane=$1 AND ($2::uuid[] IS NULL OR e.owner_id=ANY($2::uuid[])) AND (
+         j.id IS NULL OR
+         (j.state IN ('done','failed') AND (a.settled_at IS NULL OR p.status IS DISTINCT FROM 'pending' OR p.expires_at<=now())) OR
+         (j.state IN ('queued','waiting') AND j.cancel_requested AND e.state IN ('stopped','completed')) OR
+         (j.state='waiting' AND e.current_job_id=j.id) OR
+         (j.state IN ('queued','running') AND (e.state<>'active' OR e.current_job_id IS DISTINCT FROM j.id))
+       )
+       ORDER BY CASE WHEN j.id IS NULL OR j.state IN ('done','failed') THEN 0 ELSE 1 END,e.updated_at,e.id,a.ordinal LIMIT 40`,
       [lane, only ?? null],
     )
   ).rows;
   let settled = 0;
+  const cancellations: { owner: string; job: string }[] = [];
   for (const candidate of candidates)
     await transaction(async (db) => {
-      // Stop, effects and settlement all lock job before execution.
-      const job = candidate.current_job_id
+      // Stop, effects and settlement all lock jobs before the execution.
+      const job = candidate.job_id
         ? (
             await db.query<{
               id: string;
@@ -89,27 +151,26 @@ export async function settleGoalExecutions(
               terminal_evidence: unknown;
               cancel_requested: boolean;
             }>(
-              `SELECT id,chat_id,turn_id,state,result,apply_result,terminal_evidence,cancel_requested FROM ai_jobs WHERE id=$1 AND user_id=$2 FOR UPDATE`,
-              [candidate.current_job_id, candidate.owner_id],
+              `SELECT id,chat_id,turn_id,state,result,apply_result,terminal_evidence,cancel_requested
+                FROM ai_jobs WHERE id=$1 AND user_id=$2 FOR UPDATE`,
+              [candidate.job_id, candidate.owner_id],
             )
           ).rows[0]
         : null;
       const row = await lockGoalExecution(db, candidate.owner_id, candidate.id);
-      if (
-        row.current_job_id !== candidate.current_job_id &&
-        !(
-          row.current_job_id === null &&
-          ["stopped", "completed"].includes(row.state)
-        )
-      )
-        return;
       const attempt = (
         await db.query<Attempt>(
-          `SELECT * FROM assistant_goal_attempts WHERE execution_id=$1 ORDER BY ordinal DESC LIMIT 1 FOR UPDATE`,
-          [row.id],
+          "SELECT * FROM assistant_goal_attempts WHERE id=$2 AND execution_id=$1 FOR UPDATE",
+          [row.id, candidate.attempt_id],
         )
       ).rows[0];
-      if (!attempt) return;
+      if (!attempt || attempt.processed_at) return;
+      const consumed = async () => {
+        await db.query(
+          "UPDATE assistant_goal_attempts SET processed_at=$2 WHERE id=$1 AND processed_at IS NULL",
+          [attempt.id, now],
+        );
+      };
       if (!job) {
         if (!attempt.settled_at) {
           await db.query(
@@ -120,27 +181,45 @@ export async function settleGoalExecutions(
             `UPDATE assistant_goal_executions SET consumed_tokens=consumed_tokens+$2,reserved_tokens=greatest(0,reserved_tokens-$2),revision=revision+1,evidence_revision=evidence_revision+1,updated_at=now() WHERE id=$1`,
             [row.id, attempt.allocated_tokens],
           );
+          row.consumed_tokens += attempt.allocated_tokens;
+          row.reserved_tokens = Math.max(
+            0,
+            row.reserved_tokens - attempt.allocated_tokens,
+          );
+        }
+        await consumed();
+        const unit = row.units.find((u) => u.id === attempt.unit_id);
+        if (unit) {
+          unit.stage = "blocked";
+          unit.blocker_code = "evidence_unavailable";
+          unit.revision++;
         }
         await transition(
           db,
           row,
-          ["stopped", "completed"].includes(row.state) ? row.state : "held",
-          "Execution evidence is no longer available.",
+          ["stopped", "completed"].includes(row.state) ? row.state : "ready",
+          "Execution evidence is no longer available; this criterion will not be repeated.",
         );
         return;
       }
       if (["queued", "running", "waiting"].includes(job.state)) {
-        const next = job.state === "waiting" ? "waiting" : "active";
-        if (!["stopped", "completed"].includes(row.state) && row.state !== next)
-          await db.query(
-            `UPDATE assistant_goal_executions SET state=$2,last_transition_reason=$3,revision=revision+1,updated_at=now() WHERE id=$1`,
-            [
-              row.id,
-              next,
-              job.state === "waiting"
-                ? "This run needs your decision."
-                : "A bounded work unit is in progress.",
-            ],
+        if (
+          ["stopped", "completed"].includes(row.state) &&
+          job.cancel_requested &&
+          ["queued", "waiting"].includes(job.state)
+        )
+          cancellations.push({ owner: row.owner_id, job: job.id });
+        if (!["stopped", "completed", "held", "failed"].includes(row.state))
+          await transition(
+            db,
+            row,
+            "ready",
+            job.state === "waiting"
+              ? "This criterion needs your decision. Independent criteria may continue."
+              : "A bounded work unit is in progress.",
+            row.units,
+            null,
+            true,
           );
         return;
       }
@@ -180,11 +259,30 @@ export async function settleGoalExecutions(
         );
         settled++;
       }
+      const rawPendingProposal =
+        job.apply_result?.structured?.pending?.proposal_id;
+      const pendingProposalId =
+        typeof rawPendingProposal === "string"
+          ? rawPendingProposal.replace(/^proposal:/, "")
+          : null;
+      const pendingReview =
+        pendingProposalId &&
+        /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(pendingProposalId)
+          ? (
+              await db.query<{ pending: boolean }>(
+                `SELECT status='pending' AND expires_at>now() AS pending FROM proposals WHERE id=$1 AND user_id=$2`,
+                [pendingProposalId, row.owner_id],
+              )
+            ).rows[0]?.pending === true
+          : false;
+      const closeFrontier =
+        !pendingReview || ["stopped", "completed"].includes(row.state);
       if (
         row.state === "stopped" ||
         row.state === "completed" ||
         row.generation !== attempt.generation
       ) {
+        await consumed();
         await db.query(
           `UPDATE assistant_goal_executions SET current_job_id=NULL,revision=revision+1,updated_at=now() WHERE id=$1 AND current_job_id=$2`,
           [row.id, job.id],
@@ -197,6 +295,7 @@ export async function settleGoalExecutions(
           jobId: job.id,
         });
       } catch {
+        await consumed();
         await transition(
           db,
           row,
@@ -205,6 +304,7 @@ export async function settleGoalExecutions(
         );
         return;
       }
+      if (closeFrontier) await consumed();
       const visible = await db.query(
         `SELECT j.id FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id WHERE j.id=$2 AND ${assistantJobSourcesVisible("j", "$1", false)} AND ${assistantChatVisible("c", "$1")}`,
         [row.owner_id, job.id],
@@ -249,17 +349,18 @@ export async function settleGoalExecutions(
             [proposal, row.owner_id],
           )
         ).rows[0];
+        const priorProposal = unit.pending_proposal_id;
         unit.pending_proposal_id = proposal;
         if (decision?.status === "pending") {
-          if (row.state !== "waiting")
-            await transition(
-              db,
-              row,
-              "waiting",
-              "The prepared changes are waiting in Review.",
-              row.units,
-              job.id,
-            );
+          await transition(
+            db,
+            row,
+            "waiting",
+            "The prepared changes are waiting in Review.",
+            row.units,
+            job.id,
+            priorProposal === proposal,
+          );
           return;
         }
         if (decision?.status !== "applied") {
@@ -451,6 +552,17 @@ export async function settleGoalExecutions(
           : "Continuing the next distinct bounded work unit.",
       );
     });
+  // The control transaction fences every generation first. If its HTTP process
+  // dies before finishing parked cancellation, the existing worker retries it.
+  // Never acquire another job while holding the execution lock.
+  for (const cancellation of cancellations) {
+    const user = (
+      await pool.query<UserRow>("SELECT * FROM users WHERE id=$1", [
+        cancellation.owner,
+      ])
+    ).rows[0];
+    if (user) await stopAssistantJob(cancellation.job, user);
+  }
   return settled;
 }
 
@@ -468,7 +580,7 @@ export async function scanGoalExecutions(
   const rows = (
     await pool.query<{ id: string; owner_id: string }>(
       `SELECT e.id,e.owner_id FROM assistant_goal_executions e
-    WHERE e.lane=$1 AND e.state='ready' AND NOT e.admissions_paused AND e.current_job_id IS NULL
+    WHERE e.lane=$1 AND e.state IN ('ready','active','waiting') AND NOT e.admissions_paused AND NOT EXISTS(SELECT 1 FROM assistant_goal_attempts a JOIN ai_jobs j ON j.id=a.job_id WHERE a.execution_id=e.id AND a.processed_at IS NULL AND j.state IN ('queued','running'))
     AND ($2::uuid[] IS NULL OR e.owner_id=ANY($2::uuid[])) AND ${assistantProviderAdmissionSql("e.owner_id", options.ai)}
     ORDER BY e.updated_at,e.id LIMIT $3`,
       [lane, options.only ?? null, Math.min(options.limit ?? 10, 20)],
@@ -478,8 +590,24 @@ export async function scanGoalExecutions(
   for (const candidate of rows)
     await transaction(async (db) => {
       const row = await lockGoalExecution(db, candidate.owner_id, candidate.id);
-      if (row.state !== "ready" || row.admissions_paused || row.current_job_id)
+      if (
+        !["ready", "active", "waiting"].includes(row.state) ||
+        row.admissions_paused
+      )
         return;
+      const open = (
+        await db.query<{
+          unit_id: string;
+          job_id: string | null;
+          state: string | null;
+        }>(
+          `SELECT a.unit_id,a.job_id,j.state FROM assistant_goal_attempts a LEFT JOIN ai_jobs j ON j.id=a.job_id WHERE a.execution_id=$1 AND a.processed_at IS NULL`,
+          [row.id],
+        )
+      ).rows;
+      if (open.some((a) => ["queued", "running"].includes(a.state ?? "")))
+        return;
+      const parkedUnits = new Set(open.map((a) => a.unit_id));
       if (!(await assistantAdmissionOpen(db, row.owner_id, lane))) return;
       if (
         row.attempt_count >= row.limits.max_attempts ||
@@ -507,22 +635,25 @@ export async function scanGoalExecutions(
         );
         return;
       }
-      const unit = row.units.find((unit) =>
-        ["work", "verify", "repair"].includes(unit.stage),
+      const unit = row.units.find(
+        (unit) =>
+          ["work", "verify", "repair"].includes(unit.stage) &&
+          !parkedUnits.has(unit.id) &&
+          !unit.pending_proposal_id,
       );
       if (!unit) {
         await transition(
           db,
           row,
-          "held",
-          "No remaining bounded work unit is available.",
+          "ready",
+          "Remaining work is waiting for your decision.",
         );
         return;
       }
       const parent = (
         await db.query<Attempt>(
-          `SELECT * FROM assistant_goal_attempts WHERE execution_id=$1 ORDER BY ordinal DESC LIMIT 1`,
-          [row.id],
+          `SELECT * FROM assistant_goal_attempts WHERE execution_id=$1 AND unit_id=$2 ORDER BY ordinal DESC LIMIT 1`,
+          [row.id, unit.id],
         )
       ).rows[0];
       const user = (
@@ -535,6 +666,23 @@ export async function scanGoalExecutions(
       let allocation = Math.min(
         LEAD_TOKEN_BUDGET,
         row.limits.token_limit - row.consumed_tokens - row.reserved_tokens,
+        Math.max(
+          1,
+          Math.floor(
+            (row.limits.token_limit -
+              row.consumed_tokens -
+              row.reserved_tokens) /
+              Math.max(
+                1,
+                row.units.filter(
+                  (other) =>
+                    ["work", "verify", "repair"].includes(other.stage) &&
+                    !parkedUnits.has(other.id) &&
+                    !other.pending_proposal_id,
+                ).length,
+              ),
+          ),
+        ),
       );
       let night: { id: string; end: Date; wait: boolean } | undefined;
       if (lane === "overnight") {

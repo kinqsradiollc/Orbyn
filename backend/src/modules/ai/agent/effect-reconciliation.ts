@@ -131,7 +131,7 @@ export async function withAssistantApplyTransaction<T>(
 export async function reconcileAssistantApply(
   jobId: string,
   ownerId: string,
-  options: { knownNotStarted?: boolean } = {},
+  options: { knownNotStarted?: boolean; cancelledParked?: boolean } = {},
 ): Promise<AssistantApplyReconciliation> {
   try {
     return await transaction(
@@ -143,15 +143,26 @@ export async function reconcileAssistantApply(
             apply_tracking_version: number | null;
             confirmed_rollback: boolean;
             state: string;
+            cancel_requested: boolean;
           }>(
-            `SELECT apply_result,apply_started_at,apply_tracking_version,state,
+            `SELECT apply_result,apply_started_at,apply_tracking_version,state,cancel_requested,
               (apply_started_at IS NOT NULL AND apply_rolled_back_at>=apply_started_at) AS confirmed_rollback FROM ai_jobs
            WHERE id=$1 AND user_id=$2 FOR UPDATE`,
             [jobId, ownerId],
           )
         ).rows[0];
         if (!row) return { kind: "unknown", reason: "missing_job" };
-        if (row.state !== "running") throw new AssistantLeaseLost();
+        // Stop reads a parked job's existing receipt without acquiring goal work.
+        // A leased runner still has to pass assertAssistantLease below.
+        if (
+          row.state !== "running" &&
+          !(
+            options.cancelledParked === true &&
+            row.cancel_requested &&
+            ["queued", "waiting"].includes(row.state)
+          )
+        )
+          throw new AssistantLeaseLost();
         await assertAssistantLease(jobId, db, true);
         const authorized = await db.query(
           `SELECT j.id FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id

@@ -245,7 +245,7 @@ than dropping the constraint or clearing a marker. Coordinate execution workers
 before enabling any future automatic retry policy. Local source and guarded tests
 do not establish that a hosted rollout or worker cutover occurred.
 
-Explicit goal work also requires migration 300 before starting its API or compatible
+Explicit goal work requires migrations 300–301 before starting its API or compatible
 Background/Overnight consumers. It adds execution intent/frontier and attempt
 records around the existing `ai_jobs` queue; it does not create a second provider
 or planner queue, convert weekly check-ins, or start existing goals automatically.
@@ -255,20 +255,40 @@ requires a separate first-party person attestation of current criteria and evide
 See [Assistant](assistant.md#explicit-goal-work) and the
 [API contract](api.md#explicit-goal-executions-session-mutations-authenticated-reads).
 
-One unsettled attempt per execution serializes admission. A job waiting for an
-answer currently holds that execution's other criteria. Existing lane/night limits
-and cumulative execution attempt, estimated-token and deadline bounds apply across
-work, read-only verification and versioned repair. Unknown usage keeps conservative
-reservations. Unknown effects, changed permission/configuration, pruned required
-evidence and unsupported repairs hold work instead of replaying a create operation.
-An open explicit execution excludes competing weekly/night check-in admission.
+Before a migration 301 cutover, stop and drain old Background/Overnight consumers.
+Their execution-wide settlement/admission code must not run against the new
+per-unit frontier. Apply the migration, then start compatible API/runtime/workers
+together. Migration 301 preserves settled history, keeps the current pending
+Review producer open, and replaces execution-wide ownership with one open attempt
+per unit. It also updates the database work-owner guard and adds the matching runner
+waiting-overlap predicate. Applying it locally does not establish a live production
+migration or worker deployment.
+
+A waiting question or approval parks its own unit and retains the same job,
+checkpoint and allowance reservation; independent criteria may proceed. Answer
+requeues that job. Pending Review retains the original producer/proposal while its
+terminal budget charge can already be settled. `processed_at` records frontier
+consumption separately from `settled_at`/`settled_tokens`; both are one-way records.
+The execution's current-job pointer is presentation only. Existing lane/night
+limits and cumulative attempt, estimated-token and deadline bounds apply across
+all work, read-only verification, versioned repair and parked reservations. Unknown
+usage keeps conservative accounting. Unknown effects, changed permission/configuration,
+pruned required evidence and unsupported repairs hold work instead of replaying a
+create operation. An open explicit execution excludes competing weekly/night
+check-in admission, and the work-owner guard still prevents simultaneous running
+jobs for one goal.
 
 Pause prevents new admissions; Stop invalidates the generation and requests
-cancellation without undoing committed effects. Settlement must still charge each
-terminal or pruned attempt once after its current-job pointer is cleared, and must
-not reopen a stopped generation. During recovery, preserve units, bound artifact
-IDs/versions, attempt lineage, hashes, reservations and acceptance records. Do not
-clear markers or relabel held work as complete to drain the queue. Deployment
+cancellation of every queued, running or parked execution job without undoing
+committed effects. Controls lock retained jobs in stable order before the execution.
+Settlement must still charge each terminal or pruned attempt once after its
+current-job pointer is cleared, and must not reopen a stopped generation. If an
+API process ends after committing Stop but before finishing parked cancellation,
+the existing worker completes that cancellation without a provider call. Settling
+unchanged waiting questions or pending Review must not starve later terminal work.
+During recovery, preserve units, bound artifact IDs/versions, attempt lineage,
+settlement/consumption timestamps, hashes, reservations and acceptance records.
+Do not clear markers or relabel held work as complete to drain the queue. Deployment
 worker cutover, production query costs, full Open Duet parity and installed-native
 qualification require their own evidence; local source/tests do not establish them.
 

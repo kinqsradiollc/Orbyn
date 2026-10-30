@@ -149,9 +149,10 @@ export async function goalExecutionRoutes(app: FastifyInstance) {
       const result = await transaction((db) =>
         controlGoalExecution(db, user.id, id, action, r.body),
       );
-      if (result.job) {
+      if (result.jobs.length) {
         const { stopAssistantJob } = await import("../ai/agent/run.js");
-        await stopAssistantJob(result.job, user, app.log);
+        for (const job of result.jobs)
+          await stopAssistantJob(job, user, app.log);
       }
       return transaction((db) => goalExecutionDetailsFor(db, user.id, id));
     });

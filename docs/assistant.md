@@ -97,13 +97,22 @@ is held. Repair after a known applied result uses the bound outputs instead. Att
 with conservative reservations when usage is unknown; these are execution estimates,
 not provider billing totals.
 
-There is one current job and at most one unsettled attempt per execution. A job
-waiting for an answer currently serializes that execution: its other criteria do
-not start until the question is answered or the work is stopped. A pending Review
-proposal also remains attached to the same saved work. Pause blocks new admissions
-while already-admitted work may finish. Stop invalidates the execution generation
-and cancels admitted work, without undoing committed changes. Terminal attempts
-still settle their retained accounting after Stop; late results cannot reopen work.
+Each criterion has at most one open attempt. A job waiting for an answer or
+approval parks that criterion while independent criteria may continue. Answer
+resumes the same job and saved checkpoint; it does not create a replacement attempt
+or grant more permission. Pending Review also keeps the original proposal and unit
+identity. These jobs share the execution's cumulative attempt, token and deadline
+allowance; a parked job retains its reservation. Existing lane limits still apply,
+and two jobs for the same goal do not run simultaneously.
+
+The current-job link is a presentation focus. Waiting results remain separately
+available for every parked criterion. Budget settlement records a terminal job's
+charge once; frontier consumption separately records that its result or Review
+decision has been handled. A finished proposal may therefore be charged while its
+unit stays open in Review. Pause blocks new admissions while already-admitted work
+may finish. Stop invalidates the execution generation and requests cancellation of
+all its admitted jobs, including parked ones, without undoing committed changes.
+Terminal attempts still settle after Stop; late results cannot reopen work.
 
 **Ready for your review** is not accepted completion. The person can accept only the
 current criteria and evidence, after active work, unanswered questions, pending
