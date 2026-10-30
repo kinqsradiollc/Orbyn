@@ -55,6 +55,8 @@ export type Turn =
        * `assistant_run.plan_job`), for listing and undoing it; null otherwise.
        */
       changesJob: string | null;
+      /** Current response evidence; older saved turns may not retain these flags. */
+      execution?: "stopped" | "timed_out";
     };
 
 export type AssistantScope = ChatScope & { name: string };
@@ -454,6 +456,12 @@ export function useAssistant({
       // The chat's trace covers every turn; keep this reply's steps only.
       trace: result.trace.filter((entry) => entry.turn_id === result.turn_id),
       changesJob: appliedJob(result.assistant_run),
+      execution:
+        result.assistant_run?.stopped === true
+          ? "stopped"
+          : result.assistant_run?.timed_out === true
+            ? "timed_out"
+            : undefined,
     };
     setTurns((t) => [
       ...t.filter(

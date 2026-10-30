@@ -17,16 +17,19 @@ import {
 } from "lucide-react";
 import {
   dateLabel,
+  workspacePresets,
   overviewItems,
-  inProgressEmpty,
+  todayIsCurrent,
   type Doc,
   type Item,
 } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { UpNextCard } from "./UpNextCard";
 import { TodayCard } from "./TodayCard";
+import { MorningReview } from "./MorningReview";
 import { AssistantIdeasCard } from "./AssistantIdeasCard";
 import { usePlanned } from "../../app/planned";
+import { usePrefs } from "../../app/prefs";
 import { ItemRow } from "../tasks/ItemRow";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
@@ -37,6 +40,7 @@ type Props = {
   /** Opens a document found on the Overview. */
   onOpenDoc: (doc: Doc) => void;
   onOpenProject: (id: string) => void;
+  onOpenAgentOutput?: (id: string) => void;
   items: Item[];
   busy: boolean;
   canWrite: (item: Item) => boolean;
@@ -76,10 +80,40 @@ export function OverviewView({
   onPlanAgain,
   onPlanMyDay,
   onShowLate,
+  onOpenAgentOutput,
 }: Props) {
   const { ref: gridRef, width: gridWidth } = useElementWidth();
   const now = new Date();
   const planned = usePlanned();
+  const presets = workspacePresets(usePrefs().viewChoice("workspace"));
+  const engineer = presets.includes("engineer");
+  const student = presets.includes("student");
+  const workspaceShortcuts = (engineer || student) && (
+    <section className="overview-shortcuts" aria-label="Your workspaces">
+      <h2>Your workspaces</h2>
+      <div>
+        <button className="text-button" onClick={() => onNavigate("Projects")}>
+          {engineer && student
+            ? "Projects & courses"
+            : engineer
+              ? "Project work"
+              : "Course projects"}{" "}
+          <ArrowRight size={14} />
+        </button>
+        {engineer && (
+          <button className="text-button" onClick={() => onNavigate("Docs")}>
+            Specifications & decisions <ArrowRight size={14} />
+          </button>
+        )}
+        {student && (
+          <button className="text-button" onClick={() => onNavigate("Study")}>
+            Review material <ArrowRight size={14} />
+          </button>
+        )}
+      </div>
+    </section>
+  );
+  const hasDaily = !!planned.today && todayIsCurrent(planned.today, now);
   /** Focus on a task by id: the listed copy, else the task opens instead. */
   const focusById = (id: string) => {
     const item = items.find((i) => i.id === id);
@@ -97,6 +131,33 @@ export function OverviewView({
     inProgressCount,
     blockedCount: blocked,
   } = overviewItems(items, now);
+  // A task has one primary place in the daily workspace. Session history is
+  // retained inside Today; the other projections only add work not shown there.
+  const dailyIds = new Set(
+    hasDaily
+      ? planned.today!.rows.map((r) => r.item_id)
+      : planned.ready
+        ? today.map((i) => i.id)
+        : [],
+  );
+  const decisions = attention.filter((i) => !dailyIds.has(i.id));
+  const decisionIds = new Set(decisions.map((i) => i.id));
+  const continuing = inProgress.filter(
+    (i) => !dailyIds.has(i.id) && !decisionIds.has(i.id),
+  );
+  const continuingIds = new Set(continuing.map((i) => i.id));
+  const upcoming = comingUp.filter(
+    (i) =>
+      !dailyIds.has(i.id) && !decisionIds.has(i.id) && !continuingIds.has(i.id),
+  );
+  const shownIds = new Set(
+    [
+      ...dailyIds,
+      ...decisionIds,
+      ...continuingIds,
+      ...upcoming.slice(0, 5).map((i) => i.id),
+    ].filter((id): id is string => !!id),
+  );
   const openTasks = pending.filter((i) => i.kind === "task");
   const average = openTasks.length
     ? openTasks.reduce((sum, i) => sum + progressOf(i), 0) / openTasks.length
@@ -116,10 +177,21 @@ export function OverviewView({
       />
     ));
 
+  const morningReview = (
+    <MorningReview
+      onOpenActivity={(lane) =>
+        onNavigate(lane === "background" ? "Background" : "Overnight")
+      }
+      onOpenChat={onOpenAgentOutput}
+    />
+  );
+
   // Start with a single task action when the planner is empty.
   if (!items.length)
     return (
       <>
+        {workspaceShortcuts}
+        {morningReview}
         <section className="card">
           <EmptyState
             icon={Sun}
@@ -154,6 +226,8 @@ export function OverviewView({
         />
         <Stat icon={CircleCheck} label="Done this week" value={doneThisWeek} />
       </section>
+      {workspaceShortcuts}
+      {morningReview}
       <AssistantIdeasCard onReview={() => onNavigate("Review")} />
       <div
         ref={gridRef}
@@ -164,9 +238,10 @@ export function OverviewView({
       >
         <div className="overview-main">
           {/* Older servers have no Today list: what's due today, as before. */}
-          {!planned.ready || planned.today ? (
+          {!planned.ready || hasDaily ? (
             <TodayCard
               today={planned.today}
+              items={items}
               onOpen={onOpenById}
               onFocus={focusById}
               onPlanIt={onPlanIt}
@@ -198,48 +273,56 @@ export function OverviewView({
               )}
             </OverviewSection>
           )}
-          <OverviewSection
-            icon={Loader}
-            title="In progress"
-            className="ov-in-progress"
-            count={inProgress.length}
-            action={
-              <button
-                className="text-button"
-                onClick={() => onNavigate("My tasks")}
-              >
-                All tasks <ArrowRight size={14} />
-              </button>
-            }
-          >
-            {inProgress.length ? (
-              rows(inProgress)
-            ) : (
-              <p className="section-empty">
-                {inProgressEmpty(inProgressCount)}
-              </p>
-            )}
-          </OverviewSection>
-
-          {attention.length > 0 && (
+          {decisions.length > 0 && (
             <OverviewSection
               icon={AlertTriangle}
-              title="Needs attention"
-              count={attention.length}
+              title="Needs a decision"
+              count={decisions.length}
               className="attention-card"
-              hint="Blocked or overdue."
+              hint="Blocked or overdue work outside your daily plan."
+              action={
+                <button
+                  className="text-button"
+                  onClick={() => onNavigate("My tasks")}
+                >
+                  All tasks <ArrowRight size={14} />
+                </button>
+              }
             >
-              {rows(attention)}
+              {rows(decisions)}
+            </OverviewSection>
+          )}
+          {continuing.length > 0 && (
+            <OverviewSection
+              icon={Loader}
+              title="Continue work"
+              className="ov-in-progress"
+              count={continuing.length}
+              action={
+                <button
+                  className="text-button"
+                  onClick={() => onNavigate("My tasks")}
+                >
+                  All tasks <ArrowRight size={14} />
+                </button>
+              }
+            >
+              {rows(continuing)}
             </OverviewSection>
           )}
         </div>
         <aside className="overview-aside" aria-label="Looking ahead">
-          <UpNextCard items={items} onOpen={onOpen} onFocus={onFocus} />
+          <UpNextCard
+            items={items}
+            excludeIds={shownIds}
+            onOpen={onOpen}
+            onFocus={onFocus}
+          />
           <OverviewSection
             icon={CalendarDays}
             title="Coming up"
             className="ov-coming-up"
-            count={comingUp.length}
+            count={upcoming.length}
             action={
               <button
                 className="text-button"
@@ -249,7 +332,7 @@ export function OverviewView({
               </button>
             }
           >
-            {comingUp.slice(0, 5).map((i) => (
+            {upcoming.slice(0, 5).map((i) => (
               <button className="upcoming" key={i.id} onClick={() => onOpen(i)}>
                 <span className="date-tile" aria-hidden="true">
                   <small>
@@ -278,7 +361,7 @@ export function OverviewView({
                 <StatusPill status={i.status} />
               </button>
             ))}
-            {!comingUp.length && (
+            {!upcoming.length && (
               <p className="section-empty">No upcoming tasks or events.</p>
             )}
           </OverviewSection>
@@ -294,14 +377,14 @@ export function OverviewView({
             <h2>Progress</h2>
             <div className="progress-line">
               <strong>{Math.round(completePct)}%</strong>
-              <span>of your plans complete</span>
+              <span>of items completed</span>
             </div>
             <div className="progress-track">
               <div style={{ transform: `scaleX(${completePct / 100})` }} />
             </div>
             <p>
               {openTasks.length
-                ? `Open tasks are ${Math.round(average)}% done on average.`
+                ? `Open tasks average ${Math.round(average)}% reported progress.`
                 : "No open tasks."}
             </p>
           </section>

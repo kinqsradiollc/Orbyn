@@ -222,3 +222,8 @@
 .assistant-handoff-dialog::backdrop {
   background: color-mix(in srgb, var(--color-text) 35%, transparent);
 }
+
+.assistant-output-review {
+  color: var(--color-muted);
+  font-size: 13px;
+}

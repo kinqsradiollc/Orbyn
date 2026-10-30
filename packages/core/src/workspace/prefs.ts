@@ -258,6 +258,13 @@ export const viewChoice = z
   .strict();
 export type ViewChoice = z.infer<typeof viewChoice>;
 
+/** Optional shortcut sections in the shared workspace view, compatible with existing readers. */
+export const WORKSPACE_PRESETS = ["engineer", "student"] as const;
+export type WorkspacePreset = (typeof WORKSPACE_PRESETS)[number];
+export function workspacePresets(choice?: ViewChoice): WorkspacePreset[] {
+  return WORKSPACE_PRESETS.filter((preset) => choice?.pins?.includes(preset));
+}
+
 /** View choices by place: "tasks", "calendar", "docs" and so on. */
 export const viewChoices = z.record(
   z
@@ -481,9 +488,9 @@ export const START_SCREENS = [
 export type StartScreen = (typeof START_SCREENS)[number];
 
 export const START_SCREEN_LABELS: Record<StartScreen, string> = {
-  overview: "Home",
-  agenda: "Today's agenda",
-  tasks: "My tasks",
+  overview: "Today",
+  agenda: "Daily brief",
+  tasks: "Work",
   "last-page": "The last page I had open",
 };
 

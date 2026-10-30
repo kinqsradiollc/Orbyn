@@ -217,6 +217,7 @@ export function App() {
   const [dock, setDock] = useState(() => initialDock(planner.token ?? null));
   const dockRef = useRef(dock);
   dockRef.current = dock;
+  const dockOpener = useRef<HTMLElement | null>(null);
   const dockLinkOwner = useRef<{
     account: string | null;
     open: (url: string) => void;
@@ -239,6 +240,13 @@ export function App() {
       if (dockRef.current.account !== account)
         actDock({ type: "reset", account });
       const before = dockRef.current;
+      if (!before.open) {
+        const focused = document.activeElement;
+        dockOpener.current =
+          focused instanceof HTMLElement && focused !== document.body
+            ? focused
+            : null;
+      }
       const next = actDock({ type: "open", account, target });
       if (account && next === before)
         planner.setError(
@@ -247,6 +255,27 @@ export function App() {
     },
     [planner.token, planner.setError, actDock],
   );
+  const [notificationPin, setNotificationPin] = useState<{
+    user: string;
+    pinned: boolean;
+  } | null>(null);
+  const pinUser = planner.user?.id;
+  useEffect(() => {
+    if (!planner.token || !pinUser) {
+      setNotificationPin(null);
+      return;
+    }
+    let pinned = false;
+    try {
+      pinned =
+        localStorage.getItem(`orbyn-notifications-pinned:${pinUser}`) ===
+        "true";
+    } catch {
+      /* Session preference remains usable. */
+    }
+    setNotificationPin({ user: pinUser, pinned });
+    if (pinned) openDock();
+  }, [pinUser, planner.token, openDock]);
   const dockState =
     dock.account === (planner.token ?? null)
       ? dock
@@ -396,6 +425,7 @@ export function App() {
   );
   useEffect(() => {
     setPaired(null);
+    dockOpener.current = null;
     if (dockRef.current.account !== (planner.token ?? null))
       actDock({ type: "reset", account: planner.token ?? null });
     setChromeLocations({});
@@ -403,6 +433,12 @@ export function App() {
     restoreRequested.current = null;
     focusPane("main");
   }, [planner.token]);
+  const restoreDockFocus = () => {
+    const opener = dockOpener.current;
+    if (opener?.isConnected && !opener.closest("[hidden],[inert]"))
+      opener.focus({ preventScroll: true });
+    else restorePaneFocus(focusedRef.current);
+  };
   return (
     <div className="workspace-with-dock">
       <div className="workspace-main-container" ref={mainLayout.ref}>
@@ -571,6 +607,27 @@ export function App() {
         open={dockState.open}
         minMainWidth={paired ? 960 : 480}
         activeId={dockState.activeId}
+        pinned={
+          notificationPin?.user === pinUser && notificationPin?.pinned === true
+        }
+        onTogglePin={
+          dockState.activeId === "notifications" && pinUser
+            ? () => {
+                const pinned = !(
+                  notificationPin?.user === pinUser && notificationPin.pinned
+                );
+                setNotificationPin({ user: pinUser, pinned });
+                try {
+                  localStorage.setItem(
+                    `orbyn-notifications-pinned:${pinUser}`,
+                    String(pinned),
+                  );
+                } catch {
+                  /* Session preference remains usable. */
+                }
+              }
+            : undefined
+        }
         tabs={dockState.tabs.map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -615,11 +672,11 @@ export function App() {
             account: dockState.account,
             id,
           });
-          if (!next.tabs.length) restorePaneFocus(focusedRef.current);
+          if (!next.tabs.length) restoreDockFocus();
         }}
         onClose={() => {
           actDock({ type: "hide", account: dockState.account });
-          restorePaneFocus(focusedRef.current);
+          restoreDockFocus();
         }}
       />
     </div>
@@ -1949,7 +2006,8 @@ function WorkspaceController({
     );
     if (!legacy.length) return;
     const activeWasLegacy = legacy.some((tab) => tab.key === state.active);
-    onOpenNotifications();
+    // A background legacy tab is history, not a request to open a panel.
+    if (activeWasLegacy) onOpenNotifications();
     const next = tabs.act({ type: "drop", keys: legacy.map((tab) => tab.key) });
     if (activeWasLegacy) showPlace(placeOf(activeTab(next)));
   }, [token]); // one migration per account; no new main notification tabs can be opened
@@ -2820,6 +2878,18 @@ function WorkspaceController({
       </PrefsContext.Provider>
     );
 
+  const canOpenAgentOutput =
+    !busy &&
+    !assistant.thinking &&
+    !assistant.restoringChat &&
+    !["queued", "running", "waiting"].includes(
+      assistant.runProgress?.state ?? "",
+    );
+  const openAgentOutput = (id: string) => {
+    if (!canOpenAgentOutput) return;
+    navigate("AI assistant");
+    void assistant.openChat(id).catch(report);
+  };
   const sidebar = (
     <Sidebar
       open={!!sharedChromeHost || mobileNav}
@@ -2970,6 +3040,9 @@ function WorkspaceController({
                 {view === "Overview" && (
                   <OverviewView
                     {...listProps}
+                    onOpenAgentOutput={
+                      canOpenAgentOutput ? openAgentOutput : undefined
+                    }
                     onNewItem={() => newItem()}
                     onNavigate={(next) =>
                       chromeRun.current({ kind: "navigate", view: next })
@@ -2996,27 +3069,8 @@ function WorkspaceController({
                 )}
                 {view === "Overview" && (
                   <HomeSections
-                    canOpenAgentOutput={
-                      !busy &&
-                      !assistant.thinking &&
-                      !assistant.restoringChat &&
-                      !["queued", "running", "waiting"].includes(
-                        assistant.runProgress?.state ?? "",
-                      )
-                    }
-                    onOpenAgentOutput={(id) => {
-                      if (
-                        busy ||
-                        assistant.thinking ||
-                        assistant.restoringChat ||
-                        ["queued", "running", "waiting"].includes(
-                          assistant.runProgress?.state ?? "",
-                        )
-                      )
-                        return;
-                      navigate("AI assistant");
-                      void assistant.openChat(id).catch(report);
-                    }}
+                    canOpenAgentOutput={canOpenAgentOutput}
+                    onOpenAgentOutput={openAgentOutput}
                     report={report}
                     onOpenProject={(id) => {
                       setProjectToOpen(id);

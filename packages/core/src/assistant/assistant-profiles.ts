@@ -127,3 +127,122 @@ export const assistantProfiles = z
     "Each runtime needs a separate profile.",
   );
 export type AssistantProfiles = z.output<typeof assistantProfiles>;
+
+export type AssistantReviewRow = {
+  id: string;
+  lane: AssistantProfile["lane"];
+  title: string;
+  detail: string;
+  action: string;
+  priority: number;
+  at?: string;
+  chatId?: string;
+};
+
+/** Profile output identity supports chat grouping, not goal/routine acceptance. */
+export function recentAssistantWork(
+  data: AssistantProfiles,
+): AssistantReviewRow[] {
+  const rows: AssistantReviewRow[] = [];
+  for (const profile of data.profiles) {
+    const lane = profile.lane;
+    const name = lane === "background" ? "Background" : "Overnight";
+    if (profile.counts.waiting > 0)
+      rows.push({
+        id: `${lane}:waiting`,
+        lane,
+        priority: 0,
+        title: `${name} · Waiting for you`,
+        detail: `${profile.counts.waiting} ${profile.counts.waiting === 1 ? "run needs" : "runs need"} a decision.`,
+        action: "Review decisions",
+      });
+    // Event receipts are historical; only the latest observed event per job is considered.
+    const latest = new Map<
+      string,
+      AssistantProfiles["profiles"][number]["recent_activity"][number]
+    >();
+    for (const event of profile.recent_activity) {
+      const key = event.job_id ?? `event:${event.sequence}`;
+      const previous = latest.get(key);
+      if (!previous || BigInt(event.sequence) > BigInt(previous.sequence))
+        latest.set(key, event);
+    }
+    const finishedJobs = new Set(
+      profile.outputs.map((output) => output.job_id),
+    );
+    for (const event of latest.values()) {
+      if (
+        event.kind !== "failed" ||
+        (event.job_id && finishedJobs.has(event.job_id))
+      )
+        continue;
+      rows.push({
+        id: `${lane}:failure:${event.job_id ?? event.sequence}`,
+        lane,
+        priority: 1,
+        title: `${name} · Failure reported`,
+        detail: "Open activity to check the result and recovery.",
+        at: event.created_at,
+        action: "Review activity",
+      });
+    }
+    if (profile.counts.recovering > 0)
+      rows.push({
+        id: `${lane}:recovering`,
+        lane,
+        priority: 2,
+        title: `${name} · Recovery pending`,
+        detail: `${profile.counts.recovering} ${profile.counts.recovering === 1 ? "run awaits" : "runs await"} recovery.`,
+        action: "View activity",
+      });
+    if (profile.counts.working > 0)
+      rows.push({
+        id: `${lane}:working`,
+        lane,
+        priority: 3,
+        title: `${name} · In progress`,
+        detail: `${profile.counts.working} ${profile.counts.working === 1 ? "run" : "runs"}${profile.runtime.reporting ? " working." : " recorded; worker heartbeat unavailable."}`,
+        action: "View activity",
+      });
+    const chats = new Map<
+      string,
+      { latest: (typeof profile.outputs)[number]; count: number }
+    >();
+    for (const output of profile.outputs) {
+      const group = chats.get(output.chat_id);
+      chats.set(output.chat_id, {
+        latest:
+          !group || output.completed_at > group.latest.completed_at
+            ? output
+            : group.latest,
+        count: (group?.count ?? 0) + 1,
+      });
+    }
+    for (const [chatId, group] of chats)
+      rows.push({
+        id: `${lane}:chat:${chatId}`,
+        lane,
+        priority: 4,
+        title: group.latest.title || `${name} result`,
+        detail: `${name} · ${group.count === 1 ? "Run finished" : `${group.count} recent runs finished`} · Review outcome`,
+        at: group.latest.completed_at,
+        chatId,
+        action: "Review result",
+      });
+    if (profile.counts.queued > 0)
+      rows.push({
+        id: `${lane}:queued`,
+        lane,
+        priority: 5,
+        title: `${name} · Queued`,
+        detail: `${profile.counts.queued} ${profile.counts.queued === 1 ? "run" : "runs"} waiting to start.`,
+        action: "View activity",
+      });
+  }
+  return rows.sort(
+    (a, b) =>
+      a.priority - b.priority ||
+      (b.at ?? "").localeCompare(a.at ?? "") ||
+      a.id.localeCompare(b.id),
+  );
+}

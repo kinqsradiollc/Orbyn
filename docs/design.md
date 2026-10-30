@@ -111,8 +111,9 @@ on wide screens and separated rows on phones. Document collections retain distin
 selection, open, filing and favorite actions; folder and duplicate-tag labels
 identify personal/team scope. Compact Study metrics stay paired.
 
-New desktop sessions start in the established icon rail, preserving remembered
-widths. Phone task checkboxes and create controls retain 44px targets. Assistant
+New desktop sessions start with labelled navigation at 224px, preserving remembered
+widths (including an explicitly selected icon rail). Navigation fits the available
+window without overwriting the remembered width. Phone task checkboxes and create controls retain 44px targets. Assistant
 starter prompts wrap in two columns and multiline composers stay bounded.
 
 Browser inspection, source/component tests, native exports and installed-device
@@ -144,3 +145,45 @@ navigation centred with equal side columns; header actions share 44px targets.
 Apply appearance changes atomically. Suppress transitions while committing the
 new palette, then restore ordinary hover/press behavior after it has painted;
 rows must not interpolate old-theme surfaces against a new-theme background.
+
+## Connected workspace
+
+The default primary destinations are **Today, Work, Calendar, Library and Agents**.
+They retain the existing Overview, My tasks, Calendar, Docs and AI assistant route
+keys, object links and tab identities. Work exposes Projects, Views and Lists;
+Library exposes Daily brief, Memory and Agent notes; Agents exposes Background,
+Overnight and Review. More keeps Study, shared utilities and role-dependent Admin
+reachable. Pins remain direct object links. Existing custom sidebar ordering uses
+its original grouping; resetting the sidebar adopts the new default composition.
+
+Notifications open deliberately from the header, More or an explicit notification
+link. An inactive legacy notification tab does not open a panel during migration.
+A person can pin notifications open between visits on this device, separately for
+each account. Closing the panel preserves mounted panel drafts. An explicit pin
+is retained until unpinned; closing it for this visit does not revoke that choice.
+Other panes continue to use the existing independent focus, draft and scroll owners.
+
+Today assigns each task one primary daily position and keeps due/planned/active/
+blocked signals together. Scheduled sessions, events and unfinished-session
+check-ins remain distinct records; expandable session detail retains their actions.
+Fresh task collections start with Active work; All history and existing status
+filters remain available. Saved/custom view choices take precedence. Project
+portfolios lead with the next task, task completion and meaningful date; the
+complete authored brief remains available in a disclosure and project detail.
+
+Engineer and Student are optional, combinable presentation presets in account
+view preferences (`workspace.pins`). They add Today shortcuts to existing project, document and Study
+workspaces. Toggling them does not create tasks, projects, grants or a second course
+model, and preserves hubs, quote, panel order and hidden choices. General planning
+remains available with neither preset selected. Templates, material import and
+execution remain their existing explicit workflows. Study starts with From your
+pages and Import material; manual Question :: Answer authoring remains available
+in a disclosure, with the existing card review and revision-plan steps.
+
+Agent activity uses **Run finished** for process termination. A neutral response or
+finished run is not accepted-goal evidence. Live stopped/timed-out/error signals,
+review proposals and applied/discarded changes retain distinct presentation. Older
+saved turns without durable execution-outcome evidence remain neutral; do not
+infer success from prose, elapsed time or a zero-exit worker. Background/Overnight
+results remain reviewable with their actual source and delivery state. The Open
+Duet execution adapter is not enabled by this UI work.

@@ -77,3 +77,44 @@ live external provider's availability. See [verification](verification.md).
 See the [API contract](api.md#retained-assistant-conversations),
 [architecture](architecture.md#assistant-conversations-and-execution) and
 [mobile guide](mobile.md).
+
+## Outcome presentation and external execution boundary
+
+A run ending and a goal being accepted are different facts. The shared activity
+label for `done` is **Run finished**. Interactive responses use structured stopped,
+timed-out and error signals when available, and distinguish pending proposals,
+applied changes and discarded changes. A response with no accepted-goal contract
+is **Response ready**. Retained saved turns do not currently preserve a durable
+accepted-goal outcome or every live stop/timeout flag; clients must remain neutral
+when that evidence is absent. Do not derive status from response prose.
+
+Background/Overnight deliveries distinguish result, question, failure and morning
+summary. A result links to its execution work when available, or the appropriate
+activity view. A closed question is not an accepted goal. Waiting and failed runs
+precede finished runs during review without rewriting their retained history.
+Changing notification visibility, acknowledging a result or opening an artifact
+must not promote an incomplete outcome to completed.
+
+Today also reads the existing current-access assistant profile snapshot for
+**Recent agent work**, independently of retained-conversation rollout. Decisions
+and failure receipts remain visible; finished outputs group by existing chat
+identity inside a default-collapsed Finished run history disclosure. Its latest
+count and date describe the endpoint's bounded output window, not unread or
+unreviewed work. The endpoint does not supply goal/routine/project grouping or a
+last-visit watermark, so this is recent observed work, not an unread count or proof
+of overnight completion. Each row opens its existing result or lane activity.
+Failed reads expose Retry rather than an empty-success state. Web/mobile share
+the profile derivation and retain account-generation cancellation fences.
+
+Open Duet remains a candidate isolated execution adapter. It is not enabled or
+required for manual planning, presets, Library discovery or this presentation.
+Orbyn remains the schedule, job, grant and review authority. Before enabling an
+adapter, demonstrate per-owner credential/workspace isolation, persisted dispatch
+intent and reconciliation after a lost acceptance response, generation fencing,
+duplicate-event/effect handling, restart recovery, budget exhaustion, cancellation
+request versus confirmed stop, revoked-access handling and late-result rejection.
+An accepted request or successful worker exit cannot establish an accepted goal.
+Outputs need actual artifact/source versions, performed checks, uncertainty and
+an actionable next step. Publishing, messaging, spending, access changes and
+production effects retain their own authority. No duplicate scheduler, broad
+computer use or automatic memory synchronization follows from an adapter.

@@ -83,12 +83,12 @@ export function Topbar({
       >
         <button
           className="command-trigger"
-          aria-label="Search or ask"
+          aria-label="Search and commands"
           aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
           onClick={onOpenCommand}
         >
           <Search size={14} aria-hidden="true" />
-          <span>Search or ask</span>
+          <span>Search and commands</span>
           {shortcut && <kbd>{shortcut}</kbd>}
         </button>
         <AppearanceControl />

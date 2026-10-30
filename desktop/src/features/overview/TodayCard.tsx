@@ -13,6 +13,9 @@ import {
   todayRowWords,
   unfinishedHeading,
   unfinishedWhen,
+  statusLabels,
+  timeRange,
+  type Item,
   type TodayList,
   type TodayRow,
 } from "@orbyn/core";
@@ -58,6 +61,8 @@ const ICONS: Record<string, LucideIcon> = {
 
 type Props = {
   today: TodayList | null;
+  /** Current task state, alongside its planned and due signals. */
+  items?: Item[];
   /** Opens a task or event. */
   onOpen: (itemId: string) => void;
   /** Starts focus mode on a task. */
@@ -84,6 +89,7 @@ type Props = {
  */
 export function TodayCard({
   today,
+  items = [],
   onOpen,
   onFocus,
   onPlanIt,
@@ -106,7 +112,20 @@ export function TodayCard({
   }, []);
 
   const current = today && todayIsCurrent(today, now) ? today : null;
-  const rows = current?.rows ?? [];
+  const sourceRows = current?.rows ?? [];
+  const byItem = new Map(items.map((item) => [item.id, item]));
+  // Sessions keep their IDs and times, but repeat their task only on expansion.
+  const taskIds = new Set(
+    sourceRows.filter((row) => row.kind === "task").map((row) => row.item_id),
+  );
+  const seen = new Set<string>();
+  const rows = sourceRows.filter((r) => {
+    if (r.kind === "event" || !r.item_id) return true;
+    if (r.kind === "session" && taskIds.has(r.item_id)) return false;
+    if (seen.has(r.item_id)) return false;
+    seen.add(r.item_id);
+    return true;
+  });
   const onDay = rows.filter((r) => r.due !== "late" || r.at);
   const late = rows.filter((r) => r.due === "late" && !r.at);
   const lateShown = allLate ? late : late.slice(0, LATE_SHOWN);
@@ -131,9 +150,33 @@ export function TodayCard({
 
   const row = (r: TodayRow) => {
     const words = todayRowWords(r, now);
+    const item = r.item_id ? byItem.get(r.item_id) : undefined;
+    const sessions = [
+      ...new Map(
+        [
+          ...r.sessions,
+          ...sourceRows
+            .filter(
+              (session) =>
+                session.kind === "session" && session.item_id === r.item_id,
+            )
+            .map((session) => ({
+              id: session.block_id ?? session.key,
+              start_at: session.start_at!,
+              end_at: session.end_at!,
+            })),
+        ].map((session) => [session.id, session]),
+      ).values(),
+    ].sort((a, b) => a.start_at.localeCompare(b.start_at));
     const past =
-      r.past ||
-      (!!r.end_at && r.kind !== "task" && Date.parse(r.end_at) <= +now);
+      r.kind === "task"
+        ? false
+        : sessions.length
+          ? sessions.every((session) => Date.parse(session.end_at) <= +now)
+          : r.past || (!!r.end_at && Date.parse(r.end_at) <= +now);
+    const action = sessions.some((session) => Date.parse(session.end_at) > +now)
+      ? "focus"
+      : r.action;
     const Icon =
       ICONS[r.kind === "task" ? (r.due === "late" ? "late" : "today") : r.kind];
     const warn =
@@ -155,7 +198,7 @@ export function TodayCard({
         <span className={"today-lead" + (words.lead ? "" : " is-empty")}>
           {words.lead}
         </span>
-        <span className="today-main">
+        <div className="today-main">
           {r.item_id ? (
             <button
               type="button"
@@ -168,7 +211,10 @@ export function TodayCard({
           ) : (
             <span className="today-title">{r.title}</span>
           )}
-          {(words.meta || words.chips.length > 0) && (
+          {(words.meta ||
+            words.chips.length > 0 ||
+            item?.status === "blocked" ||
+            item?.status === "in_progress") && (
             <span className="today-facts">
               {words.meta && (
                 <small
@@ -179,6 +225,14 @@ export function TodayCard({
                   {words.meta}
                 </small>
               )}
+              {(item?.status === "blocked" ||
+                item?.status === "in_progress") && (
+                <span
+                  className={`plan-chip is-${item.status === "blocked" ? "warn" : "accent"}`}
+                >
+                  {statusLabels[item.status]}
+                </span>
+              )}
               {words.chips.map((c) => (
                 <span key={c.text} className={`plan-chip is-${c.tone}`}>
                   {c.text}
@@ -186,8 +240,32 @@ export function TodayCard({
               ))}
             </span>
           )}
-        </span>
-        {r.action === "focus" && r.item_id && (
+          {sessions.length > 0 && (
+            <details className="today-session-details">
+              <summary>
+                {sessions.length === 1
+                  ? "Planned session"
+                  : `${sessions.length} planned sessions`}
+              </summary>
+              <ul>
+                {sessions.map((session) => (
+                  <li key={session.id}>
+                    {timeRange(
+                      session.start_at,
+                      session.end_at,
+                      current?.timezone,
+                    )}
+                    {r.deadline_at &&
+                    Date.parse(session.end_at) > Date.parse(r.deadline_at)
+                      ? " · After the deadline"
+                      : ""}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+        {action === "focus" && r.item_id && (
           <button
             type="button"
             className="text-button today-action"
@@ -197,7 +275,7 @@ export function TodayCard({
             <Play size={13} aria-hidden="true" /> Start focus
           </button>
         )}
-        {r.action === "plan" && r.item_id && (
+        {action === "plan" && r.item_id && (
           <button
             type="button"
             className="text-button today-action"
@@ -221,7 +299,7 @@ export function TodayCard({
         <div>
           <h2 id="overview-today">
             <Sun size={17} aria-hidden="true" className="heading-icon" />
-            Today{current ? ` · ${dayName(current.day)}` : ""}
+            Your plan{current ? ` · ${dayName(current.day)}` : ""}
           </h2>
           {!current && <p className="section-hint">Gathering your day…</p>}
         </div>
@@ -266,61 +344,64 @@ export function TodayCard({
             </div>
           )}
           {current && (
-            <SessionCheckIns
-              version={today}
-              onOpen={onOpen}
-              onPlanIt={onPlanIt}
-              onChanged={() => onCheckedIn?.()}
-              onListed={setAsked}
-              report={report}
-            />
-          )}
-          {current && unfinished.length > 0 && (
-            <div className="today-unfinished">
-              <h3>
-                {unfinishedHeading({ unfinished })}{" "}
-                <span>{unfinished.length}</span>
-              </h3>
-              <ul className="today-list is-unfinished">
-                {unfinished.map((u) => (
-                  <li key={u.block_id} className="today-row is-unfinished">
-                    <span className="today-main">
-                      <button
-                        type="button"
-                        className="today-title"
-                        onClick={() => onOpen(u.item_id)}
-                        aria-label={`Open ${u.title}`}
-                      >
-                        {u.title}
-                      </button>
-                      <span className="today-facts">
-                        <small className="today-meta">
-                          {unfinishedWhen(u)}
-                        </small>
-                      </span>
-                    </span>
-                    <span className="today-buttons">
-                      <button
-                        type="button"
-                        className="text-button today-action"
-                        onClick={() => onPlanAgain(u.block_id)}
-                        aria-label={`Plan ${u.title} again`}
-                      >
-                        Plan again
-                      </button>
-                      <button
-                        type="button"
-                        className="text-button today-action is-quiet"
-                        onClick={() => dismiss(u.block_id)}
-                        aria-label={`Dismiss ${u.title}`}
-                      >
-                        Dismiss
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <details className="today-session-history">
+              <summary>Session check-ins and unfinished work</summary>
+              <SessionCheckIns
+                version={today}
+                onOpen={onOpen}
+                onPlanIt={onPlanIt}
+                onChanged={() => onCheckedIn?.()}
+                onListed={setAsked}
+                report={report}
+              />
+              {unfinished.length > 0 && (
+                <div className="today-unfinished">
+                  <h3>
+                    {unfinishedHeading({ unfinished })}{" "}
+                    <span>{unfinished.length}</span>
+                  </h3>
+                  <ul className="today-list is-unfinished">
+                    {unfinished.map((u) => (
+                      <li key={u.block_id} className="today-row is-unfinished">
+                        <span className="today-main">
+                          <button
+                            type="button"
+                            className="today-title"
+                            onClick={() => onOpen(u.item_id)}
+                            aria-label={`Open ${u.title}`}
+                          >
+                            {u.title}
+                          </button>
+                          <span className="today-facts">
+                            <small className="today-meta">
+                              {unfinishedWhen(u)}
+                            </small>
+                          </span>
+                        </span>
+                        <span className="today-buttons">
+                          <button
+                            type="button"
+                            className="text-button today-action"
+                            onClick={() => onPlanAgain(u.block_id)}
+                            aria-label={`Plan ${u.title} again`}
+                          >
+                            Plan again
+                          </button>
+                          <button
+                            type="button"
+                            className="text-button today-action is-quiet"
+                            onClick={() => dismiss(u.block_id)}
+                            aria-label={`Dismiss ${u.title}`}
+                          >
+                            Dismiss
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </details>
           )}
         </>
       )}

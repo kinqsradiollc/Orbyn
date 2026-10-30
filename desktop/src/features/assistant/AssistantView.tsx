@@ -53,6 +53,7 @@ import { errorText } from "../../lib/errors";
 import {
   changeKindWords,
   progressText,
+  replyStatusLabel,
   stepLabel,
   traceLines,
 } from "./assistant-labels";
@@ -1044,6 +1045,9 @@ export function AssistantView({
                     className="ai-row"
                   >
                     <div className="ai-reply">
+                      <p className="ai-reply-status">
+                        {replyStatusLabel(turn)}
+                      </p>
                       <ProposalReview
                         hideSourceDetails={!!retained}
                         proposal={turn.proposal}

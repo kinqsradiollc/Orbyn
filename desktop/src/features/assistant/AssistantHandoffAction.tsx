@@ -76,7 +76,7 @@ export function AssistantHandoffAction({
               {
                 proposed: "Queued",
                 accepted: "Working",
-                completed: "Done",
+                completed: "Run finished",
                 failed: "Needs review",
                 cancelled: "Cancelled",
               }[current.status]

@@ -1390,3 +1390,29 @@ dialog.settings-editor::backdrop {
     min-width: 44px;
   }
 }
+
+.workspace-presets {
+  border: 0;
+  border-block: 1px solid var(--color-border);
+  padding: 16px 0;
+  margin: 16px 0;
+  min-width: 0;
+}
+.workspace-presets legend {
+  font-weight: 600;
+  padding-right: 8px;
+}
+.workspace-presets > label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+.workspace-presets > label span {
+  display: grid;
+  gap: 4px;
+}
+.workspace-presets small {
+  color: var(--muted);
+}

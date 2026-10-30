@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { X } from "lucide-react";
+import { Pin, PinOff, X } from "lucide-react";
 import { hasHigherDialog } from "../../lib/dialogLayers";
 import "./workspace-dock.css";
 
@@ -47,6 +47,8 @@ export function WorkspaceDock({
   onClose,
   open = true,
   minMainWidth = 480,
+  pinned = false,
+  onTogglePin,
 }: {
   tabs: WorkspaceDockTab[];
   activeId: string;
@@ -55,6 +57,8 @@ export function WorkspaceDock({
   onClose?: () => void;
   open?: boolean;
   minMainWidth?: number;
+  pinned?: boolean;
+  onTogglePin?: () => void;
 }) {
   const id = useId(),
     root = useRef<HTMLElement>(null);
@@ -316,6 +320,17 @@ export function WorkspaceDock({
             </div>
           ))}
         </div>
+        {onTogglePin && (
+          <button
+            className="icon-button"
+            aria-label="Keep notifications open between visits"
+            aria-pressed={pinned}
+            title={pinned ? "Unpin notifications" : "Pin notifications"}
+            onClick={onTogglePin}
+          >
+            {pinned ? <PinOff size={16} /> : <Pin size={16} />}
+          </button>
+        )}
         {onClose && (
           <button
             className="icon-button workspace-dock-close"

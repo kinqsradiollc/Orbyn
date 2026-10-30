@@ -17,6 +17,7 @@ import { answerReview, registerReviewActions, reviewAction } from "../lib/push";
 import { clearAlerts } from "../lib/alert";
 import {
   createLabel,
+  workspacePresets,
   freshItem,
   planDayPrompt,
   readArrangement,
@@ -1743,6 +1744,14 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                   )}
                   {tab === "Today" && (
                     <TodayScreen
+                      onOpenAgentActivity={(lane) => {
+                        if (lane === "overnight")
+                          present({ sheet: "overnight" });
+                        else {
+                          setTab("AI");
+                          setAssistantActivity((value) => value + 1);
+                        }
+                      }}
                       conversationEnabled={assistant.conversationEnabled}
                       canOpenAgentOutput={
                         !busy &&
@@ -1769,6 +1778,9 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                       }}
                       items={items}
                       homeLayout={accountPrefs.prefs.home}
+                      presets={workspacePresets(
+                        accountPrefs.prefs.views.workspace,
+                      )}
                       agentName={assistant.agentName}
                       onOpenLink={(link) => openLink.current?.(link)}
                       onOpenWorkspace={(what) => present({ sheet: what })}
@@ -2283,6 +2295,13 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                 openAt={settingsAt}
                 arrangement={accountPrefs.prefs.sidebar}
                 onArrange={(sidebar) => accountPrefs.save({ sidebar })}
+                presets={workspacePresets(accountPrefs.prefs.views.workspace)}
+                onPresetsChange={(pins) =>
+                  accountPrefs.setViewChoice("workspace", {
+                    ...accountPrefs.prefs.views.workspace,
+                    pins,
+                  })
+                }
                 preferencesReady={accountPrefs.ready}
                 preferencesError={accountPrefs.error}
                 onReloadPreferences={accountPrefs.reload}

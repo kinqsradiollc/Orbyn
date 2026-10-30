@@ -14,6 +14,7 @@ import {
 import { onLive } from "../../../lib/live";
 import {
   FileText,
+  ArrowUpRight,
   FolderInput,
   PanelLeftClose,
   PanelLeftOpen,
@@ -301,6 +302,10 @@ function DocsBody({
   const [sort, setSort] = useState("recent");
   /** Only pages with this tag, by id; "" for every page. */
   const [tagFilter, setTagFilter] = useState("");
+  /** Discovery facets use only already-authorized document summaries. */
+  const [projectFilter, setProjectFilter] = useState("");
+  const [scopeFilter, setScopeFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
   /** Whether "New page from a template" is open. */
   const [templating, setTemplating] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -531,6 +536,10 @@ function DocsBody({
     setTrashOnly(false);
     setArchivedOnly(false);
     setQuery("");
+    setProjectFilter("");
+    setScopeFilter("");
+    setSourceFilter("");
+    setTagFilter("");
   }, [fixedKind]);
 
   useEffect(() => {
@@ -692,11 +701,93 @@ function DocsBody({
       ["waiting", "queued", "reading", "ocr", "failed"].includes(j.status),
     ).length;
 
+  const scopeName = (doc: DocSummary) =>
+    doc.team_id
+      ? (doc.team_name ?? teamNameFor?.(doc.team_id) ?? "Shared team")
+      : "Personal";
+  const projectsHere = [
+    ...new Map(
+      (docs ?? []).flatMap((doc) =>
+        doc.project_id
+          ? [
+              [
+                doc.project_id,
+                {
+                  id: doc.project_id,
+                  name: doc.project_name || "Linked project",
+                  scope: scopeName(doc),
+                },
+              ] as const,
+            ]
+          : [],
+      ),
+    ).values(),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+  const scopesHere = [
+    ...new Map(
+      (docs ?? []).flatMap((doc) =>
+        doc.team_id ? [[doc.team_id, scopeName(doc)] as const] : [],
+      ),
+    ).entries(),
+  ].sort((a, b) => a[1].localeCompare(b[1]));
+  const selectedProject = projectsHere.find(
+    (project) => project.id === projectFilter,
+  );
+  const hasDiscoveryFilters = !!(
+    query ||
+    tagFilter ||
+    projectFilter ||
+    scopeFilter ||
+    sourceFilter ||
+    (!fixedKind && kindFilter)
+  );
+  const resetDiscovery = () => {
+    setQuery("");
+    setTagFilter("");
+    setProjectFilter("");
+    setScopeFilter("");
+    setSourceFilter("");
+    setKindFilter(fixedKind ?? null);
+    setAgendaMonth(null);
+    setPicked(new Set());
+  };
+  const openSelectedProject = () => {
+    if (!selectedProject || !onOpenProject || busy) return;
+    const destination = ++navigation.current;
+    void action.run(async () => {
+      if (
+        (await preparePageLeave(commandScope)) &&
+        currentOwner() &&
+        destination === navigation.current
+      )
+        onOpenProject(selectedProject.id);
+    });
+  };
+
   const shown = (docs ?? [])
     .filter((d) => !favoritesOnly || starred.has(favouriteKey("doc", d.id)))
     .filter((d) => !fadingOnly || fading.has(d.id))
+    .filter(
+      (d) =>
+        !projectFilter ||
+        (projectFilter === "none"
+          ? !d.project_id
+          : d.project_id === projectFilter),
+    )
+    .filter(
+      (d) =>
+        !scopeFilter ||
+        (scopeFilter === "personal" ? !d.team_id : d.team_id === scopeFilter),
+    )
+    .filter(
+      (d) =>
+        !sourceFilter ||
+        (sourceFilter === "original"
+          ? !!d.original
+          : !!(d.imported_from || d.original)),
+    )
     .filter((d) =>
-      `${d.title} ${d.preview}`
+      `${d.title} ${d.preview} ${d.imported_from?.file_name ?? d.original?.file_name ?? ""}`
         .toLocaleLowerCase()
         .includes(query.trim().toLocaleLowerCase()),
     )
@@ -794,19 +885,21 @@ function DocsBody({
                         "Folder"
                       : kindFilter === "agenda"
                         ? agendaMonth
-                          ? `Agendas · ${
+                          ? `Daily briefs · ${
                               agendas
                                 .flatMap((y) =>
                                   y.months.map((m) => ({ ...m, year: y.year })),
                                 )
                                 .find((m) => m.key === agendaMonth)?.label ?? ""
                             } ${agendaMonth.slice(0, 4)}`
-                          : "Agendas"
+                          : "Daily briefs"
                         : kindFilter === "doc"
                           ? "Pages"
                           : kindFilter === "note"
                             ? "Notes"
-                            : "All documents";
+                            : kindFilter === "meeting"
+                              ? "Meeting notes"
+                              : "All documents";
   const select = (
     folder: string | null,
     kind: DocKind | null = null,
@@ -837,6 +930,9 @@ function DocsBody({
       setFadingOnly(false);
       setQuery("");
       setTagFilter("");
+      setProjectFilter("");
+      setScopeFilter("");
+      setSourceFilter("");
       setOpen(null);
       setNavigationOpen(false);
     });
@@ -1231,7 +1327,7 @@ function DocsBody({
                 <summary>
                   <ChevronRight size={14} />
                   <CalendarDays size={16} />
-                  <span>Agendas</span>
+                  <span>Daily briefs</span>
                 </summary>
                 <div className="docs-nav-children">
                   <button
@@ -1242,7 +1338,7 @@ function DocsBody({
                     }
                     onClick={() => select(null, "agenda")}
                   >
-                    All agendas
+                    All daily briefs
                   </button>
                   {agendas.map((y) => (
                     <details
@@ -1543,42 +1639,174 @@ function DocsBody({
               </p>
             )}
             {!uploadsOnly && !trashOnly && !archivedOnly && (
-              <div className="docs-library-tools">
-                <input
-                  aria-label="Search document titles and previews"
-                  placeholder="Search this collection…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-                {(tagsHere.length > 0 || tagFilter) && (
+              <div className="docs-discovery">
+                <div className="docs-library-tools">
+                  <input
+                    aria-label="Search document titles, previews and source filenames"
+                    placeholder="Search pages and sources…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
                   <Select
-                    className="docs-tag-filter"
-                    aria-label="Show pages with a tag"
-                    value={tagFilter}
-                    onChange={(e) => setTagFilter(e.target.value)}
+                    className="docs-project-filter"
+                    aria-label="Filter documents by project"
+                    value={projectFilter}
+                    searchable
+                    onChange={(e) => {
+                      setProjectFilter(e.target.value);
+                      setPicked(new Set());
+                    }}
                   >
-                    <option value="">All tags</option>
-                    {tagsHere.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        #{t.name}
-                        {tagsHere.filter((tag) => tag.name === t.name).length >
-                        1
-                          ? ` · ${t.scope}`
-                          : ""}
+                    <option value="">All projects</option>
+                    <option value="none">Without a project</option>
+                    {projectFilter &&
+                      projectFilter !== "none" &&
+                      !selectedProject && (
+                        <option value={projectFilter}>
+                          Project unavailable
+                        </option>
+                      )}
+                    {projectsHere.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name} · {project.scope} pages
                       </option>
                     ))}
                   </Select>
-                )}
-                <Select
-                  className="docs-sort"
-                  aria-label="Sort documents"
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value)}
-                >
-                  <option value="recent">Last edited</option>
-                  <option value="created">Newest first</option>
-                  <option value="title">Title A–Z</option>
-                </Select>
+                  <Select
+                    className="docs-sort"
+                    aria-label="Sort documents"
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value)}
+                  >
+                    <option value="recent">Last edited</option>
+                    <option value="created">Newest first</option>
+                    <option value="title">Title A–Z</option>
+                  </Select>
+                </div>
+                <details className="docs-discovery-filters">
+                  <summary>
+                    Type, source &amp; scope
+                    {scopeFilter ||
+                    sourceFilter ||
+                    tagFilter ||
+                    (!fixedKind && kindFilter)
+                      ? " · Filtered"
+                      : ""}
+                  </summary>
+                  <div className="docs-discovery-fields">
+                    {!fixedKind && (
+                      <Select
+                        aria-label="Filter documents by type"
+                        value={kindFilter ?? ""}
+                        onChange={(e) => {
+                          setKindFilter(
+                            e.target.value === "doc" ||
+                              e.target.value === "note" ||
+                              e.target.value === "agenda" ||
+                              e.target.value === "meeting"
+                              ? e.target.value
+                              : null,
+                          );
+                          setAgendaMonth(null);
+                          setPicked(new Set());
+                        }}
+                      >
+                        <option value="">All documents</option>
+                        <option value="doc">Pages</option>
+                        <option value="note">Notes</option>
+                        <option value="meeting">Meeting notes</option>
+                        <option value="agenda">Daily briefs</option>
+                      </Select>
+                    )}
+                    <Select
+                      aria-label="Filter documents by sharing scope"
+                      value={scopeFilter}
+                      onChange={(e) => {
+                        setScopeFilter(e.target.value);
+                        setPicked(new Set());
+                      }}
+                    >
+                      <option value="">All accessible spaces</option>
+                      <option value="personal">Personal</option>
+                      {scopeFilter &&
+                        scopeFilter !== "personal" &&
+                        !scopesHere.some(([id]) => id === scopeFilter) && (
+                          <option value={scopeFilter}>Team unavailable</option>
+                        )}
+                      {scopesHere.map(([id, name]) => (
+                        <option key={id} value={id}>
+                          {name}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      aria-label="Filter documents by source"
+                      value={sourceFilter}
+                      onChange={(e) => {
+                        setSourceFilter(e.target.value);
+                        setPicked(new Set());
+                      }}
+                    >
+                      <option value="">All sources</option>
+                      <option value="imported">Imported material</option>
+                      <option value="original">With original file</option>
+                    </Select>
+                    {(tagsHere.length > 0 || tagFilter) && (
+                      <Select
+                        className="docs-tag-filter"
+                        aria-label="Show pages with a tag"
+                        value={tagFilter}
+                        onChange={(e) => setTagFilter(e.target.value)}
+                      >
+                        <option value="">All tags</option>
+                        {tagFilter &&
+                          !tagsHere.some((tag) => tag.id === tagFilter) && (
+                            <option value={tagFilter}>
+                              Selected tag unavailable
+                            </option>
+                          )}
+                        {tagsHere.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            #{t.name}
+                            {tagsHere.filter((tag) => tag.name === t.name)
+                              .length > 1
+                              ? ` · ${t.scope}`
+                              : ""}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </div>
+                </details>
+                <div className="docs-discovery-context">
+                  <span>
+                    {docs === null
+                      ? "Loading pages…"
+                      : `${ordered.length} ${ordered.length === 1 ? "page" : "pages"}`}{" "}
+                    ·{" "}
+                    {scopeFilter
+                      ? scopeFilter === "personal"
+                        ? "Personal"
+                        : (scopesHere.find(([id]) => id === scopeFilter)?.[1] ??
+                          "Team unavailable")
+                      : "All accessible spaces"}
+                  </span>
+                  {selectedProject && onOpenProject && (
+                    <button
+                      className="text-button docs-project-link"
+                      disabled={busy}
+                      onClick={openSelectedProject}
+                    >
+                      Open {selectedProject.name}
+                      <ArrowUpRight size={14} aria-hidden="true" />
+                    </button>
+                  )}
+                  {hasDiscoveryFilters && (
+                    <button className="text-button" onClick={resetDiscovery}>
+                      Clear filters
+                    </button>
+                  )}
+                </div>
               </div>
             )}
             {archivedOnly ? (
@@ -1762,13 +1990,13 @@ function DocsBody({
               <EmptyState
                 icon={FileText}
                 title={
-                  query || tagFilter
+                  hasDiscoveryFilters
                     ? `No matching ${fixedKind === "memory" ? "Memory notes" : fixedKind === "agent" ? "Agent notes" : "pages"}`
                     : "Nothing in here yet"
                 }
                 body={
-                  query || tagFilter
-                    ? "Try another word or tag."
+                  hasDiscoveryFilters
+                    ? "Change or clear the filters to find another page."
                     : fixedKind === "memory"
                       ? "Notes your assistant remembers. You can edit them."
                       : fixedKind === "agent"
@@ -1776,7 +2004,7 @@ function DocsBody({
                         : "Create a page or import a file."
                 }
               >
-                {!(query || tagFilter || fixedKind) && (
+                {!(hasDiscoveryFilters || fixedKind) && (
                   <div className="empty-actions">
                     {!fixedKind && (
                       <ImportButton
@@ -1891,8 +2119,14 @@ function DocsBody({
                                 {doc.kind === "note"
                                   ? "Note"
                                   : doc.kind === "agenda"
-                                    ? "Agenda"
-                                    : "Page"}
+                                    ? "Daily brief"
+                                    : doc.kind === "meeting"
+                                      ? "Meeting note"
+                                      : doc.kind === "memory"
+                                        ? "Memory"
+                                        : doc.kind === "agent"
+                                          ? "Agent note"
+                                          : "Page"}
                                 {/* An agenda lives in Agendas unless filed. */}
                                 {doc.kind === "agenda" && !doc.folder_id
                                   ? ""
@@ -1901,6 +2135,24 @@ function DocsBody({
                                         (f) => f.id === doc.folder_id,
                                       )?.name || "Unfiled"
                                     }`}
+                                <span>
+                                  {scopeName(doc)}
+                                  {canWriteDoc && !canWriteDoc(doc.team_id)
+                                    ? " · Read only"
+                                    : ""}
+                                </span>
+                                {doc.project_id && (
+                                  <span>
+                                    {doc.project_name || "Linked project"}
+                                  </span>
+                                )}
+                                {(doc.imported_from || doc.original) && (
+                                  <span className="docs-source-name">
+                                    Source:{" "}
+                                    {doc.imported_from?.file_name ||
+                                      doc.original?.file_name}
+                                  </span>
+                                )}
                                 <span className="doc-row-when">
                                   {when(doc.updated_at)}
                                 </span>

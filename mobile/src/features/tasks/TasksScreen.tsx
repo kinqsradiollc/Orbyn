@@ -87,12 +87,12 @@ const BOARD_WIDE = 700;
 export const matchesSearch = (item: Item, search: string) =>
   (item.title + " " + item.notes).toLowerCase().includes(search.toLowerCase());
 
-type StatusFilter = "all" | Status;
+type StatusFilter = "all" | "active" | Status;
 /** Every status, closed ones last (cancelled isn't a step, but it's a status). */
 const BOARD_STATUSES: Status[] = [...statusOrder, "cancelled"];
-const STATUS_FILTERS: StatusFilter[] = ["all", ...BOARD_STATUSES];
+const STATUS_FILTERS: StatusFilter[] = ["active", "all", ...BOARD_STATUSES];
 const statusFilterLabel = (f: StatusFilter) =>
-  f === "all" ? "All" : statusLabels[f];
+  f === "all" ? "All history" : f === "active" ? "Active" : statusLabels[f];
 
 type Due = "any" | "overdue" | "today" | "tomorrow" | "soon" | "week" | "none";
 type Group = TaskGroupBy;
@@ -228,6 +228,17 @@ const SORT_LABELS: Record<ItemSort, string> = {
   position: "Manual order",
 };
 const SORT_KEY = "orbyn-task-sort";
+const STATUS_KEY = "orbyn-tasks-status";
+const savedStatus = (): StatusFilter => {
+  const stored = readLocal(STATUS_KEY);
+  const chosen = STATUS_FILTERS.find((value) => value === stored);
+  if (chosen) return chosen;
+  return [LAYOUT_KEY, GROUP_KEY, BOARD_GROUP_KEY, PIN_KEY, SORT_KEY].some(
+    (key) => readLocal(key) !== null,
+  )
+    ? "all"
+    : "active";
+};
 /** The order chosen on this device; most pressing first until then. */
 const savedSort = (): ItemSort => {
   const value = readLocal(SORT_KEY);
@@ -324,7 +335,13 @@ function TasksScreenBody({
 }) {
   const { lists, tags } = usePlanning();
   const { feed } = usePlanned();
-  const [status, setStatus] = useState<StatusFilter>("all");
+  const [status, setStatusState] = useState<StatusFilter>(savedStatus);
+  const statusChosen = useRef(false);
+  const setStatus = (value: StatusFilter) => {
+    statusChosen.current = true;
+    setStatusState(value);
+    saveLocal(STATUS_KEY, value);
+  };
   const [filters, setFilters] = useState<Filters>(() => ({
     ...DEFAULTS,
     group: savedGroup(),
@@ -345,6 +362,7 @@ function TasksScreenBody({
   // The account's choices, when they arrive, win over this phone's copy.
   useEffect(() => {
     if (!viewChoice) return;
+    if (!statusChosen.current && !readLocal(STATUS_KEY)) setStatusState("all");
     if (viewChoice.layout === "list" || viewChoice.layout === "board")
       setLayout(viewChoice.layout);
     if (viewChoice.sort && ITEM_SORTS.includes(viewChoice.sort as ItemSort))
@@ -510,7 +528,11 @@ function TasksScreenBody({
 
   const found = searchItems(items, search).filter(matches);
   const count = (f: StatusFilter) =>
-    f === "all" ? found.length : found.filter((i) => i.status === f).length;
+    f === "all"
+      ? found.length
+      : found.filter((i) =>
+          f === "active" ? !isClosed(i.status) : i.status === f,
+        ).length;
   const order = sorter(sort, byPriority(now, items));
   // Finished and cancelled items always go last, whatever the order.
   const boardCounts = boardFilterCounts(found, now, reviewCards.length);
@@ -518,7 +540,8 @@ function TasksScreenBody({
     .filter((i) =>
       owners
         ? matchesBoardFilter(i, boardFilter, now)
-        : status === "all" || i.status === status,
+        : status === "all" ||
+          (status === "active" ? !isClosed(i.status) : i.status === status),
     )
     .sort(
       (a, b) =>
@@ -536,7 +559,9 @@ function TasksScreenBody({
     keep({ layout: next });
   };
   /** Save a change to how the list is shown, for every device. */
-  const keep = (change: ViewChoice) =>
+  const keep = (change: ViewChoice) => {
+    statusChosen.current = true;
+    saveLocal(STATUS_KEY, status);
     onViewChoice?.({
       layout,
       sort,
@@ -544,6 +569,7 @@ function TasksScreenBody({
       pins,
       ...change,
     });
+  };
 
   const options: Record<
     Key,
@@ -673,7 +699,9 @@ function TasksScreenBody({
             boardGroup === "status"
               ? status === "all"
                 ? BOARD_STATUSES
-                : [status]
+                : status === "active"
+                  ? BOARD_STATUSES.filter((value) => !isClosed(value))
+                  : [status]
               : undefined,
         })
       : [];
@@ -755,14 +783,22 @@ function TasksScreenBody({
     onReorder: manual ? onReorder : undefined,
     onDragging,
   };
-  const title = status === "all" ? "All items" : statusLabels[status];
+  const title =
+    status === "all"
+      ? "All items"
+      : status === "active"
+        ? "Active work"
+        : statusLabels[status];
   const empty =
     search.trim() || active.length
       ? emptySearch
       : status === "all"
         ? emptyPlans
         : {
-            title: `No ${statusLabels[status].toLowerCase()} tasks`,
+            title:
+              status === "active"
+                ? "No active work"
+                : `No ${statusLabels[status].toLowerCase()} tasks`,
             body: "",
           };
 
@@ -823,7 +859,7 @@ function TasksScreenBody({
         {!owners &&
           STATUS_FILTERS.map((f) => {
             const selected = f === status;
-            const tone = f === "all" ? null : statusTones[f];
+            const tone = f === "all" || f === "active" ? null : statusTones[f];
             const n = count(f);
             return (
               <Pressable

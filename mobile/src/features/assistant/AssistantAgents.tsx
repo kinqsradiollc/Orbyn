@@ -201,7 +201,7 @@ export function AssistantAgents({
                 {profile.outputs.map((output) => (
                   <View key={output.job_id} style={{ gap: 4 }}>
                     <Button
-                      title={output.title || "Completed work"}
+                      title={output.title || "Untitled result"}
                       secondary
                       disabled={!canOpen}
                       onPress={() => {
@@ -212,6 +212,9 @@ export function AssistantAgents({
                         onClose();
                       }}
                     />
+                    <Text style={shared.small}>
+                      Run finished · Review outcome
+                    </Text>
                     <Text style={shared.small}>
                       {new Date(output.completed_at).toLocaleString()}
                     </Text>

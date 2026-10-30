@@ -2,6 +2,7 @@ import {
   agentWorkWords,
   type AgentActivity,
   type AssistantChangeKind,
+  type AssistantConversationEntry,
   type ChatTraceEntry,
   type GoalCheckin,
 } from "@orbyn/core";
@@ -292,4 +293,55 @@ export function changeLine(change: AgentActivity): string {
   const words = agentWorkWords(change.kinds ?? null);
   if (words) return words[0].toUpperCase() + words.slice(1);
   return change.summary.replace(/\s*\(plan step [^)]*\)/gi, "").trim();
+}
+
+/** A delivery event describes available work, never acceptance of the goal. */
+export function updateStatusLabel(
+  entry: Extract<AssistantConversationEntry, { kind: "update" }>,
+): string {
+  if (entry.event === "failure") return "Run failed";
+  if (entry.event === "question") {
+    if (entry.actionable === false) return "Question closed";
+    return entry.waiting_kind === "approval"
+      ? "Waiting for approval"
+      : entry.waiting_kind === "person"
+        ? "Waiting for you"
+        : "Waiting for a decision";
+  }
+  return entry.event === "morning_summary"
+    ? "Morning review"
+    : "Result ready for review";
+}
+
+/** Only structured run flags and trace kinds affect this label; prose is not a status contract. */
+export function replyStatusLabel(reply: {
+  state: "pending" | "applied" | "discarded" | "info";
+  trace: readonly ChatTraceEntry[];
+  execution?: "stopped" | "timed_out";
+}): string {
+  if (reply.execution === "stopped") return "Run stopped";
+  if (reply.execution === "timed_out") return "Run timed out";
+  if (reply.trace.some((entry) => entry.kind === "error"))
+    return "Run reported errors";
+  if (reply.state === "pending") return "Changes waiting for review";
+  if (reply.state === "applied") return "Changes applied";
+  if (reply.state === "discarded") return "Changes discarded";
+  return "Response ready";
+}
+
+/** Decisions and failures precede finished runs without changing retained history. */
+export function reviewNightRuns(
+  entry: Extract<AssistantConversationEntry, { kind: "update" }>,
+) {
+  const priority = {
+    waiting: 0,
+    failed: 1,
+    cancelled: 2,
+    running: 3,
+    queued: 4,
+    done: 5,
+  };
+  return [...(entry.night_runs ?? [])].sort(
+    (a, b) => priority[a.state] - priority[b.state],
+  );
 }

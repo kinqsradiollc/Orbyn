@@ -101,59 +101,96 @@ export const viewTitle = (view: View, name?: string) =>
 
 export type NavEntry = { label: View; icon: LucideIcon; adminOnly?: boolean };
 
-/**
- * Primary sidebar navigation, in display order. `adminOnly` entries render
- * only for users with the `admin:access` system permission.
- *
- * The entries are grouped by the question they answer — what am I doing
- * today, what am I building, who is it with — so a dozen destinations read
- * as three short lists rather than one long one.
- */
+/** Route keys remain stable for links, commands, tabs and account preferences. */
 export const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
   {
-    label: "TODAY",
+    label: "WORKSPACE",
     items: [
-      // Keyed "Overview" still, so saved sidebars and links keep working.
       { label: "Overview", icon: House },
-      { label: "Agenda", icon: CONCEPT_ICON.agenda },
       { label: "My tasks", icon: CONCEPT_ICON.task },
       { label: "Calendar", icon: CONCEPT_ICON.event },
-    ],
-  },
-  {
-    label: "YOUR WORK",
-    items: [
-      { label: "Projects", icon: CONCEPT_ICON.project },
       { label: "Docs", icon: CONCEPT_ICON.page },
-      { label: "Memory", icon: Brain },
-      { label: "Agent", icon: Sparkles },
-      { label: "Views", icon: Table2 },
-      { label: "Study", icon: CONCEPT_ICON.study },
-      { label: "Lists", icon: ListChecks },
       { label: "AI assistant", icon: Sparkles },
     ],
   },
   {
-    label: "SHARED",
+    label: "WORK",
     items: [
+      { label: "Projects", icon: CONCEPT_ICON.project },
+      { label: "Views", icon: Table2 },
+      { label: "Lists", icon: ListChecks },
+    ],
+  },
+  {
+    label: "LIBRARY",
+    items: [
+      { label: "Agenda", icon: CONCEPT_ICON.agenda },
+      { label: "Memory", icon: Brain },
+      { label: "Agent", icon: Sparkles },
+    ],
+  },
+  {
+    label: "AGENTS",
+    items: [
+      { label: "Background", icon: Sparkles },
+      { label: "Overnight", icon: Sparkles },
+      { label: "Review", icon: Inbox },
+    ],
+  },
+  {
+    label: "MORE",
+    items: [
+      { label: "Study", icon: CONCEPT_ICON.study },
       { label: "Teams", icon: Users },
       { label: "Booking", icon: CalendarCheck },
       { label: "Notifications", icon: Bell },
-      { label: "Review", icon: Inbox },
       { label: "Admin", icon: ShieldCheck, adminOnly: true },
     ],
   },
 ];
 
-/** Every destination, flat — for anything that walks the whole navigation. */
-/**
- * What the sidebar calls a destination, where that differs from its key:
- * the assistant goes by the name it was given, "Agent" holds notes, and
- * "Overview" is Home (W1; the key stays for saved sidebars and links).
- */
-export function navName(view: View, agentName?: string): string {
-  if (view === "Overview") return "Home";
-  if (view === "AI assistant") return agentName?.trim() || view;
+/** Existing custom arrangements keep their original groups and order. */
+export const LEGACY_NAV_GROUPS = [
+  { label: "TODAY", items: ["Overview", "Agenda", "My tasks", "Calendar"] },
+  {
+    label: "YOUR WORK",
+    items: [
+      "Projects",
+      "Docs",
+      "Memory",
+      "Agent",
+      "Views",
+      "Study",
+      "Lists",
+      "AI assistant",
+    ],
+  },
+  {
+    label: "SHARED",
+    items: ["Teams", "Booking", "Notifications", "Review", "Admin"],
+  },
+].map((group) => ({
+  ...group,
+  items: group.items.map((label) =>
+    NAV_GROUPS.flatMap((g) => g.items).find((entry) => entry.label === label)!,
+  ),
+}));
+
+/** The selected category also exposes its existing specialist destinations. */
+export function navSection(view: View): View {
+  if (["Projects", "Views", "Lists"].includes(view)) return "My tasks";
+  if (["Agenda", "Memory", "Agent"].includes(view)) return "Docs";
+  if (["Background", "Overnight", "Review"].includes(view))
+    return "AI assistant";
+  return view;
+}
+
+export function navName(view: View, _agentName?: string): string {
+  if (view === "Overview") return "Today";
+  if (view === "My tasks") return "Work";
+  if (view === "Docs") return "Library";
+  if (view === "AI assistant") return "Agents";
+  if (view === "Agenda") return "Daily brief";
   if (view === "Agent") return "Agent notes";
   return view;
 }

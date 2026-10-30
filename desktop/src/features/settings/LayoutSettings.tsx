@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import {
   ALWAYS_SHOWN,
+  workspacePresets,
   arrangeEntries,
   COMMANDS,
   HOME_PANEL_LABELS,
@@ -29,7 +30,7 @@ import {
 } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { keysFor } from "../../app/commands";
-import { NAV_GROUPS, navName, type View } from "../../app/views";
+import { LEGACY_NAV_GROUPS, navName, type View } from "../../app/views";
 import { setStartScreen, startScreen, usePrefs } from "../../app/prefs";
 import { setTabsEnabled, useTabsEnabled } from "../../app/tabs";
 import { SettingsSection } from "./SettingsSection";
@@ -99,7 +100,7 @@ export function ArrangeSettings({ user }: { user: User | null }) {
   const [dragging, setDragging] = useState<string | null>(null);
   const tabsOn = useTabsEnabled();
   if (!ready) return <PreferenceRecovery title="Arrange" />;
-  const groups = NAV_GROUPS.map((g) => ({
+  const groups = LEGACY_NAV_GROUPS.map((g) => ({
     label: g.label,
     items: arrangeEntries(
       g.items.filter((n) => !n.adminOnly || isAdmin),
@@ -237,7 +238,9 @@ export function ArrangeSettings({ user }: { user: User | null }) {
  * one of your pages under the greeting. It follows the account.
  */
 export function HomeArrangeSettings() {
-  const { prefs, save, ready } = usePrefs();
+  const { prefs, save, ready, setViewChoice } = usePrefs();
+  const workspace = prefs.views.workspace;
+  const presets = workspacePresets(workspace);
   const home = prefs.home;
   const order = homePanels(home, true);
   const [pages, setPages] = useState<DocSummary[] | null>(null);
@@ -273,6 +276,39 @@ export function HomeArrangeSettings() {
     <SettingsSection className="card settings-card">
       <h2>Home</h2>
       <p className="muted">Home layout follows your account.</p>
+      <fieldset className="workspace-presets">
+        <legend>Workspace presets</legend>
+        <p className="muted">
+          Combine shortcuts for your work. Your projects, views and layout stay
+          yours.
+        </p>
+        {(["engineer", "student"] as const).map((preset) => (
+          <label key={preset}>
+            <input
+              type="checkbox"
+              checked={presets.includes(preset)}
+              onChange={() =>
+                setViewChoice("workspace", {
+                  ...workspace,
+                  pins: presets.includes(preset)
+                    ? (workspace?.pins ?? []).filter(
+                        (value) => value !== preset,
+                      )
+                    : [...(workspace?.pins ?? []), preset],
+                })
+              }
+            />
+            <span>
+              <strong>{preset === "engineer" ? "Engineer" : "Student"}</strong>
+              <small>
+                {preset === "engineer"
+                  ? "Project work, specifications and decisions"
+                  : "Course projects, source material and review"}
+              </small>
+            </span>
+          </label>
+        ))}
+      </fieldset>
       <ul className="arrange-list">
         {order.map((p, i) => {
           const label = HOME_PANEL_LABELS[p];

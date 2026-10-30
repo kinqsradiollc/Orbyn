@@ -58,6 +58,7 @@ import { client } from "../../lib/api";
 import {
   changeKindWords,
   progressText,
+  replyStatusLabel,
   stepLabel,
   traceLines,
 } from "./assistant-labels";
@@ -841,6 +842,7 @@ export function AssistantScreen({
             ) : (
               <View key={turn.id} style={s.botRow}>
                 <View style={s.botBubble}>
+                  <Text style={shared.small}>{replyStatusLabel(turn)}</Text>
                   <ProposalReview
                     hideSourceDetails={!!retainedEntry}
                     proposal={turn.proposal}

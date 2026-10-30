@@ -1,0 +1,67 @@
+.morning-review {
+  min-width: 0;
+  padding-block: 8px 16px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.morning-review > header,
+.morning-review > footer,
+.morning-review li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.morning-review h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.morning-review p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+.morning-review ul {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+.morning-review li {
+  padding-block: 12px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.morning-review-main {
+  flex: 1 1 240px;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.morning-review-main strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+.morning-review-main span,
+.morning-review-main time {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.morning-review button {
+  white-space: normal;
+  max-width: 100%;
+}
+.morning-review footer {
+  justify-content: flex-start;
+}
+
+.morning-review-history {
+  padding-block: 8px;
+}
+.morning-review-history > summary {
+  cursor: pointer;
+  min-height: var(--button-h);
+  align-content: center;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}

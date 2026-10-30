@@ -194,8 +194,9 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--color-divider);
 }
 .project-grid > li {
   min-width: 0;
@@ -203,25 +204,68 @@
 
 .project-card {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(200px, 1.3fr) minmax(
+      160px,
+      0.8fr
+    );
+  align-items: start;
   gap: 20px;
-  height: 100%;
-  min-height: 184px;
   text-align: left;
-  padding: 20px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  padding: 20px 0;
+  border-bottom: 1px solid var(--color-divider);
   color: var(--color-text);
-  cursor: pointer;
   min-width: 0;
-  transition:
-    border-color var(--motion-fast) var(--ease-out),
-    background-color var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-fast) var(--ease-out);
+}
+.project-open,
+.project-task-link {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  line-height: 1.5;
+}
+.project-open strong {
+  font-size: 15px;
+}
+.project-task-link:hover,
+.project-open:hover {
+  color: var(--color-accent);
+}
+.project-next-action {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.project-next-action > .text-button {
+  justify-self: start;
+  padding-inline: 0;
+  text-align: left;
+}
+.project-blocker {
+  color: var(--color-warn);
+}
+.project-brief summary {
+  color: var(--color-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.project-brief p {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+.project-deadline {
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .project-card-main,
 .project-card-status {
@@ -266,10 +310,6 @@
 .projects-view.is-compact .project-card {
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-}
-.project-card:hover {
-  border-color: var(--color-borderHover);
-  background: var(--color-surfaceMuted);
 }
 .project-card-top {
   display: flex;
@@ -2030,13 +2070,13 @@ dialog.templates-dialog::backdrop {
   overflow-wrap: anywhere;
 }
 
-/* Portfolio cards keep names, context and progress in consistent positions. */
+/* Portfolio rows keep next actions and dates aligned; briefs expand in place. */
 .project-card-main {
   display: grid;
   gap: 8px;
 }
 .project-card-status {
-  margin-top: auto;
+  margin-top: 0;
   width: 100%;
   display: grid;
   gap: 8px;

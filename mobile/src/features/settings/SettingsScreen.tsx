@@ -32,6 +32,7 @@ import {
   durationText,
   statusHeadlines,
   type PlannerPrefs,
+  type WorkspacePreset,
   type PlannerPrefsInput,
   type User,
   type Session,
@@ -201,6 +202,8 @@ function SettingsBody({
   onAccountDeleted,
   arrangement,
   onArrange,
+  presets = [],
+  onPresetsChange,
   preferencesReady = true,
   preferencesError = "",
   onReloadPreferences,
@@ -210,6 +213,8 @@ function SettingsBody({
   /** The one Arrange list (NAV-08), and saving it. */
   arrangement?: SidebarArrangement;
   onArrange?: (next: SidebarArrangement) => void;
+  presets?: WorkspacePreset[];
+  onPresetsChange?: (next: WorkspacePreset[]) => void;
   preferencesReady?: boolean;
   preferencesError?: string;
   onReloadPreferences?: () => void;
@@ -827,6 +832,44 @@ function SettingsBody({
             <StartChoice />
           </SettingsSection>
 
+          {onPresetsChange && (
+            <SettingsSection title="Workspace presets">
+              <Text style={shared.small}>
+                Combine shortcuts for your work. Projects and saved views stay
+                yours.
+              </Text>
+              {(["engineer", "student"] as const).map((preset) => (
+                <View key={preset} style={s.preference}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.prefTitle}>
+                      {preset === "engineer" ? "Engineer" : "Student"}
+                    </Text>
+                    <Text style={shared.small}>
+                      {preset === "engineer"
+                        ? "Project work, specifications and decisions"
+                        : "Course projects, source material and review"}
+                    </Text>
+                  </View>
+                  <Switch
+                    disabled={!preferencesReady}
+                    value={presets.includes(preset)}
+                    accessibilityLabel={`${preset === "engineer" ? "Engineer" : "Student"} preset`}
+                    onValueChange={(on) =>
+                      onPresetsChange(
+                        on
+                          ? [
+                              ...presets.filter((value) => value !== preset),
+                              preset,
+                            ]
+                          : presets.filter((value) => value !== preset),
+                      )
+                    }
+                  />
+                </View>
+              ))}
+              {preferencesError && <ErrorBanner error={preferencesError} />}
+            </SettingsSection>
+          )}
           {arrangement && onArrange && (
             <SettingsSection title="Arrange">
               {preferencesError && <ErrorBanner error={preferencesError} />}

@@ -200,8 +200,11 @@ export function AssistantAgents({
                             onOpenChat(output.chat_id);
                           }}
                         >
-                          {output.title || "Completed work"}
+                          {output.title || "Untitled result"}
                         </button>
+                        <span className="assistant-output-review">
+                          Run finished · Review outcome
+                        </span>
                         <time dateTime={output.completed_at}>
                           {new Date(output.completed_at).toLocaleString()}
                         </time>

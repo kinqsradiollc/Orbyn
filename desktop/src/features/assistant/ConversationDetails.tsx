@@ -1,3 +1,4 @@
+import { reviewNightRuns, updateStatusLabel } from "./assistant-labels";
 import { useEffect, useState } from "react";
 import type {
   AssistantConversationDetails,
@@ -86,25 +87,28 @@ export function ConversationDetails({
             <dd>{new Date(entry.created_at).toLocaleString()}</dd>
             {entry.kind === "update" && entry.completed_at && (
               <>
-                <dt>Completed</dt>
+                <dt>Run finished</dt>
                 <dd>{new Date(entry.completed_at).toLocaleString()}</dd>
               </>
             )}
           </dl>
           {entry.kind === "update" && (
             <>
-              {entry.night_runs?.map((run) => (
+              <strong>{updateStatusLabel(entry)}</strong>
+              {reviewNightRuns(entry).map((run) => (
                 <section key={`${run.work.kind}:${run.work.id}`}>
                   <strong>
                     {run.state === "done"
-                      ? "Finished"
+                      ? "Run finished"
                       : run.state === "waiting"
                         ? "Needs you"
                         : run.state === "failed"
                           ? "Couldn’t finish"
                           : run.state === "cancelled"
                             ? "Stopped"
-                            : "Working"}
+                            : run.state === "queued"
+                              ? "Queued"
+                              : "Working"}
                   </strong>
                   <p className="ai-update-text">{run.text}</p>
                 </section>
