@@ -666,6 +666,13 @@ test("a child admitted after night destination retirement cannot capture the rep
     await import("../src/modules/assistant-workspace/conversation-delivery.js");
   const u = await person();
   const home = await transaction((db) => openPersonalConversation(db, u.id));
+  // A real owned routine is required before admission can reach the retired
+  // destination fence; an invented UUID would fail ownership validation first.
+  const routine = randomUUID();
+  await pool.query(
+    "INSERT INTO agent_routines(id,user_id,instruction,rrule,next_run_at) VALUES($1,$2,'Night routine','FREQ=DAILY',now()+interval '1 day')",
+    [routine, u.id],
+  );
   const night = randomUUID();
   await pool.query(
     "INSERT INTO assistant_nights(id,user_id,local_day) VALUES($1,$2,current_date)",
@@ -684,6 +691,12 @@ test("a child admitted after night destination retirement cannot capture the rep
   const replacement = await transaction((db) =>
     openPersonalConversation(db, u.id),
   );
+  const before = (
+    await pool.query(
+      "SELECT count(*)::int AS jobs FROM ai_jobs WHERE user_id=$1",
+      [u.id],
+    )
+  ).rows[0].jobs;
   await assert.rejects(
     startAssistantAutomation({
       userId: u.id,
@@ -692,7 +705,7 @@ test("a child admitted after night destination retirement cannot capture the rep
       automation: {
         kind: "night",
         source_kind: "routine",
-        id: randomUUID(),
+        id: routine,
         night_id: night,
         end_at: new Date(Date.now() + 3600000).toISOString(),
       },
@@ -707,6 +720,16 @@ test("a child admitted after night destination retirement cannot capture the rep
       )
     ).rowCount,
     0,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS jobs FROM ai_jobs WHERE user_id=$1",
+        [u.id],
+      )
+    ).rows[0].jobs,
+    before,
+    "Rejected routing must roll back the queued child job",
   );
 });
 

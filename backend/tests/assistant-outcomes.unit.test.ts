@@ -1,4 +1,4 @@
-import { projectOutcomeReceipt } from "../src/modules/ai/outcome-receipts.js";
+import { projectOutcomeReceipt } from "../src/modules/assistant-workspace/outcome-receipts.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";

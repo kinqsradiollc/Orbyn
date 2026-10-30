@@ -12,7 +12,7 @@ import {
 import type { Queryable } from "../../db/pool.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
-import { projectOutcomeReceipt } from "../ai/outcome-receipts.js";
+import { projectOutcomeReceipt } from "./outcome-receipts.js";
 
 /** Called only inside the scheduler's existing atomic job/claim transaction. */
 export async function recordRoutineRun(

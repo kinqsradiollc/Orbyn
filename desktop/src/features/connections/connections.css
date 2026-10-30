@@ -264,6 +264,10 @@ dialog.connections-dialog > .section-heading h2 {
   cursor: default;
 }
 .connections-list > .text-button {
-  min-height: 44px;
   padding: 8px;
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .connections-list > .text-button {
+    min-height: 44px;
+  }
 }

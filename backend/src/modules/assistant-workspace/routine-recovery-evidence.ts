@@ -9,7 +9,7 @@ import { Params, scopeFor } from "../../lib/visibility.js";
 import { policy } from "../../capabilities/policy.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
-import { projectOutcomeReceipt } from "../ai/outcome-receipts.js";
+import { projectOutcomeReceipt } from "./outcome-receipts.js";
 import { readTerminalEvidence } from "../ai/agent/terminal-evidence.js";
 import { assistantExecutionContext } from "./execution-authority.js";
 import {

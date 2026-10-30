@@ -17,7 +17,7 @@ import { agentContextRoutes } from "../modules/agent-context/routes.js";
 import { assistantIdeasRoutes } from "../modules/assistant-ideas/routes.js";
 import { assistantGoalRoutes } from "../modules/assistant-workspace/goals.js";
 import { goalExecutionRoutes } from "../modules/assistant-workspace/goal-executions.js";
-import { assistantRoutineRoutes } from "../modules/assistant-workspace/routines.js";
+import { assistantRoutineRoutes } from "../modules/assistant-workspace/routine-routes.js";
 import { overnightRoutes } from "../modules/assistant-workspace/overnight.js";
 import { assistantActivityRoutes } from "../modules/assistant-workspace/activity.js";
 import { assistantConversationRoutes } from "../modules/assistant-workspace/conversation-routes.js";

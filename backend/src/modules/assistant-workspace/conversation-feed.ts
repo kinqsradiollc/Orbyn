@@ -1,4 +1,4 @@
-import { readOutcomeReceipts } from "../ai/outcome-receipts.js";
+import { readOutcomeReceipts } from "./outcome-receipts.js";
 import {
   assistantConversationPage,
   assistantConversationQuery,
@@ -6,24 +6,11 @@ import {
   fail,
 } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
-import {
-  assistantSourceVisible,
-  assistantTurnSourcesVisible,
-} from "../../lib/assistant-source-visibility.js";
+import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
 import { conversationDestination } from "./conversation-storage.js";
-import { deliveryBindingVisible } from "./conversation-delivery.js";
+import { conversationEntryVisible } from "../../lib/assistant-conversation-visibility.js";
+export { conversationEntryVisible } from "../../lib/assistant-conversation-visibility.js";
 import { conversationWaitingKind } from "./conversation-questions.js";
-
-/** Reused at display, acknowledgement and targeted reply/context boundaries. */
-export function conversationEntryVisible(entry = "e", owner = "$1") {
-  return `(${entry}.sources_checked AND (${entry}.intent_id IS NULL OR EXISTS(
-    SELECT 1 FROM assistant_delivery_intents delivery_intent JOIN assistant_delivery_bindings b ON b.id=delivery_intent.binding_id
-    WHERE delivery_intent.id=${entry}.intent_id AND ${deliveryBindingVisible("b", owner)})) AND NOT EXISTS(
-    SELECT 1 FROM assistant_conversation_entry_sources entry_source
-    WHERE entry_source.entry_id=${entry}.id AND NOT ${assistantSourceVisible("entry_source.source_kind", "entry_source.source_id", owner, false)}) AND NOT EXISTS(
-      SELECT 1 FROM assistant_conversation_streams source_stream WHERE source_stream.id=${entry}.destination_id
-      AND NOT ${assistantTurnSourcesVisible("source_stream.chat_id", `${entry}.turn_id`, owner)}))`;
-}
 
 /**
  * Read under a primary read transaction. Filter sources before loading payloads;

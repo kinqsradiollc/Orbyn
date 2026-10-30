@@ -10,7 +10,7 @@ import { transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { firstParty } from "../proposals/service.js";
-import { projectOutcomeReceipt } from "../ai/outcome-receipts.js";
+import { projectOutcomeReceipt } from "./outcome-receipts.js";
 import {
   startGoalExecution,
   controlGoalExecution,

@@ -11,7 +11,7 @@ import { policy } from "../../capabilities/policy.js";
 import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
-import { projectOutcomeReceipt } from "../ai/outcome-receipts.js";
+import { projectOutcomeReceipt } from "./outcome-receipts.js";
 import { readTerminalEvidence } from "../ai/agent/terminal-evidence.js";
 import {
   readGoalExecution,

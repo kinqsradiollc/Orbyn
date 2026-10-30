@@ -1,4 +1,4 @@
-import { readOutcomeReceipts } from "./outcome-receipts.js";
+import { readOutcomeReceipts } from "../assistant-workspace/outcome-receipts.js";
 import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";

@@ -1,4 +1,4 @@
-import { projectOutcomeReceipt } from "../ai/outcome-receipts.js";
+import { projectOutcomeReceipt } from "./outcome-receipts.js";
 import { maintainedPageNightProgress } from "../documents/maintenance-night.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 import { visibleItems } from "../../lib/visibility.js";

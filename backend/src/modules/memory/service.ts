@@ -13,7 +13,7 @@ import {
 import type { Db, Queryable } from "../../db/pool.js";
 
 import { assistantMemorySourcesVisible } from "../../lib/assistant-source-visibility.js";
-import { conversationEntryVisible } from "../assistant-workspace/conversation-feed.js";
+import { conversationEntryVisible } from "../../lib/assistant-conversation-visibility.js";
 
 const memorySourcesVisible = (doc = "d", user = "$1") =>
   assistantMemorySourcesVisible(`${doc}.id`, user);

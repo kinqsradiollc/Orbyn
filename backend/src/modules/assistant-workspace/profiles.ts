@@ -1,6 +1,6 @@
 import { readAssistantPageReview } from "./page-review.js";
 import { readAssistantReviewOrigins } from "./review-origins.js";
-import { projectOutcomeReceipt } from "../ai/outcome-receipts.js";
+import { projectOutcomeReceipt } from "./outcome-receipts.js";
 import {
   assistantProfiles,
   assistantProfileState,
