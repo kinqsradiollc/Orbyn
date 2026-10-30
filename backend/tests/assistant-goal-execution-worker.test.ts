@@ -276,7 +276,12 @@ after(async () => {
   assert.deepEqual(providerErrors, []);
 });
 
-async function fixture(mutation = false, badRepair = false, review = false) {
+async function fixture(
+  mutation = false,
+  badRepair = false,
+  review = false,
+  lane: "background" | "overnight" = "background",
+) {
   const registered = await app.inject({
     method: "POST",
     url: "/auth/register",
@@ -348,7 +353,7 @@ async function fixture(mutation = false, badRepair = false, review = false) {
         kind: "person",
       },
     ],
-    lane: "background",
+    lane,
     effect_ceiling: mutation && !review ? "existing_scopes" : "suggest",
     limits: {
       max_attempts: mutation ? 6 : 4,
@@ -963,6 +968,212 @@ test("saved Review applies one existing plan and resolves waiting evidence befor
     assert.equal(
       await scanGoalExecutions("background", new Date(), { only: [f.user.id] }),
       0,
+    );
+  } finally {
+    await stopRuntime?.();
+    stopRuntime = undefined;
+  }
+});
+
+test("Overnight scoped goals require consent and the current window, use the real night ledger and remain reviewable after distinct verification", async () => {
+  const f = await fixture(false, false, false, "overnight");
+  const now = new Date();
+  const clock = (instant: Date) =>
+    `${String(instant.getUTCHours()).padStart(2, "0")}:${String(instant.getUTCMinutes()).padStart(2, "0")}`;
+  const settings = {
+    enabled: false,
+    start: clock(new Date(now.getTime() - 2 * 3600000)),
+    end: clock(new Date(now.getTime() + 2 * 3600000)),
+    timezone: "UTC",
+    kinds: {
+      plan: false,
+      deadlines: false,
+      study: false,
+      meetings: false,
+      tidy: false,
+      handed: false,
+      follow_through: true,
+      reflection: false,
+    },
+    wait_for_ok: true,
+  };
+  const save = async (value: typeof settings) => {
+    const response = await f.request("PUT", "/me/assistant/night-shift", value);
+    assert.equal(response.statusCode, 200, response.body);
+    return response.json();
+  };
+  const scan = (at: Date) =>
+    scanGoalExecutions("overnight", at, { only: [f.user.id] });
+  await save(settings);
+  assert.equal(
+    await scan(now),
+    0,
+    "Explicit goal work does not enable a disabled Overnight lane",
+  );
+  await save({
+    ...settings,
+    enabled: true,
+    kinds: { ...settings.kinds, follow_through: false },
+  });
+  assert.equal(
+    await scan(now),
+    0,
+    "Night consent must include goal follow-through work",
+  );
+  await save({ ...settings, enabled: true });
+  assert.equal(
+    await scan(new Date(now.getTime() + 8 * 3600000)),
+    0,
+    "Enabled consent does not admit goal work outside the saved window",
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM assistant_goal_attempts WHERE execution_id=$1",
+        [f.execution.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM assistant_nights WHERE user_id=$1",
+        [f.user.id],
+      )
+    ).rows[0].n,
+    0,
+    "Refused scans create no night or run rows",
+  );
+  const first = await Promise.all([scan(now), scan(now)]);
+  assert.equal(
+    first.reduce((sum, count) => sum + count, 0),
+    1,
+    "Concurrent in-window scans admit one Overnight attempt",
+  );
+  const mapping = (
+    await pool.query(
+      "SELECT r.id,r.job_id,r.night_id,r.kind,j.runtime_lane,n.runs,n.budget_used FROM assistant_night_runs r JOIN ai_jobs j ON j.id=r.job_id JOIN assistant_nights n ON n.id=r.night_id WHERE n.user_id=$1",
+      [f.user.id],
+    )
+  ).rows;
+  assert.equal(mapping.length, 1);
+  assert.equal(mapping[0].kind, "goal");
+  assert.equal(mapping[0].runtime_lane, "overnight");
+  assert.equal(mapping[0].runs, 1);
+  const nightId = mapping[0].night_id as string;
+  const firstJob = mapping[0].job_id as string;
+  stopRuntime = await startTestAssistantRuntime("overnight");
+  try {
+    const work = await waitJob(firstJob);
+    assert.equal(
+      work.result.assistant_run.goal_result.criterion_id,
+      f.criterion,
+    );
+    await settleGoalExecutions("overnight", new Date(), [f.user.id]);
+    const afterWork = available(await details(f));
+    assert.equal(afterWork.state, "ready", afterWork.last_transition_reason);
+    assert.equal(afterWork.units[0].stage, "verify");
+    assert.equal(afterWork.acceptance, null);
+    assert.equal(afterWork.can_accept, false);
+    assert.equal(afterWork.reserved_tokens, 0);
+    const firstNight = (
+      await pool.query(
+        "SELECT budget_used,runs FROM assistant_nights WHERE id=$1",
+        [nightId],
+      )
+    ).rows[0];
+    assert.ok(firstNight.budget_used > 0);
+    assert.equal(
+      firstNight.budget_used,
+      work.result.assistant_run.token_estimate,
+    );
+    assert.equal(
+      await scan(new Date()),
+      1,
+      "The next bounded attempt verifies the saved Overnight result",
+    );
+    const runs = (
+      await pool.query(
+        "SELECT r.job_id,r.night_id,r.kind FROM assistant_night_runs r JOIN assistant_nights n ON n.id=r.night_id WHERE n.user_id=$1 ORDER BY r.created_at,r.id",
+        [f.user.id],
+      )
+    ).rows;
+    assert.equal(runs.length, 2);
+    assert.ok(
+      runs.every((row) => row.night_id === nightId && row.kind === "goal"),
+    );
+    const verifyJob = runs.find((row) => row.job_id !== firstJob)!
+      .job_id as string;
+    const checked = await waitJob(verifyJob);
+    assert.equal(checked.apply_result, null);
+    assert.equal(checked.apply_started_at, null);
+    await settleGoalExecutions("overnight", new Date(), [f.user.id]);
+    const ready = available(await details(f));
+    assert.equal(
+      ready.state,
+      "awaiting_acceptance",
+      ready.last_transition_reason,
+    );
+    assert.equal(ready.can_accept, true);
+    assert.equal(ready.acceptance, null);
+    assert.equal(ready.attempt_count, 2);
+    assert.equal(ready.reserved_tokens, 0);
+    const finalNight = (
+      await pool.query(
+        "SELECT budget_used,runs FROM assistant_nights WHERE id=$1",
+        [nightId],
+      )
+    ).rows[0];
+    assert.equal(finalNight.runs, 2);
+    assert.equal(
+      finalNight.budget_used,
+      work.result.assistant_run.token_estimate +
+        checked.result.assistant_run.token_estimate,
+    );
+    const ledger = (
+      await pool.query(
+        "SELECT sum(settled_tokens)::int AS used FROM assistant_goal_attempts WHERE execution_id=$1",
+        [f.execution.id],
+      )
+    ).rows[0];
+    assert.equal(ready.consumed_tokens, ledger.used);
+    const morning = await f.request("GET", "/me/assistant/nights/latest");
+    assert.equal(morning.statusCode, 200, morning.body);
+    const review = morning.json();
+    assert.equal(review.id, nightId);
+    assert.equal(review.budget_used, finalNight.budget_used);
+    assert.equal(review.runs.length, 2);
+    assert.deepEqual(
+      new Set(review.runs.map((run: { job_id: string }) => run.job_id)),
+      new Set([firstJob, verifyJob]),
+    );
+    for (const run of review.runs) {
+      assert.equal(run.restricted, undefined);
+      assert.equal(run.state, "done");
+      assert.ok(run.summary);
+      assert.notEqual(
+        run.execution_outcome?.outcome,
+        "completed",
+        "Morning review cannot self-accept the goal",
+      );
+    }
+    assert.equal(
+      await scan(new Date()),
+      0,
+      "Overnight review readiness never admits an acceptance-bypassing attempt",
+    );
+    assert.equal(
+      requests.filter(
+        (row) => row.criterion === f.criterion && row.mode === "work",
+      ).length,
+      1,
+    );
+    assert.equal(
+      requests.filter(
+        (row) => row.criterion === f.criterion && row.mode === "verify",
+      ).length,
+      1,
     );
   } finally {
     await stopRuntime?.();
