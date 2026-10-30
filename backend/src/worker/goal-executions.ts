@@ -23,6 +23,7 @@ import {
 } from "../modules/ai/agent/terminal-evidence.js";
 import {
   assertGoalExecutionCurrent,
+  goalFacts,
   lockGoalExecution,
   type GoalExecutionRow,
 } from "../modules/assistant-workspace/goal-executions.js";
@@ -622,10 +623,15 @@ export async function scanGoalExecutions(
         );
         return;
       }
+      let goal: Awaited<ReturnType<typeof goalFacts>> = null;
       try {
         await assertGoalExecutionCurrent(db, row.owner_id, row, {
           admit: true,
         });
+        // The admission fence already holds the goal's share lock. Load its
+        // authorized context in the same transaction, without widening the unit.
+        goal = await goalFacts(db, row.owner_id, row.goal_id, row.lane);
+        if (!goal) throw new Error("Goal context is no longer available.");
       } catch {
         await transition(
           db,
@@ -782,6 +788,7 @@ export async function scanGoalExecutions(
       const mode = unit.stage as "work" | "verify" | "repair";
       const message = [
         `Work on criterion ${criterion.id}: ${criterion.text}`,
+        `Current authorized goal context (the selected criterion remains this unit's scope): ${JSON.stringify({ title: goal.title, target: goal.target })}`,
         `This is one ${mode} unit of an explicitly scoped goal. Other criteria are separate units.`,
         mode === "verify"
           ? "Read the saved outputs and relevant current sources. Do not stage changes. Report ready only for person review, or repair/blocked with a concise reason."
