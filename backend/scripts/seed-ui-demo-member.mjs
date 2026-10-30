@@ -195,4 +195,19 @@ export async function seedMemberCatalog({
         },
       ]),
     });
+  // Paired source reminders exercise grouping while preserving per-notice actions.
+  for (let n = 0; n < 6; n++)
+    await put("notifications", {
+      id: key(`notice-${n}`),
+      user_id: owner,
+      item_id: key(`task-${Math.floor(n / 2)}`),
+      item_version: 1,
+      channel: "inapp",
+      title: `Demo · ${n % 2 ? "A follow-up is ready" : "Review the next step"}`,
+      body: "Fictional development reminder. Open the linked task to review its context.",
+      state: "sent",
+      read: n === 1 || n === 4,
+      kind: "reminder",
+      ref: key(`notice-${n}`),
+    });
 }
