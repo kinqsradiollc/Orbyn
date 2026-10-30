@@ -441,6 +441,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   // These configure/inspect owner-approved automation; they never expose model execution.
   "GET /docs/:id/maintenance/runs": "assistant_control",
   "POST /docs/:id/maintenance/runs/:runId/decision": "assistant_control",
+  "POST /docs/:id/maintenance/runs/:runId/stop": "assistant_control",
   "GET /docs/:id/maintenance": "assistant_control",
   "POST /docs/:id/maintenance": "assistant_control",
   "PUT /docs/:id/maintenance/:bindingId": "assistant_control",

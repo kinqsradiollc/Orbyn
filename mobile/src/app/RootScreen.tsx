@@ -1949,6 +1949,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                         }
                       }}
                       onKeptNote={openDocument}
+                      onOpenPage={openDocument}
                       onShowOnCalendar={(at) => {
                         setSearch("");
                         setTab("Calendar");

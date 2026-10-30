@@ -287,3 +287,7 @@ export function maintainedPageDraftSaved(
     JSON.stringify(blocks) === JSON.stringify(savedBlocks)
   );
 }
+
+export const maintainedPageRunStopResult = z
+  .object({ state: maintainedPageRunSummary.shape.state, stopped: z.boolean() })
+  .strict();

@@ -1,3 +1,4 @@
+import { readAssistantPageReview } from "./page-review.js";
 import { readAssistantReviewOrigins } from "./review-origins.js";
 import { projectOutcomeReceipt } from "../ai/outcome-receipts.js";
 import {
@@ -193,6 +194,16 @@ export async function readAssistantProfiles(
         [owner, lane],
       )
     ).rows;
+    const pageReview =
+      includeOutcomes && includeOrigins
+        ? await readAssistantPageReview(db, owner, lane, observed)
+        : null;
+    if (pageReview) {
+      counts.working += pageReview.counts.working;
+      counts.waiting += pageReview.counts.waiting;
+      counts.queued += pageReview.counts.queued;
+      counts.recovering += pageReview.counts.recovering;
+    }
     const origins =
       includeOutcomes && includeOrigins
         ? await readAssistantReviewOrigins(db, owner, [
@@ -229,11 +240,20 @@ export async function readAssistantProfiles(
                 counts.waiting +
                 counts.queued +
                 counts.recovering >
-              work.length,
+              work.length +
+                (pageReview?.runs.filter((run) =>
+                  ["queued", "running", "waiting"].includes(run.state),
+                ).length ?? 0),
           }
         : {}),
       ...(includeOutcomes && includeOrigins
         ? { outputs_truncated: (outputs[0]?.total_rows ?? 0) > outputs.length }
+        : {}),
+      ...(pageReview
+        ? {
+            page_runs: pageReview.runs,
+            page_runs_truncated: pageReview.truncated,
+          }
         : {}),
       outputs: outputs.map(
         ({

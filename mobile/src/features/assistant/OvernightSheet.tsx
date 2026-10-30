@@ -67,6 +67,10 @@ function OvernightSession(props: Props) {
     night: OvernightNight;
     action: "keep" | "undo";
   } | null>(null);
+  const [pageStop, setPageStop] = useState<{
+    docId: string;
+    runId: string;
+  } | null>(null);
   const [night, setNight] = useState<OvernightNight | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -316,6 +320,16 @@ function OvernightSession(props: Props) {
                   secondary
                   onPress={() => props.onOpen("doc", run.doc_id)}
                 />
+                {["queued", "running", "waiting"].includes(run.state) && (
+                  <Button
+                    title="Stop this page run"
+                    secondary
+                    disabled={locked}
+                    onPress={() =>
+                      setPageStop({ docId: run.doc_id, runId: run.id })
+                    }
+                  />
+                )}
               </View>
             ))}
             {activeRuns.length > 0 && (
@@ -371,6 +385,28 @@ function OvernightSession(props: Props) {
           </>
         )}
       </ScrollView>
+      <ActionSheet
+        visible={!!pageStop}
+        label="Stop current page work"
+        title="Stop this page run?"
+        message="Stops this run and discards its unapplied proposal. The routine schedule and changes already saved are kept."
+        actions={[
+          {
+            label: "Stop run",
+            destructive: true,
+            disabled: locked,
+            onPress: () => {
+              const selected = pageStop;
+              setPageStop(null);
+              if (selected)
+                void act(() =>
+                  client.stopPageMaintenanceRun(selected.docId, selected.runId),
+                );
+            },
+          },
+        ]}
+        onClose={() => setPageStop(null)}
+      />
       <ActionSheet
         visible={!!bulkPrompt}
         label="Review overnight"

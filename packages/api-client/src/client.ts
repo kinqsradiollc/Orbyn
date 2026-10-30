@@ -1871,6 +1871,9 @@ export class OrbynClient {
   listPageMaintenanceRuns(docId: string) {
     return documents.callListPageMaintenanceRuns.call(this, docId);
   }
+  stopPageMaintenanceRun(docId: string, runId: string) {
+    return documents.callStopPageMaintenanceRun.call(this, docId, runId);
+  }
   decidePageMaintenanceRun(
     docId: string,
     runId: string,

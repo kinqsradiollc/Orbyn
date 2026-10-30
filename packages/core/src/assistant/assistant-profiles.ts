@@ -1,4 +1,7 @@
-import { assistantReviewOrigin } from "./assistant-review.js";
+import {
+  assistantPageReviewRun,
+  assistantReviewOrigin,
+} from "./assistant-review.js";
 import {
   assistantOutcomeReceipt,
   ASSISTANT_OUTCOME_LABELS,
@@ -58,6 +61,8 @@ export const assistantProfile = z
       .optional(),
     work_truncated: z.boolean().optional(),
     outputs_truncated: z.boolean().optional(),
+    page_runs: z.array(assistantPageReviewRun).max(25).optional(),
+    page_runs_truncated: z.boolean().optional(),
     outputs: z
       .array(
         z

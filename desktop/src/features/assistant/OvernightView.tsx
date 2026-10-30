@@ -168,6 +168,20 @@ function OvernightSession(props: Props) {
       ),
     );
   };
+  const stopPage = async (docId: string, runId: string) => {
+    if (
+      locked ||
+      !owns() ||
+      !(await ask({
+        title: "Stop this page run?",
+        body: "Stops this run and discards its unapplied proposal. The routine schedule and changes already saved are kept.",
+        confirmLabel: "Stop run",
+        destructive: true,
+      }))
+    )
+      return;
+    await act(() => client.stopPageMaintenanceRun(docId, runId));
+  };
   if (!loaded) return <p role="status">Loading your night…</p>;
   if (!night && loadError)
     return (
@@ -322,6 +336,15 @@ function OvernightSession(props: Props) {
           >
             {run.state === "waiting" ? "Review in page" : "Open page"}
           </button>
+          {["queued", "running", "waiting"].includes(run.state) && (
+            <button
+              className="text-button"
+              disabled={locked}
+              onClick={() => void stopPage(run.doc_id, run.id)}
+            >
+              Stop this page run
+            </button>
+          )}
         </section>
       ))}
       {activeRuns.length > 0 && (

@@ -29,10 +29,12 @@ export function MorningReview({
   onOpenActivity,
   onOpenChat,
   onOpenReview,
+  onOpenPage,
 }: {
   onOpenActivity: (lane: Lane) => void;
   onOpenChat?: (id: string) => void;
   onOpenReview?: () => void;
+  onOpenPage?: (id: string) => void;
 }) {
   const owner = useSyncExternalStore(subscribeSession, sessionKey);
   const store = useMemo(
@@ -63,7 +65,8 @@ export function MorningReview({
   if (snapshot.data && !snapshot.error && !groups.length) return null;
   const open = (row: AssistantMorningReviewItem) => {
     if (sessionKey() !== owner) return;
-    if (row.target === "review" && onOpenReview) onOpenReview();
+    if (row.docId && onOpenPage) onOpenPage(row.docId);
+    else if (row.target === "review" && onOpenReview) onOpenReview();
     else if (row.chatId && onOpenChat) onOpenChat(row.chatId);
     else onOpenActivity(row.lane);
   };
@@ -109,6 +112,7 @@ export function MorningReview({
     task: "Task",
     chat: "Conversation",
     activity: "Activity",
+    page: "Page",
   };
   return (
     <View style={s.section}>
@@ -177,7 +181,10 @@ export function MorningReview({
             />
           )}
           {snapshot.data.profiles.some(
-            (profile) => profile.work_truncated || profile.outputs_truncated,
+            (profile) =>
+              profile.work_truncated ||
+              profile.outputs_truncated ||
+              profile.page_runs_truncated,
           ) && (
             <Text style={shared.small}>
               More runs are available in agent activity and Review. This review

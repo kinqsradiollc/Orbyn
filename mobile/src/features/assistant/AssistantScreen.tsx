@@ -140,6 +140,7 @@ export function AssistantScreen({
   busy,
   onOpenSource,
   onKeptNote,
+  onOpenPage,
   onShowOnCalendar,
   onBackToProject,
   drawerOpen,
@@ -182,6 +183,7 @@ export function AssistantScreen({
   onOpenSource?: (source: AssistantSource) => void;
   /** Opens a note once it has been kept. */
   onKeptNote?: (docId: string) => void;
+  onOpenPage?: (docId: string) => void;
   /** After a plan is applied: the calendar at its first changed session. */
   onShowOnCalendar?: (at: string) => void;
   onBackToProject?: (projectId: string) => void;
@@ -539,6 +541,7 @@ export function AssistantScreen({
         />
       )}
       <AssistantAgents
+        onOpenPage={onOpenPage}
         visible={agentLane !== null}
         lane={agentLane ?? "background"}
         onClose={() => setAgentLane(null)}

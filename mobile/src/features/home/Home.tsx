@@ -410,6 +410,7 @@ export function HomeSection({
       )}
       {homePanels(home).map(panel)}
       <HomeCompanions
+        onOpenPage={onOpenDoc}
         canOpen={canOpenAgentOutput}
         onOpenChat={onOpenAgentOutput}
       />

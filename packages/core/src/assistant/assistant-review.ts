@@ -11,11 +11,31 @@ import {
 /** Current source identity, projected by the server; never inferred from a summary. */
 export const assistantReviewOrigin = z
   .object({
-    kind: z.enum(["goal", "routine", "project", "task", "chat"]),
+    kind: z.enum(["goal", "routine", "project", "task", "chat", "page"]),
     id: z.uuid(),
     title: z.string().min(1).max(200),
   })
   .strict();
+export const assistantPageReviewRun = z
+  .object({
+    id: z.uuid(),
+    doc_id: z.uuid(),
+    title: z.string().min(1).max(200),
+    origin: assistantReviewOrigin,
+    state: z.enum([
+      "queued",
+      "running",
+      "waiting",
+      "done",
+      "failed",
+      "cancelled",
+    ]),
+    recovering: z.boolean(),
+    updated_at: z.iso.datetime(),
+    work_kind: z.enum(["page_update", "comment_reply"]),
+  })
+  .strict();
+export type AssistantPageReviewRun = z.output<typeof assistantPageReviewRun>;
 export type AssistantReviewOrigin = z.output<typeof assistantReviewOrigin>;
 export type AssistantMorningReviewItem = {
   id: string;
@@ -28,6 +48,7 @@ export type AssistantMorningReviewItem = {
   priority: number;
   at?: string;
   chatId?: string;
+  docId?: string;
   summary?: string;
   execution_outcome?: AssistantOutcomeReceipt;
 };
@@ -161,6 +182,37 @@ export function groupAssistantReview(
         output.origin,
       );
     }
+    for (const run of profile.page_runs ?? []) {
+      const kind =
+        run.work_kind === "comment_reply" ? "Comment reply" : "Page update";
+      const state = assistantPageReviewStateLabel(run);
+      put(
+        {
+          id: `page-run:${run.id}`,
+          lane: profile.lane,
+          title: run.title,
+          detail: `${name} · ${kind} · ${state}`,
+          action: run.state === "waiting" ? "Review in page" : "Open page",
+          priority:
+            run.state === "waiting"
+              ? 0
+              : run.state === "failed"
+                ? 1
+                : run.state === "cancelled"
+                  ? 2
+                  : run.recovering
+                    ? 3
+                    : run.state === "running"
+                      ? 4
+                      : run.state === "done"
+                        ? 5
+                        : 6,
+          at: run.updated_at,
+          docId: run.doc_id,
+        },
+        run.origin,
+      );
+    }
     // Older/limited snapshots still disclose work omitted by the bounded rows.
     const represented = { waiting: 0, working: 0, queued: 0, recovering: 0 };
     for (const work of profile.work ?? []) {
@@ -168,6 +220,14 @@ export function groupAssistantReview(
       else if (work.state === "queued") represented.queued++;
       else if (work.recovering) represented.recovering++;
       else represented.working++;
+    }
+    for (const run of profile.page_runs ?? []) {
+      if (run.state === "waiting") represented.waiting++;
+      else if (run.state === "queued") represented.queued++;
+      else if (run.state === "running") {
+        if (run.recovering) represented.recovering++;
+        else represented.working++;
+      }
     }
     for (const [key, label, priority] of [
       ["waiting", "need a decision", 0],
@@ -252,4 +312,21 @@ export function assistantReviewGroupSummary(
       return n ? [`${n} ${n === 1 ? one : many}`] : [];
     })
     .join(" · ");
+}
+
+export function assistantPageReviewStateLabel(
+  run: AssistantPageReviewRun,
+): string {
+  return run.state === "running" && run.recovering
+    ? "Recovery pending"
+    : (
+        {
+          queued: "Queued",
+          running: "Running",
+          waiting: "Waiting for review",
+          done: "Run finished",
+          failed: "Run failed",
+          cancelled: "Cancelled",
+        } as const
+      )[run.state];
 }

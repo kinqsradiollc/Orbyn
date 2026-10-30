@@ -193,3 +193,99 @@ test("server-owned pending Review state remains a decision even when an old run 
   assert.equal(item.action, "Review changes");
   assert.match(item.detail, /Changes waiting for review/);
 });
+
+test("page decisions remain actionable alongside chat results from the same project", () => {
+  const p = data(),
+    source: AssistantReviewOrigin = {
+      kind: "project",
+      id: id(700),
+      title: "Current project",
+    };
+  p.profiles[0].outputs = [output(11, source)];
+  p.profiles[1].counts.waiting = 1;
+  p.profiles[1].state = "waiting";
+  p.profiles[1].page_runs = [
+    {
+      id: id(900),
+      doc_id: id(901),
+      title: "Current page",
+      origin: source,
+      state: "waiting",
+      recovering: false,
+      updated_at: at,
+      work_kind: "page_update",
+    },
+  ];
+  const groups = groupAssistantReview(assistantProfiles.parse(p));
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].items.length, 2);
+  assert.equal(groups[0].items[0].docId, id(901));
+  assert.equal(groups[0].items[0].action, "Review in page");
+  assert.equal(groups[0].items[0].chatId, undefined);
+  assert.equal(groups[0].items[0].execution_outcome, undefined);
+});
+
+test("page active rows represent combined lane counts without duplicate generic work", () => {
+  const p = data();
+  p.profiles[0].counts = { working: 1, queued: 1, waiting: 1, recovering: 1 };
+  p.profiles[0].state = "working";
+  p.profiles[0].page_runs = (
+    ["running", "queued", "waiting", "running"] as const
+  ).map((state, n) => ({
+    id: id(900 + n),
+    doc_id: id(950 + n),
+    title: "Page",
+    origin: { kind: "page" as const, id: id(950 + n), title: "Page" },
+    state,
+    recovering: n === 3,
+    updated_at: at,
+    work_kind: "comment_reply" as const,
+  }));
+  const items = groupAssistantReview(assistantProfiles.parse(p)).flatMap(
+    (g) => g.items,
+  );
+  assert.equal(items.length, 4);
+  assert.ok(items.every((i) => i.id.startsWith("page-run:")));
+  p.profiles[0].counts.waiting = 2;
+  assert.ok(
+    groupAssistantReview(p)
+      .flatMap((g) => g.items)
+      .some((i) => i.id === "background:waiting"),
+  );
+});
+
+test("finished page metadata does not fabricate a goal outcome or approval receipt", () => {
+  const p = data();
+  p.profiles[0].page_runs = [
+    {
+      id: id(900),
+      doc_id: id(901),
+      title: "Page",
+      origin: { kind: "page", id: id(901), title: "Page" },
+      state: "done",
+      recovering: false,
+      updated_at: at,
+      work_kind: "page_update",
+    },
+  ];
+  const item = groupAssistantReview(assistantProfiles.parse(p))[0].items[0];
+  assert.match(item.detail, /Run finished/);
+  assert.equal(item.execution_outcome, undefined);
+  assert.equal(item.action, "Open page");
+  assert.equal(item.target, undefined);
+  assert.equal(
+    assistantProfiles.safeParse({
+      ...p,
+      profiles: [
+        {
+          ...p.profiles[0],
+          page_runs: [
+            { ...p.profiles[0].page_runs[0], proposal: { private: "hidden" } },
+          ],
+        },
+        p.profiles[1],
+      ],
+    }).success,
+    false,
+  );
+});

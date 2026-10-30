@@ -1,4 +1,4 @@
-import { LEAD_TOKEN_BUDGET } from "../ai/agent/lead.js";
+import { LEAD_TOKEN_BUDGET } from "../ai/agent/limits.js";
 import { randomUUID } from "node:crypto";
 import {
   fail,

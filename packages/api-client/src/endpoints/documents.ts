@@ -1,4 +1,5 @@
 import {
+  maintainedPageRunStopResult,
   type ConnectionMap,
   type Doc,
   type DocAiAction,
@@ -730,6 +731,19 @@ export function callListPageMaintenanceRuns(this: OrbynClient, docId: string) {
   return this.request<MaintainedPageRunSummary[]>(
     `/docs/${docId}/maintenance/runs`,
     { fresh: true },
+  );
+}
+
+export async function callStopPageMaintenanceRun(
+  this: OrbynClient,
+  docId: string,
+  runId: string,
+) {
+  return maintainedPageRunStopResult.parse(
+    await this.request<unknown>(
+      `/docs/${docId}/maintenance/runs/${runId}/stop`,
+      { method: "POST", body: {} },
+    ),
   );
 }
 

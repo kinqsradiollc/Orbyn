@@ -3043,6 +3043,7 @@ function WorkspaceController({
                 )}
                 {view === "Overview" && (
                   <OverviewView
+                    onOpenPage={(id) => openPage(id)}
                     {...listProps}
                     onOpenAgentOutput={
                       canOpenAgentOutput ? openAgentOutput : undefined
@@ -3295,7 +3296,10 @@ function WorkspaceController({
                     onOpenSidePanel={() => setMobileNav(false)}
                     agentWorkspace={(lane, openChat) =>
                       lane === "background" ? (
-                        <BackgroundView onOpenChat={openChat} />
+                        <BackgroundView
+                          onOpenChat={openChat}
+                          onOpenPage={(id) => openPage(id)}
+                        />
                       ) : (
                         <OvernightView
                           report={report}
@@ -3365,6 +3369,7 @@ function WorkspaceController({
                 )}
                 {view === "Background" && (
                   <BackgroundView
+                    onOpenPage={(id) => openPage(id)}
                     onOpenChat={(id) => {
                       navigate("AI assistant");
                       void assistant.openChat(id).catch(report);

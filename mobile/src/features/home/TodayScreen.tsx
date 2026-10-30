@@ -263,6 +263,7 @@ export function TodayScreen({
         </View>
       )}
       <MorningReview
+        onOpenPage={(id) => onOpenLink({ kind: "doc", id })}
         onOpenReview={onOpenAgentReview}
         onOpenActivity={onOpenAgentActivity}
         onOpenChat={canOpenAgentOutput ? onOpenAgentOutput : undefined}

@@ -39,6 +39,7 @@ import { progressOf } from "../tasks/tasks";
 type Props = {
   /** Opens a document found on the Overview. */
   onOpenDoc: (doc: Doc) => void;
+  onOpenPage?: (id: string) => void;
   onOpenProject: (id: string) => void;
   onOpenAgentOutput?: (id: string) => void;
   items: Item[];
@@ -73,6 +74,7 @@ export function OverviewView({
   onNavigate,
   onPlanDay,
   onOpenDoc,
+  onOpenPage,
   onOpenProject,
   onFocus,
   onOpenById,
@@ -179,6 +181,7 @@ export function OverviewView({
 
   const morningReview = (
     <MorningReview
+      onOpenPage={onOpenPage}
       onOpenReview={() => onNavigate("Review")}
       onOpenActivity={(lane) =>
         onNavigate(lane === "background" ? "Background" : "Overnight")

@@ -20,6 +20,8 @@ const {
   decideMaintainedPageRun,
   PAGE_RUN_LEASE_MS,
 } = await import("../src/modules/documents/maintenance-runs.js");
+const { stopMaintainedPageRun } =
+  await import("../src/modules/documents/maintenance-stop.js");
 const { processMaintainedPageRun } =
   await import("../src/worker/maintained-pages.js");
 const { resolveMaintainedPageModel } =
@@ -1320,3 +1322,253 @@ for (const mode of [
     );
   });
 }
+
+test("person Stop during an accepted page provider response fences staging and retains conservative accounting", async () => {
+  const f = await fixture({ night: true });
+  const bindingBefore = (
+    await pool.query("SELECT * FROM assistant_page_bindings WHERE id=$1", [
+      f.binding.id,
+    ])
+  ).rows[0];
+  let reservedBefore: any;
+  let nightUsedBefore = 0;
+  responseHook = async (body) => {
+    reservedBefore = await current(f.run.id);
+    assert.equal(reservedBefore.state, "running");
+    assert.ok(reservedBefore.reserved_tokens > 0);
+    assert.equal(reservedBefore.token_estimate, reservedBefore.reserved_tokens);
+    nightUsedBefore = (
+      await pool.query("SELECT budget_used FROM assistant_nights WHERE id=$1", [
+        f.run.night_id,
+      ])
+    ).rows[0].budget_used;
+    assert.ok(
+      nightUsedBefore > 0,
+      "The accepted request was reserved before provider transmission",
+    );
+    assert.deepEqual(
+      await transaction((db) =>
+        stopMaintainedPageRun(db, f.user.id, f.doc.id, f.run.id),
+      ),
+      { state: "cancelled", stopped: true },
+    );
+    return JSON.stringify({
+      expected_revision: JSON.parse(body.messages.at(-1).content)
+        .expected_revision,
+      replacements: [
+        {
+          id: "summary",
+          type: "paragraph",
+          text: "Late provider result must not publish.",
+        },
+      ],
+    });
+  };
+  const result = await processMaintainedPageRun(
+    log,
+    "overnight",
+    options(f.run.id),
+  );
+  assert.notEqual(result.state, "done");
+  assert.equal(seen.length, 1);
+  const stopped = await current(f.run.id);
+  assert.equal(stopped.state, "cancelled");
+  assert.equal(stopped.error_message, "Stopped by you.");
+  assert.equal(stopped.proposal, null);
+  assert.equal(stopped.waiting_id, null);
+  assert.equal(stopped.lease_token, null);
+  assert.equal(stopped.lease_expires_at, null);
+  assert.equal(stopped.token_estimate, reservedBefore.token_estimate);
+  assert.equal(stopped.reserved_tokens, reservedBefore.reserved_tokens);
+  assert.deepEqual(
+    (
+      await pool.query("SELECT * FROM assistant_page_bindings WHERE id=$1", [
+        f.binding.id,
+      ])
+    ).rows[0],
+    bindingBefore,
+  );
+  assert.equal(
+    (
+      await pool.query("SELECT budget_used FROM assistant_nights WHERE id=$1", [
+        f.run.night_id,
+      ])
+    ).rows[0].budget_used,
+    nightUsedBefore,
+  );
+  const segment = (
+    await pool.query(
+      "SELECT state,reserved_tokens,reported_tokens FROM assistant_work_reservations WHERE page_run_id=$1",
+      [f.run.id],
+    )
+  ).rows[0];
+  assert.equal(segment.state, "settled");
+  assert.equal(segment.reported_tokens, reservedBefore.token_estimate);
+  const companions = (
+    await pool.query(
+      "SELECT state,lease_until,claimed_by FROM ai_jobs WHERE maintenance_run_id=$1",
+      [f.run.id],
+    )
+  ).rows;
+  assert.ok(companions.length > 0);
+  assert.ok(
+    companions.every(
+      (job) =>
+        job.state === "failed" &&
+        job.lease_until === null &&
+        job.claimed_by === null,
+    ),
+  );
+  const doc = (
+    await pool.query("SELECT version,content FROM docs WHERE id=$1", [f.doc.id])
+  ).rows[0];
+  assert.equal(doc.version, 1);
+  assert.equal(doc.content[1].text, "Authorized selected source.");
+  assert.equal(
+    (await processMaintainedPageRun(log, "overnight", options(f.run.id))).state,
+    "idle",
+  );
+  assert.equal(seen.length, 1);
+});
+
+test("person Stop after committed page publication preserves the applied page and result without another inference", async () => {
+  const f = await fixture();
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(f.run.id)))
+      .state,
+    "done",
+  );
+  assert.equal(seen.length, 1);
+  const before = await current(f.run.id);
+  const pageBefore = (
+    await pool.query("SELECT * FROM docs WHERE id=$1", [f.doc.id])
+  ).rows[0];
+  const bindingBefore = (
+    await pool.query("SELECT * FROM assistant_page_bindings WHERE id=$1", [
+      f.binding.id,
+    ])
+  ).rows[0];
+  const reservationsBefore = (
+    await pool.query(
+      "SELECT * FROM assistant_work_reservations WHERE page_run_id=$1 ORDER BY id",
+      [f.run.id],
+    )
+  ).rows;
+  assert.equal(pageBefore.version, 2);
+  assert.equal(pageBefore.content[1].text, "Generated scoped summary.");
+  assert.deepEqual(
+    await transaction((db) =>
+      stopMaintainedPageRun(db, f.user.id, f.doc.id, f.run.id),
+    ),
+    { state: "done", stopped: false },
+  );
+  assert.deepEqual(await current(f.run.id), before);
+  assert.deepEqual(
+    (await pool.query("SELECT * FROM docs WHERE id=$1", [f.doc.id])).rows[0],
+    pageBefore,
+  );
+  assert.deepEqual(
+    (
+      await pool.query("SELECT * FROM assistant_page_bindings WHERE id=$1", [
+        f.binding.id,
+      ])
+    ).rows[0],
+    bindingBefore,
+  );
+  assert.deepEqual(
+    (
+      await pool.query(
+        "SELECT * FROM assistant_work_reservations WHERE page_run_id=$1 ORDER BY id",
+        [f.run.id],
+      )
+    ).rows,
+    reservationsBefore,
+  );
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(f.run.id)))
+      .state,
+    "idle",
+  );
+  assert.equal(seen.length, 1);
+});
+
+test("person Stop of a waiting page proposal clears its saved update and fences approval without another inference", async () => {
+  const f = await fixture();
+  await pool.query("UPDATE agent_grants SET trust='ask' WHERE id=$1", [
+    f.principal.grant_id,
+  ]);
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(f.run.id)))
+      .state,
+    "waiting",
+  );
+  assert.equal(seen.length, 1);
+  const waiting = await current(f.run.id);
+  assert.ok(waiting.proposal);
+  assert.ok(waiting.waiting_id);
+  const bindingBefore = (
+    await pool.query("SELECT * FROM assistant_page_bindings WHERE id=$1", [
+      f.binding.id,
+    ])
+  ).rows[0];
+  const reservationsBefore = (
+    await pool.query(
+      "SELECT * FROM assistant_work_reservations WHERE page_run_id=$1 ORDER BY id",
+      [f.run.id],
+    )
+  ).rows;
+  assert.deepEqual(
+    await transaction((db) =>
+      stopMaintainedPageRun(db, f.user.id, f.doc.id, f.run.id),
+    ),
+    { state: "cancelled", stopped: true },
+  );
+  const stopped = await current(f.run.id);
+  assert.equal(stopped.state, "cancelled");
+  assert.equal(stopped.proposal, null);
+  assert.equal(stopped.waiting_id, null);
+  assert.equal(stopped.lease_token, null);
+  assert.equal(stopped.token_estimate, waiting.token_estimate);
+  assert.equal(stopped.reserved_tokens, waiting.reserved_tokens);
+  await assert.rejects(
+    transaction((db) =>
+      decideMaintainedPageRun(
+        db,
+        f.user.id,
+        f.run.id,
+        waiting.waiting_id,
+        true,
+        time,
+      ),
+    ),
+    (error: any) => error.statusCode === 409,
+  );
+  assert.deepEqual(
+    (
+      await pool.query("SELECT * FROM assistant_page_bindings WHERE id=$1", [
+        f.binding.id,
+      ])
+    ).rows[0],
+    bindingBefore,
+  );
+  assert.deepEqual(
+    (
+      await pool.query(
+        "SELECT * FROM assistant_work_reservations WHERE page_run_id=$1 ORDER BY id",
+        [f.run.id],
+      )
+    ).rows,
+    reservationsBefore,
+  );
+  assert.equal(
+    (await pool.query("SELECT content FROM docs WHERE id=$1", [f.doc.id]))
+      .rows[0].content[1].text,
+    "Authorized selected source.",
+  );
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(f.run.id)))
+      .state,
+    "idle",
+  );
+  assert.equal(seen.length, 1);
+});

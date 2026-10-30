@@ -1,3 +1,4 @@
+import { LEAD_TOKEN_BUDGET } from "./limits.js";
 import type { QuietReadEvidence } from "../../assistant-workspace/quiet-projection.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -36,8 +37,7 @@ import type { ToolSpec, ToolCall } from "./protocol.js";
 export const LEAD_MAX_STEPS = 8;
 export const SPECIALIST_MAX_RUNS = 12;
 export const MAX_STAGNANT_DELEGATE_ROUNDS = 2;
-/** New input plus output tokens across the lead and all its specialists. */
-export const LEAD_TOKEN_BUDGET = 200_000;
+export { LEAD_TOKEN_BUDGET } from "./limits.js";
 const LIMIT_NOTE =
   "I reached this run's step or token limit before finishing, so the result may be incomplete.";
 

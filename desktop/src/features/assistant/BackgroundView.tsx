@@ -1,3 +1,4 @@
+import { PageAgentWork } from "./PageAgentWork";
 import { CurrentAgentWork } from "./CurrentAgentWork";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { AssistantProfileStore } from "@orbyn/api-client";
@@ -12,8 +13,10 @@ import "./assistant-agents.css";
 /** The background agent has its own work surface, independent of chat and night review. */
 export function BackgroundView({
   onOpenChat,
+  onOpenPage,
 }: {
   onOpenChat: (id: string) => void;
+  onOpenPage?: (id: string) => void;
 }) {
   const binding = () => {
     const value = session.binding();
@@ -149,14 +152,32 @@ export function BackgroundView({
                   No result decisions in the latest output window.
                 </p>
               ) : null}
-              {profile.work && (
-                <CurrentAgentWork
-                  work={profile.work}
-                  truncated={profile.work_truncated}
-                  onOpenChat={onOpenChat}
+              {profile.page_runs && (
+                <PageAgentWork
+                  runs={profile.page_runs}
+                  truncated={profile.page_runs_truncated}
                   onRefresh={store.refresh}
+                  onOpenPage={
+                    onOpenPage
+                      ? (id) => {
+                          if (binding() === owner) onOpenPage(id);
+                        }
+                      : undefined
+                  }
                 />
               )}
+              {profile.work &&
+                (profile.work.length > 0 ||
+                  !(profile.page_runs ?? []).some((run) =>
+                    ["queued", "running", "waiting"].includes(run.state),
+                  )) && (
+                  <CurrentAgentWork
+                    work={profile.work}
+                    truncated={profile.work_truncated}
+                    onOpenChat={onOpenChat}
+                    onRefresh={store.refresh}
+                  />
+                )}
               {history.length > 0 && (
                 <details className="agent-result-history">
                   <summary>

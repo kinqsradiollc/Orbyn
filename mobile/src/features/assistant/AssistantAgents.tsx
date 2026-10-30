@@ -1,3 +1,4 @@
+import { PageAgentWork } from "./PageAgentWork";
 import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { AppState, Text, View } from "react-native";
 import { AssistantProfileStore } from "@orbyn/api-client";
@@ -26,12 +27,14 @@ export function AssistantAgents({
   lane,
   onClose,
   onOpenChat,
+  onOpenPage,
   canOpen,
 }: {
   visible: boolean;
   lane?: "background" | "overnight";
   onClose: () => void;
   onOpenChat: (id: string) => void;
+  onOpenPage?: (id: string) => void;
   canOpen: boolean;
 }) {
   const owner = session.token;
@@ -45,7 +48,11 @@ export function AssistantAgents({
     [binding],
   );
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  const pendingChat = useRef<{ id: string; owner: string } | null>(null);
+  const pendingChat = useRef<{
+    id: string;
+    owner: string;
+    page?: boolean;
+  } | null>(null);
   useEffect(() => {
     if (!visible) return;
     void store.refresh();
@@ -79,9 +86,11 @@ export function AssistantAgents({
         if (
           choice &&
           choice.owner === `${session.generation}:${session.token}` &&
-          canOpen
-        )
-          onOpenChat(choice.id);
+          (choice.page ? !!onOpenPage : canOpen)
+        ) {
+          if (choice.page) onOpenPage?.(choice.id);
+          else onOpenChat(choice.id);
+        }
       }}
       footer={
         <Button
@@ -222,18 +231,41 @@ export function AssistantAgents({
                 }}
               />
             ))}
-            {profile.work && (
-              <CurrentAgentWork
-                work={profile.work}
-                truncated={profile.work_truncated}
-                canOpen={canOpen}
+            {profile.page_runs && (
+              <PageAgentWork
+                runs={profile.page_runs}
+                truncated={profile.page_runs_truncated}
                 onRefresh={store.refresh}
-                onOpenChat={(id) => {
-                  pendingChat.current = { id, owner: binding };
-                  onClose();
-                }}
+                onOpenPage={
+                  onOpenPage
+                    ? (id) => {
+                        pendingChat.current = {
+                          id,
+                          owner: binding,
+                          page: true,
+                        };
+                        onClose();
+                      }
+                    : undefined
+                }
               />
             )}
+            {profile.work &&
+              (profile.work.length > 0 ||
+                !(profile.page_runs ?? []).some((run) =>
+                  ["queued", "running", "waiting"].includes(run.state),
+                )) && (
+                <CurrentAgentWork
+                  work={profile.work}
+                  truncated={profile.work_truncated}
+                  canOpen={canOpen}
+                  onRefresh={store.refresh}
+                  onOpenChat={(id) => {
+                    pendingChat.current = { id, owner: binding };
+                    onClose();
+                  }}
+                />
+              )}
             {profile.outputs.some((output) => !needsReview(output)) && (
               <InlineDetails title="Finished run history">
                 {profile.outputs
