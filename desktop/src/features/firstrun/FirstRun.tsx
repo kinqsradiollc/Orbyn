@@ -5,6 +5,9 @@ import {
   FIRST_RUN_PURPOSES,
   PURPOSE_LABELS,
   startersFor,
+  workspacePresets,
+  WORKSPACE_PRESETS,
+  type WorkspacePresetChoice,
   type FirstRunPurpose,
   type FirstRunResult,
   type StarterId,
@@ -41,6 +44,9 @@ export function FirstRun({
   const [teamName, setTeamName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [presetEnabled, setPresetEnabled] = useState(false);
+  const [presetChoice, setPresetChoice] =
+    useState<WorkspacePresetChoice | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     heading.current?.focus();
@@ -85,6 +91,14 @@ export function FirstRun({
       const person = await client.skipFirstRun();
       if (current()) onDone(person, null);
     });
+  const loadPresets = () =>
+    run(async (current) => {
+      const prefs = await client.getPrefs();
+      if (current()) {
+        const selected = workspacePresets(prefs.views.workspace);
+        setPresetChoice({ selected, expected: selected });
+      }
+    });
   const connect = () =>
     run(async (current) => {
       const url = calendarUrl.trim();
@@ -98,9 +112,16 @@ export function FirstRun({
     });
   const finish = () =>
     run(async (current) => {
+      if (presetEnabled && !presetChoice)
+        throw new Error(
+          "Reload workspace choices or leave presets unchanged before finishing.",
+        );
       const made = await client.finishFirstRun({
         purpose,
         starter,
+        ...(presetEnabled && presetChoice
+          ? { workspace_presets: presetChoice }
+          : {}),
         ...(starter === "sprint" && teamName.trim()
           ? { team_name: teamName.trim() }
           : {}),
@@ -193,6 +214,64 @@ export function FirstRun({
                 );
               })}
             </div>
+            <fieldset>
+              <legend>Workspace shortcuts · optional</legend>
+              <p className="muted">
+                Choose either or both. This changes shortcuts, not your
+                projects, layout or permissions. You can change them later in
+                account layout.
+              </p>
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  checked={presetEnabled}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setPresetEnabled(event.target.checked);
+                    if (event.target.checked && !presetChoice)
+                      void loadPresets();
+                  }}
+                />{" "}
+                Choose workspace presets
+              </label>
+              {presetEnabled && (
+                <>
+                  {WORKSPACE_PRESETS.map((preset) => (
+                    <label className="check-line" key={preset}>
+                      <input
+                        type="checkbox"
+                        disabled={busy || !presetChoice}
+                        checked={
+                          presetChoice?.selected.includes(preset) ?? false
+                        }
+                        onChange={(event) =>
+                          setPresetChoice(
+                            (choice) =>
+                              choice && {
+                                ...choice,
+                                selected: event.target.checked
+                                  ? [...choice.selected, preset]
+                                  : choice.selected.filter(
+                                      (value) => value !== preset,
+                                    ),
+                              },
+                          )
+                        }
+                      />
+                      {preset === "engineer" ? "Engineer" : "Student"}
+                    </label>
+                  ))}
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => void loadPresets()}
+                  >
+                    Reload workspace choices
+                  </button>
+                </>
+              )}
+            </fieldset>
           </>
         )}
         {step === 1 && (
@@ -265,6 +344,25 @@ export function FirstRun({
           <p role="alert" className="first-run-error">
             {error}
           </p>
+        )}
+        {presetEnabled && step > 0 && (
+          <div>
+            <p className="muted">
+              Workspace shortcuts:{" "}
+              {presetChoice?.selected
+                .map((value) => (value === "engineer" ? "Engineer" : "Student"))
+                .join(", ") || "None"}
+              . Other layout choices stay unchanged.
+            </p>
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => void loadPresets()}
+            >
+              Reload workspace choices
+            </button>
+          </div>
         )}
         <div className="first-run-foot">
           <button

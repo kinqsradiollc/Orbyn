@@ -5,6 +5,9 @@ import { onLive } from "../../lib/live";
 import { Boxes, LayoutTemplate, Plus, Search } from "lucide-react";
 import {
   projectProgress,
+  isClosed,
+  statusLabels,
+  dateLabel,
   searchProjects,
   hasTeamPermission,
   type Item,
@@ -115,7 +118,8 @@ export function ProjectsView({
     } catch (e) {
       if (current() && request === openSequence.current) {
         setOpeningError(errorText(e));
-        report(e);
+        // Recoverable reads belong to this surface; authentication still ends the session.
+        if ((e as { status?: number }).status === 401) report(e);
       }
     } finally {
       if (current() && request === openSequence.current) setBusy(false);
@@ -123,7 +127,7 @@ export function ProjectsView({
   };
   const [creating, setCreating] = useState(false);
   const [templates, setTemplates] = useState(!!openTemplate);
-  const [initialTemplate] = useState(openTemplate);
+  const [initialTemplate, setInitialTemplate] = useState(openTemplate);
   useEffect(() => {
     if (!openTemplate) return;
     setTemplates(true);
@@ -146,7 +150,7 @@ export function ProjectsView({
     } catch (e) {
       if (current() && request === readSequence.current) {
         setLoadError(errorText(e));
-        report(e);
+        if ((e as { status?: number }).status === 401) report(e);
       }
     }
   };
@@ -284,7 +288,8 @@ export function ProjectsView({
           items={items}
           report={report}
           onClose={() => setCreating(false)}
-          onTemplates={() => {
+          onTemplates={(id) => {
+            setInitialTemplate(id ?? null);
             setCreating(false);
             setTemplates(true);
           }}
@@ -372,45 +377,114 @@ export function ProjectsView({
         <ul className="project-grid">
           {visibleProjects.map((p) => {
             const percent = projectProgress(p);
+            const work = items.filter(
+              (item) =>
+                item.project_id === p.id &&
+                item.kind === "task" &&
+                !isClosed(item.status),
+            );
+            const next = [...work].sort(
+              (a, b) =>
+                Number(b.status === "blocked") -
+                  Number(a.status === "blocked") ||
+                Number(b.status === "in_progress") -
+                  Number(a.status === "in_progress") ||
+                (a.due_at ? Date.parse(a.due_at) : Infinity) -
+                  (b.due_at ? Date.parse(b.due_at) : Infinity) ||
+                a.title.localeCompare(b.title),
+            )[0];
+            const nearest = work
+              .filter((item) => item.due_at)
+              .sort((a, b) => Date.parse(a.due_at!) - Date.parse(b.due_at!))[0];
             return (
-              <li key={p.id}>
-                <button
-                  className="project-card"
-                  {...newTabClick(
-                    () => void openById(p.id),
-                    () =>
-                      openInNewTab({
-                        kind: "project",
-                        id: p.id,
-                        title: p.name,
-                      }),
+              <li key={p.id} className="project-card">
+                <div className="project-card-main">
+                  <button
+                    className="project-open"
+                    {...newTabClick(
+                      () => void openById(p.id),
+                      () =>
+                        openInNewTab({
+                          kind: "project",
+                          id: p.id,
+                          title: p.name,
+                        }),
+                    )}
+                  >
+                    <strong>{p.name}</strong>
+                  </button>
+                  <small className="project-workspace">
+                    {p.team_name ||
+                      (p.team_id
+                        ? teams.find((team) => team.id === p.team_id)?.name ||
+                          "Shared"
+                        : "Personal")}
+                    {p.status !== "active"
+                      ? ` · ${p.status === "done" ? "Completed" : "Archived"}`
+                      : ""}
+                  </small>
+                  {p.summary && (
+                    <details className="project-brief">
+                      <summary>Project brief</summary>
+                      <p>{p.summary}</p>
+                    </details>
                   )}
-                >
-                  <span className="project-card-main">
-                    <span className="project-card-top">
-                      <strong>{p.name}</strong>
-                    </span>
-                    {p.summary && <small className="muted">{p.summary}</small>}
-                    <small className="project-workspace">
-                      {p.team_name ||
-                        (p.team_id
-                          ? teams.find((team) => team.id === p.team_id)?.name ||
-                            "Shared"
-                          : "Personal")}
+                </div>
+                <div className="project-next-action">
+                  <small className="muted">
+                    {next?.status === "blocked"
+                      ? "Needs a decision"
+                      : "Next action"}
+                  </small>
+                  {next ? (
+                    <button
+                      className="project-task-link"
+                      onClick={() => onOpenItem(next)}
+                    >
+                      {next.title}
+                    </button>
+                  ) : (
+                    <button
+                      className="text-button"
+                      onClick={() => void openById(p.id)}
+                    >
+                      {p.task_count > p.done_count
+                        ? "Choose the next task"
+                        : "Open project"}
+                    </button>
+                  )}
+                  {next && (
+                    <small
+                      className={
+                        next.status === "blocked" ? "project-blocker" : "muted"
+                      }
+                    >
+                      {statusLabels[next.status]}
                     </small>
+                  )}
+                </div>
+                <div className="project-card-status">
+                  <span className="project-deadline">
+                    {p.deadline
+                      ? `Project due ${dueLabel(p.deadline)}`
+                      : nearest?.due_at
+                        ? `Task due ${dateLabel(nearest.due_at)}`
+                        : "No deadline"}
                   </span>
-                  <span className="project-card-status">
-                    <span className="project-bar" aria-hidden="true">
+                  <span className="project-card-foot">
+                    <span>
+                      {p.done_count} of {p.task_count} tasks done
+                    </span>
+                  </span>
+                  {p.task_count > 0 && (
+                    <span
+                      className="project-bar"
+                      aria-label={`${Math.round(percent)}% of tasks completed`}
+                    >
                       <i style={{ width: `${percent}%` }} />
                     </span>
-                    <span className="project-card-foot">
-                      <span>
-                        {p.done_count} of {p.task_count} done
-                      </span>
-                      <span>{dueLabel(p.deadline)}</span>
-                    </span>
-                  </span>
-                </button>
+                  )}
+                </div>
               </li>
             );
           })}

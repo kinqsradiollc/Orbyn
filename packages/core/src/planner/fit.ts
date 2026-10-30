@@ -337,9 +337,13 @@ export type SessionsDeadline = {
  *   isn't its own deadline: "project ends Sun 27 Sep, 5 pm" or "a task
  *   waiting on it is due Sat 26 Sep, 5 pm";
  * - `by`: what "Planned 2 h …" is counted up to: "before Sun 27 Sep, 5 pm",
- *   "by the end of Fri 2 Oct", or "" without a deadline.
+ *   "by the end of Fri 2 Oct", "for catch-up after …" once it has passed,
+ *   or "" without a deadline.
  */
-export function sessionsDeadlineWords(s: SessionsDeadline): {
+export function sessionsDeadlineWords(
+  s: SessionsDeadline,
+  now = new Date(),
+): {
   due: string | null;
   sooner: string | null;
   by: string;
@@ -360,9 +364,11 @@ export function sessionsDeadlineWords(s: SessionsDeadline): {
         : `a task waiting on it is due ${dueDate(measured, false, zone)}`;
   const by = !measured
     ? ""
-    : isOwn && allDay
-      ? `by the end of ${dueDate(measured, true, zone)}`
-      : `before ${dueDate(measured, false, zone)}`;
+    : Date.parse(measured) <= now.getTime()
+      ? `for catch-up after ${isOwn && allDay ? "the end of " : ""}${dueDate(measured, isOwn && allDay, zone)}`
+      : isOwn && allDay
+        ? `by the end of ${dueDate(measured, true, zone)}`
+        : `before ${dueDate(measured, false, zone)}`;
   return { due, sooner, by };
 }
 

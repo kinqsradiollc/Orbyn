@@ -171,3 +171,16 @@ export * from "./publishing/publishing.js";
 export * from "./assistant/assistant-conversation-ui.js";
 
 export * from "./connections/space.js";
+
+export * from "./assistant/assistant-outcomes.js";
+export * from "./assistant/routine-runs.js";
+
+export * from "./assistant/goal-executions.js";
+
+export * from "./assistant/routine-retries.js";
+
+export * from "./assistant/routine-quiet-checks.js";
+
+export * from "./assistant/assistant-review.js";
+export * from "./assistant/routine-setup.js";
+export * from "./workspace/notice-groups.js";

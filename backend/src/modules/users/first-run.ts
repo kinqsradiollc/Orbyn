@@ -4,6 +4,12 @@ import {
   parseDoc,
   starterBrief,
   starterById,
+  fail,
+  MAX_VIEW_CHOICES,
+  workspacePresets,
+  withWorkspacePresets,
+  viewChoice,
+  type ViewChoices,
   type FirstRunResult,
 } from "@orbyn/core";
 import { pool, transaction, type Db } from "../../db/pool.js";
@@ -40,16 +46,52 @@ export async function firstRunRoutes(app: FastifyInstance) {
   app.post("/me/first-run", strictRateLimit, async (r) => {
     const u = await authenticate(r);
     const d = firstRunInput.parse(r.body ?? {});
-    const done = (
-      await pool.query<{ first_run_at: Date | null }>(
-        "SELECT first_run_at FROM users WHERE id = $1",
-        [u.id],
-      )
-    ).rows[0];
     const starter = starterById(d.starter);
     if (d.team_id) await requireTeam(d.team_id, u, "items:write");
     const result = await transaction(async (db): Promise<FirstRunResult> => {
       await actAs(db, u.id);
+      const done = (
+        await db.query<{ first_run_at: Date | null }>(
+          "SELECT first_run_at FROM users WHERE id=$1 FOR UPDATE",
+          [u.id],
+        )
+      ).rows[0];
+      if (!done?.first_run_at && d.workspace_presets) {
+        await db.query(
+          "INSERT INTO account_prefs(user_id) VALUES($1) ON CONFLICT DO NOTHING",
+          [u.id],
+        );
+        const prefs = (
+          await db.query<{ views: ViewChoices }>(
+            "SELECT views FROM account_prefs WHERE user_id=$1 FOR UPDATE",
+            [u.id],
+          )
+        ).rows[0];
+        const views = { ...prefs.views },
+          choice = views.workspace;
+        const expected = workspacePresets({
+          pins: d.workspace_presets.expected,
+        });
+        if (
+          JSON.stringify(workspacePresets(choice)) !== JSON.stringify(expected)
+        )
+          fail(
+            409,
+            "Workspace presets changed. Reload the choices before finishing setup.",
+          );
+        views.workspace = viewChoice.parse(
+          withWorkspacePresets(choice, d.workspace_presets.selected),
+        );
+        if (Object.keys(views).length > MAX_VIEW_CHOICES)
+          fail(
+            422,
+            "Too many saved view choices. Leave presets unchanged or clear a saved choice first.",
+          );
+        await db.query(
+          "UPDATE account_prefs SET views=$2::jsonb,updated_at=now() WHERE user_id=$1",
+          [u.id, JSON.stringify(views)],
+        );
+      }
       const out: FirstRunResult = {
         project_id: null,
         brief_id: null,
@@ -146,13 +188,16 @@ export async function firstRunRoutes(app: FastifyInstance) {
   // Not now: the first run is not shown again.
   app.post("/me/first-run/skip", async (r) => {
     const u = await authenticate(r);
-    const user = (
-      await pool.query(
-        `UPDATE users SET first_run_at = coalesce(first_run_at, now())
+    const user = await transaction(async (db) => {
+      await db.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [u.id]);
+      return (
+        await db.query(
+          `UPDATE users SET first_run_at = coalesce(first_run_at, now())
           WHERE id = $1 RETURNING *`,
-        [u.id],
-      )
-    ).rows[0];
+          [u.id],
+        )
+      ).rows[0];
+    });
     return publicUser(user);
   });
 }

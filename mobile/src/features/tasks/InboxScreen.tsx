@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
   dateLabel,
+  groupNotices,
+  noticeGroupLabel,
+  noticeGroupCount,
+  noticeSource,
   type AgentQuestion,
   type Notice,
   type PageMention,
@@ -320,136 +324,165 @@ export function InboxScreen({
     <>
       {asks}
       <View style={s.list}>
-        {notices.map((n, i) => {
-          const booking = n.kind === "booking" && !!n.ref;
-          // An imported file that's ready points at its page.
-          const docId =
-            (n.kind === "import" || n.kind === "mention") &&
-            n.ref?.startsWith("doc:")
-              ? n.ref.slice(4).split(":")[0]
-              : null;
-          const proposal =
-            n.kind === "review" && n.ref?.startsWith("proposal:")
-              ? n.ref.slice("proposal:".length)
-              : null;
-          const grant =
-            n.kind === "agent" &&
-            !!n.ref?.startsWith("grant:") &&
-            !!onOpenAgents;
-          const action =
-            n.kind === "assistant" &&
-            n.ref?.startsWith("conversation:") &&
-            onOpenConversation
-              ? {
-                  label: "Open conversation",
-                  run: (notice: Notice) => {
-                    const [, destinationId, entryId] = notice.ref!.split(":");
-                    onOpenConversation(notice, destinationId, entryId);
-                  },
-                }
-              : n.kind === "assistant" &&
-                  n.ref?.startsWith("overnight:") &&
-                  onOpenOvernight
-                ? { label: "Review Overnight", run: onOpenOvernight }
-                : (n.kind === "assistant" || n.kind === "reminder_nudge") &&
-                    n.ref?.startsWith("chat:") &&
-                    onOpenChat
-                  ? {
-                      label: "Open chat",
-                      run: (x: Notice) => onOpenChat(x, x.ref!.split(":")[1]),
+        {groupNotices(notices).map((group, groupIndex) => (
+          <View style={groupIndex > 0 && s.divider} key={group.key}>
+            {group.notices.length > 1 && (
+              <View style={s.sourceHeading}>
+                <Text style={shared.label} accessibilityRole="header">
+                  {noticeGroupLabel(group)}
+                </Text>
+                <Text style={shared.small}>{noticeGroupCount(group)}</Text>
+              </View>
+            )}
+            {group.notices.map((n, i) => {
+              const booking = n.kind === "booking" && !!n.ref;
+              // An imported file that's ready points at its page.
+              const docId =
+                (n.kind === "import" || n.kind === "mention") &&
+                n.ref?.startsWith("doc:")
+                  ? n.ref.slice(4).split(":")[0]
+                  : null;
+              const proposal =
+                n.kind === "review" && n.ref?.startsWith("proposal:")
+                  ? n.ref.slice("proposal:".length)
+                  : null;
+              const grant =
+                n.kind === "agent" &&
+                !!n.ref?.startsWith("grant:") &&
+                !!onOpenAgents;
+              const reminderSource =
+                (n.kind ?? "reminder") === "reminder" ? noticeSource(n) : null;
+              const action =
+                reminderSource?.kind === "item"
+                  ? { label: "Open task or event", run: onOpenItem }
+                  : n.kind === "assistant" &&
+                      n.ref?.startsWith("conversation:") &&
+                      onOpenConversation
+                    ? {
+                        label: "Open conversation",
+                        run: (notice: Notice) => {
+                          const [, destinationId, entryId] =
+                            notice.ref!.split(":");
+                          onOpenConversation(notice, destinationId, entryId);
+                        },
+                      }
+                    : n.kind === "assistant" &&
+                        n.ref?.startsWith("overnight:") &&
+                        onOpenOvernight
+                      ? { label: "Review Overnight", run: onOpenOvernight }
+                      : (n.kind === "assistant" ||
+                            n.kind === "reminder_nudge") &&
+                          n.ref?.startsWith("chat:") &&
+                          onOpenChat
+                        ? {
+                            label: "Open chat",
+                            run: (x: Notice) =>
+                              onOpenChat(x, x.ref!.split(":")[1]),
+                          }
+                        : n.kind === "session" &&
+                            n.ref &&
+                            n.item_id &&
+                            onStartSession
+                          ? { label: "Start", run: onStartSession }
+                          : proposal && onOpenReview
+                            ? {
+                                label: "Review",
+                                run: (x: Notice) => onOpenReview(proposal, x),
+                              }
+                            : n.kind === "conflict" && n.ref
+                              ? { label: "Reschedule", run: onReschedule }
+                              : n.kind === "rollforward"
+                                ? { label: "Roll forward", run: onRollForward }
+                                : n.kind === "at_risk" || n.kind === "deadline"
+                                  ? { label: "Plan it", run: onPlanIt }
+                                  : n.kind === "rsvp" && n.item_id
+                                    ? { label: "Open event", run: onOpenItem }
+                                    : n.kind === "template" &&
+                                        n.ref &&
+                                        onOpenTemplate
+                                      ? { label: "Review", run: onOpenTemplate }
+                                      : n.kind === "project" &&
+                                          n.ref &&
+                                          onOpenProject
+                                        ? {
+                                            label: "Open project",
+                                            run: onOpenProject,
+                                          }
+                                        : docId && onOpenDoc
+                                          ? {
+                                              label: "Open page",
+                                              run: (x: Notice) =>
+                                                onOpenDoc(x, docId),
+                                            }
+                                          : grant && onOpenAgents
+                                            ? {
+                                                label: "Open Connected agents",
+                                                run: onOpenAgents,
+                                              }
+                                            : null;
+              return (
+                <View key={n.id} style={[i > 0 && s.divider]}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={n.title + (n.read ? "" : ", unread")}
+                    accessibilityHint={
+                      booking
+                        ? "Opens this booking"
+                        : docId && onOpenDoc
+                          ? "Opens this page"
+                          : n.read
+                            ? undefined
+                            : "Marks this notice as read"
                     }
-                  : n.kind === "session" && n.ref && n.item_id && onStartSession
-                    ? { label: "Start", run: onStartSession }
-                    : proposal && onOpenReview
-                      ? {
-                          label: "Review",
-                          run: (x: Notice) => onOpenReview(proposal, x),
-                        }
-                      : n.kind === "conflict" && n.ref
-                        ? { label: "Reschedule", run: onReschedule }
-                        : n.kind === "rollforward"
-                          ? { label: "Roll forward", run: onRollForward }
-                          : n.kind === "at_risk" || n.kind === "deadline"
-                            ? { label: "Plan it", run: onPlanIt }
-                            : n.kind === "rsvp" && n.item_id
-                              ? { label: "Open event", run: onOpenItem }
-                              : n.kind === "template" && n.ref && onOpenTemplate
-                                ? { label: "Review", run: onOpenTemplate }
-                                : n.kind === "project" && n.ref && onOpenProject
-                                  ? {
-                                      label: "Open project",
-                                      run: onOpenProject,
-                                    }
-                                  : docId && onOpenDoc
-                                    ? {
-                                        label: "Open page",
-                                        run: (x: Notice) => onOpenDoc(x, docId),
-                                      }
-                                    : grant && onOpenAgents
-                                      ? {
-                                          label: "Open Connected agents",
-                                          run: onOpenAgents,
-                                        }
-                                      : null;
-          return (
-            <View key={n.id} style={[i > 0 && s.divider]}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={n.title + (n.read ? "" : ", unread")}
-                accessibilityHint={
-                  booking
-                    ? "Opens this booking"
-                    : docId && onOpenDoc
-                      ? "Opens this page"
-                      : n.read
-                        ? undefined
-                        : "Marks this notice as read"
-                }
-                onPress={() =>
-                  booking
-                    ? onOpenBooking(n)
-                    : docId && onOpenDoc
-                      ? onOpenDoc(n, docId)
-                      : onRead(n)
-                }
-                style={({ pressed }) => [
-                  s.row,
-                  !n.read && s.unread,
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <View style={s.icon}>
-                  <Icon
-                    name={(n.kind && ICONS[n.kind]) || "bell"}
-                    size={16}
-                    color={colors.accent}
-                  />
-                  {!n.read && <View style={s.dot} />}
+                    onPress={() =>
+                      booking
+                        ? onOpenBooking(n)
+                        : docId && onOpenDoc
+                          ? onOpenDoc(n, docId)
+                          : onRead(n)
+                    }
+                    style={({ pressed }) => [
+                      s.row,
+                      !n.read && s.unread,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <View style={s.icon}>
+                      <Icon
+                        name={(n.kind && ICONS[n.kind]) || "bell"}
+                        size={16}
+                        color={colors.accent}
+                      />
+                      {!n.read && <View style={s.dot} />}
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text
+                        style={[s.title, n.read && { color: colors.textSoft }]}
+                      >
+                        {n.title}
+                      </Text>
+                      <Text style={s.body}>{n.body}</Text>
+                      <Text style={shared.small}>
+                        {dateLabel(n.created_at)}
+                        {n.via_agent ? ` · via ${n.via_agent}` : ""}
+                        {n.read ? " · Read" : ""}
+                      </Text>
+                    </View>
+                  </Pressable>
+                  {action && (
+                    <View style={[s.actions, !n.read && s.unread]}>
+                      <SmallAction
+                        label={action.label}
+                        disabled={busy}
+                        onPress={() => action.run(n)}
+                      />
+                    </View>
+                  )}
                 </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[s.title, n.read && { color: colors.textSoft }]}>
-                    {n.title}
-                  </Text>
-                  <Text style={s.body}>{n.body}</Text>
-                  <Text style={shared.small}>
-                    {dateLabel(n.created_at)}
-                    {n.via_agent ? ` · via ${n.via_agent}` : ""}
-                    {n.read ? " · Read" : ""}
-                  </Text>
-                </View>
-              </Pressable>
-              {action && (
-                <View style={[s.actions, !n.read && s.unread]}>
-                  <SmallAction
-                    label={action.label}
-                    disabled={busy}
-                    onPress={() => action.run(n)}
-                  />
-                </View>
-              )}
-            </View>
-          );
-        })}
+              );
+            })}
+          </View>
+        ))}
       </View>
     </>
   );
@@ -457,6 +490,13 @@ export function InboxScreen({
 
 const s = themed(() =>
   StyleSheet.create({
+    sourceHeading: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      gap: 4,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
     list: {
       backgroundColor: colors.surface,
       borderWidth: 1,

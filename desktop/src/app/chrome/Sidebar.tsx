@@ -1,10 +1,11 @@
 import { SidebarResizer } from "./SidebarResizer";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Popover } from "../../components/Popover";
 import { ActivityDialog } from "../../features/activity/ActivityDialog";
 import {
   ChartNoAxesColumn,
+  MoreHorizontal,
   Hash,
   LogOut,
   Orbit,
@@ -19,7 +20,13 @@ import {
   type StarredItem,
   type User,
 } from "@orbyn/core";
-import { NAV_GROUPS, navName, type View } from "../views";
+import {
+  LEGACY_NAV_GROUPS,
+  NAV_GROUPS,
+  navName,
+  navSection,
+  type View,
+} from "../views";
 import { usePrefs } from "../prefs";
 import { CONCEPT_ICON } from "../concept-icons";
 import { newTabClick, openInNewTab, type TabRequest } from "../tabs";
@@ -94,6 +101,33 @@ export function Sidebar({
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const { prefs } = usePrefs();
   const [activityOpen, setActivityOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
+  useEffect(() => setMoreOpen(null), [view]);
+  const customArrangement = prefs.sidebar.order.length > 0;
+  const section = navSection(view);
+  const contextual = NAV_GROUPS.find(
+    (group) =>
+      group.label ===
+      (section === "My tasks"
+        ? "WORK"
+        : section === "Docs"
+          ? "LIBRARY"
+          : section === "AI assistant"
+            ? "AGENTS"
+            : ""),
+  );
+  const utilities = NAV_GROUPS.slice(1)
+    .flatMap((group) => group.items)
+    .filter(
+      (entry) => !contextual?.items.some((item) => item.label === entry.label),
+    );
+  const groups = customArrangement
+    ? LEGACY_NAV_GROUPS
+    : [
+        NAV_GROUPS[0],
+        ...(contextual ? [contextual] : []),
+        { label: "MORE", items: utilities },
+      ];
   const [hint, setHint] = useState<{
     label: string;
     x: number;
@@ -143,7 +177,7 @@ export function Sidebar({
       </div>
 
       <nav>
-        {NAV_GROUPS.map((group) => {
+        {groups.map((group) => {
           // Arrange (NAV-08): the order and what's hidden follow the account.
           const items = arrangeEntries(
             group.items.filter((n) => !n.adminOnly || isAdmin),
@@ -153,27 +187,55 @@ export function Sidebar({
           if (!items.length) return null;
           return (
             <div className="nav-group" key={group.label}>
-              <span className="nav-label">{group.label}</span>
-              {items.map(({ label, icon: Icon }) => (
+              {group.label === "MORE" ? (
                 <button
-                  key={label}
-                  className={view === label ? "active" : ""}
-                  aria-current={view === label ? "page" : undefined}
-                  aria-label={railed ? navName(label, agentName) : undefined}
-
-                  {...newTabClick(
-                    () => onNavigate(label),
-                    () => openInNewTab({ kind: "screen", view: label }),
-                  )}
+                  className="nav-more"
+                  aria-label="More destinations"
+                  aria-expanded={
+                    moreOpen ?? items.some((item) => item.label === view)
+                  }
+                  onClick={() =>
+                    setMoreOpen(
+                      !(moreOpen ?? items.some((item) => item.label === view)),
+                    )
+                  }
                 >
-                  <Icon size={17} />
-                  <span>{navName(label, agentName)}</span>
-                  {label === "Notifications" && hasUnread && <i />}
-                  {label === "Review" && reviewPending > 0 && (
-                    <i aria-label={`${reviewPending} waiting`} />
-                  )}
+                  <MoreHorizontal size={17} />
+                  <span>More</span>
                 </button>
-              ))}
+              ) : (
+                <span className="nav-label">{group.label}</span>
+              )}
+              {(group.label !== "MORE" ||
+                (moreOpen ?? items.some((item) => item.label === view))) &&
+                items.map(({ label, icon: Icon }) => (
+                  <button
+                    key={label}
+                    className={
+                      view === label ||
+                      (!customArrangement &&
+                        group.label === "WORKSPACE" &&
+                        section === label)
+                        ? "active"
+                        : ""
+                    }
+                    aria-current={view === label ? "page" : undefined}
+                    aria-label={railed ? navName(label, agentName) : undefined}
+
+                    {...newTabClick(
+                      () => onNavigate(label),
+                      () => openInNewTab({ kind: "screen", view: label }),
+                    )}
+                  >
+                    <Icon size={17} />
+                    <span>{navName(label, agentName)}</span>
+                    {label === "Notifications" && hasUnread && <i />}
+                    {(label === "Review" || label === "AI assistant") &&
+                      reviewPending > 0 && (
+                        <i aria-label={`${reviewPending} waiting`} />
+                      )}
+                  </button>
+                ))}
             </div>
           );
         })}

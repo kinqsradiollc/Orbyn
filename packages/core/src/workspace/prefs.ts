@@ -258,6 +258,45 @@ export const viewChoice = z
   .strict();
 export type ViewChoice = z.infer<typeof viewChoice>;
 
+/** Optional shortcut sections in the shared workspace view, compatible with existing readers. */
+export const WORKSPACE_PRESETS = ["engineer", "student"] as const;
+export type WorkspacePreset = (typeof WORKSPACE_PRESETS)[number];
+export function workspacePresets(choice?: ViewChoice): WorkspacePreset[] {
+  return WORKSPACE_PRESETS.filter((preset) => choice?.pins?.includes(preset));
+}
+
+const workspacePresetSelection = z
+  .array(z.enum(WORKSPACE_PRESETS))
+  .max(2)
+  .refine(
+    (values) => new Set(values).size === values.length,
+    "Choose each workspace preset only once.",
+  );
+export const workspacePresetChoice = z
+  .object({
+    selected: workspacePresetSelection,
+    expected: workspacePresetSelection,
+  })
+  .strict();
+export type WorkspacePresetChoice = z.output<typeof workspacePresetChoice>;
+
+/** Replace only known preset pins, retaining custom pins and view choices. */
+export function withWorkspacePresets(
+  choice: ViewChoice | undefined,
+  selected: WorkspacePreset[],
+): ViewChoice {
+  const chosen = workspacePresetSelection.parse(selected);
+  return {
+    ...choice,
+    pins: [
+      ...(choice?.pins ?? []).filter(
+        (pin) => !(WORKSPACE_PRESETS as readonly string[]).includes(pin),
+      ),
+      ...WORKSPACE_PRESETS.filter((preset) => chosen.includes(preset)),
+    ],
+  };
+}
+
 /** View choices by place: "tasks", "calendar", "docs" and so on. */
 export const viewChoices = z.record(
   z
@@ -481,9 +520,9 @@ export const START_SCREENS = [
 export type StartScreen = (typeof START_SCREENS)[number];
 
 export const START_SCREEN_LABELS: Record<StartScreen, string> = {
-  overview: "Home",
-  agenda: "Today's agenda",
-  tasks: "My tasks",
+  overview: "Today",
+  agenda: "Daily brief",
+  tasks: "Work",
   "last-page": "The last page I had open",
 };
 

@@ -1,9 +1,22 @@
-import { useEffect, useState } from "react";
-import type { OvernightNight, OvernightRun } from "@orbyn/core";
+import { LaneWorkControls } from "./LaneWorkControls";
+import { onSessionChange, session } from "../../lib/session";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  ASSISTANT_OUTCOME_LABELS,
+  assistantOutcomeDetails,
+  type OvernightNight,
+  type OvernightRun,
+} from "@orbyn/core";
 import { client } from "../../lib/api";
 import { onLive } from "../../lib/live";
 import { useConfirm } from "../../components/Confirm";
 import "./overnight.css";
+
+/** Bookkeeping status alone does not establish any proposed or applied changes. */
+const hasChangeEvidence = (run: OvernightRun) =>
+  !run.restricted &&
+  run.kind !== "reflection" &&
+  !!(run.proposal || run.steps.length || run.changes.length);
 
 type Props = {
   nightId?: string;
@@ -13,29 +26,68 @@ type Props = {
   onOpen: (kind: "task" | "doc" | "project", id: string) => void;
 };
 /** Saved night work, with live Review choices and the existing change Undo. */
+const sessionKey = () => {
+  const value = session.binding();
+  return `${value.generation}:${value.token}`;
+};
 export function OvernightView(props: Props) {
+  const owner = useSyncExternalStore(onSessionChange, sessionKey);
+  return (
+    <OvernightSession
+      key={`${owner}:${props.nightId ?? "latest"}`}
+      {...props}
+    />
+  );
+}
+function OvernightSession(props: Props) {
+  const owner = useRef(sessionKey()).current;
+  const mounted = useRef(true);
+  const request = useRef(0);
+  const operation = useRef(false);
+  const owns = () => mounted.current && sessionKey() === owner;
+  const [loadError, setLoadError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const [stale, setStale] = useState(false);
+  const [historyLimit, setHistoryLimit] = useState(10);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
+  }, []);
   const [night, setNight] = useState<OvernightNight | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const { ask } = useConfirm();
   const load = async () => {
-    setNight(await client.latestAssistantNight(props.nightId));
-    setLoaded(true);
+    const ticket = ++request.current;
+    try {
+      const value = await client.latestAssistantNight(props.nightId);
+      if (!owns() || ticket !== request.current) return;
+      setNight(value);
+      setLoaded(true);
+      setLoadError("");
+      setStale(false);
+    } catch (error) {
+      if (owns() && ticket === request.current) {
+        setLoaded(true);
+        setLoadError(
+          "Couldn’t refresh Overnight. Retry before changing this snapshot.",
+        );
+      }
+      throw error;
+    }
   };
   useEffect(() => {
     let alive = true;
     let pending: Promise<void> | null = null;
     let scheduled: ReturnType<typeof setTimeout>;
     const refresh = () => {
+      if (!alive || !owns() || operation.current || document.hidden) return;
       if (pending) return pending;
-      pending = client
-        .latestAssistantNight(props.nightId)
-        .then((next) => {
-          if (alive) {
-            setNight(next);
-            setLoaded(true);
-          }
-        }, props.report)
+      pending = load()
+        .catch(() => undefined)
         .finally(() => {
           pending = null;
         });
@@ -49,36 +101,50 @@ export function OvernightView(props: Props) {
       }
     });
     const timer = window.setInterval(refresh, 15000);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       alive = false;
+      request.current++;
       clearTimeout(scheduled);
       stop();
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
     };
-  }, [props.nightId]);
-  const act = async (operation: () => Promise<unknown>) => {
-    if (busy) return;
+  }, [props.nightId, retry]);
+  const act = async (work: () => Promise<unknown>) => {
+    if (!owns() || operation.current || stale || loadError) return;
+    operation.current = true;
+    request.current++;
     setBusy(true);
     try {
-      await operation();
-      await load();
+      await work();
+      if (!owns()) return;
+      setStale(true);
+      try {
+        await load();
+      } catch {
+        if (owns())
+          setLoadError(
+            "Action saved. Couldn’t refresh Overnight. Retry before making another change.",
+          );
+      }
     } catch (error) {
-      props.report(error);
+      if (owns()) props.report(error);
     } finally {
-      setBusy(false);
+      operation.current = false;
+      if (owns()) setBusy(false);
     }
   };
+  const locked = busy || stale || !!loadError;
   const bulk = async (action: "keep" | "undo") => {
     if (
       !night ||
       !(await ask({
         title:
-          action === "keep"
-            ? "Keep all finished night work?"
-            : "Undo all finished night work?",
+          action === "keep" ? "Keep finished runs?" : "Undo finished runs?",
         body:
           action === "keep"
-            ? "Held changes will be applied. Runs still working or waiting for your answer will stay open."
+            ? "Keeps results and applies any held changes. Active runs stay open."
             : "Held changes will be declined and applied changes will be undone where they can still be restored. Runs still working will stay open.",
         confirmLabel: action === "keep" ? "Keep all" : "Undo all",
         destructive: action === "undo",
@@ -102,85 +168,229 @@ export function OvernightView(props: Props) {
       ),
     );
   };
+  const stopPage = async (docId: string, runId: string) => {
+    if (
+      locked ||
+      !owns() ||
+      !(await ask({
+        title: "Stop this page run?",
+        body: "Stops this run and discards its unapplied proposal. The routine schedule and changes already saved are kept.",
+        confirmLabel: "Stop run",
+        destructive: true,
+      }))
+    )
+      return;
+    await act(() => client.stopPageMaintenanceRun(docId, runId));
+  };
   if (!loaded) return <p role="status">Loading your night…</p>;
+  if (!night && loadError)
+    return (
+      <section className="overnight">
+        <h2>Overnight</h2>
+        <p role="alert">{loadError}</p>
+        <button
+          className="secondary"
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          Retry Overnight
+        </button>
+      </section>
+    );
   if (!night)
     return (
       <section className="overnight">
         <h2>No night work yet</h2>
         <p>Enable night shift in Settings or send a task to Tonight.</p>
+        <LaneWorkControls lane="overnight" />
       </section>
     );
+  const reviewRuns = night.runs.filter(
+    (run) =>
+      run.status !== "undone" &&
+      (run.state === "waiting" ||
+        run.state === "failed" ||
+        !!run.question ||
+        !!run.approval ||
+        run.proposal?.status === "pending" ||
+        (run.execution_outcome &&
+          ["partial", "waiting", "failed", "interrupted", "uncertain"].includes(
+            run.execution_outcome.outcome,
+          ))),
+  );
+  const activeRuns = night.runs.filter(
+    (run) =>
+      !reviewRuns.includes(run) && ["queued", "running"].includes(run.state),
+  );
+  const historyRuns = night.runs.filter(
+    (run) => !reviewRuns.includes(run) && !activeRuns.includes(run),
+  );
+  const currentPages = (night.page_runs ?? []).filter(
+    (run) => run.state !== "done" && run.state !== "cancelled",
+  );
+  const historyPages = (night.page_runs ?? []).filter(
+    (run) => run.state === "done" || run.state === "cancelled",
+  );
+  const historicalCount = historyRuns.length + historyPages.length;
+  const renderRun = (run: OvernightRun) => (
+    <RunCard key={run.id} run={run} busy={locked} act={act} {...props} />
+  );
   return (
     <section className="overnight">
+      {loadError && (
+        <div>
+          <p role="alert">{loadError}</p>
+          <button
+            className="secondary"
+            disabled={busy}
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            Retry Overnight
+          </button>
+        </div>
+      )}
       <header className="overnight-head">
         <div>
-          <h2>{night.local_day}</h2>
+          <h2>Overnight review</h2>
+          <p>
+            {night.local_day} · {reviewRuns.length} to review ·{" "}
+            {activeRuns.length} active
+          </p>
           <p>{night.status === "running" ? "In progress" : "Night summary"}</p>
         </div>
         <div className="overnight-actions">
-          {night.runs.some((run) => run.kind !== "reflection") && (
-            <>
-              <button
-                className="secondary"
-                disabled={
-                  busy ||
-                  !night.runs.some(
-                    (run) =>
-                      run.kind !== "reflection" &&
-                      !run.restricted &&
-                      run.state === "done" &&
-                      run.status !== "undone",
-                  )
-                }
-                onClick={() => void bulk("keep")}
-              >
-                Keep all
-              </button>
-              <button
-                className="secondary"
-                disabled={
-                  busy ||
-                  !night.runs.some(
-                    (run) =>
-                      run.kind !== "reflection" &&
-                      !run.restricted &&
-                      ["done", "failed"].includes(run.state) &&
-                      run.status !== "undone",
-                  )
-                }
-                onClick={() => void bulk("undo")}
-              >
-                Undo all
-              </button>
-            </>
+          {night.runs.some(
+            (run) =>
+              hasChangeEvidence(run) &&
+              ["done", "failed"].includes(run.state) &&
+              run.status !== "undone",
+          ) && (
+            <details>
+              <summary>Review finished runs</summary>
+              <div className="overnight-actions">
+                <button
+                  className="secondary"
+                  disabled={
+                    locked ||
+                    !night.runs.some(
+                      (run) =>
+                        hasChangeEvidence(run) &&
+                        !run.restricted &&
+                        run.state === "done" &&
+                        run.status !== "undone",
+                    )
+                  }
+                  onClick={() => void bulk("keep")}
+                >
+                  Keep all
+                </button>
+                <button
+                  className="secondary"
+                  disabled={
+                    locked ||
+                    !night.runs.some(
+                      (run) =>
+                        hasChangeEvidence(run) &&
+                        !run.restricted &&
+                        ["done", "failed"].includes(run.state) &&
+                        run.status !== "undone",
+                    )
+                  }
+                  onClick={() => void bulk("undo")}
+                >
+                  Undo all
+                </button>
+              </div>
+            </details>
           )}
           <button
             className="secondary"
             disabled={busy}
-            onClick={() => void act(async () => {})}
+            onClick={() => setRetry((value) => value + 1)}
           >
             Refresh
           </button>
         </div>
       </header>
-      {(night.page_runs ?? []).map((run) => (
+      <LaneWorkControls lane="overnight" />
+      {reviewRuns.length > 0 && (
+        <section className="overnight-run-group" aria-label="Review first">
+          <h3>Review first</h3>
+          {reviewRuns.map(renderRun)}
+        </section>
+      )}
+      {currentPages.map((run) => (
         <section key={run.id} className="overnight-card">
-          <h3>Page update · {run.state}</h3>
-          <p>{run.estimated_tokens} estimated tokens</p>
+          <h3>
+            Page update ·{" "}
+            {run.state === "waiting"
+              ? "Waiting for review"
+              : run.state === "failed"
+                ? "Run failed"
+                : run.state === "queued"
+                  ? "Queued"
+                  : "Running"}
+          </h3>
           <button
             className="secondary"
             onClick={() => props.onOpen("doc", run.doc_id)}
           >
             {run.state === "waiting" ? "Review in page" : "Open page"}
           </button>
+          {["queued", "running", "waiting"].includes(run.state) && (
+            <button
+              className="text-button"
+              disabled={locked}
+              onClick={() => void stopPage(run.doc_id, run.id)}
+            >
+              Stop this page run
+            </button>
+          )}
         </section>
       ))}
-      {night.runs.map((run) => (
-        <RunCard key={run.id} run={run} busy={busy} act={act} {...props} />
-      ))}
+      {activeRuns.length > 0 && (
+        <section
+          className="overnight-run-group"
+          aria-label="Running and queued"
+        >
+          <h3>Running &amp; queued</h3>
+          {activeRuns.map(renderRun)}
+        </section>
+      )}
+      {historicalCount > 0 && (
+        <details className="overnight-history">
+          <summary>Finished run history · {historicalCount}</summary>
+          <div className="overnight-run-group">
+            {historyRuns.slice(0, historyLimit).map(renderRun)}
+            {historyPages
+              .slice(0, Math.max(0, historyLimit - historyRuns.length))
+              .map((run) => (
+                <section key={run.id} className="overnight-card">
+                  <h3>
+                    Page update ·{" "}
+                    {run.state === "cancelled" ? "Cancelled" : "Run finished"}
+                  </h3>
+                  <button
+                    className="secondary"
+                    onClick={() => props.onOpen("doc", run.doc_id)}
+                  >
+                    Open page
+                  </button>
+                </section>
+              ))}
+            {historicalCount > historyLimit && (
+              <button
+                className="text-button"
+                onClick={() => setHistoryLimit((value) => value + 10)}
+              >
+                Show 10 more results
+              </button>
+            )}
+          </div>
+        </details>
+      )}
       {!!night.not_done.length && (
         <section className="overnight-card">
-          <h3>Not done tonight</h3>
+          <h3>Unfinished work</h3>
           <ul>
             {night.not_done.map((entry, index) => (
               <li key={index}>
@@ -207,8 +417,10 @@ function RunCard({
   act: (operation: () => Promise<unknown>) => Promise<void>;
 }) {
   const { ask } = useConfirm();
+  const [stopRequested, setStopRequested] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [answer, setAnswer] = useState("");
-  useEffect(() => setAnswer(""), [run.question?.text]);
+  useEffect(() => setAnswer(""), [run.question?.id]);
   const choices = run.steps.length
     ? run.steps.map((step) => ({ key: step.id, title: step.title }))
     : (run.proposal?.changes ?? []).map((change) => ({
@@ -220,8 +432,9 @@ function RunCard({
   );
   useEffect(() => {
     setChosen(new Set(choices.map((choice) => choice.key)));
-  }, [run.proposal?.id]);
+  }, [run.proposal?.id, choices.map((choice) => choice.key).join("|")]);
   const pending = run.proposal?.status === "pending";
+  const hasChanges = hasChangeEvidence(run);
   const done =
     run.kind !== "reflection" && !run.restricted && run.state === "done";
   const keepChange = async (key: string) => {
@@ -257,28 +470,91 @@ function RunCard({
       <div className="overnight-head">
         <h3>{run.title}</h3>
         <span>
-          {run.state === "queued"
-            ? "Queued"
-            : run.state === "running"
-              ? "Working"
-              : run.state === "waiting"
-                ? "Needs you"
-                : run.state === "failed"
-                  ? "Could not finish"
-                  : run.kind === "reflection"
-                    ? "Reflection ready"
-                    : run.status === "partly"
-                      ? "Partly kept"
-                      : run.status === "pending"
-                        ? "Pending"
-                        : run.status === "undone"
-                          ? "Undone"
-                          : "Kept"}
+          {["queued", "running", "waiting"].includes(run.state) &&
+          (run.cancel_requested || stopRequested)
+            ? "Stop requested · Awaiting confirmation"
+            : run.state === "queued"
+              ? "Queued"
+              : run.state === "running"
+                ? "Running"
+                : run.state === "waiting"
+                  ? "Waiting for you"
+                  : run.execution_outcome
+                    ? ASSISTANT_OUTCOME_LABELS[run.execution_outcome.outcome]
+                    : run.state === "failed"
+                      ? "Run failed"
+                      : "Run finished · Review outcome"}
         </span>
       </div>
-      <p className="overnight-summary">
-        {run.summary || "Open the chat to see its progress."}
+      {hasChanges && (
+        <p className="muted">
+          Changes{" "}
+          {run.status === "partly"
+            ? "partly kept"
+            : run.status === "pending"
+              ? "pending review"
+              : run.status === "undone"
+                ? "undone"
+                : "kept"}
+        </p>
+      )}
+
+      <p
+        className={
+          "overnight-summary" +
+          (!summaryExpanded && run.summary.length > 360 ? " is-collapsed" : "")
+        }
+      >
+        {run.summary || "Open the work to inspect its current result."}
       </p>
+      {run.summary.length > 360 && (
+        <button
+          className="text-button"
+          aria-expanded={summaryExpanded}
+          onClick={() => setSummaryExpanded((value) => !value)}
+        >
+          {summaryExpanded ? "Show less" : "Read full result"}
+        </button>
+      )}
+      {run.execution_outcome && (
+        <details>
+          <summary>Evidence &amp; open questions</summary>
+          <ul>
+            {assistantOutcomeDetails(run.execution_outcome).map(
+              (line, index) => (
+                <li key={index}>{line}</li>
+              ),
+            )}
+          </ul>
+        </details>
+      )}
+      {!run.restricted &&
+        ["queued", "running", "waiting"].includes(run.state) && (
+          <button
+            className="text-button"
+            disabled={busy || run.cancel_requested || stopRequested}
+            onClick={() =>
+              void (async () => {
+                if (
+                  !(await ask({
+                    title: "Stop this run?",
+                    body: "Requests cancellation. Changes already applied remain available for review and undo.",
+                    confirmLabel: "Stop run",
+                  }))
+                )
+                  return;
+                await act(async () => {
+                  await client.stopAssistantRun(run.job_id);
+                  setStopRequested(true);
+                });
+              })()
+            }
+          >
+            {stopRequested || run.cancel_requested
+              ? "Stop requested"
+              : "Stop this run"}
+          </button>
+        )}
       {!!run.reflection_sources?.length && (
         <section aria-label="Reflection sources">
           <h4>Sources</h4>
@@ -403,7 +679,7 @@ function RunCard({
             className="secondary"
             onClick={() => onOpenChat(run.chat_id!)}
           >
-            Open chat
+            Open work
           </button>
         )}
         {run.proposal && (
@@ -414,7 +690,7 @@ function RunCard({
             Open Review
           </button>
         )}
-        {run.kind !== "reflection" && (
+        {hasChanges && (
           <>
             <button
               className="secondary"
@@ -448,7 +724,7 @@ function RunCard({
           </>
         )}
       </div>
-      {!!(choices.length || run.changes.length) && (
+      {hasChanges && !!(choices.length || run.changes.length) && (
         <details>
           <summary>
             Changes (

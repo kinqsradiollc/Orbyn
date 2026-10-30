@@ -1,3 +1,8 @@
+import { RoutineSetupReview } from "./RoutineSetupReview";
+import { RoutineQuietPolicyEditor } from "./RoutineQuietCheck";
+import { RoutineRetryPolicyEditor } from "./RoutineRecovery";
+import { GoalWorkSheet } from "./GoalWorkSheet";
+import { RoutineRunHistory } from "./RoutineRunHistory";
 import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
@@ -8,6 +13,7 @@ import {
   nextOccurrence,
   weekdayOf,
   type AgentRoutine,
+  type AgentRoutineInput,
   type ApprovalScopes,
   type AssistantChangeKind,
   type DocSummary,
@@ -89,12 +95,14 @@ function UpcomingBody({
   agentName,
   visible,
   conversationEnabled = false,
+  onOpenChat,
   onClose,
 }: {
   /** The name the person gave their assistant. */
   agentName: string;
   visible: boolean;
   conversationEnabled?: boolean;
+  onOpenChat?: (id: string) => void;
   onClose: () => void;
 }) {
   const owner = session.token;
@@ -125,8 +133,13 @@ function UpcomingBody({
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState<ApprovalScopes>({});
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [workGoal, setWorkGoal] = useState<{
+    goal: Goal;
+    mode: "start" | "history";
+  } | null>(null);
   const [checkins, setCheckins] = useState<Record<string, GoalCheckin[]>>({});
   const [routines, setRoutines] = useState<AgentRoutine[]>([]);
+  const [historyRoutineId, setHistoryRoutineId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [agentDocs, setAgentDocs] = useState<DocSummary[]>([]);
   const [timezone, setTimezone] = useState("UTC");
@@ -136,10 +149,25 @@ function UpcomingBody({
   const [goalDate, setGoalDate] = useState<string | null>(null);
   const [goalProject, setGoalProject] = useState("");
   const [goalDoc, setGoalDoc] = useState("");
+  const [routineSetup, setRoutineSetup] = useState<AgentRoutineInput | null>(
+    null,
+  );
+  const [routineSetupUncertain, setRoutineSetupUncertain] = useState(false);
   const [routineText, setRoutineText] = useState("");
   const [routineDay, setRoutineDay] = useState(localDateKey(new Date(), "UTC"));
   const [routineTime, setRoutineTime] = useState(inAnHour);
   const [repeat, setRepeat] = useState<Repeat>("daily");
+  const routineDraftKey = JSON.stringify([
+    routineText,
+    routineDay,
+    routineTime.getTime(),
+    repeat,
+  ]);
+  const [routineBaseline, setRoutineBaseline] = useState("");
+  useEffect(() => {
+    setRoutineBaseline(routineDraftKey);
+  }, [form?.kind, form?.id]);
+
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -309,6 +337,8 @@ function UpcomingBody({
       setRepeat("daily");
     }
     setError("");
+    setRoutineSetup(null);
+    setRoutineSetupUncertain(false);
     setForm({ kind: "routine", id: routine?.id ?? null });
   };
 
@@ -341,13 +371,15 @@ function UpcomingBody({
           rrule: rule,
           next_run_at: next.toISOString(),
         });
-      else
-        await client.createAgentRoutine({
+      else {
+        setRoutineSetup({
           instruction: routineText.trim(),
           rrule: rule,
           timezone: zone,
           next_run_at: next.toISOString(),
         });
+        return;
+      }
       if (!live.current || session.token !== owner) return;
       setForm(null);
       if (current()) await refreshSaved();
@@ -401,6 +433,15 @@ function UpcomingBody({
   const today = localDateKey(new Date(), timezone);
   const currentMonday = addDays(today, -((weekdayOf(today) + 6) % 7));
   const activeGoals = goals.filter((goal) => goal.status !== "done");
+  const permissionSummaryFor = (goal: Goal) => {
+    const rows = allowedRows.filter(
+      ([, rule]) =>
+        rule === "always" || (rule?.scope === "goal" && rule.id === goal.id),
+    );
+    return rows.length
+      ? `Saved automatic change permissions for this goal: ${rows.map(([kind]) => CHANGE_KIND_LABELS[kind] ?? kind).join(", ")}.`
+      : "No automatic change permissions are saved for this goal.";
+  };
   const goalPlanDocs = goalProject
     ? agentDocs.filter((doc) => doc.project_id === goalProject)
     : agentDocs;
@@ -458,6 +499,43 @@ function UpcomingBody({
     },
   ];
 
+  if (workGoal && visible)
+    return (
+      <GoalWorkSheet
+        goal={workGoal.goal}
+        initialMode={workGoal.mode}
+        permissionSummary={permissionSummaryFor(workGoal.goal)}
+        onClose={() => setWorkGoal(null)}
+        onOpenChat={
+          onOpenChat
+            ? (id) => {
+                setWorkGoal(null);
+                onOpenChat(id);
+              }
+            : undefined
+        }
+      />
+    );
+
+  const closeRoutineSetup = async () => {
+    if (!current() || saving) return;
+    const unknown = routineSetupUncertain;
+    setRoutineSetup(null);
+    setRoutineSetupUncertain(false);
+    setForm(null);
+    if (unknown) {
+      setSaving(true);
+      try {
+        await refreshSaved();
+        if (current())
+          setError(
+            "Save status was unknown. Check your routines before adding another.",
+          );
+      } finally {
+        if (live.current && session.token === owner) setSaving(false);
+      }
+    }
+  };
   return (
     <Sheet
       visible={visible}
@@ -465,7 +543,12 @@ function UpcomingBody({
       closeDisabled={saving}
       onClose={() => {
         if (saving) return;
+        if (routineSetupUncertain) {
+          void closeRoutineSetup();
+          return;
+        }
         if (form) {
+          setRoutineSetup(null);
           setForm(null);
           setError("");
         } else onClose();
@@ -576,75 +659,122 @@ function UpcomingBody({
               </View>
             </View>
           ) : form?.kind === "routine" ? (
-            <View>
-              <Field label={`What should ${agentName} do?`}>
-                <TextInput
-                  editable={!saving}
-                  accessibilityLabel={`What should ${agentName} do?`}
-                  value={routineText}
-                  onChangeText={setRoutineText}
-                  maxLength={4000}
-                  multiline
-                  placeholder="Summarise what's due this week"
-                  placeholderTextColor={colors.faint}
-                  style={[shared.input, s.multiline]}
-                />
-              </Field>
-              <Field label={form.id ? "Next run" : "First run"}>
-                <DateField
-                  disabled={saving}
-                  label={form.id ? "Next run" : "First run"}
-                  value={routineDay}
-                  onChange={(day) => day && setRoutineDay(day)}
-                  minimumDate={new Date()}
-                />
-              </Field>
-              <Field label="Time">
-                <TimeField
-                  disabled={saving}
-                  label="Time"
-                  value={routineTime}
-                  onChange={setRoutineTime}
-                />
-              </Field>
-              <Field label="Repeat">
-                <ChipRow label="Repeat">
-                  {(
-                    [
-                      ["daily", "Daily"],
-                      ["weekdays", "Weekdays"],
-                      ["weekly", "Weekly"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <Chip
-                      disabled={saving}
-                      key={value}
-                      label={label}
-                      selected={repeat === value}
-                      onPress={() => setRepeat(value)}
+            routineSetup ? (
+              <RoutineSetupReview
+                input={routineSetup}
+                active={visible}
+                ruleLabel={ruleLabel}
+                onBusy={setSaving}
+                onUncertain={setRoutineSetupUncertain}
+                onBack={() => {
+                  setRoutineSetup(null);
+                  setError("");
+                }}
+                onCheckUpcoming={() => void closeRoutineSetup()}
+                onSaved={async () => {
+                  if (!current()) return;
+                  setSaving(true);
+                  setRoutineSetup(null);
+                  setRoutineSetupUncertain(false);
+                  setForm(null);
+                  await refreshSaved();
+                  if (live.current && session.token === owner) setSaving(false);
+                }}
+              />
+            ) : (
+              <View>
+                <Field label={`What should ${agentName} do?`}>
+                  <TextInput
+                    editable={!saving}
+                    accessibilityLabel={`What should ${agentName} do?`}
+                    value={routineText}
+                    onChangeText={setRoutineText}
+                    maxLength={4000}
+                    multiline
+                    placeholder="Summarise what's due this week"
+                    placeholderTextColor={colors.faint}
+                    style={[shared.input, s.multiline]}
+                  />
+                </Field>
+                <Field label={form.id ? "Next run" : "First run"}>
+                  <DateField
+                    disabled={saving}
+                    label={form.id ? "Next run" : "First run"}
+                    value={routineDay}
+                    onChange={(day) => day && setRoutineDay(day)}
+                    minimumDate={new Date()}
+                  />
+                </Field>
+                <Field label="Time">
+                  <TimeField
+                    disabled={saving}
+                    label="Time"
+                    value={routineTime}
+                    onChange={setRoutineTime}
+                  />
+                </Field>
+                <Field label="Repeat">
+                  <ChipRow label="Repeat">
+                    {(
+                      [
+                        ["daily", "Daily"],
+                        ["weekdays", "Weekdays"],
+                        ["weekly", "Weekly"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <Chip
+                        disabled={saving}
+                        key={value}
+                        label={label}
+                        selected={repeat === value}
+                        onPress={() => setRepeat(value)}
+                      />
+                    ))}
+                  </ChipRow>
+                </Field>
+                <View style={s.formActions}>
+                  <Button
+                    title={
+                      saving
+                        ? "Saving…"
+                        : form.id
+                          ? "Save routine"
+                          : "Review routine"
+                    }
+                    disabled={saving || !routineText.trim()}
+                    style={s.formAction}
+                    onPress={() => void saveRoutine()}
+                  />
+                  <Button
+                    title="Cancel"
+                    secondary
+                    disabled={saving}
+                    style={s.formAction}
+                    onPress={() => {
+                      setForm(null);
+                      setError("");
+                    }}
+                  />
+                </View>
+                {form.id ? (
+                  <>
+                    <RoutineRetryPolicyEditor
+                      routineId={form.id}
+                      disabled={saving || routineDraftKey !== routineBaseline}
                     />
-                  ))}
-                </ChipRow>
-              </Field>
-              <View style={s.formActions}>
-                <Button
-                  title={saving ? "Saving…" : "Save routine"}
-                  disabled={saving || !routineText.trim()}
-                  style={s.formAction}
-                  onPress={() => void saveRoutine()}
-                />
-                <Button
-                  title="Cancel"
-                  secondary
-                  disabled={saving}
-                  style={s.formAction}
-                  onPress={() => {
-                    setForm(null);
-                    setError("");
-                  }}
-                />
+                    <RoutineQuietPolicyEditor
+                      routineId={form.id}
+                      disabled={saving || routineDraftKey !== routineBaseline}
+                    />
+                  </>
+                ) : (
+                  <Text style={shared.small}>
+                    Retries are off. Save this routine before configuring
+                    bounded recovery.
+                  </Text>
+                )}
               </View>
-            </View>
+            )
           ) : (
             <View style={s.formActions}>
               <Button
@@ -719,6 +849,24 @@ function UpcomingBody({
                             onPress={() => void loadHistory(goal)}
                           />
                         )}
+                        <Button
+                          title="Work on this goal"
+                          secondary
+                          disabled={
+                            saving ||
+                            loading ||
+                            loadFailed ||
+                            !!form ||
+                            goal.status !== "active"
+                          }
+                          onPress={() => setWorkGoal({ goal, mode: "start" })}
+                        />
+                        <Button
+                          title="Work history"
+                          secondary
+                          disabled={saving || loading || loadFailed || !!form}
+                          onPress={() => setWorkGoal({ goal, mode: "history" })}
+                        />
                         {latest && (
                           <Text style={shared.small}>
                             Last check-in: {checkinStatusLabel(latest.status)}
@@ -748,6 +896,23 @@ function UpcomingBody({
                 !loadFailed && <Text style={shared.small}>No goals yet.</Text>
               )}
 
+              {goals.some((goal) => goal.status === "done") && (
+                <InlineDetails title="Completed planning goals">
+                  {goals
+                    .filter((goal) => goal.status === "done")
+                    .map((goal) => (
+                      <View key={goal.id}>
+                        <Text style={shared.body}>{goal.title}</Text>
+                        <Button
+                          title="Work history"
+                          secondary
+                          disabled={saving || loading || loadFailed || !!form}
+                          onPress={() => setWorkGoal({ goal, mode: "history" })}
+                        />
+                      </View>
+                    ))}
+                </InlineDetails>
+              )}
               <Text style={[shared.sectionTitle, s.section]}>Routines</Text>
               {loading ? (
                 <Text style={shared.small}>Loading…</Text>
@@ -768,13 +933,18 @@ function UpcomingBody({
                             })}`}{" "}
                         · {describeRrule(routine.rrule)}
                       </Text>
-                      {typeof routine.last_result?.summary === "string" && (
-                        <InlineDetails title="Last run">
-                          <Text style={shared.small}>
-                            {routine.last_result.summary}
-                          </Text>
-                        </InlineDetails>
-                      )}
+                      <RoutineRunHistory
+                        routineId={routine.id}
+                        timezone={routine.timezone}
+                        open={visible && historyRoutineId === routine.id}
+                        disabled={saving || !!form}
+                        onToggle={() =>
+                          setHistoryRoutineId((id) =>
+                            id === routine.id ? null : routine.id,
+                          )
+                        }
+                        onOpenChat={onOpenChat}
+                      />
                     </View>
                     <MoreMenu
                       label={`Options for ${routine.instruction}`}

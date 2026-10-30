@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { linkMarkdown } from "../documents/links.js";
+import { workspacePresetChoice } from "./prefs.js";
 
 /**
  * A guided first run (DSN-02), in three steps: what Orbyn is for (Study,
@@ -173,6 +174,8 @@ export const firstRunInput = z.object({
   team_id: z.uuid().nullable().optional(),
   /** A new team's name, for a team sprint with no team given. */
   team_name: z.string().trim().min(1).max(80).optional(),
+  /** Omission preserves preferences; an explicit choice changes only preset pins. */
+  workspace_presets: workspacePresetChoice.optional(),
 });
 export type FirstRunInput = z.input<typeof firstRunInput>;
 

@@ -1,8 +1,13 @@
+import { AiConnectionsOverview } from "./AiConnectionsOverview";
 import { AgentWarmStart } from "./AgentContext";
 import { ChatgptConnections } from "./ChatgptConnections";
 import { AssistantRulesSettings } from "./AssistantRulesSettings";
 import { AssistantBudgetSettings } from "./AssistantBudgetSettings";
-import { SettingsWorkspace, SettingsSection } from "./SettingsSection";
+import {
+  SettingsWorkspace,
+  SettingsSection,
+  SettingsOverview,
+} from "./SettingsSection";
 import { useEffect, useId, useRef, useState } from "react";
 import { settingsExitAllowed } from "./SettingsModal";
 import {
@@ -58,6 +63,7 @@ type Props = {
   onOpenSecurity?: () => void;
   report: (e: unknown) => void;
   initialTab?: SettingsTab;
+  onOpenAgentActivity?: (lane: "background" | "overnight") => void;
   /** A setting to open and scroll to (⌘K's "Settings: …", NAV-10). */
   initialSetting?: { id: string; seq: number } | null;
   /** Opens "What's new" (DSN-03). */
@@ -75,6 +81,7 @@ export function SettingsView({
   onOpenSecurity,
   report,
   initialTab = "account",
+  onOpenAgentActivity,
   initialSetting = null,
   onOpenWhatsNew,
   onAccountDeleted,
@@ -100,6 +107,14 @@ export function SettingsView({
     setFocus((f) => ({
       key: sectionKey(entry.section),
       seq: (f?.seq ?? 0) + 1,
+    }));
+  };
+  const revealSection = (next: SettingsTab, section: string) => {
+    if (!settingsExitAllowed()) return;
+    setTab(next);
+    setFocus((previous) => ({
+      key: sectionKey(section),
+      seq: (previous?.seq ?? 0) + 1,
     }));
   };
   // ⌘K chose a setting: open its tab and section.
@@ -292,6 +307,26 @@ export function SettingsView({
           )}
           {tab === "assistants" && (
             <>
+              <SettingsOverview>
+                <AiConnectionsOverview
+                  userId={user?.id ?? ""}
+                  onProviders={() =>
+                    revealSection("account", "AI connections & models")
+                  }
+                  onAccess={() =>
+                    revealSection("connections", "Connected agents")
+                  }
+                  onRules={() => revealSection("assistants", "Assistant rules")}
+                  onLimits={() => revealSection("assistants", "Work limits")}
+                  onOpenActivity={
+                    onOpenAgentActivity
+                      ? (lane) => {
+                          if (settingsExitAllowed()) onOpenAgentActivity(lane);
+                        }
+                      : undefined
+                  }
+                />
+              </SettingsOverview>
               <AgentWarmStart report={report} />
               <AssistantBudgetSettings userId={user?.id ?? ""} />
               <AssistantRulesSettings userId={user?.id ?? ""} teams={teams} />

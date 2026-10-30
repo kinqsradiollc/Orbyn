@@ -129,6 +129,8 @@ async function start(
   pauseAfterApply = false,
   checkpointPause?: string,
   lane: "interactive" | "background" | "overnight" = "interactive",
+  loseApplyAck = false,
+  pauseAfterMarker = false,
 ) {
   const child = fork(
     new URL("./helpers/assistant-runner-process.ts", import.meta.url),
@@ -139,6 +141,8 @@ async function start(
       env: {
         ...process.env,
         RUNNER_TEST_PAUSE_AFTER_APPLY: pauseAfterApply ? "true" : "false",
+        RUNNER_TEST_LOSE_APPLY_ACK: loseApplyAck ? "true" : "false",
+        RUNNER_TEST_PAUSE_AFTER_MARKER: pauseAfterMarker ? "true" : "false",
         RUNNER_TEST_PAUSE_CHECKPOINT: checkpointPause ?? "",
         RUNNER_TEST_LANE: lane,
       },
@@ -194,7 +198,7 @@ async function enqueue(
   });
   const id = (
     await pool.query(
-      "INSERT INTO ai_jobs(user_id, chat_id, turn_id, state, run_state) VALUES($1, $2, $3, 'queued', $4::jsonb) RETURNING id",
+      "INSERT INTO ai_jobs(user_id, chat_id, turn_id, state, run_state, apply_tracking_version) VALUES($1, $2, $3, 'queued', $4::jsonb, 1) RETURNING id",
       [user.id, chatId, turnId, JSON.stringify(checkpoint)],
     )
   ).rows[0].id as string;
@@ -471,6 +475,7 @@ test("SIGKILL after apply commits reuses its durable receipt even after client_r
     const committed = await job(run.id);
     assert.equal(committed.state, "running");
     assert.equal(committed.apply_result.applied, true);
+    assert.ok(committed.apply_started_at);
     assert.equal(
       (
         await pool.query(
@@ -495,6 +500,7 @@ test("SIGKILL after apply commits reuses its durable receipt even after client_r
       (row) => row.state === "done" || row.state === "failed",
     );
     assert.equal(finished.state, "done", JSON.stringify(finished));
+    assert.equal(finished.terminal_evidence.effects, "applied");
     assert.equal(
       finished.result.assistant_run.plan_job,
       committed.apply_result.structured.job,
@@ -567,6 +573,290 @@ test("SIGKILL after apply commits reuses its durable receipt even after client_r
     if (previousProcess === undefined)
       delete process.env.ASSISTANT_CONVERSATION_ENABLED;
     else process.env.ASSISTANT_CONVERSATION_ENABLED = previousProcess;
+  }
+});
+
+test("a lost effect COMMIT acknowledgement reconciles one applied result without model replanning", async () => {
+  const { assistantPrincipal } =
+    await import("../src/modules/agents/assistant.js");
+  await assistantPrincipal(user);
+  const title = `Lost acknowledgement ${randomUUID()}`;
+  const run = await enqueue(`Add a task called ${title}.`, { kind: "task" });
+  const step = {
+    id: "s1",
+    tool: "create_tasks" as const,
+    args: { tasks: [{ title, kind: "task" }] },
+  };
+  run.checkpoint.state.answer = "The checked task is ready.";
+  run.checkpoint.state.plan = [step];
+  run.checkpoint.state.selected_steps = [step];
+  run.checkpoint.state.reports = [
+    {
+      specialist: "projects",
+      task_id: "r1t1",
+      status: "done",
+      summary: "Staged the task",
+      findings: [],
+      steps: [step],
+      open_questions: [],
+    },
+  ];
+  // This fixture represents a new tracked admission, not an upgraded old run.
+  await pool.query(
+    "UPDATE ai_jobs SET run_state=$2::jsonb,sources_checked=true,apply_tracking_version=1 WHERE id=$1",
+    [run.id, JSON.stringify(run.checkpoint)],
+  );
+  let modelCalls = 0;
+  const previous = respond;
+  respond = () => {
+    modelCalls++;
+    return {
+      name: "finish",
+      arguments: { answer: "Unexpected replan", steps: [] },
+    };
+  };
+  const runner = await start(false, undefined, "background", true);
+  try {
+    await message(runner, "apply-ack-lost");
+    const finished = await until(
+      () => job(run.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(finished.state, "done", JSON.stringify(finished));
+    assert.ok(finished.apply_started_at);
+    assert.equal(finished.apply_result.applied, true);
+    assert.equal(finished.result.assistant_run.outcome, "applied");
+    assert.equal(
+      finished.result.assistant_run.plan_job,
+      finished.apply_result.structured.job,
+    );
+    assert.equal(finished.terminal_evidence.effects, "applied");
+    assert.equal(finished.terminal_evidence.cause, "finished");
+    assert.equal(finished.terminal_evidence.retry, "never");
+    assert.equal(
+      modelCalls,
+      0,
+      "a committed effect must not become a new model plan",
+    );
+    assert.equal(
+      (
+        await pool.query("SELECT id FROM items WHERE user_id=$1 AND title=$2", [
+          user.id,
+          title,
+        ])
+      ).rowCount,
+      1,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT id FROM agent_activity WHERE user_id=$1 AND tool='apply_plan' AND request_id=$2",
+          [user.id, finished.apply_result.structured.job],
+        )
+      ).rowCount,
+      1,
+      "the committed plan has exactly one durable apply receipt",
+    );
+  } finally {
+    respond = previous;
+    await end(runner, "SIGTERM");
+  }
+});
+
+test("stopping requeued work preserves a committed effect and holds a marker without a receipt as uncertain", async () => {
+  const { default: Fastify } = await import("fastify");
+  const { transaction } = await import("../src/db/pool.js");
+  const { stopAssistantJob } = await import("../src/modules/ai/agent/run.js");
+  const { markAssistantApplyStarted } =
+    await import("../src/modules/ai/agent/effect-reconciliation.js");
+  const logger = Fastify({ logger: false });
+  try {
+    for (const committed of [true, false]) {
+      const title = `Stop prior effect ${randomUUID()}`;
+      const run = await enqueue(`Create ${title}`, { kind: "task" });
+      const step = {
+        id: "s1",
+        tool: "create_tasks" as const,
+        args: { tasks: [{ title, kind: "task" }] },
+      };
+      run.checkpoint.state.answer = "Prepared task";
+      run.checkpoint.state.plan = [step];
+      run.checkpoint.state.selected_steps = [step];
+      await pool.query(
+        "UPDATE ai_jobs SET state='running',run_state=$2::jsonb,sources_checked=true,apply_tracking_version=1 WHERE id=$1",
+        [run.id, JSON.stringify(run.checkpoint)],
+      );
+      await transaction((db) => markAssistantApplyStarted(db, run.id, user.id));
+      const plan = `plan_stop_${randomUUID()}`;
+      const receipt = {
+        applied: true,
+        structured: { status: "done", job: plan, steps: [], pending: null },
+        why: [],
+      };
+      if (committed)
+        await transaction(async (db) => {
+          await db.query("INSERT INTO items(user_id,title) VALUES($1,$2)", [
+            user.id,
+            title,
+          ]);
+          await db.query("UPDATE ai_jobs SET apply_result=$2 WHERE id=$1", [
+            run.id,
+            receipt,
+          ]);
+        });
+      // A prior worker's checkpoint has returned to the queue before Stop.
+      await pool.query(
+        "UPDATE ai_jobs SET state='queued',lease_until=NULL,claimed_by=NULL WHERE id=$1",
+        [run.id],
+      );
+      assert.equal(await stopAssistantJob(run.id, user, logger.log), true);
+      const stopped = await job(run.id);
+      assert.equal(stopped.state, "done", JSON.stringify(stopped));
+      assert.ok(stopped.apply_started_at);
+      assert.doesNotMatch(stopped.result.answer, /nothing was changed/i);
+      assert.equal(stopped.terminal_evidence.cause, "stopped");
+      const outcome = stopped.result.assistant_run.execution_outcome;
+      assert.notEqual(outcome.outcome, "completed");
+      assert.equal(outcome.process, "cancelled");
+      const effects = (
+        await pool.query("SELECT id FROM items WHERE user_id=$1 AND title=$2", [
+          user.id,
+          title,
+        ])
+      ).rowCount;
+      if (committed) {
+        assert.deepEqual(stopped.apply_result, receipt);
+        assert.equal(
+          effects,
+          1,
+          "Stop neither duplicates nor reverses the effect",
+        );
+        assert.equal(stopped.result.assistant_run.outcome, "applied");
+        assert.equal(stopped.result.assistant_run.plan_job, plan);
+        assert.equal(outcome.outcome, "interrupted");
+        assert.equal(outcome.reason, "stopped");
+        assert.ok(
+          outcome.artifacts.some(
+            (artifact: { kind: string; id: string }) =>
+              artifact.kind === "change_set" && artifact.id === plan,
+          ),
+        );
+        assert.equal(stopped.terminal_evidence.effects, "applied");
+        assert.equal(stopped.terminal_evidence.retry, "never");
+      } else {
+        assert.equal(stopped.apply_result, null);
+        assert.equal(effects, 0);
+        assert.match(stopped.result.answer, /could not be confirmed/i);
+        assert.equal(stopped.result.assistant_run.outcome, "info");
+        assert.equal(outcome.outcome, "uncertain");
+        assert.equal(outcome.reason, "dispatch_uncertain");
+        assert.equal(stopped.terminal_evidence.effects, "uncertain");
+        assert.equal(stopped.terminal_evidence.retry, "reconcile");
+      }
+    }
+  } finally {
+    await logger.close();
+  }
+});
+
+test("an acknowledged Stop after the marker commit blocks the effect transaction before its first write", async () => {
+  const { assistantPrincipal } =
+    await import("../src/modules/agents/assistant.js");
+  await assistantPrincipal(user);
+  const title = `Stop at effect admission ${randomUUID()}`;
+  const run = await enqueue(`Create ${title}`, { kind: "task" });
+  const step = {
+    id: "s1",
+    tool: "create_tasks" as const,
+    args: { tasks: [{ title, kind: "task" }] },
+  };
+  run.checkpoint.state.answer = "The checked task is ready.";
+  run.checkpoint.state.plan = [step];
+  run.checkpoint.state.selected_steps = [step];
+  run.checkpoint.state.reports = [
+    {
+      specialist: "projects",
+      task_id: "r1t1",
+      status: "done",
+      summary: "Staged task",
+      findings: [],
+      steps: [step],
+      open_questions: [],
+    },
+  ];
+  await pool.query(
+    "UPDATE ai_jobs SET run_state=$2::jsonb,sources_checked=true WHERE id=$1",
+    [run.id, JSON.stringify(run.checkpoint)],
+  );
+  const before = (
+    await pool.query(
+      "SELECT count(*)::int AS count FROM agent_activity WHERE user_id=$1 AND tool='apply_plan'",
+      [user.id],
+    )
+  ).rows[0].count;
+  const runner = await start(false, undefined, "background", false, true);
+  try {
+    await message(runner, "marker-committed");
+    const marked = await job(run.id);
+    assert.ok(marked.apply_started_at);
+    assert.equal(marked.apply_result, null);
+    // A committed API Stop is represented by its durable cancellation flag.
+    await pool.query("UPDATE ai_jobs SET cancel_requested=true WHERE id=$1", [
+      run.id,
+    ]);
+    const stoppedAtWriteBoundary = message(runner, "write-stop-observed");
+    runner.send("resume-marker");
+    await stoppedAtWriteBoundary;
+    const stopped = await until(
+      () => job(run.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(stopped.state, "done", JSON.stringify(stopped));
+    assert.equal(stopped.apply_result, null);
+    assert.ok(stopped.apply_rolled_back_at);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT apply_rolled_back_at>=apply_started_at AS confirmed FROM ai_jobs WHERE id=$1",
+          [run.id],
+        )
+      ).rows[0].confirmed,
+      true,
+    );
+    assert.equal(stopped.result.assistant_run.outcome, "discarded");
+    assert.equal(
+      stopped.result.assistant_run.execution_outcome.outcome,
+      "interrupted",
+    );
+    assert.equal(
+      stopped.result.assistant_run.execution_outcome.reason,
+      "stopped",
+    );
+    assert.equal(stopped.terminal_evidence.cause, "stopped");
+    assert.equal(stopped.terminal_evidence.effects, "none");
+    assert.equal(stopped.terminal_evidence.retry, "never");
+    assert.equal(
+      (
+        await pool.query("SELECT id FROM items WHERE user_id=$1 AND title=$2", [
+          user.id,
+          title,
+        ])
+      ).rowCount,
+      0,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS count FROM agent_activity WHERE user_id=$1 AND tool='apply_plan'",
+          [user.id],
+        )
+      ).rows[0].count,
+      before,
+      "the acknowledged Stop cannot admit another plan receipt",
+    );
+  } finally {
+    runner.send("resume-marker");
+    await end(runner, "SIGTERM");
   }
 });
 

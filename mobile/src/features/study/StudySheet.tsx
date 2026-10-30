@@ -610,11 +610,14 @@ function Home({
           <EmptyState
             icon="graduationCap"
             title="No cards yet"
-            body="Any line written as Question :: Answer in a page becomes a card."
+            body="Choose course material, review card drafts, then schedule practice."
             actions={[
-              { label: "New study page", onPress: onNewPage },
               {
-                label: imports.busy ? "Uploading…" : "Import notes",
+                label: "From your pages",
+                onPress: () => onMode({ kind: "pick" }),
+              },
+              {
+                label: imports.busy ? "Uploading…" : "Import material",
                 disabled: imports.busy,
                 onPress: () =>
                   void imports
@@ -623,6 +626,12 @@ function Home({
               },
             ]}
           />
+          <InlineDetails title="Write cards manually">
+            <Text style={shared.small}>
+              A line written as Question :: Answer in a page becomes a card.
+            </Text>
+            <Button title="New study page" secondary onPress={onNewPage} />
+          </InlineDetails>
         </View>
       ) : (
         <>

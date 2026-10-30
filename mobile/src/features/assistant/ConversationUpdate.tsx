@@ -1,3 +1,4 @@
+import { updateStatusLabel } from "./assistant-labels";
 import { AskAboutMessage, CopyMessage } from "./ConversationMessage";
 import React from "react";
 import { Text, View } from "react-native";
@@ -33,7 +34,8 @@ export function ConversationUpdate({
             : shared.small
         }
       >
-        {entry.lane === "overnight" ? "Overnight" : "Background"}
+        {entry.lane === "overnight" ? "Overnight" : "Background"} ·{" "}
+        {updateStatusLabel(entry)}
       </Text>
       <Text selectable style={shared.body}>
         {entry.text}
@@ -46,6 +48,21 @@ export function ConversationUpdate({
           gap: 8,
         }}
       >
+        {entry.event !== "question" && (
+          <SmallAction
+            label={
+              entry.event === "morning_summary"
+                ? "Review activity"
+                : "Review result"
+            }
+            disabled={busy}
+            onPress={() =>
+              entry.execution_chat_id
+                ? onWork(entry.execution_chat_id)
+                : onActivity(entry.lane)
+            }
+          />
+        )}
         <CopyMessage text={entry.text} />
         {entry.event === "question" && entry.actionable === false ? (
           <Text style={shared.small}>Closed</Text>

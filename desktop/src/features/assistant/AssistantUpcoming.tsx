@@ -1,3 +1,8 @@
+import { RoutineSetupReview } from "./RoutineSetupReview";
+import { RoutineQuietPolicyEditor } from "./RoutineQuietCheck";
+import { RoutineRetryPolicyEditor } from "./RoutineRecovery";
+import { GoalWorkSheet } from "./GoalWorkSheet";
+import { RoutineRunHistory } from "./RoutineRunHistory";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Check,
@@ -17,6 +22,7 @@ import {
   nextOccurrence,
   weekdayOf,
   type AgentRoutine,
+  type AgentRoutineInput,
   type ApprovalScopes,
   type AssistantChangeKind,
   type DocSummary,
@@ -73,12 +79,14 @@ function UpcomingBody({
   onClose,
   modal = false,
   conversationEnabled = false,
+  onOpenChat,
 }: {
   id?: string;
   agentName: string;
   onClose: () => void;
   modal?: boolean;
   conversationEnabled?: boolean;
+  onOpenChat?: (id: string) => void;
 }) {
   const { ask } = useConfirm();
   const owner = session.get();
@@ -98,8 +106,13 @@ function UpcomingBody({
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState<ApprovalScopes>({});
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [workGoal, setWorkGoal] = useState<{
+    goal: Goal;
+    mode: "start" | "history";
+  } | null>(null);
   const [checkins, setCheckins] = useState<Record<string, GoalCheckin[]>>({});
   const [routines, setRoutines] = useState<AgentRoutine[]>([]);
+  const [historyRoutineId, setHistoryRoutineId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [agentDocs, setAgentDocs] = useState<DocSummary[]>([]);
   const [timezone, setTimezone] = useState("UTC");
@@ -111,12 +124,27 @@ function UpcomingBody({
   const [goalDate, setGoalDate] = useState("");
   const [goalProject, setGoalProject] = useState("");
   const [goalDoc, setGoalDoc] = useState("");
+  const [routineSetup, setRoutineSetup] = useState<AgentRoutineInput | null>(
+    null,
+  );
+  const [routineSetupUncertain, setRoutineSetupUncertain] = useState(false);
   const [routineText, setRoutineText] = useState("");
   const [routineDay, setRoutineDay] = useState(() =>
     localDateKey(new Date(), "UTC"),
   );
   const [routineTime, setRoutineTime] = useState("09:00");
   const [repeat, setRepeat] = useState("daily");
+  const routineDraftKey = JSON.stringify([
+    routineText,
+    routineDay,
+    routineTime,
+    repeat,
+  ]);
+  const [routineBaseline, setRoutineBaseline] = useState("");
+  useEffect(() => {
+    setRoutineBaseline(routineDraftKey);
+  }, [routineForm]);
+
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [menu, setMenu] = useState<{
@@ -267,6 +295,15 @@ function UpcomingBody({
     () => goals.filter((goal) => goal.status !== "done"),
     [goals],
   );
+  const permissionSummaryFor = (goal: Goal) => {
+    const rows = allowedRows.filter(
+      ([, rule]) =>
+        rule === "always" || (rule?.scope === "goal" && rule.id === goal.id),
+    );
+    return rows.length
+      ? `Saved automatic change permissions for this goal: ${rows.map(([kind]) => CHANGE_KIND_LABELS[kind] ?? kind).join(", ")}.`
+      : "No automatic change permissions are saved for this goal.";
+  };
   const goalPlanDocs = goalProject
     ? agentDocs.filter((doc) => doc.project_id === goalProject)
     : agentDocs;
@@ -323,6 +360,8 @@ function UpcomingBody({
       setRoutineTime("09:00");
       setRepeat("daily");
     }
+    setRoutineSetup(null);
+    setRoutineSetupUncertain(false);
     setRoutineForm(routine?.id ?? "new");
   };
 
@@ -358,8 +397,11 @@ function UpcomingBody({
         timezone: zone,
         next_run_at: next.toISOString(),
       };
-      if (routineForm === "new") await client.createAgentRoutine(input);
-      else await client.updateAgentRoutine(routineForm, input);
+      if (routineForm === "new") {
+        setRoutineSetup(input);
+        return;
+      }
+      await client.updateAgentRoutine(routineForm, input);
       if (!current()) return;
       setRoutineForm(null);
       await refreshSaved();
@@ -500,7 +542,45 @@ function UpcomingBody({
     </form>
   );
 
-  const routineFields = (
+  const closeRoutineSetup = async () => {
+    if (!current() || saving) return;
+    const unknown = routineSetupUncertain;
+    setRoutineSetup(null);
+    setRoutineForm(null);
+    setRoutineSetupUncertain(false);
+    if (unknown) {
+      setSaving(true);
+      await refreshSaved();
+      if (current()) {
+        setSaving(false);
+        setError(
+          "Save status was unknown. Check your routines before adding another.",
+        );
+      }
+    }
+  };
+  const routineFields = routineSetup ? (
+    <RoutineSetupReview
+      input={routineSetup}
+      ruleLabel={ruleLabel}
+      onBusy={setSaving}
+      onUncertain={setRoutineSetupUncertain}
+      onBack={() => {
+        setRoutineSetup(null);
+        setError("");
+      }}
+      onCheckUpcoming={() => void closeRoutineSetup()}
+      onSaved={async () => {
+        if (!current()) return;
+        setSaving(true);
+        setRoutineSetup(null);
+        setRoutineForm(null);
+        setRoutineSetupUncertain(false);
+        await refreshSaved();
+        if (current()) setSaving(false);
+      }}
+    />
+  ) : (
     <form
       className="settings-subform ai-upcoming-form"
       aria-label={routineForm === "new" ? "New routine" : "Edit routine"}
@@ -570,7 +650,7 @@ function UpcomingBody({
           {saving
             ? "Saving…"
             : routineForm === "new"
-              ? "Add routine"
+              ? "Review routine"
               : "Save routine"}
         </button>
       </div>
@@ -694,6 +774,37 @@ function UpcomingBody({
                             : "Load history"}
                         </button>
                       )}
+                      <div className="button-row">
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={
+                            saving ||
+                            loading ||
+                            loadFailed ||
+                            !!goalForm ||
+                            !!routineForm ||
+                            goal.status !== "active"
+                          }
+                          onClick={() => setWorkGoal({ goal, mode: "start" })}
+                        >
+                          Work on this goal
+                        </button>
+                        <button
+                          type="button"
+                          className="text-button"
+                          disabled={
+                            saving ||
+                            loading ||
+                            loadFailed ||
+                            !!goalForm ||
+                            !!routineForm
+                          }
+                          onClick={() => setWorkGoal({ goal, mode: "history" })}
+                        >
+                          Work history
+                        </button>
+                      </div>
                       {latest && (
                         <small>
                           Last check-in: {checkinStatusLabel(latest.status)}
@@ -736,6 +847,33 @@ function UpcomingBody({
           )}
         </section>
 
+        {goals.some((goal) => goal.status === "done") && (
+          <details className="ai-upcoming-details">
+            <summary>Completed planning goals</summary>
+            {goals
+              .filter((goal) => goal.status === "done")
+              .map((goal) => (
+                <div key={goal.id}>
+                  <strong>{goal.title}</strong>
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={
+                      saving ||
+                      loading ||
+                      loadFailed ||
+                      !!goalForm ||
+                      !!routineForm
+                    }
+                    onClick={() => setWorkGoal({ goal, mode: "history" })}
+                  >
+                    Work history
+                  </button>
+                </div>
+              ))}
+          </details>
+        )}
+
         <section aria-labelledby="ai-routines-title">
           <div className="ai-upcoming-section-head">
             <h3 id="ai-routines-title" className="settings-subtitle">
@@ -766,12 +904,18 @@ function UpcomingBody({
                         : `Next ${new Date(routine.next_run_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short", timeZone: routine.timezone })}`}{" "}
                       · {describeRrule(routine.rrule)}
                     </small>
-                    {typeof routine.last_result?.summary === "string" && (
-                      <details className="ai-upcoming-details">
-                        <summary>Last run</summary>
-                        <p>{routine.last_result.summary}</p>
-                      </details>
-                    )}
+                    <RoutineRunHistory
+                      routineId={routine.id}
+                      timezone={routine.timezone}
+                      open={historyRoutineId === routine.id}
+                      disabled={saving || !!goalForm || !!routineForm}
+                      onToggle={() =>
+                        setHistoryRoutineId((id) =>
+                          id === routine.id ? null : routine.id,
+                        )
+                      }
+                      onOpenChat={onOpenChat}
+                    />
                   </div>
                   <button
                     type="button"
@@ -831,6 +975,22 @@ function UpcomingBody({
         )}
       </div>
 
+      {workGoal && (
+        <GoalWorkSheet
+          goal={workGoal.goal}
+          initialMode={workGoal.mode}
+          permissionSummary={permissionSummaryFor(workGoal.goal)}
+          onClose={() => setWorkGoal(null)}
+          onOpenChat={
+            onOpenChat
+              ? (id) => {
+                  setWorkGoal(null);
+                  onOpenChat(id);
+                }
+              : undefined
+          }
+        />
+      )}
       {(goalForm || routineForm) && (
         <SettingsEditor
           title={
@@ -844,7 +1004,12 @@ function UpcomingBody({
           }
           pending={saving}
           onClose={() => {
+            if (routineSetupUncertain) {
+              void closeRoutineSetup();
+              return;
+            }
             setGoalForm(null);
+            setRoutineSetup(null);
             setRoutineForm(null);
             setError("");
           }}
@@ -855,6 +1020,24 @@ function UpcomingBody({
             </p>
           )}
           {goalForm ? goalFields : routineFields}
+          {routineForm && routineForm !== "new" && (
+            <>
+              <RoutineRetryPolicyEditor
+                routineId={routineForm}
+                disabled={saving || routineDraftKey !== routineBaseline}
+              />
+              <RoutineQuietPolicyEditor
+                routineId={routineForm}
+                disabled={saving || routineDraftKey !== routineBaseline}
+              />
+            </>
+          )}
+          {routineForm === "new" && !routineSetup && (
+            <p className="muted">
+              Retries are off. Save this routine before configuring bounded
+              recovery.
+            </p>
+          )}
         </SettingsEditor>
       )}
       {menu && (menuGoal || menuRoutine) && (

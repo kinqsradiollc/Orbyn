@@ -4,6 +4,9 @@ import {
   SESSION_OUTCOME_LABELS,
   checkInNote,
   shortMinutes,
+  statusLabels,
+  timeRange,
+  type Item,
   todayIsCurrent,
   todayRowWords,
   unfinishedHeading,
@@ -13,6 +16,7 @@ import {
   type TodayList,
   type TodayRow,
 } from "@orbyn/core";
+import { InlineDetails } from "../../components/InlineDetails";
 import { client } from "../../lib/api";
 import { tap } from "../../lib/haptics";
 import { Icon, type IconName } from "../../components/Icon";
@@ -59,6 +63,7 @@ const iconOf = (r: TodayRow): IconName =>
  */
 export function TodayCard({
   today,
+  items = [],
   onOpen,
   onFocus,
   onPlanIt,
@@ -68,6 +73,7 @@ export function TodayCard({
   onCheckedIn,
 }: {
   today: TodayList | null;
+  items?: Item[];
   /** Opens a task or event by id. */
   onOpen: (itemId: string) => void;
   /** Starts focus mode on a task. */
@@ -114,7 +120,18 @@ export function TodayCard({
 
   // A list saved for another day (opened offline the next morning) waits.
   if (!today || !todayIsCurrent(today, now)) return null;
-  const rows = today.rows;
+  const byItem = new Map(items.map((item) => [item.id, item]));
+  const taskIds = new Set(
+    today.rows.filter((row) => row.kind === "task").map((row) => row.item_id),
+  );
+  const seen = new Set<string>();
+  const rows = today.rows.filter((row) => {
+    if (row.kind === "event" || !row.item_id) return true;
+    if (row.kind === "session" && taskIds.has(row.item_id)) return false;
+    if (seen.has(row.item_id)) return false;
+    seen.add(row.item_id);
+    return true;
+  });
   const onDay = rows.filter((r) => r.due !== "late" || r.at);
   const late = rows.filter((r) => r.due === "late" && !r.at);
   const lateShown = allLate ? late : late.slice(0, LATE_SHOWN);
@@ -167,17 +184,43 @@ export function TodayCard({
 
   const row = (r: TodayRow, n: number) => {
     const words = todayRowWords(r, now);
+    const item = r.item_id ? byItem.get(r.item_id) : undefined;
+    const sessions = [
+      ...new Map(
+        [
+          ...r.sessions,
+          ...today.rows
+            .filter(
+              (session) =>
+                session.kind === "session" && session.item_id === r.item_id,
+            )
+            .map((session) => ({
+              id: session.block_id ?? session.key,
+              start_at: session.start_at!,
+              end_at: session.end_at!,
+            })),
+        ].map((session) => [session.id, session]),
+      ).values(),
+    ].sort((a, b) => a.start_at.localeCompare(b.start_at));
     const past =
-      r.past ||
-      (!!r.end_at && r.kind !== "task" && Date.parse(r.end_at) <= +now);
+      r.kind === "task"
+        ? false
+        : sessions.length
+          ? sessions.every((session) => Date.parse(session.end_at) <= +now)
+          : r.past || (!!r.end_at && Date.parse(r.end_at) <= +now);
+    const offeredAction = sessions.some(
+      (session) => Date.parse(session.end_at) > +now,
+    )
+      ? "focus"
+      : r.action;
     const warn =
       r.kind === "task" &&
       (r.due === "late" || words.chips.some((c) => c.tone === "warn"));
     const line = [words.lead, words.meta].filter(Boolean).join(" · ");
     const action =
-      r.action === "focus"
+      offeredAction === "focus"
         ? { label: "Start focus", run: () => onFocus(r.item_id!) }
-        : r.action === "plan"
+        : offeredAction === "plan"
           ? { label: "Plan it", run: () => onPlanIt(r.item_id!) }
           : null;
     return (
@@ -214,7 +257,10 @@ export function TodayCard({
           >
             {r.title}
           </Text>
-          {(!!line || words.chips.length > 0) && (
+          {(!!line ||
+            words.chips.length > 0 ||
+            item?.status === "blocked" ||
+            item?.status === "in_progress") && (
             <View style={s.facts}>
               {!!line && (
                 <Text
@@ -226,6 +272,13 @@ export function TodayCard({
                 >
                   {line}
                 </Text>
+              )}
+              {(item?.status === "blocked" ||
+                item?.status === "in_progress") && (
+                <Pill
+                  label={statusLabels[item.status]}
+                  tone={chipTone(item.status === "blocked" ? "warn" : "accent")}
+                />
               )}
               {words.chips.map((c) => (
                 <Pill key={c.text} label={c.text} tone={chipTone(c.tone)} />
@@ -240,6 +293,23 @@ export function TodayCard({
             onPress={action.run}
           />
         )}
+        {sessions.length > 0 && (
+          <View style={s.sessionDetails}>
+            <InlineDetails
+              title={
+                sessions.length === 1
+                  ? "Planned session"
+                  : `${sessions.length} planned sessions`
+              }
+            >
+              {sessions.map((session) => (
+                <Text key={session.id} style={s.line}>
+                  {timeRange(session.start_at, session.end_at, today.timezone)}
+                </Text>
+              ))}
+            </InlineDetails>
+          </View>
+        )}
       </View>
     );
   };
@@ -252,7 +322,7 @@ export function TodayCard({
           style={[shared.sectionTitle, s.headTitle]}
           accessibilityRole="header"
         >
-          Today · {dayName(today.day)}
+          Your plan · {dayName(today.day)}
         </Text>
       </View>
       {empty ? (
@@ -303,105 +373,115 @@ export function TodayCard({
               </View>
             </View>
           )}
-          {checkIns.length > 0 && (
-            <View style={s.group}>
-              <Text style={shared.label}>
-                How did it go? ({checkIns.length})
-              </Text>
-              {checkIns.map((c, n) => {
-                const start = new Date(c.start_at);
-                const when = `${start.toLocaleDateString([], { weekday: "short" })} ${start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${shortMinutes(c.minutes)}`;
-                return (
-                  <View key={c.id} style={[s.checkRow, n > 0 && s.divider]}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`${c.title}, ${when}`}
-                      accessibilityHint="Opens it"
-                      onPress={() => onOpen(c.item_id)}
-                      style={({ pressed }) => [s.main, pressed && s.pressed]}
-                    >
-                      <Text style={s.title}>{c.title}</Text>
-                      <Text style={s.line}>
-                        {when}
-                        {c.project_name ? ` · ${c.project_name}` : ""}
-                      </Text>
-                    </Pressable>
-                    <View style={s.answers}>
-                      {asking === c.id ? (
-                        <>
-                          {[15, 30, 60, 120].map((m) => (
-                            <PillButton
-                              key={m}
-                              label={`+${shortMinutes(m)}`}
-                              disabled={answering !== null || busy}
-                              onPress={() => void answer(c, "more", m)}
-                            />
-                          ))}
-                          <PillButton
-                            label="Cancel"
-                            disabled={answering !== null || busy}
-                            quiet
-                            onPress={() => setAsking(null)}
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <PillButton
-                            label={SESSION_OUTCOME_LABELS.done}
-                            disabled={answering !== null || busy}
-                            onPress={() => void answer(c, "done")}
-                          />
-                          <PillButton
-                            label={SESSION_OUTCOME_LABELS.more}
-                            disabled={answering !== null || busy}
-                            onPress={() => setAsking(c.id)}
-                          />
-                          <PillButton
-                            label={SESSION_OUTCOME_LABELS.skipped}
-                            quiet
-                            disabled={answering !== null || busy}
-                            onPress={() => void answer(c, "skipped")}
-                          />
-                        </>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-          {unfinished.length > 0 && (
-            <View style={s.group}>
-              <Text style={shared.label}>
-                {unfinishedHeading({ unfinished })} ({unfinished.length})
-              </Text>
-              {unfinished.map((u, n) => (
-                <View key={u.block_id} style={[s.row, n > 0 && s.divider]}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${u.title}, ${unfinishedWhen(u)}`}
-                    accessibilityHint="Opens it"
-                    onPress={() => onOpen(u.item_id)}
-                    style={({ pressed }) => [s.main, pressed && s.pressed]}
-                  >
-                    <Text style={s.title}>{u.title}</Text>
-                    <Text style={s.line}>{unfinishedWhen(u)}</Text>
-                  </Pressable>
-                  <View style={s.buttons}>
-                    <PillButton
-                      label="Plan again"
-                      disabled={busy}
-                      onPress={() => onPlanAgain(u.block_id)}
-                    />
-                    <PillButton
-                      label="Dismiss"
-                      quiet
-                      onPress={() => dismiss(u.block_id)}
-                    />
-                  </View>
+          {(checkIns.length > 0 || unfinished.length > 0) && (
+            <InlineDetails
+              title="Session check-ins and unfinished work"
+              reveal={!!answerError}
+            >
+              {checkIns.length > 0 && (
+                <View style={s.group}>
+                  <Text style={shared.label}>
+                    How did it go? ({checkIns.length})
+                  </Text>
+                  {checkIns.map((c, n) => {
+                    const start = new Date(c.start_at);
+                    const when = `${start.toLocaleDateString([], { weekday: "short" })} ${start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${shortMinutes(c.minutes)}`;
+                    return (
+                      <View key={c.id} style={[s.checkRow, n > 0 && s.divider]}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`${c.title}, ${when}`}
+                          accessibilityHint="Opens it"
+                          onPress={() => onOpen(c.item_id)}
+                          style={({ pressed }) => [
+                            s.main,
+                            pressed && s.pressed,
+                          ]}
+                        >
+                          <Text style={s.title}>{c.title}</Text>
+                          <Text style={s.line}>
+                            {when}
+                            {c.project_name ? ` · ${c.project_name}` : ""}
+                          </Text>
+                        </Pressable>
+                        <View style={s.answers}>
+                          {asking === c.id ? (
+                            <>
+                              {[15, 30, 60, 120].map((m) => (
+                                <PillButton
+                                  key={m}
+                                  label={`+${shortMinutes(m)}`}
+                                  disabled={answering !== null || busy}
+                                  onPress={() => void answer(c, "more", m)}
+                                />
+                              ))}
+                              <PillButton
+                                label="Cancel"
+                                disabled={answering !== null || busy}
+                                quiet
+                                onPress={() => setAsking(null)}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <PillButton
+                                label={SESSION_OUTCOME_LABELS.done}
+                                disabled={answering !== null || busy}
+                                onPress={() => void answer(c, "done")}
+                              />
+                              <PillButton
+                                label={SESSION_OUTCOME_LABELS.more}
+                                disabled={answering !== null || busy}
+                                onPress={() => setAsking(c.id)}
+                              />
+                              <PillButton
+                                label={SESSION_OUTCOME_LABELS.skipped}
+                                quiet
+                                disabled={answering !== null || busy}
+                                onPress={() => void answer(c, "skipped")}
+                              />
+                            </>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
                 </View>
-              ))}
-            </View>
+              )}
+              {unfinished.length > 0 && (
+                <View style={s.group}>
+                  <Text style={shared.label}>
+                    {unfinishedHeading({ unfinished })} ({unfinished.length})
+                  </Text>
+                  {unfinished.map((u, n) => (
+                    <View key={u.block_id} style={[s.row, n > 0 && s.divider]}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${u.title}, ${unfinishedWhen(u)}`}
+                        accessibilityHint="Opens it"
+                        onPress={() => onOpen(u.item_id)}
+                        style={({ pressed }) => [s.main, pressed && s.pressed]}
+                      >
+                        <Text style={s.title}>{u.title}</Text>
+                        <Text style={s.line}>{unfinishedWhen(u)}</Text>
+                      </Pressable>
+                      <View style={s.buttons}>
+                        <PillButton
+                          label="Plan again"
+                          disabled={busy}
+                          onPress={() => onPlanAgain(u.block_id)}
+                        />
+                        <PillButton
+                          label="Dismiss"
+                          quiet
+                          onPress={() => dismiss(u.block_id)}
+                        />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </InlineDetails>
           )}
         </>
       )}
@@ -509,6 +589,7 @@ const s = themed(() =>
       gap: 10,
       paddingVertical: 8,
     },
+    sessionDetails: { width: "100%", paddingLeft: 26 },
     group: {
       marginTop: 8,
       paddingTop: 12,

@@ -410,10 +410,20 @@ export function HomeSection({
       )}
       {homePanels(home).map(panel)}
       <HomeCompanions
+        onOpenPage={onOpenDoc}
         canOpen={canOpenAgentOutput}
         onOpenChat={onOpenAgentOutput}
       />
       <AssistantUpcoming
+        onOpenChat={
+          canOpenAgentOutput
+            ? (id) => {
+                if (!canOpenAgentOutput) return;
+                setUpcoming(false);
+                onOpenAgentOutput(id);
+              }
+            : undefined
+        }
         agentName={agentName}
         conversationEnabled={conversationEnabled}
         visible={upcoming}

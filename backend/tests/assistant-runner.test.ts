@@ -20,7 +20,10 @@ after(async () => {
   await pool.query("DELETE FROM users WHERE id = $1", [userId]);
   await pool.end();
 });
-async function enqueue() {
+async function enqueue({
+  tracked = false,
+  sourcesChecked = false,
+}: { tracked?: boolean; sourcesChecked?: boolean } = {}) {
   const chatId = (
     await pool.query(
       "INSERT INTO ai_chats(id, user_id, title) VALUES(gen_random_uuid(), $1, 'Runner test') RETURNING id",
@@ -37,12 +40,14 @@ async function enqueue() {
   };
   return (
     await pool.query(
-      "INSERT INTO ai_jobs(user_id, chat_id, turn_id, state, run_state) VALUES($1, $2, $3, 'queued', $4::jsonb) RETURNING id",
+      "INSERT INTO ai_jobs(user_id, chat_id, turn_id, state, run_state, apply_tracking_version, sources_checked) VALUES($1, $2, $3, 'queued', $4::jsonb, $5, $6) RETURNING id",
       [
         userId,
         chatId,
         request.turn_id,
         JSON.stringify(initialAssistantRun(request)),
+        tracked ? 1 : null,
+        sourcesChecked,
       ],
     )
   ).rows[0].id as string;
@@ -78,7 +83,9 @@ test("parked questions and finished jobs are never claimed as new work", async (
 });
 
 test("Stop discards a queued run before a worker can claim it", async () => {
-  const id = await enqueue();
+  // Canonical current admission records its effect-tracking version. Receipt
+  // absence alone is deliberately insufficient for older untracked rows.
+  const id = await enqueue({ tracked: true, sourcesChecked: true });
   const { stopAssistantJob } = await import("../src/modules/ai/agent/run.js");
   const user = (await pool.query("SELECT * FROM users WHERE id = $1", [userId]))
     .rows[0];
@@ -87,11 +94,67 @@ test("Stop discards a queued run before a worker can claim it", async () => {
   } as unknown as import("fastify").FastifyBaseLogger;
   assert.equal(await stopAssistantJob(id, user, logger), true);
   const job = (
-    await pool.query("SELECT state, result FROM ai_jobs WHERE id = $1", [id])
+    await pool.query(
+      "SELECT state, result, run_state, cancel_requested, apply_result, terminal_evidence FROM ai_jobs WHERE id = $1",
+      [id],
+    )
   ).rows[0];
   assert.equal(job.state, "done");
   assert.equal(job.result.assistant_run.outcome, "discarded");
+  assert.equal(job.cancel_requested, true);
+  assert.equal(job.run_state, null);
+  assert.equal(job.apply_result, null);
+  assert.equal(job.result.assistant_run.execution_outcome.process, "cancelled");
+  assert.equal(
+    job.result.assistant_run.execution_outcome.outcome,
+    "interrupted",
+  );
+  assert.equal(job.result.assistant_run.execution_outcome.reason, "stopped");
+  assert.equal(job.terminal_evidence.cause, "stopped");
+  assert.equal(job.terminal_evidence.effects, "none");
+  assert.equal(job.terminal_evidence.retry, "never");
   assert.equal(await claimAssistantJob("runner-a"), null);
+});
+
+test("Stop keeps an untracked legacy queued run's effect outcome uncertain", async () => {
+  const id = await enqueue({ sourcesChecked: true });
+  const { stopAssistantJob } = await import("../src/modules/ai/agent/run.js");
+  const user = (await pool.query("SELECT * FROM users WHERE id=$1", [userId]))
+    .rows[0];
+  assert.equal(await stopAssistantJob(id, user), true);
+  const job = (
+    await pool.query(
+      "SELECT state,result,run_state,apply_result,terminal_evidence FROM ai_jobs WHERE id=$1",
+      [id],
+    )
+  ).rows[0];
+  assert.equal(job.state, "done");
+  assert.equal(job.run_state, null);
+  assert.equal(job.apply_result, null);
+  assert.equal(job.result.assistant_run.outcome, "info");
+  assert.equal(job.result.assistant_run.execution_outcome.outcome, "uncertain");
+  assert.equal(job.terminal_evidence.effects, "uncertain");
+  assert.equal(job.terminal_evidence.retry, "reconcile");
+  assert.doesNotMatch(job.result.answer, /Nothing was changed/);
+  assert.equal(await claimAssistantJob("runner-after-legacy-stop"), null);
+});
+
+test("Stop keeps effect evidence private when a tracked queued job has no qualified source manifest", async () => {
+  const id = await enqueue({ tracked: true });
+  const { stopAssistantJob } = await import("../src/modules/ai/agent/run.js");
+  const user = (await pool.query("SELECT * FROM users WHERE id=$1", [userId]))
+    .rows[0];
+  assert.equal(await stopAssistantJob(id, user), true);
+  const job = (
+    await pool.query("SELECT state,result,run_state FROM ai_jobs WHERE id=$1", [
+      id,
+    ])
+  ).rows[0];
+  assert.equal(job.state, "done");
+  assert.equal(job.run_state, null);
+  assert.equal(job.result.assistant_run.execution_outcome.outcome, "uncertain");
+  assert.doesNotMatch(job.result.answer, /Nothing was changed/);
+  assert.equal(await claimAssistantJob("runner-after-restricted-stop"), null);
 });
 
 test("an expired lease requeues its checkpoint three times, then fails plainly", async () => {

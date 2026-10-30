@@ -1,9 +1,12 @@
+import type { AssistantOutcomeReceipt } from "./assistant-outcomes.js";
 import { z } from "zod";
 import type { AgentActivity } from "./agents.js";
 import type { ReviewItem } from "../tasks/review.js";
 
 export type OvernightRun = {
   restricted?: boolean;
+  execution_outcome?: AssistantOutcomeReceipt;
+  cancel_requested?: boolean;
   id: string;
   job_id: string;
   decision_token: string;

@@ -383,6 +383,24 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "POST /me/goals/:id/executions": "assistant_control",
+  "GET /me/goals/:id/executions": "assistant_control",
+  "GET /me/goal-executions/:id": "assistant_control",
+  "GET /me/goal-executions/:id/attempts": "assistant_control",
+  "POST /me/goal-executions/:id/pause": "assistant_control",
+  "POST /me/goal-executions/:id/resume": "assistant_control",
+  "POST /me/goal-executions/:id/stop": "assistant_control",
+  "POST /me/goal-executions/:id/accept": "assistant_control",
+  "GET /me/agent-routines/:id/retry-policy": "assistant_control",
+  "PUT /me/agent-routines/:id/retry-policy": "assistant_control",
+  "GET /me/agent-routines/:id/runs/:runId/recovery": "assistant_control",
+  "POST /me/agent-routines/:id/runs/:runId/stop": "assistant_control",
+  "GET /me/agent-routines/:id/quiet-check-policy": "assistant_control",
+  "PUT /me/agent-routines/:id/quiet-check-policy": "assistant_control",
+  "GET /me/agent-routines/:id/runs/:runId/quiet-checks": "assistant_control",
+  "GET /me/agent-routines/:id/runs": "assistant_control",
+  "GET /me/agent-routines/setup-context": "assistant_control",
+  "POST /me/agent-routines/setup": "assistant_control",
   "GET /items/reconcile": "planner_sync",
   "GET /docs/:id/content": "editor_sync",
   "PUT /docs/:id/content": "editor_sync",
@@ -441,6 +459,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   // These configure/inspect owner-approved automation; they never expose model execution.
   "GET /docs/:id/maintenance/runs": "assistant_control",
   "POST /docs/:id/maintenance/runs/:runId/decision": "assistant_control",
+  "POST /docs/:id/maintenance/runs/:runId/stop": "assistant_control",
   "GET /docs/:id/maintenance": "assistant_control",
   "POST /docs/:id/maintenance": "assistant_control",
   "PUT /docs/:id/maintenance/:bindingId": "assistant_control",

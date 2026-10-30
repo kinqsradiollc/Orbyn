@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
-  inProgressEmpty,
   emptyPlans,
   overviewItems,
   todayIsCurrent,
   type HomeLayout,
+  type WorkspacePreset,
   type Item,
   type Plan,
   type StudyOverview,
@@ -18,6 +18,7 @@ import { QuickAdd } from "../planner/QuickAdd";
 import { SmallAction } from "../../components/SmallAction";
 import { percentOf } from "../progress/progress";
 import { ReviewCard } from "../review/ReviewCard";
+import { MorningReview } from "./MorningReview";
 import { TodayCard } from "./TodayCard";
 import { AssistantIdeasCard } from "../assistant/AssistantIdeasCard";
 import { HomeSection } from "./Home";
@@ -49,6 +50,8 @@ const WIDE = 600;
 export function TodayScreen({
   canOpenAgentOutput,
   onOpenAgentOutput,
+  onOpenAgentActivity,
+  onOpenAgentReview,
   items,
   onPlanDay,
   onOpenPlanner,
@@ -65,6 +68,7 @@ export function TodayScreen({
   onPlanAgain,
   onOpenCalendar,
   homeLayout,
+  presets = [],
   agentName,
   conversationEnabled,
   onOpenLink,
@@ -72,8 +76,11 @@ export function TodayScreen({
 }: ListHandlers & {
   canOpenAgentOutput: boolean;
   onOpenAgentOutput: (id: string) => void;
+  onOpenAgentActivity: (lane: "background" | "overnight") => void;
+  onOpenAgentReview: () => void;
   /** Home's layout (W1): its hubs and which panels show, in order. */
   homeLayout?: HomeLayout;
+  presets?: WorkspacePreset[];
   /** The assistant's name, for Upcoming. */
   agentName: string;
   conversationEnabled: boolean;
@@ -160,7 +167,35 @@ export function TodayScreen({
     inProgressCount,
     blockedCount,
   } = overviewItems(items, now);
-  const comingUp = upcoming.slice(0, COMING_UP);
+  const dailyIds = new Set(
+    todayShown
+      ? todayList!.rows.map((row) => row.item_id)
+      : dueToday.map((item) => item.id),
+  );
+  const decisions = attention.filter((item) => !dailyIds.has(item.id));
+  const decisionIds = new Set(decisions.map((item) => item.id));
+  const continuing = inProgress.filter(
+    (item) => !dailyIds.has(item.id) && !decisionIds.has(item.id),
+  );
+  const continuingIds = new Set(continuing.map((item) => item.id));
+  const comingUp = upcoming
+    .filter(
+      (item) =>
+        !dailyIds.has(item.id) &&
+        !decisionIds.has(item.id) &&
+        !continuingIds.has(item.id),
+    )
+    .slice(0, COMING_UP);
+  const shownIds = new Set(
+    [
+      ...dailyIds,
+      ...decisionIds,
+      ...continuingIds,
+      ...comingUp.map((item) => item.id),
+    ].filter((id): id is string => !!id),
+  );
+  const engineer = presets.includes("engineer");
+  const student = presets.includes("student");
   // Momentum, as on the web: share of plans complete, average open progress.
   const openTasks = open.filter((i) => i.kind === "task");
   const average = openTasks.length
@@ -196,6 +231,43 @@ export function TodayScreen({
         prefill={quickAddPrefill}
         onPrefillUsed={onQuickAddPrefillUsed}
       />
+      {(engineer || student) && (
+        <View style={s.presetLinks}>
+          <Text style={shared.sectionTitle} accessibilityRole="header">
+            Your workspaces
+          </Text>
+          <View style={s.quickLinks}>
+            <Button
+              title={
+                engineer && student
+                  ? "Projects & courses"
+                  : engineer
+                    ? "Project work"
+                    : "Course projects"
+              }
+              onPress={() => onOpenWorkspace("projects")}
+            />
+            {engineer && (
+              <Button
+                title="Specifications & decisions"
+                onPress={() => onOpenWorkspace("docs")}
+              />
+            )}
+            {student && (
+              <Button
+                title="Review material"
+                onPress={() => onOpenWorkspace("study")}
+              />
+            )}
+          </View>
+        </View>
+      )}
+      <MorningReview
+        onOpenPage={(id) => onOpenLink({ kind: "doc", id })}
+        onOpenReview={onOpenAgentReview}
+        onOpenActivity={onOpenAgentActivity}
+        onOpenChat={canOpenAgentOutput ? onOpenAgentOutput : undefined}
+      />
       <View style={s.stats}>
         {stats.map((stat) => (
           <View key={stat.label} style={[s.statCell, wide && s.statCellWide]}>
@@ -217,6 +289,7 @@ export function TodayScreen({
       {items.length > 0 && (
         <TodayCard
           today={todayList}
+          items={items}
           busy={handlers.busy}
           onOpen={onOpenById}
           onFocus={focusById}
@@ -227,7 +300,12 @@ export function TodayScreen({
         />
       )}
       {open.some((i) => i.kind === "task") && (
-        <UpNextCard items={items} onOpen={handlers.onOpen} onFocus={onFocus} />
+        <UpNextCard
+          items={items}
+          excludeIds={shownIds}
+          onOpen={handlers.onOpen}
+          onFocus={onFocus}
+        />
       )}
       <HomeSection
         conversationEnabled={conversationEnabled}
@@ -267,16 +345,17 @@ export function TodayScreen({
         />
       ) : (
         <>
-          <Section
-            title="In progress"
-            items={inProgress}
-            empty={inProgressEmpty(inProgressCount)}
-            handlers={handlers}
-          />
-          {attention.length > 0 && (
+          {decisions.length > 0 && (
             <Section
-              title="Needs attention"
-              items={attention}
+              title="Needs a decision"
+              items={decisions}
+              handlers={handlers}
+            />
+          )}
+          {continuing.length > 0 && (
+            <Section
+              title="Continue work"
+              items={continuing}
               handlers={handlers}
             />
           )}
@@ -307,15 +386,15 @@ export function TodayScreen({
             <View
               style={s.momentumLine}
               accessible
-              accessibilityLabel={`${Math.round(completePct)}% of your plans complete`}
+              accessibilityLabel={`${Math.round(completePct)}% of items completed`}
             >
               <Text style={s.momentumValue}>{Math.round(completePct)}%</Text>
-              <Text style={shared.small}>of your plans complete</Text>
+              <Text style={shared.small}>of items completed</Text>
             </View>
             <ProgressBar value={completePct} height={6} />
             <Text style={[shared.small, s.momentumHint]}>
               {openTasks.length
-                ? `Open tasks are ${Math.round(average)}% done on average.`
+                ? `Open tasks average ${Math.round(average)}% reported progress.`
                 : "No open tasks."}
             </Text>
           </View>
@@ -436,6 +515,7 @@ function Section({
 
 const s = themed(() =>
   StyleSheet.create({
+    presetLinks: { gap: 10, marginBottom: 16 },
     stats: {
       flexDirection: "row",
       flexWrap: "wrap",

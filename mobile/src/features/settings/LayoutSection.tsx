@@ -15,7 +15,11 @@ import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";
 import { SmallAction } from "../../components/SmallAction";
 import { setStartScreen, startScreen } from "../../lib/accountPrefs";
-import { ALWAYS_ROWS, GROUPS } from "../../app/chrome/BrowseScreen";
+import {
+  ALWAYS_ROWS,
+  GROUPS,
+  destinationLabel,
+} from "../../app/chrome/BrowseScreen";
 import { colors, fonts, radii, themed } from "../../theme";
 
 /** What opens at start on this phone (NAV-12). */
@@ -77,10 +81,10 @@ export function ArrangeList({
     const shown = fixed || !arrangement.hidden.includes(title);
     return (
       <View key={title} style={s.row}>
-        <Text style={[s.name, !shown && s.off]}>{title}</Text>
+        <Text style={[s.name, !shown && s.off]}>{destinationLabel(title)}</Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Move ${title} up`}
+          accessibilityLabel={`Move ${destinationLabel(title)} up`}
           disabled={i === 0}
           onPress={() => reorder(group, moveEntry(titles, title, -1))}
           style={[s.arrow, i === 0 && s.dim]}
@@ -89,7 +93,7 @@ export function ArrangeList({
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Move ${title} down`}
+          accessibilityLabel={`Move ${destinationLabel(title)} down`}
           disabled={i === titles.length - 1}
           onPress={() => reorder(group, moveEntry(titles, title, 1))}
           style={[s.arrow, i === titles.length - 1 && s.dim]}
@@ -100,7 +104,7 @@ export function ArrangeList({
           value={shown}
           disabled={fixed}
           trackColor={{ true: colors.accent }}
-          accessibilityLabel={`Show ${title}`}
+          accessibilityLabel={`Show ${destinationLabel(title)}`}
           onValueChange={() =>
             onChange(toggleSidebarHidden(arrangement, title))
           }

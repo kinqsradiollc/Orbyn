@@ -23,6 +23,10 @@ import {
 import {
   activityOriginLabel,
   dateLabel,
+  groupNotices,
+  noticeGroupLabel,
+  noticeGroupCount,
+  noticeSource,
   type AgentQuestion,
   type Notice,
   type PageMention,
@@ -31,6 +35,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { client } from "../../lib/api";
 import { CONCEPT_ICON } from "../../app/concept-icons";
 import { onLive } from "../../lib/live";
+import "./notifications.css";
 
 type Props = {
   notices: Notice[];
@@ -305,246 +310,283 @@ export function NotificationsView({
       <AgentQuestions />
       <MentionedIn onOpenDoc={onOpenDoc} />
       <section className="card">
-        {notices.map((n) => {
-          const Icon = ICONS[n.kind ?? "reminder"] ?? Bell;
-          // Booking notices point at a booking (`ref`), not an item.
-          const bookingId = n.kind === "booking" ? n.ref : undefined;
-          const openBooking = (id: string) => {
-            if (!n.read) onRead(n);
-            onOpenBooking(id);
-          };
-          // Answers to invitations point at the event.
-          const eventId = n.kind === "rsvp" ? n.item_id : undefined;
-          // An imported file that's ready points at its page ("doc:<id>").
-          const docId =
-            (n.kind === "import" || n.kind === "mention") &&
-            n.ref?.startsWith("doc:")
-              ? n.ref.slice(4).split(":")[0]
-              : undefined;
-          const openEvent = (id: string) => {
-            if (!n.read) onRead(n);
-            onOpenItem(id);
-          };
-          /** Runs a notice's action once, marking it read. */
-          const act = (fn: () => Promise<void>) => {
-            if (running.current) return;
-            running.current = true;
-            setPending(n.id);
-            setActionError(null);
-            void Promise.resolve()
-              .then(fn)
-              .then(() => {
+        {groupNotices(notices).map((group) => (
+          <section
+            className="notice-source-group"
+            key={group.key}
+            aria-label={
+              group.source
+                ? `${noticeGroupLabel(group)} updates`
+                : "Notification"
+            }
+          >
+            {group.notices.length > 1 && (
+              <header className="notice-source-heading">
+                <h3>{noticeGroupLabel(group)}</h3>
+                <span>{noticeGroupCount(group)}</span>
+              </header>
+            )}
+            {group.notices.map((n) => {
+              const Icon = ICONS[n.kind ?? "reminder"] ?? Bell;
+              // Booking notices point at a booking (`ref`), not an item.
+              const bookingId = n.kind === "booking" ? n.ref : undefined;
+              const openBooking = (id: string) => {
                 if (!n.read) onRead(n);
-              })
-              .catch((error) =>
-                setActionError({
-                  id: n.id,
-                  text:
-                    error instanceof Error
-                      ? error.message
-                      : "Couldn't complete this action. Try again.",
-                }),
-              )
-              .finally(() => {
-                running.current = false;
-                setPending(null);
-              });
-          };
-          return (
-            <div className={"notice " + (n.read ? "read" : "")} key={n.id}>
-              <button
-                className="notice-main"
-                onClick={() =>
-                  bookingId
-                    ? openBooking(bookingId)
-                    : eventId
-                      ? openEvent(eventId)
-                      : docId && onOpenDoc
-                        ? (() => {
-                            if (!n.read) onRead(n);
-                            onOpenDoc(docId);
-                          })()
-                        : onRead(n)
-                }
-              >
-                <Icon size={19} />
-                <span>
-                  <strong>{n.title}</strong>
-                  <p>{n.body}</p>
-                  <small>
-                    {dateLabel(n.created_at)}
-                    {n.via_agent
-                      ? ` · ${activityOriginLabel({ via_agent: n.via_agent })}`
-                      : ""}
-                    {n.read ? " · Read" : ""}
-                  </small>
-                </span>
-                {!n.read && <i aria-label="Unread" />}
-              </button>
-              {n.kind === "conflict" && n.ref && !n.read && (
-                <button
-                  className="secondary notice-action"
-                  disabled={pending !== null}
-                  onClick={() => act(() => onReschedule(n))}
-                >
-                  <CalendarClock size={14} />{" "}
-                  {pending === n.id ? "Moving…" : "Reschedule"}
-                </button>
-              )}
-              {n.kind === "session" && n.ref && n.item_id && onStartSession && (
-                <button
-                  className="secondary notice-action"
-                  disabled={pending !== null}
-                  onClick={() =>
-                    act(() => onStartSession(n.ref!.split(":")[0], n.item_id!))
-                  }
-                >
-                  <Play size={14} /> {pending === n.id ? "Starting…" : "Start"}
-                </button>
-              )}
-              {n.kind === "template" && n.ref && onOpenTemplate && (
-                <button
-                  className="secondary notice-action"
-                  onClick={() => {
+                onOpenBooking(id);
+              };
+              // Answers to invitations point at the event.
+              const eventId = n.kind === "rsvp" ? n.item_id : undefined;
+              const reminderSource =
+                (n.kind ?? "reminder") === "reminder" ? noticeSource(n) : null;
+              const reminderItemId =
+                reminderSource?.kind === "item" ? reminderSource.id : null;
+              // An imported file that's ready points at its page ("doc:<id>").
+              const docId =
+                (n.kind === "import" || n.kind === "mention") &&
+                n.ref?.startsWith("doc:")
+                  ? n.ref.slice(4).split(":")[0]
+                  : undefined;
+              const openEvent = (id: string) => {
+                if (!n.read) onRead(n);
+                onOpenItem(id);
+              };
+              /** Runs a notice's action once, marking it read. */
+              const act = (fn: () => Promise<void>) => {
+                if (running.current) return;
+                running.current = true;
+                setPending(n.id);
+                setActionError(null);
+                void Promise.resolve()
+                  .then(fn)
+                  .then(() => {
                     if (!n.read) onRead(n);
-                    onOpenTemplate(n.ref!);
-                  }}
-                >
-                  <LayoutTemplate size={14} /> Review
-                </button>
-              )}
-              {n.kind === "assistant" &&
-                n.ref?.startsWith("conversation:") &&
-                onOpenConversation && (
+                  })
+                  .catch((error) =>
+                    setActionError({
+                      id: n.id,
+                      text:
+                        error instanceof Error
+                          ? error.message
+                          : "Couldn't complete this action. Try again.",
+                    }),
+                  )
+                  .finally(() => {
+                    running.current = false;
+                    setPending(null);
+                  });
+              };
+              return (
+                <div className={"notice " + (n.read ? "read" : "")} key={n.id}>
                   <button
-                    className="secondary notice-action"
-                    onClick={() => {
-                      const [, destinationId, entryId] = n.ref!.split(":");
-                      onOpenConversation(destinationId, entryId);
-                    }}
+                    className="notice-main"
+                    onClick={() =>
+                      bookingId
+                        ? openBooking(bookingId)
+                        : eventId
+                          ? openEvent(eventId)
+                          : docId && onOpenDoc
+                            ? (() => {
+                                if (!n.read) onRead(n);
+                                onOpenDoc(docId);
+                              })()
+                            : onRead(n)
+                    }
                   >
-                    <Bot size={14} /> Open conversation
+                    <Icon size={19} />
+                    <span>
+                      <strong>{n.title}</strong>
+                      <p>{n.body}</p>
+                      <small>
+                        {dateLabel(n.created_at)}
+                        {n.via_agent
+                          ? ` · ${activityOriginLabel({ via_agent: n.via_agent })}`
+                          : ""}
+                        {n.read ? " · Read" : ""}
+                      </small>
+                    </span>
+                    {!n.read && <i aria-label="Unread" />}
                   </button>
-                )}
-              {n.kind === "assistant" &&
-                n.ref?.startsWith("overnight:") &&
-                onOpenOvernight && (
-                  <button
-                    className="secondary notice-action"
-                    onClick={() => {
-                      if (!n.read) onRead(n);
-                      onOpenOvernight(n.ref!.slice("overnight:".length));
-                    }}
-                  >
-                    <Bot size={14} /> Review Overnight
-                  </button>
-                )}
-              {(n.kind === "assistant" || n.kind === "reminder_nudge") &&
-                n.ref?.startsWith("chat:") &&
-                onOpenChat && (
-                  <button
-                    className="secondary notice-action"
-                    onClick={() => {
-                      if (!n.read) onRead(n);
-                      onOpenChat(n.ref!.split(":")[1]);
-                    }}
-                  >
-                    <Bot size={14} /> Open chat
-                  </button>
-                )}
-              {n.kind === "review" &&
-                n.ref?.startsWith("proposal:") &&
-                onOpenReview && (
-                  <button
-                    className="secondary notice-action"
-                    onClick={() => {
-                      if (!n.read) onRead(n);
-                      onOpenReview(n.ref!.slice("proposal:".length));
-                    }}
-                  >
-                    <Inbox size={14} /> Review
-                  </button>
-                )}
-              {n.kind === "agent" &&
-                n.ref?.startsWith("grant:") &&
-                onOpenSetting && (
-                  <button
-                    className="secondary notice-action"
-                    onClick={() => {
-                      if (!n.read) onRead(n);
-                      onOpenSetting("agents");
-                    }}
-                  >
-                    <Bot size={14} /> Open Connected agents
-                  </button>
-                )}
-              {n.kind === "project" && n.ref && onOpenProject && (
-                <button
-                  className="secondary notice-action"
-                  onClick={() => {
-                    if (!n.read) onRead(n);
-                    onOpenProject(n.ref!.split(":")[0]);
-                  }}
-                >
-                  <CalendarDays size={14} /> Open project
-                </button>
-              )}
-              {n.kind === "rollforward" && (
-                <button
-                  className="secondary notice-action"
-                  disabled={pending !== null}
-                  onClick={() => act(() => onRollForward(n))}
-                >
-                  <FastForward size={14} />{" "}
-                  {pending === n.id ? "Planning…" : "Roll forward"}
-                </button>
-              )}
-              {(n.kind === "at_risk" || n.kind === "deadline") && n.item_id && (
-                <button
-                  className="secondary notice-action"
-                  onClick={() => {
-                    if (!n.read) onRead(n);
-                    onPlanIt(n);
-                  }}
-                >
-                  <Wand2 size={14} /> Plan it
-                </button>
-              )}
-              {eventId && (
-                <button
-                  className="secondary notice-action"
-                  onClick={() => openEvent(eventId)}
-                >
-                  <UserCheck size={14} /> Open event
-                </button>
-              )}
-              {bookingId && (
-                <button
-                  className="secondary notice-action"
-                  onClick={() => openBooking(bookingId)}
-                >
-                  <CalendarCheck size={14} /> Open booking
-                </button>
-              )}
-              {actionError?.id === n.id && (
-                <p className="error notice-error" role="alert">
-                  {actionError.text}
-                </p>
-              )}
-              {n.kind === "booking" && !bookingId && (
-                <button
-                  className="secondary notice-action"
-                  onClick={() => {
-                    if (!n.read) onRead(n);
-                    onOpenCalendar();
-                  }}
-                >
-                  <CalendarDays size={14} /> Open calendar
-                </button>
-              )}
-            </div>
-          );
-        })}
+                  {reminderItemId && (
+                    <button
+                      className="secondary notice-action"
+                      onClick={() => openEvent(reminderItemId)}
+                    >
+                      <FileText size={14} /> Open task or event
+                    </button>
+                  )}
+                  {n.kind === "conflict" && n.ref && !n.read && (
+                    <button
+                      className="secondary notice-action"
+                      disabled={pending !== null}
+                      onClick={() => act(() => onReschedule(n))}
+                    >
+                      <CalendarClock size={14} />{" "}
+                      {pending === n.id ? "Moving…" : "Reschedule"}
+                    </button>
+                  )}
+                  {n.kind === "session" &&
+                    n.ref &&
+                    n.item_id &&
+                    onStartSession && (
+                      <button
+                        className="secondary notice-action"
+                        disabled={pending !== null}
+                        onClick={() =>
+                          act(() =>
+                            onStartSession(n.ref!.split(":")[0], n.item_id!),
+                          )
+                        }
+                      >
+                        <Play size={14} />{" "}
+                        {pending === n.id ? "Starting…" : "Start"}
+                      </button>
+                    )}
+                  {n.kind === "template" && n.ref && onOpenTemplate && (
+                    <button
+                      className="secondary notice-action"
+                      onClick={() => {
+                        if (!n.read) onRead(n);
+                        onOpenTemplate(n.ref!);
+                      }}
+                    >
+                      <LayoutTemplate size={14} /> Review
+                    </button>
+                  )}
+                  {n.kind === "assistant" &&
+                    n.ref?.startsWith("conversation:") &&
+                    onOpenConversation && (
+                      <button
+                        className="secondary notice-action"
+                        onClick={() => {
+                          const [, destinationId, entryId] = n.ref!.split(":");
+                          onOpenConversation(destinationId, entryId);
+                        }}
+                      >
+                        <Bot size={14} /> Open conversation
+                      </button>
+                    )}
+                  {n.kind === "assistant" &&
+                    n.ref?.startsWith("overnight:") &&
+                    onOpenOvernight && (
+                      <button
+                        className="secondary notice-action"
+                        onClick={() => {
+                          if (!n.read) onRead(n);
+                          onOpenOvernight(n.ref!.slice("overnight:".length));
+                        }}
+                      >
+                        <Bot size={14} /> Review Overnight
+                      </button>
+                    )}
+                  {(n.kind === "assistant" || n.kind === "reminder_nudge") &&
+                    n.ref?.startsWith("chat:") &&
+                    onOpenChat && (
+                      <button
+                        className="secondary notice-action"
+                        onClick={() => {
+                          if (!n.read) onRead(n);
+                          onOpenChat(n.ref!.split(":")[1]);
+                        }}
+                      >
+                        <Bot size={14} /> Open chat
+                      </button>
+                    )}
+                  {n.kind === "review" &&
+                    n.ref?.startsWith("proposal:") &&
+                    onOpenReview && (
+                      <button
+                        className="secondary notice-action"
+                        onClick={() => {
+                          if (!n.read) onRead(n);
+                          onOpenReview(n.ref!.slice("proposal:".length));
+                        }}
+                      >
+                        <Inbox size={14} /> Review
+                      </button>
+                    )}
+                  {n.kind === "agent" &&
+                    n.ref?.startsWith("grant:") &&
+                    onOpenSetting && (
+                      <button
+                        className="secondary notice-action"
+                        onClick={() => {
+                          if (!n.read) onRead(n);
+                          onOpenSetting("agents");
+                        }}
+                      >
+                        <Bot size={14} /> Open Connected agents
+                      </button>
+                    )}
+                  {n.kind === "project" && n.ref && onOpenProject && (
+                    <button
+                      className="secondary notice-action"
+                      onClick={() => {
+                        if (!n.read) onRead(n);
+                        onOpenProject(n.ref!.split(":")[0]);
+                      }}
+                    >
+                      <CalendarDays size={14} /> Open project
+                    </button>
+                  )}
+                  {n.kind === "rollforward" && (
+                    <button
+                      className="secondary notice-action"
+                      disabled={pending !== null}
+                      onClick={() => act(() => onRollForward(n))}
+                    >
+                      <FastForward size={14} />{" "}
+                      {pending === n.id ? "Planning…" : "Roll forward"}
+                    </button>
+                  )}
+                  {(n.kind === "at_risk" || n.kind === "deadline") &&
+                    n.item_id && (
+                      <button
+                        className="secondary notice-action"
+                        onClick={() => {
+                          if (!n.read) onRead(n);
+                          onPlanIt(n);
+                        }}
+                      >
+                        <Wand2 size={14} /> Plan it
+                      </button>
+                    )}
+                  {eventId && (
+                    <button
+                      className="secondary notice-action"
+                      onClick={() => openEvent(eventId)}
+                    >
+                      <UserCheck size={14} /> Open event
+                    </button>
+                  )}
+                  {bookingId && (
+                    <button
+                      className="secondary notice-action"
+                      onClick={() => openBooking(bookingId)}
+                    >
+                      <CalendarCheck size={14} /> Open booking
+                    </button>
+                  )}
+                  {actionError?.id === n.id && (
+                    <p className="error notice-error" role="alert">
+                      {actionError.text}
+                    </p>
+                  )}
+                  {n.kind === "booking" && !bookingId && (
+                    <button
+                      className="secondary notice-action"
+                      onClick={() => {
+                        if (!n.read) onRead(n);
+                        onOpenCalendar();
+                      }}
+                    >
+                      <CalendarDays size={14} /> Open calendar
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </section>
+        ))}
         {!notices.length && (
           <EmptyState
             icon={Bell}

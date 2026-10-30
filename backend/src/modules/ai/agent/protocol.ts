@@ -750,6 +750,24 @@ async function jsonStep(
   if (!choice)
     throw new ProviderError("no_choices", "The provider returned no answer.");
   const content = textOf(choice.message?.content);
+  const receivedReplyBytes = Buffer.byteLength(content);
+  const completedProtocolError = async (
+    reason: "invalid_protocol" | "truncated",
+  ): Promise<never> => {
+    await ai.assertAuthority?.();
+    // The provider completed this response even though its control envelope
+    // cannot be executed. Retain provenance and usage without publishing it.
+    await ai.recordCompletion?.();
+    throw new ProviderError(
+      reason,
+      reason === "truncated"
+        ? "The provider cut the reply off before it finished."
+        : "The provider returned an answer Orbyn could not read.",
+      receivedReplyBytes,
+    );
+  };
+  if (choice.finish_reason === "length")
+    return completedProtocolError("truncated");
   // With tools off (the final step), the reply is the answer as it is.
   if (!usable.length) return { text: content, toolCalls: [] };
   let parsed: Record<string, unknown>;
@@ -759,7 +777,10 @@ async function jsonStep(
       throw new SyntaxError("not a JSON object");
     parsed = value as Record<string, unknown>;
   } catch {
-    // Prose instead of JSON: treat it as the final answer.
+    // Internal structured control text is never a user-facing answer. Legacy
+    // providers without a schema may still answer directly in ordinary prose.
+    if (ai.structuredOutput === "json_schema")
+      return completedProtocolError("invalid_protocol");
     return { text: content, toolCalls: [] };
   }
   const toolCalls: ToolCall[] = [];

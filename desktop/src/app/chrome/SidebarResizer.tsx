@@ -27,9 +27,9 @@ export function savedSidebarWidth() {
       (width === SIDEBAR_RAIL_WIDTH || width >= SIDEBAR_LABEL_WIDTH) &&
       width <= 400
       ? width
-      : SIDEBAR_RAIL_WIDTH;
+      : DEFAULT_SIDEBAR_WIDTH;
   } catch {
-    return SIDEBAR_RAIL_WIDTH;
+    return DEFAULT_SIDEBAR_WIDTH;
   }
 }
 

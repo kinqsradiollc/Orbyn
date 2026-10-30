@@ -27,6 +27,7 @@ const expected = {
     "agentContextRoutes",
     "assistantIdeasRoutes",
     "assistantGoalRoutes",
+    "goalExecutionRoutes",
     "assistantRoutineRoutes",
     "overnightRoutes",
     "assistantActivityRoutes",

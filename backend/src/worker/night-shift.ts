@@ -1,3 +1,9 @@
+import { readRoutineRunLimits } from "../modules/assistant-workspace/routine-run-limits.js";
+import {
+  prepareRoutineRecovery,
+  type PreparedRoutineRecovery,
+} from "../modules/assistant-workspace/routine-recovery.js";
+import { recordRoutineRun } from "../modules/assistant-workspace/routine-runs.js";
 import type { UserRow } from "../lib/auth.js";
 import { maintainedPageContext } from "../modules/documents/maintenance.js";
 import { queueMaintainedPageRun } from "../modules/documents/maintenance-runs.js";
@@ -170,7 +176,7 @@ async function available(
         timezone: string;
         next_run_at: Date;
       }>(
-        "SELECT instruction,rrule,timezone,next_run_at FROM agent_routines WHERE id=$1 AND user_id=$2 AND NOT paused AND current_job_id IS NULL AND next_run_at <= $3 FOR UPDATE",
+        "SELECT instruction,rrule,timezone,next_run_at FROM agent_routines WHERE id=$1 AND user_id=$2 AND NOT paused AND current_job_id IS NULL AND next_run_at <= $3 AND NOT EXISTS(SELECT 1 FROM assistant_routine_runs recovery WHERE recovery.routine_id=agent_routines.id AND recovery.recovery_version=1 AND recovery.recovery_state IN ('active','waiting','retry_scheduled','held')) FOR UPDATE",
         [next.id, userId, now],
       )
     ).rows[0];
@@ -212,7 +218,7 @@ async function available(
          AND i.status NOT IN ('done', 'cancelled') AND i.agent_attempts < 3
          AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.id = i.project_id AND p.assistant_off)`
       : next.source === "goal"
-        ? `SELECT 1 FROM goals g WHERE g.id = $1 AND g.user_id = $2 AND g.status = 'active' AND ${assistantSourceVisible("'goal'", "g.id", "$2")}
+        ? `SELECT 1 FROM goals g WHERE g.id = $1 AND g.user_id = $2 AND g.status = 'active' AND NOT EXISTS(SELECT 1 FROM assistant_goal_executions execution WHERE execution.goal_id=g.id AND execution.state NOT IN ('stopped','completed')) AND ${assistantSourceVisible("'goal'", "g.id", "$2")}
          AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.assistant_off AND (p.id = g.project_id OR EXISTS(SELECT 1 FROM docs d WHERE d.id = g.plan_doc_id AND d.project_id = p.id)))
          AND NOT EXISTS(SELECT 1 FROM goals_checkins c WHERE c.goal_id = g.id AND c.week_of = $3::date AND NOT ${checkinClaimable("c", "$4")})`
         : `SELECT 1 FROM agent_routines WHERE id = $1 AND user_id = $2 AND NOT paused AND current_job_id IS NULL`;
@@ -281,7 +287,7 @@ async function candidates(
       }>(
         `SELECT g.id, g.title, g.target, date_trunc('week', $2::timestamptz AT TIME ZONE $3)::date::text AS week
        FROM goals g LEFT JOIN goals_checkins c ON c.goal_id = g.id AND c.week_of = date_trunc('week', $2::timestamptz AT TIME ZONE $3)::date
-       WHERE g.user_id = $1 AND (g.project_id IS NULL OR EXISTS(SELECT 1 FROM projects source_project WHERE source_project.id=g.project_id AND ${visibleProjects("source_project", { user: "$1", ai: true })})) AND (g.plan_doc_id IS NULL OR EXISTS(SELECT 1 FROM docs source_doc WHERE source_doc.id=g.plan_doc_id AND ${visibleDocs("source_doc", { user: "$1", ai: true })})) AND g.status = 'active' AND (c.id IS NULL OR ${checkinClaimable("c", "$2")})
+       WHERE g.user_id = $1 AND (g.project_id IS NULL OR EXISTS(SELECT 1 FROM projects source_project WHERE source_project.id=g.project_id AND ${visibleProjects("source_project", { user: "$1", ai: true })})) AND (g.plan_doc_id IS NULL OR EXISTS(SELECT 1 FROM docs source_doc WHERE source_doc.id=g.plan_doc_id AND ${visibleDocs("source_doc", { user: "$1", ai: true })})) AND g.status = 'active' AND NOT EXISTS(SELECT 1 FROM assistant_goal_executions execution WHERE execution.goal_id=g.id AND execution.state NOT IN ('stopped','completed')) AND (c.id IS NULL OR ${checkinClaimable("c", "$2")})
          AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.assistant_off AND (p.id = g.project_id OR EXISTS(SELECT 1 FROM docs d WHERE d.id = g.plan_doc_id AND d.project_id = p.id)))
        ORDER BY g.updated_at, g.id LIMIT 50`,
         [userId, now, prefs.timezone],
@@ -307,6 +313,7 @@ async function candidates(
       }>(
         `SELECT id, instruction, rrule, timezone, next_run_at FROM agent_routines
        WHERE user_id = $1 AND NOT paused AND next_run_at <= $2 AND current_job_id IS NULL
+       AND NOT EXISTS(SELECT 1 FROM assistant_routine_runs recovery WHERE recovery.routine_id=agent_routines.id AND recovery.recovery_version=1 AND recovery.recovery_state IN ('active','waiting','retry_scheduled','held'))
        ORDER BY next_run_at, id LIMIT 50`,
         [userId, now],
       )
@@ -534,6 +541,7 @@ async function claimSource(
   next: Candidate,
   jobId: string,
   now: Date,
+  prepared?: PreparedRoutineRecovery | null,
 ) {
   if (next.source === "task") {
     const changed = await db.query(
@@ -546,6 +554,19 @@ async function claimSource(
     if (!changed.rowCount)
       throw new Error("This Tonight task is no longer available.");
   } else if (next.source === "goal") {
+    await db.query(
+      "SELECT id FROM goals WHERE id=$1 AND user_id=$2 FOR UPDATE",
+      [next.id, userId],
+    );
+    if (
+      (
+        await db.query(
+          "SELECT id FROM assistant_goal_executions WHERE goal_id=$1 AND state NOT IN ('stopped','completed')",
+          [next.id],
+        )
+      ).rowCount
+    )
+      throw new Error("This goal now has explicitly scoped work.");
     const changed = await db.query(
       `INSERT INTO goals_checkins(goal_id, user_id, week_of, summary, progress, status, job_id, claimed_at, attempts)
       VALUES($1, $2, $3::date, 'Night review in progress', '{}'::jsonb, 'running', $4, $5, 1)
@@ -557,6 +578,14 @@ async function claimSource(
     if (!changed.rowCount)
       throw new Error("This goal has already been reviewed.");
   } else if (next.source === "routine") {
+    if (!next.id) throw new Error("This routine is no longer due.");
+    const occurrence = (
+      await db.query<{ scheduled_for: string }>(
+        "SELECT next_run_at::text AS scheduled_for FROM agent_routines WHERE id=$1 AND user_id=$2 FOR UPDATE",
+        [next.id, userId],
+      )
+    ).rows[0];
+    if (!occurrence) throw new Error("This routine is no longer due.");
     const changed = await db.query(
       `UPDATE agent_routines SET current_job_id = $3, claimed_at = $4,
       next_run_at = coalesce($5::timestamptz, next_run_at), paused = ($5::timestamptz IS NULL), updated_at = now()
@@ -564,6 +593,14 @@ async function claimSource(
       [next.id, userId, jobId, now, next.next],
     );
     if (!changed.rowCount) throw new Error("This routine is no longer due.");
+    await recordRoutineRun(
+      db,
+      userId,
+      next.id,
+      occurrence.scheduled_for,
+      jobId,
+      prepared,
+    );
   }
 }
 
@@ -738,6 +775,18 @@ export async function scanNightShift(
           });
           next = plan.candidates[++plan.cursor];
         }
+        if (
+          !next &&
+          night.runs < 10 &&
+          night.budget_used < budget &&
+          (
+            await db.query(
+              "SELECT id FROM assistant_goal_executions WHERE owner_id=$1 AND lane='overnight' AND state IN ('ready','active','waiting') AND NOT admissions_paused UNION ALL SELECT id FROM assistant_routine_runs WHERE owner_id=$1 AND lane='overnight' AND recovery_version=1 AND recovery_state IN ('active','waiting','retry_scheduled') AND deadline>now() LIMIT 1",
+              [person.id],
+            )
+          ).rowCount
+        )
+          return 0;
         if (!next || night.runs >= 10 || night.budget_used >= budget) {
           const reason =
             night.runs >= 10
@@ -792,6 +841,37 @@ export async function scanNightShift(
           );
           return 1;
         }
+        const initialOccurrence =
+          next.source === "routine" && next.id
+            ? (
+                await db.query<{ scheduled_for: string }>(
+                  "SELECT next_run_at::text AS scheduled_for FROM agent_routines WHERE id=$1 AND user_id=$2 FOR UPDATE",
+                  [next.id, person.id],
+                )
+              ).rows[0]
+            : null;
+        const routineLimits =
+          next.source === "routine" && next.id
+            ? await readRoutineRunLimits(db, person.id, next.id)
+            : null;
+        const prepared =
+          initialOccurrence && next.id
+            ? await prepareRoutineRecovery(
+                db,
+                person.id,
+                next.id,
+                "overnight",
+                initialOccurrence.scheduled_for,
+                {
+                  nextScheduledFor: next.next ?? null,
+                  now,
+                  allocationCap: Math.min(
+                    budget - night.budget_used,
+                    routineLimits?.token_limit ?? Infinity,
+                  ),
+                },
+              )
+            : null;
         const job = await startAssistantAutomation({
           userId: person.id,
           timezone: prefs.timezone,
@@ -808,15 +888,31 @@ export async function scanNightShift(
             id: next.id,
             week_of: next.week,
             wait_for_ok: prefs.wait_for_ok,
+            ...(prepared ? { routine_recovery: prepared.binding } : {}),
+            ...(routineLimits
+              ? {
+                  max_active_work_ms:
+                    routineLimits.active_work_minutes * 60_000,
+                }
+              : {}),
             token_budget: Math.min(
+              routineLimits?.token_limit ?? Infinity,
+              prepared?.allocation ?? Infinity,
               next.kind === "reflection" ? 30_000 : LEAD_TOKEN_BUDGET,
               budget - night.budget_used,
             ),
-            end_at: plan.end_at,
+            end_at: prepared
+              ? new Date(
+                  Math.min(
+                    Date.parse(prepared.deadline),
+                    Date.parse(plan.end_at),
+                  ),
+                ).toISOString()
+              : plan.end_at,
           },
           db,
           onQueued: async (inside, id) => {
-            await claimSource(inside, person.id, next, id, now);
+            await claimSource(inside, person.id, next, id, now, prepared);
             if (next.kind === "reflection")
               await claimReflectionSources(inside, person.id, id, sources);
             await inside.query(

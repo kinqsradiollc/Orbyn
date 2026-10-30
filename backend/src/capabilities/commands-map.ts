@@ -63,6 +63,7 @@ export const COMMAND_TOOLS: Record<string, CommandPlace> = {
   "go.study": { tool: "get_study", args: {} },
   "go.lists": { tool: "search", args: { query: "lists" } },
   "go.ai-assistant": { reason: why.hostedAi },
+  "go.background": { reason: why.hostedAi },
   "go.overnight": {
     reason:
       "Overnight is the person's review of saved night work; keeping or undoing it is their decision.",

@@ -2,16 +2,11 @@ import { recordScheduleConversation } from "./conversation-schedules.js";
 import {
   agentRoutineInput,
   agentRoutineUpdate,
-  approvalScopesInput,
   fail,
   nextOccurrence,
   type AgentRoutine,
 } from "@orbyn/core";
-import type { FastifyInstance } from "fastify";
-import { pool, transaction, type Queryable } from "../../db/pool.js";
-import { authenticate } from "../../lib/auth.js";
-import { idParam } from "../../lib/params.js";
-import { assistantPrincipal } from "../agents/assistant.js";
+import type { Queryable } from "../../db/pool.js";
 
 type RoutineRow = Omit<
   AgentRoutine,
@@ -159,7 +154,7 @@ export async function saveAgentRoutine(
     ? (
         await db.query(
           `UPDATE agent_routines SET instruction = $3, rrule = $4, timezone = $5,
-             next_run_at = $6, paused = $7, updated_at = now()
+             next_run_at = $6, paused = $7, recovery_intent_version = recovery_intent_version + 1, updated_at = now()
            WHERE id = $1 AND user_id = $2 RETURNING id`,
           [
             id,
@@ -217,51 +212,4 @@ export async function deleteAgentRoutine(
   );
   if (!result.rowCount) fail(404, "Assistant routine not found.");
   await clearRoutineApprovalScopes(db, userId, id);
-}
-
-export async function assistantRoutineRoutes(app: FastifyInstance) {
-  app.get("/me/agent-routines", async (r) => {
-    const user = await authenticate(r);
-    return listAgentRoutines(pool, user.id);
-  });
-  app.post("/me/agent-routines", async (r, reply) => {
-    const user = await authenticate(r);
-    const routine = await transaction((db) =>
-      saveAgentRoutine(db, user.id, null, r.body),
-    );
-    reply.code(201);
-    return routine;
-  });
-  app.put("/me/agent-routines/:id", async (r) => {
-    const user = await authenticate(r);
-    return transaction((db) =>
-      saveAgentRoutine(db, user.id, idParam(r), r.body),
-    );
-  });
-  app.delete("/me/agent-routines/:id", async (r) => {
-    const user = await authenticate(r);
-    await transaction((db) => deleteAgentRoutine(db, user.id, idParam(r)));
-    return { deleted: true };
-  });
-  app.get("/me/assistant/approval-scopes", async (r) => {
-    const user = await authenticate(r);
-    const grant = await assistantPrincipal(user);
-    const row = (
-      await pool.query<{ approval_scopes: unknown }>(
-        "SELECT approval_scopes FROM agent_grants WHERE id = $1 AND user_id = $2",
-        [grant.grant_id, user.id],
-      )
-    ).rows[0];
-    return approvalScopesInput.parse(row?.approval_scopes ?? {});
-  });
-  app.put("/me/assistant/approval-scopes", async (r) => {
-    const user = await authenticate(r);
-    const grant = await assistantPrincipal(user);
-    const scopes = approvalScopesInput.parse(r.body ?? {});
-    await pool.query(
-      "UPDATE agent_grants SET approval_scopes = $3::jsonb WHERE id = $1 AND user_id = $2",
-      [grant.grant_id, user.id, JSON.stringify(scopes)],
-    );
-    return scopes;
-  });
 }

@@ -781,7 +781,10 @@ export function PageForm({
                   />
                   <span>
                     Taking bookings
-                    <small>Turn off to pause this page.</small>
+                    <small>
+                      When enabled, anyone with the link can view this page and
+                      request a booking. Turn off to pause new bookings.
+                    </small>
                   </span>
                 </label>
                 <fieldset className="settings-field wide check-group">

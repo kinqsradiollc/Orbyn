@@ -1,3 +1,4 @@
+import { assistantOutcomeDetails } from "@orbyn/core";
 import { session, onSessionChange } from "../../lib/session";
 import { providerDetailLines } from "@orbyn/core";
 import {
@@ -53,6 +54,7 @@ import { errorText } from "../../lib/errors";
 import {
   changeKindWords,
   progressText,
+  replyStatusLabel,
   stepLabel,
   traceLines,
 } from "./assistant-labels";
@@ -1044,6 +1046,21 @@ export function AssistantView({
                     className="ai-row"
                   >
                     <div className="ai-reply">
+                      <p className="ai-reply-status">
+                        {replyStatusLabel(turn)}
+                      </p>
+                      {turn.executionOutcome && (
+                        <details className="ai-outcome-details">
+                          <summary>Outcome details</summary>
+                          {assistantOutcomeDetails(turn.executionOutcome).map(
+                            (line, index) => (
+                              <p className="muted" key={index}>
+                                {line}
+                              </p>
+                            ),
+                          )}
+                        </details>
+                      )}
                       <ProposalReview
                         hideSourceDetails={!!retained}
                         proposal={turn.proposal}
@@ -1759,6 +1776,14 @@ export function AssistantView({
         )}
       {upcomingOpen && (
         <AssistantUpcoming
+          onOpenChat={
+            locked
+              ? undefined
+              : (id) => {
+                  closePanels();
+                  chatAction(() => openChat(id), "Couldn't open result.");
+                }
+          }
           conversationEnabled={assistant.conversationEnabled}
           id={upcomingId}
           agentName={agentName}

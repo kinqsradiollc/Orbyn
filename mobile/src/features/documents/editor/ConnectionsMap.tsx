@@ -172,7 +172,7 @@ function ConnectionsMapBody({
       onLayout={(e) => setWidth(Math.floor(e.nativeEvent.layout.width))}
     >
       <View style={s.head}>
-        <Text style={s.label}>CONNECTIONS</Text>
+        <Text style={s.label}>RELATED</Text>
         <View style={s.depth} accessibilityRole="radiogroup">
           {([1, 2] as const).map((d) => (
             <Pressable
@@ -377,7 +377,7 @@ function ConnectionsMapBody({
       )}
       {map?.truncated && (
         <Text style={s.small}>
-          Closest {map.nodes.length - 1} connections shown.
+          Loaded the closest {neighbours.length} connections.
         </Text>
       )}
     </View>

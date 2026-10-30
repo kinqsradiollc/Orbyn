@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, useId } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useId,
+  useSyncExternalStore,
+} from "react";
 import {
   Maximize2,
   Share2,
@@ -16,6 +22,7 @@ import {
 import { createPortal } from "react-dom";
 import { useModalFocus } from "../../hooks/useModalFocus";
 import { client } from "../../lib/api";
+import { onSessionChange, session } from "../../lib/session";
 import { openObject, peekObject } from "../documents/editor/DocLinks";
 import "./connections.css";
 import { useElementWidth } from "../../hooks/useElementWidth";
@@ -45,7 +52,21 @@ const KIND_WORDS: Record<ConnectionNode["kind"], string> = {
   date: "Date",
 };
 
-export function ConnectionsMap({
+const sessionKey = () => {
+  const b = session.binding();
+  return `${b.generation}:${b.token}`;
+};
+const openable = (node: ConnectionNode) =>
+  node.depth > 0 && node.kind !== "person" && node.kind !== "date";
+export function ConnectionsMap(
+  props: Parameters<typeof ConnectionsMapBody>[0],
+) {
+  const owner = useSyncExternalStore(onSessionChange, sessionKey);
+  return (
+    <ConnectionsMapBody key={`${owner}:${props.kind}:${props.id}`} {...props} />
+  );
+}
+function ConnectionsMapBody({
   kind,
   id,
   revision,
@@ -61,35 +82,48 @@ export function ConnectionsMap({
   report: (e: unknown) => void;
 }) {
   const [depth, setDepth] = useState<1 | 2>(1);
-  const [map, setMap] = useState<ConnectionMap | null>(null);
+  const owner = useRef(sessionKey()).current;
+  const owns = () => sessionKey() === owner;
+  const [result, setResult] = useState<{
+    key: string;
+    map: ConnectionMap;
+  } | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
   const [big, setBig] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const [retry, setRetry] = useState(0);
+  const key = JSON.stringify([kind, id, depth, revision, retry]);
+  const map = result?.key === key && owns() ? result.map : null;
+  const failed = failure === key;
   const reportRef = useRef(report);
   reportRef.current = report;
   useEffect(() => {
     let live = true;
-    setMap(null);
-    setFailed(false);
+    setFailure(null);
     setBig(false);
+    setShowMap(false);
     client.connectionMap(kind, id, depth).then(
-      (m) => live && setMap(m),
-      (e) => {
-        if (!live) return;
-        setFailed(true);
-        reportRef.current(e);
+      (map) => {
+        if (live && owns()) setResult({ key, map });
+      },
+      (error) => {
+        if (!live || !owns()) return;
+        setFailure(key);
+        reportRef.current(error);
       },
     );
     return () => {
       live = false;
     };
-  }, [kind, id, depth, revision, retry]);
-
-  const neighbours = Math.max(0, (map?.nodes.length ?? 1) - 1);
+  }, [key]);
+  const neighbours = (map?.nodes ?? []).filter((node) => node.depth > 0).length;
+  const open = (node: ConnectionNode) => {
+    if (owns() && openable(node)) openObject({ kind: node.kind, id: node.id });
+  };
   return (
     <section className={`${className} connections`}>
       <div className="connections-head">
-        <h3>Connections</h3>
+        <h3>Related</h3>
         <div
           className="connections-depth"
           role="group"
@@ -132,51 +166,96 @@ export function ConnectionsMap({
         </p>
       ) : (
         <>
-          <MapDrawing key={`${kind}:${id}:${depth}`} map={map} />
-          <ConnectionList map={map} />
+          <ConnectionList map={map} onOpen={open} />
+          <details
+            className="connections-map-disclosure"
+            open={showMap}
+            onToggle={(event) => setShowMap(event.currentTarget.open)}
+          >
+            <summary>Map</summary>
+            {showMap && <MapDrawing key={key} map={map} canAct={owns} />}
+          </details>
         </>
       )}
       {map?.truncated && (
         <p className="connections-note">
-          Showing {map.nodes.length - 1} closest connections.
+          Loaded the closest {neighbours} connections.
         </p>
       )}
       {big && map && (
-        <ConnectionsDialog map={map} onClose={() => setBig(false)} />
+        <ConnectionsDialog
+          map={map}
+          onClose={() => setBig(false)}
+          onOpen={open}
+          canAct={owns}
+        />
       )}
     </section>
   );
 }
 
-function ConnectionList({ map }: { map: ConnectionMap }) {
+function ConnectionList({
+  map,
+  onOpen,
+}: {
+  map: ConnectionMap;
+  onOpen: (node: ConnectionNode) => void;
+}) {
+  const [all, setAll] = useState(false);
+  const rows = map.nodes.filter((node) => node.depth > 0);
+  const visible = all ? rows : rows.slice(0, 8);
   return (
-    <details className="connections-list">
-      <summary>Browse connections</summary>
-      {map.nodes
-        .filter((node) => node.depth > 0)
-        .map((node) => (
-          <button
-            key={node.key}
-            className="connection-list-row"
-            onClick={() => openObject({ kind: node.kind, id: node.id })}
-          >
+    <div className="connections-list" aria-label="Linked work">
+      {visible.map((node) => {
+        const label = (
+          <>
             <span>{node.title}</span>
             <small>
               {KIND_WORDS[node.kind]}
               {node.closed ? " · Closed" : ""}
             </small>
+          </>
+        );
+        return openable(node) ? (
+          <button
+            type="button"
+            key={node.key}
+            className="connection-list-row"
+            onClick={() => onOpen(node)}
+          >
+            {label}
           </button>
-        ))}
-    </details>
+        ) : (
+          <div key={node.key} className="connection-list-row is-informational">
+            {label}
+          </div>
+        );
+      })}
+      {rows.length > 8 && (
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => setAll((value) => !value)}
+        >
+          {all
+            ? "Show fewer connections"
+            : `Show all ${rows.length} connections`}
+        </button>
+      )}
+    </div>
   );
 }
 
 function ConnectionsDialog({
   map,
   onClose,
+  onOpen,
+  canAct,
 }: {
   map: ConnectionMap;
   onClose: () => void;
+  onOpen: (node: ConnectionNode) => void;
+  canAct: () => boolean;
 }) {
   const focus = useModalFocus(onClose);
   useEffect(() => {
@@ -198,13 +277,13 @@ function ConnectionsDialog({
       }}
     >
       <div className="section-heading">
-        <h2 id="connections-dialog-title">Connections</h2>
+        <h2 id="connections-dialog-title">Related</h2>
         <button className="icon-button" aria-label="Close" onClick={onClose}>
           <X size={18} />
         </button>
       </div>
-      <MapDrawing map={map} expanded />
-      <ConnectionList map={map} />
+      <MapDrawing map={map} expanded canAct={canAct} />
+      <ConnectionList map={map} onOpen={onOpen} />
     </dialog>,
     document.body,
   );
@@ -214,9 +293,11 @@ function ConnectionsDialog({
 function MapDrawing({
   map,
   expanded = false,
+  canAct,
 }: {
   map: ConnectionMap;
   expanded?: boolean;
+  canAct: () => boolean;
 }) {
   const pane = useElementWidth();
   const sceneWidth = Math.min(pane.width || 640, expanded ? 900 : 640);
@@ -237,7 +318,7 @@ function MapDrawing({
   const labels = spaceLabels(placed, selected);
   const node = map.nodes.find((n) => n.key === selected);
   const open = (n: ConnectionNode, beside: boolean) => {
-    if (n.depth === 0 || n.kind === "person" || n.kind === "date") return;
+    if (!canAct() || !openable(n)) return;
     const ref = { kind: n.kind, id: n.id } as const;
     if (beside) peekObject(ref);
     else openObject(ref);

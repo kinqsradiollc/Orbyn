@@ -108,7 +108,7 @@ type Props = {
 /** How often the list looks again while your agent works on a task (its progress line). */
 const AGENT_POLL_MS = 20_000;
 
-type Filter = Status | "all";
+type Filter = Status | "all" | "active";
 type Layout = "list" | "board";
 /** How the list groups its rows; the board always groups by something. */
 type Group = TaskGroupBy;
@@ -124,6 +124,7 @@ const LIST_GROUPS: Group[] = [
   "owner",
 ];
 
+const FILTER_KEY = "orbyn-tasks-status";
 const LAYOUT_KEY = "orbyn-tasks-layout";
 const GROUP_KEY = "orbyn-tasks-group";
 const BOARD_GROUP_KEY = "orbyn-tasks-board-group";
@@ -158,6 +159,22 @@ const remember = (key: string, value: string) => {
     localStorage.setItem(key, value);
   } catch {
     // Storage can be unavailable (private mode); the choice just won't stick.
+  }
+};
+
+/** Any existing collection customization keeps the established history default. */
+const hasStoredTaskView = () => {
+  try {
+    return [
+      LAYOUT_KEY,
+      GROUP_KEY,
+      BOARD_GROUP_KEY,
+      SORT_KEY,
+      PIN_KEY,
+      HIDE_EMPTY_KEY,
+    ].some((key) => localStorage.getItem(key) !== null);
+  } catch {
+    return false;
   }
 };
 
@@ -293,7 +310,20 @@ export function TasksView({
   }, []);
   const { lists, tags } = usePlanning();
   const { feed } = usePlanned();
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilterState] = useState<Filter>(() =>
+    saved(
+      FILTER_KEY,
+      ["active", "all", ...STATUSES],
+      // Keep established collections intact; the active default is for a fresh view.
+      hasStoredTaskView() ? "all" : "active",
+    ),
+  );
+  const filterChosen = useRef(false);
+  const setFilter = (next: Filter) => {
+    filterChosen.current = true;
+    setFilterState(next);
+    remember(FILTER_KEY, next);
+  };
   const [progressOpen, setProgressOpen] = useState(false);
   const [layout, setLayoutState] = useState<Layout>(() =>
     saved(LAYOUT_KEY, ["list", "board"], "list"),
@@ -305,7 +335,12 @@ export function TasksView({
     saved(BOARD_GROUP_KEY, [...BOARD_GROUPS], "status"),
   );
   const [hideEmpty, setHideEmptyState] = useState(
-    () => saved(HIDE_EMPTY_KEY, ["yes", "no"], "no") === "yes",
+    () =>
+      saved(
+        HIDE_EMPTY_KEY,
+        ["yes", "no"],
+        hasStoredTaskView() ? "no" : "yes",
+      ) === "yes",
   );
   /** What the shown layout groups by, and which of its groups are folded. */
   const shownGroup: Group = layout === "board" ? boardGroup : group;
@@ -362,6 +397,13 @@ export function TasksView({
   const accountBoard = viewChoice("tasks:board");
   useEffect(() => {
     if (!account) return;
+    // Existing account collections keep their prior all-status presentation.
+    if (
+      !filterChosen.current &&
+      !saved(FILTER_KEY, ["active", "all", ...STATUSES], "")
+    )
+      setFilterState("all");
+    if (!saved(HIDE_EMPTY_KEY, ["yes", "no"], "")) setHideEmptyState(false);
     if (account.layout === "list" || account.layout === "board")
       setLayoutState(account.layout);
     if (account.group && (LIST_GROUPS as string[]).includes(account.group))
@@ -382,13 +424,17 @@ export function TasksView({
     group?: Group;
     sort?: ItemSort;
     pins?: PinId[];
-  }) =>
-    setViewChoice("tasks", {
+  }) => {
+    filterChosen.current = true;
+    remember(FILTER_KEY, filter);
+    remember(HIDE_EMPTY_KEY, hideEmpty ? "yes" : "no");
+    return setViewChoice("tasks", {
       layout: change.layout ?? layout,
       group: change.group ?? group,
       sort: change.sort ?? sort,
       pins: change.pins ?? pins,
     });
+  };
   const [due, setDue] = useState<DueFilter>("any");
   const [priority, setPriority] = useState<Priority | "any">("any");
   const [listId, setListId] = useState("any");
@@ -540,13 +586,18 @@ export function TasksView({
     ? ranged.filter((i) => matchesBoardFilter(i, boardFilter, now))
     : filter === "all"
       ? matching
-      : matching.filter((i) => i.status === filter);
+      : matching.filter((i) =>
+          filter === "active" ? !isClosed(i.status) : i.status === filter,
+        );
   const empty =
     query.trim() || active
       ? emptySearch
       : filter !== "all" && items.length
         ? {
-            title: `Nothing ${statusLabels[filter].toLowerCase()} right now.`,
+            title:
+              filter === "active"
+                ? "No active work right now."
+                : `Nothing ${statusLabels[filter].toLowerCase()} right now.`,
             body: "Pick another status to see the rest of your plans.",
           }
         : emptyPlans;
@@ -607,7 +658,9 @@ export function TasksView({
       ? boardColumns(visible, boardGroup, names, {
           statuses:
             boardGroup === "status" && filter !== "all"
-              ? [filter]
+              ? filter === "active"
+                ? STATUSES.filter((status) => !isClosed(status))
+                : [filter]
               : [...STATUSES],
           hideEmpty,
         })
@@ -1111,19 +1164,27 @@ export function TasksView({
           role="group"
           aria-label="Filter by status"
         >
-          {(["all", ...STATUSES] as Filter[]).map((f) => (
+          {(["active", "all", ...STATUSES] as Filter[]).map((f) => (
             <button
               key={f}
               aria-pressed={filter === f}
               className={
                 (filter === f ? "active " : "") +
-                (f === "all" ? "" : "tone-" + f)
+                (f === "all" || f === "active" ? "" : "tone-" + f)
               }
               onClick={() => setFilter(f)}
             >
-              {f !== "all" && <i aria-hidden="true" />}
-              {f === "all" ? "All" : statusLabels[f]}
-              <span>{counts[f]}</span>
+              {f !== "all" && f !== "active" && <i aria-hidden="true" />}
+              {f === "all"
+                ? "All history"
+                : f === "active"
+                  ? "Active"
+                  : statusLabels[f]}
+              <span>
+                {f === "active"
+                  ? matching.filter((item) => !isClosed(item.status)).length
+                  : counts[f]}
+              </span>
             </button>
           ))}
         </div>

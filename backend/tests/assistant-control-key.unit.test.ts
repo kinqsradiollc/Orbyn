@@ -11,7 +11,7 @@ process.env.ASSISTANT_CONVERSATION_ENABLED = "false";
 const { pool } = await import("../src/db/pool.js");
 const { KEY_BLOCKED_MESSAGE } = await import("../src/lib/auth.js");
 const { assistantRoutineRoutes } =
-  await import("../src/modules/assistant-workspace/routines.js");
+  await import("../src/modules/assistant-workspace/routine-routes.js");
 
 const userId = randomUUID();
 const id = randomUUID();

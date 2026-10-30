@@ -12,26 +12,109 @@ if (process.env.RUNNER_TEST_MAX_RUN_MS) {
   assistantRunLimits.maxRunMs = max;
 }
 
-if (process.env.RUNNER_TEST_PAUSE_AFTER_APPLY === "true") {
+if (
+  process.env.RUNNER_TEST_PAUSE_AFTER_APPLY === "true" ||
+  process.env.RUNNER_TEST_LOSE_APPLY_ACK === "true" ||
+  process.env.RUNNER_TEST_PAUSE_AFTER_MARKER === "true"
+) {
   const wrapped = new WeakSet<object>();
-  let locks = 0;
+  let observed = false;
+  let markerObserved = false;
   pool.on("connect", (client) => {
     if (!wrapped.has(client)) {
       wrapped.add(client);
       const query = client.query.bind(client);
+      let wroteApplyReceipt = false;
+      let wroteApplyMarker = false;
       client.query = ((...args: unknown[]) => {
-        const text = args[0];
-        if (
-          typeof text === "string" &&
-          text.startsWith("SELECT id FROM ai_jobs") &&
-          text.includes("FOR UPDATE") &&
-          ++locks === 2
-        ) {
-          // The apply transaction committed. Pause before the completion transaction.
-          process.send?.({ kind: "after-apply" });
-          return new Promise(() => {});
+        const input = args[0];
+        const text =
+          typeof input === "string"
+            ? input
+            : input && typeof input === "object" && "text" in input
+              ? String(input.text)
+              : "";
+        const applyWrite = /^\s*UPDATE\s+ai_jobs\s+SET\s+apply_result\b/i.test(
+          text,
+        );
+        const markerWrite =
+          /^\s*UPDATE\s+ai_jobs\s+SET\s+apply_started_at\b/i.test(text);
+        const writeStopCheck =
+          process.env.RUNNER_TEST_PAUSE_AFTER_MARKER === "true" &&
+          /^\s*SELECT\s+cancel_requested(?:\s*,\s*cancel_reason)?\s+FROM\s+ai_jobs\b/i.test(
+            text,
+          ) &&
+          text.includes("FOR UPDATE");
+        const commit = /^\s*COMMIT\s*;?\s*$/i.test(text);
+        if (/^\s*(BEGIN|ROLLBACK)\s*;?\s*$/i.test(text)) {
+          wroteApplyReceipt = false;
+          wroteApplyMarker = false;
         }
-        return (query as (...args: unknown[]) => unknown)(...args);
+        if (
+          process.env.RUNNER_TEST_PAUSE_AFTER_MARKER === "true" &&
+          /^\s*SELECT\s+cancel_requested\s*,(?:\s*cancel_reason\s*,)?\s*claimed_by\s*,\s*lease_until/i.test(
+            text,
+          )
+        ) {
+          // This fixture isolates the transactional stop guard. Keep the lease
+          // poll working, but prevent its cancellation observation winning first.
+          args[0] = text.replace(
+            /SELECT\s+cancel_requested\s*,/i,
+            "SELECT false AS cancel_requested,",
+          );
+        }
+        const result = (query as (...args: unknown[]) => unknown)(...args);
+        // The runtime's transaction queries use promises. Pool autocommit and
+        // unrelated callback queries retain their normal pg behavior.
+        if (
+          (applyWrite || markerWrite || writeStopCheck || commit) &&
+          result &&
+          typeof result === "object" &&
+          "then" in result
+        ) {
+          return (result as Promise<unknown>).then((value) => {
+            if (applyWrite) wroteApplyReceipt = true;
+            if (markerWrite) wroteApplyMarker = true;
+            if (
+              writeStopCheck &&
+              (value as { rows: { cancel_requested: boolean }[] }).rows[0]
+                ?.cancel_requested
+            )
+              process.send?.({ kind: "write-stop-observed" });
+            if (!commit) return value;
+            const applied = wroteApplyReceipt;
+            const marked = wroteApplyMarker;
+            wroteApplyReceipt = false;
+            wroteApplyMarker = false;
+            if (
+              marked &&
+              !markerObserved &&
+              process.env.RUNNER_TEST_PAUSE_AFTER_MARKER === "true"
+            ) {
+              markerObserved = true;
+              return new Promise((resolve) => {
+                const resume = (message: unknown) => {
+                  if (message !== "resume-marker") return;
+                  process.off("message", resume);
+                  resolve(value);
+                };
+                process.on("message", resume);
+                process.send?.({ kind: "marker-committed" });
+              });
+            }
+            if (!applied || observed) return value;
+            observed = true;
+            // The same client's actual effect COMMIT succeeded. The separately
+            // committed marker and later completion transactions do not match.
+            if (process.env.RUNNER_TEST_LOSE_APPLY_ACK === "true") {
+              process.send?.({ kind: "apply-ack-lost" });
+              throw new Error("Synthetic lost apply COMMIT acknowledgement");
+            }
+            process.send?.({ kind: "after-apply" });
+            return new Promise(() => {});
+          });
+        }
+        return result;
       }) as typeof client.query;
     }
   });

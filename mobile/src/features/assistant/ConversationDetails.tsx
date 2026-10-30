@@ -1,3 +1,4 @@
+import { reviewNightRuns, updateStatusLabel } from "./assistant-labels";
 import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import type {
@@ -87,26 +88,29 @@ export function ConversationDetails({
           </Text>
           {entry.kind === "update" && (
             <>
+              <Text style={shared.body}>{updateStatusLabel(entry)}</Text>
               {!!entry.completed_at && (
                 <Text style={shared.small}>
-                  Completed · {new Date(entry.completed_at).toLocaleString()}
+                  Run finished · {new Date(entry.completed_at).toLocaleString()}
                 </Text>
               )}
-              {entry.night_runs?.map((run) => (
+              {reviewNightRuns(entry).map((run) => (
                 <View
                   key={`${run.work.kind}:${run.work.id}`}
                   style={{ gap: 8 }}
                 >
                   <Text style={shared.small}>
                     {run.state === "done"
-                      ? "Finished"
+                      ? "Run finished"
                       : run.state === "waiting"
                         ? "Needs you"
                         : run.state === "failed"
                           ? "Couldn’t finish"
                           : run.state === "cancelled"
                             ? "Stopped"
-                            : "Working"}
+                            : run.state === "queued"
+                              ? "Queued"
+                              : "Working"}
                   </Text>
                   <Text selectable style={shared.body}>
                     {run.text}

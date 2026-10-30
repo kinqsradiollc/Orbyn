@@ -211,3 +211,9 @@ export function SettingsWorkspace({
     </SettingsFocus.Provider>
   );
 }
+
+/** Overview summaries yield to the active settings detail while its form stays mounted. */
+export function SettingsOverview({ children }: { children: ReactNode }) {
+  const navigation = useContext(DetailContext);
+  return <div hidden={!!navigation?.active}>{children}</div>;
+}

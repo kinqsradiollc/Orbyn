@@ -48,7 +48,7 @@ export const ASSISTANT_ACTIVITY_LABELS: Record<
   queued: "Queued",
   running: "Started work",
   waiting: "Waiting for a decision",
-  done: "Completed",
+  done: "Run finished",
   failed: "Failed",
   progress: "Made progress",
   outcome: "Result updated",

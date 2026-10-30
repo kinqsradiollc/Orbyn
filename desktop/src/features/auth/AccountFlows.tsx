@@ -214,9 +214,19 @@ export function ResetPasswordPage({
           />
         </label>
         {error && (
-          <div role="alert" className="error">
-            {error}
-          </div>
+          <>
+            <div role="alert" className="error">
+              {error}
+            </div>
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => onNavigate("/forgot-password")}
+            >
+              Send a new link
+            </button>
+          </>
         )}
         <button className="primary wide" disabled={busy}>
           {busy ? "One moment…" : "Set password and sign in"}

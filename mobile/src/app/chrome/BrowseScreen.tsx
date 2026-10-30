@@ -9,6 +9,7 @@ import {
   type StarredItem,
   type User,
 } from "@orbyn/core";
+import { InlineDetails } from "../../components/InlineDetails";
 import { CONCEPT_ICON, Icon, type IconName } from "../../components/Icon";
 import { Pressable } from "../../motion";
 import { shared } from "../../styles";
@@ -171,6 +172,26 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
   },
 ];
 
+/** Stored arrangement keys remain the original titles across display renames. */
+export const destinationLabel = (title: string) =>
+  title === "Docs" ? "Library" : title === "Agenda" ? "Daily brief" : title;
+
+const defaultGroups = [
+  { label: "WORK", destinations: ["projects", "views", "lists"] },
+  { label: "LIBRARY", destinations: ["docs", "agenda", "memory", "agent"] },
+  { label: "STUDY", destinations: ["study"] },
+] as const;
+const utilityDestinations: Destination[] = [
+  "planning",
+  "progress",
+  "teams",
+  "changes",
+  "booking",
+  "admin",
+  "whatsnew",
+];
+const allRows = GROUPS.flatMap((group) => group.rows);
+
 /** Rows that always show, however Workspace is arranged. */
 export const ALWAYS_ROWS = ["Search & do", "Settings"];
 
@@ -205,6 +226,43 @@ export function BrowseScreen({
   const [allStarred, setAllStarred] = useState(false);
   const [allViews, setAllViews] = useState(false);
   const admin = hasSystemPermission(user?.role, "admin:access");
+  const customized =
+    !!arrangement &&
+    (arrangement.order.length > 0 || arrangement.hidden.length > 0);
+  const navigationGroups = customized
+    ? GROUPS
+    : defaultGroups.map((group) => ({
+        label: group.label,
+        rows: group.destinations.flatMap((to) =>
+          allRows.filter((row) => row.to === to),
+        ),
+      }));
+  const renderRows = (rows: Row[]) => (
+    <View style={s.rows}>
+      {rows.map((row, index) => (
+        <Pressable
+          key={row.to}
+          accessibilityRole="button"
+          accessibilityLabel={destinationLabel(row.title)}
+          accessibilityHint={row.detail}
+          onPress={() => onOpen(row.to)}
+          style={({ pressed }) => [
+            s.row,
+            index > 0 && s.rowDivider,
+            pressed && s.pressed,
+          ]}
+        >
+          <View style={s.iconTile}>
+            <Icon name={row.icon} size={19} color={colors.accent} />
+          </View>
+          <View style={s.text}>
+            <Text style={s.title}>{destinationLabel(row.title)}</Text>
+          </View>
+          <Icon name="chevronRight" size={16} color={colors.faint} />
+        </Pressable>
+      ))}
+    </View>
+  );
   const hidden = (title: string) =>
     !ALWAYS_ROWS.includes(title) && !!arrangement?.hidden.includes(title);
   return (
@@ -315,7 +373,8 @@ export function BrowseScreen({
           </View>
         </View>
       )}
-      {GROUPS.map((group) => {
+      {!customized && renderRows(allRows.filter((row) => row.to === "search"))}
+      {navigationGroups.map((group) => {
         const rows = arrangeEntries(
           group.rows.filter((r) => !r.adminOnly || admin),
           (r) => r.title,
@@ -326,34 +385,25 @@ export function BrowseScreen({
           <View key={group.label}>
             <View style={s.group}>
               <Text style={shared.eyebrow}>{group.label}</Text>
-              <View style={s.rows}>
-                {rows.map((row, index) => (
-                  <Pressable
-                    key={row.to}
-                    accessibilityRole="button"
-                    accessibilityLabel={row.title}
-                    accessibilityHint={row.detail}
-                    onPress={() => onOpen(row.to)}
-                    style={({ pressed }) => [
-                      s.row,
-                      index > 0 && s.rowDivider,
-                      pressed && s.pressed,
-                    ]}
-                  >
-                    <View style={s.iconTile}>
-                      <Icon name={row.icon} size={19} color={colors.accent} />
-                    </View>
-                    <View style={s.text}>
-                      <Text style={s.title}>{row.title}</Text>
-                    </View>
-                    <Icon name="chevronRight" size={16} color={colors.faint} />
-                  </Pressable>
-                ))}
-              </View>
+              {renderRows(rows)}
             </View>
           </View>
         );
       })}
+      {!customized && (
+        <>
+          <InlineDetails title="More tools">
+            {renderRows(
+              allRows.filter(
+                (row) =>
+                  utilityDestinations.includes(row.to) &&
+                  (!row.adminOnly || admin),
+              ),
+            )}
+          </InlineDetails>
+          {renderRows(allRows.filter((row) => row.to === "settings"))}
+        </>
+      )}
     </>
   );
 }

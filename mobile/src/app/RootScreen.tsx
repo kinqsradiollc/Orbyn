@@ -17,6 +17,8 @@ import { answerReview, registerReviewActions, reviewAction } from "../lib/push";
 import { clearAlerts } from "../lib/alert";
 import {
   createLabel,
+  workspacePresets,
+  withWorkspacePresets,
   freshItem,
   planDayPrompt,
   readArrangement,
@@ -237,7 +239,9 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
   const assistant = useAssistant({ token, act, refresh, items });
   /** The assistant's side menu of chats and shortcuts. */
   const [assistantMenu, setAssistantMenu] = useState(false);
-  const [assistantActivity, setAssistantActivity] = useState(0);
+  const [assistantActivity, setAssistantActivity] = useState<
+    "menu" | "background" | null
+  >(null);
   // News from another device may be a session: planned time is asked again.
   usePresence(
     token,
@@ -1136,6 +1140,10 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
       tabTo("AI")();
       setSearch("");
     },
+    "go.background": () => {
+      tabTo("AI")();
+      setAssistantActivity("background");
+    },
     "go.notifications": tabTo("Inbox"),
     "go.agenda": () => present({ sheet: "agenda" }),
     "go.projects": () => present({ sheet: "projects" }),
@@ -1596,7 +1604,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                   assistant={assistant}
                   busy={busy}
                   onMenu={() => setAssistantMenu(true)}
-                  onActivity={() => setAssistantActivity((value) => value + 1)}
+                  onActivity={() => setAssistantActivity("menu")}
                 />
               </View>
             </View>
@@ -1743,6 +1751,15 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                   )}
                   {tab === "Today" && (
                     <TodayScreen
+                      onOpenAgentReview={() => present({ sheet: "review" })}
+                      onOpenAgentActivity={(lane) => {
+                        if (lane === "overnight")
+                          present({ sheet: "overnight" });
+                        else {
+                          setTab("AI");
+                          setAssistantActivity("background");
+                        }
+                      }}
                       conversationEnabled={assistant.conversationEnabled}
                       canOpenAgentOutput={
                         !busy &&
@@ -1769,6 +1786,9 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                       }}
                       items={items}
                       homeLayout={accountPrefs.prefs.home}
+                      presets={workspacePresets(
+                        accountPrefs.prefs.views.workspace,
+                      )}
                       agentName={assistant.agentName}
                       onOpenLink={(link) => openLink.current?.(link)}
                       onOpenWorkspace={(what) => present({ sheet: what })}
@@ -1904,7 +1924,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                       centerComposer={centerNewChat}
                       assistant={assistant}
                       openActivity={assistantActivity}
-                      onActivityOpened={() => setAssistantActivity(0)}
+                      onActivityOpened={() => setAssistantActivity(null)}
                       drawerOpen={assistantMenu}
                       onDrawerChange={setAssistantMenu}
                       onOpenMemory={() => present({ sheet: "memory" })}
@@ -1934,6 +1954,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                         }
                       }}
                       onKeptNote={openDocument}
+                      onOpenPage={openDocument}
                       onShowOnCalendar={(at) => {
                         setSearch("");
                         setTab("Calendar");
@@ -2261,6 +2282,15 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
           >
             <View style={sheetStyles.column}>
               <SettingsScreen
+                onOpenAgentActivity={(lane) => {
+                  if (settingsLock.current) return;
+                  if (lane === "overnight") present({ sheet: "overnight" });
+                  else {
+                    closeSheet();
+                    setTab("AI");
+                    setAssistantActivity("background");
+                  }
+                }}
                 onBusyChange={(pending) => {
                   settingsLock.current = pending;
                   setSettingsWriting(pending);
@@ -2283,6 +2313,16 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                 openAt={settingsAt}
                 arrangement={accountPrefs.prefs.sidebar}
                 onArrange={(sidebar) => accountPrefs.save({ sidebar })}
+                presets={workspacePresets(accountPrefs.prefs.views.workspace)}
+                onPresetsChange={(pins) =>
+                  accountPrefs.setViewChoice(
+                    "workspace",
+                    withWorkspacePresets(
+                      accountPrefs.prefs.views.workspace,
+                      pins,
+                    ),
+                  )
+                }
                 preferencesReady={accountPrefs.ready}
                 preferencesError={accountPrefs.error}
                 onReloadPreferences={accountPrefs.reload}
@@ -2342,6 +2382,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
             user={user}
             onDone={(next, made) => {
               markReleaseSeen();
+              accountPrefs.reload();
               setUser(next);
               void refresh();
               if (made?.brief_id) void openDocument(made.brief_id);
@@ -2448,6 +2489,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
           onItemsChanged={() => void refresh()}
         />
         <ProjectsSheet
+          presets={workspacePresets(accountPrefs.prefs.views.workspace)}
           beforeLeave={projectBeforeLeave}
           initialProjectId={projectToOpen}
           initialSection={projectSectionToOpen}

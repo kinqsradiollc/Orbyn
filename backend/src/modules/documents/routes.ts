@@ -1,3 +1,5 @@
+import { stopMaintainedPageRun } from "./maintenance-stop.js";
+import { firstParty } from "../proposals/service.js";
 import {
   markIdempotencyVersionConflict,
   rememberDocumentIdempotencyScope,
@@ -228,6 +230,19 @@ export async function docRoutes(app: FastifyInstance) {
     const id = idParam(r);
     return transaction((db) => listMaintainedPageRuns(db, user, id));
   });
+  app.post(
+    "/docs/:id/maintenance/runs/:runId/stop",
+    writeRateLimit,
+    async (r) => {
+      const user = await firstParty(r);
+      z.object({})
+        .strict()
+        .parse(r.body ?? {});
+      return transaction((db) =>
+        stopMaintainedPageRun(db, user.id, idParam(r), idParam(r, "runId")),
+      );
+    },
+  );
   app.post(
     "/docs/:id/maintenance/runs/:runId/decision",
     writeRateLimit,

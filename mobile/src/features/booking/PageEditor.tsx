@@ -756,7 +756,7 @@ export function PageEditor({
           <SwitchRow
             disabled={busy}
             title="Taking bookings"
-            hint="Turn off to pause the page."
+            hint="When enabled, anyone with the link can view this page and request a booking. Turn off to pause new bookings."
             value={active}
             onValueChange={setActive}
           />

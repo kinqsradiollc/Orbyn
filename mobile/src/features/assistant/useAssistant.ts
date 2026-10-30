@@ -1,3 +1,7 @@
+import {
+  readAssistantOutcome,
+  type AssistantOutcomeReceipt,
+} from "@orbyn/core";
 import { assistantExcerptMatches } from "@orbyn/core";
 import {
   useEffect,
@@ -69,6 +73,9 @@ export type Turn =
        * `assistant_run.plan_job`), for listing and undoing it; null otherwise.
        */
       changesJob: string | null;
+      /** Current response evidence; older saved turns may not retain these flags. */
+      execution?: "stopped" | "timed_out";
+      executionOutcome?: AssistantOutcomeReceipt;
     };
 
 export type AssistantScope = ChatScope & { name: string };
@@ -452,6 +459,15 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       // The chat's trace covers every turn; keep this reply's steps only.
       trace: result.trace.filter((entry) => entry.turn_id === result.turn_id),
       changesJob: appliedJob(result.assistant_run),
+      executionOutcome: readAssistantOutcome(
+        result.assistant_run?.execution_outcome,
+      ),
+      execution:
+        result.assistant_run?.stopped === true
+          ? "stopped"
+          : result.assistant_run?.timed_out === true
+            ? "timed_out"
+            : undefined,
     };
     setTurns((t) => [
       ...t.filter(
@@ -832,6 +848,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
               turnId: t.turn_id ?? newId(),
               trace: chat.trace.filter((entry) => entry.turn_id === t.turn_id),
               changesJob: t.changes_job ?? null,
+              executionOutcome: t.execution_outcome,
             },
       ),
     );
@@ -1100,6 +1117,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
             turnId: turn.turn_id ?? newId(),
             trace: [],
             changesJob: turn.changes_job ?? null,
+            executionOutcome: turn.execution_outcome,
             planApplied: turn.outcome === "applied",
           },
   );

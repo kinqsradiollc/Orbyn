@@ -1,3 +1,11 @@
+import {
+  assistantPageReviewRun,
+  assistantReviewOrigin,
+} from "./assistant-review.js";
+import {
+  assistantOutcomeReceipt,
+  ASSISTANT_OUTCOME_LABELS,
+} from "./assistant-outcomes.js";
 import { z } from "zod";
 import { automationAgentIdentity, nightShiftInput } from "./agent-settings.js";
 import { assistantActivityEvent } from "./assistant-activity.js";
@@ -34,14 +42,40 @@ export const assistantProfile = z
     counts: assistantProfileCounts,
     last_activity_at: z.iso.datetime().nullable(),
     recent_activity: z.array(assistantActivityEvent).max(8),
+    work: z
+      .array(
+        z
+          .object({
+            job_id: z.uuid(),
+            origin: assistantReviewOrigin.nullable().optional(),
+            chat_id: z.uuid(),
+            title: z.string().max(120),
+            state: z.enum(["queued", "running", "waiting"]),
+            cancel_requested: z.boolean(),
+            recovering: z.boolean(),
+            updated_at: z.iso.datetime(),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
+    work_truncated: z.boolean().optional(),
+    outputs_truncated: z.boolean().optional(),
+    page_runs: z.array(assistantPageReviewRun).max(25).optional(),
+    page_runs_truncated: z.boolean().optional(),
     outputs: z
       .array(
         z
           .object({
             job_id: z.uuid(),
+            origin: assistantReviewOrigin.nullable().optional(),
             chat_id: z.uuid(),
             title: z.string().max(120),
             completed_at: z.iso.datetime(),
+            state: z.enum(["done", "failed"]).optional(),
+            summary: z.string().max(1200).optional(),
+            execution_outcome: assistantOutcomeReceipt.optional(),
+            review_pending: z.boolean().optional(),
             handoff: z
               .object({
                 id: z.uuid(),
@@ -127,3 +161,136 @@ export const assistantProfiles = z
     "Each runtime needs a separate profile.",
   );
 export type AssistantProfiles = z.output<typeof assistantProfiles>;
+
+export type AssistantReviewRow = {
+  id: string;
+  lane: AssistantProfile["lane"];
+  title: string;
+  detail: string;
+  action: string;
+  priority: number;
+  at?: string;
+  chatId?: string;
+};
+
+/** Profile output identity supports chat grouping, not goal/routine acceptance. */
+export function recentAssistantWork(
+  data: AssistantProfiles,
+): AssistantReviewRow[] {
+  const rows: AssistantReviewRow[] = [];
+  for (const profile of data.profiles) {
+    const lane = profile.lane;
+    const name = lane === "background" ? "Background" : "Overnight";
+    if (profile.counts.waiting > 0)
+      rows.push({
+        id: `${lane}:waiting`,
+        lane,
+        priority: 0,
+        title: `${name} · Waiting for you`,
+        detail: `${profile.counts.waiting} ${profile.counts.waiting === 1 ? "run needs" : "runs need"} a decision.`,
+        action: "Review decisions",
+      });
+    // Event receipts are historical; only the latest observed event per job is considered.
+    const latest = new Map<
+      string,
+      AssistantProfiles["profiles"][number]["recent_activity"][number]
+    >();
+    for (const event of profile.recent_activity) {
+      const key = event.job_id ?? `event:${event.sequence}`;
+      const previous = latest.get(key);
+      if (!previous || BigInt(event.sequence) > BigInt(previous.sequence))
+        latest.set(key, event);
+    }
+    const finishedJobs = new Set(
+      profile.outputs.map((output) => output.job_id),
+    );
+    for (const event of latest.values()) {
+      if (
+        event.kind !== "failed" ||
+        (event.job_id && finishedJobs.has(event.job_id))
+      )
+        continue;
+      rows.push({
+        id: `${lane}:failure:${event.job_id ?? event.sequence}`,
+        lane,
+        priority: 1,
+        title: `${name} · Failure reported`,
+        detail: "Open activity to check the result and recovery.",
+        at: event.created_at,
+        action: "Review activity",
+      });
+    }
+    if (profile.counts.recovering > 0)
+      rows.push({
+        id: `${lane}:recovering`,
+        lane,
+        priority: 2,
+        title: `${name} · Recovery pending`,
+        detail: `${profile.counts.recovering} ${profile.counts.recovering === 1 ? "run awaits" : "runs await"} recovery.`,
+        action: "View activity",
+      });
+    if (profile.counts.working > 0)
+      rows.push({
+        id: `${lane}:working`,
+        lane,
+        priority: 3,
+        title: `${name} · In progress`,
+        detail: `${profile.counts.working} ${profile.counts.working === 1 ? "run" : "runs"}${profile.runtime.reporting ? " working." : " recorded; worker heartbeat unavailable."}`,
+        action: "View activity",
+      });
+    const needsReview = (output: (typeof profile.outputs)[number]) =>
+      !!output.execution_outcome &&
+      ["partial", "waiting", "failed", "interrupted", "uncertain"].includes(
+        output.execution_outcome.outcome,
+      );
+    const chats = new Map<
+      string,
+      { latest: (typeof profile.outputs)[number]; count: number }
+    >();
+    for (const output of profile.outputs) {
+      const group = chats.get(output.chat_id);
+      chats.set(output.chat_id, {
+        latest:
+          !group ||
+          (needsReview(output) && !needsReview(group.latest)) ||
+          (needsReview(output) === needsReview(group.latest) &&
+            output.completed_at > group.latest.completed_at)
+            ? output
+            : group.latest,
+        count: (group?.count ?? 0) + 1,
+      });
+    }
+    for (const [chatId, group] of chats)
+      rows.push({
+        id: `${lane}:chat:${chatId}`,
+        lane,
+        priority:
+          group.latest.execution_outcome &&
+          ["partial", "waiting", "failed", "interrupted", "uncertain"].includes(
+            group.latest.execution_outcome.outcome,
+          )
+            ? 2
+            : 4,
+        title: group.latest.title || `${name} result`,
+        detail: `${name} · ${group.latest.execution_outcome ? ASSISTANT_OUTCOME_LABELS[group.latest.execution_outcome.outcome] : group.count === 1 ? "Run finished" : `${group.count} recent runs finished`} · Review outcome`,
+        at: group.latest.completed_at,
+        chatId,
+        action: "Review result",
+      });
+    if (profile.counts.queued > 0)
+      rows.push({
+        id: `${lane}:queued`,
+        lane,
+        priority: 5,
+        title: `${name} · Queued`,
+        detail: `${profile.counts.queued} ${profile.counts.queued === 1 ? "run" : "runs"} waiting to start.`,
+        action: "View activity",
+      });
+  }
+  return rows.sort(
+    (a, b) =>
+      a.priority - b.priority ||
+      (b.at ?? "").localeCompare(a.at ?? "") ||
+      a.id.localeCompare(b.id),
+  );
+}

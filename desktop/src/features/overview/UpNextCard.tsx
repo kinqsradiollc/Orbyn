@@ -34,8 +34,11 @@ export function UpNextCard({
   items,
   onOpen,
   onFocus,
+  excludeIds,
 }: {
   items: Item[];
+  /** Tasks already presented in the daily plan or attention queue. */
+  excludeIds?: Set<string>;
   onOpen: (item: Item) => void;
   onFocus: (item: Item) => void;
 }) {
@@ -75,7 +78,9 @@ export function UpNextCard({
   if (failed && !next) return null;
 
   const byId = new Map(items.map((i) => [i.id, i]));
-  const shown = (next?.suggestions ?? []).filter((s) => byId.has(s.item_id));
+  const shown = (next?.suggestions ?? []).filter(
+    (s) => byId.has(s.item_id) && !excludeIds?.has(s.item_id),
+  );
   const [first, ...rest] = shown;
   const firstItem = first && byId.get(first.item_id)!;
 
@@ -145,7 +150,13 @@ export function UpNextCard({
         </ul>
       )}
       {next && !first && (
-        <p className="section-empty">No suggested task right now.</p>
+        <p className="section-empty">
+          {next.suggestions.some((suggestion) =>
+            excludeIds?.has(suggestion.item_id),
+          )
+            ? "Suggested tasks are already listed."
+            : "No suggested task right now."}
+        </p>
       )}
     </section>
   );

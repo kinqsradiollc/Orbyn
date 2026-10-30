@@ -184,3 +184,52 @@
     padding: 12px 16px;
   }
 }
+
+/* Session records are deliberately expanded without competing with the plan. */
+.today-session-details,
+.today-session-history {
+  min-width: 0;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.today-session-details summary,
+.today-session-history > summary {
+  cursor: pointer;
+  padding-block: 8px;
+  width: fit-content;
+}
+.today-session-details ul {
+  margin: 0 0 8px;
+  padding-inline-start: 20px;
+}
+.today-session-history {
+  border-top: 1px solid var(--color-divider);
+  padding-top: 8px;
+}
+.today-session-history .today-title {
+  color: var(--color-text);
+}
+
+.overview-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.overview-shortcuts h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.overview-shortcuts > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+.overview-shortcuts .text-button {
+  padding-inline: 0;
+  white-space: normal;
+  text-align: left;
+}

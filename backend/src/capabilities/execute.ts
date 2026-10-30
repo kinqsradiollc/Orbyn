@@ -1,3 +1,4 @@
+import type { QuietReadEvidence } from "../modules/assistant-workspace/quiet-projection.js";
 import { ZodError, type z } from "zod";
 import { HttpError, type AgentOutcome } from "@orbyn/core";
 import { readTransaction, type Queryable } from "../db/pool.js";
@@ -262,6 +263,8 @@ export const READ_TIMEOUT_MS = 20_000;
 export type ExecuteOptions = {
   /** Read from the primary (the connection wrote a moment ago). */
   primary?: boolean;
+  /** Persist validated server read coverage after its read transaction commits. */
+  recordQuietReads?: (evidence: QuietReadEvidence[]) => Promise<void>;
   log?: (err: unknown) => void;
   now?: Date;
   /** Runs a non-read capability; reads never need it. */
@@ -368,6 +371,7 @@ export async function execute(
     }
     const prefs = await loadPrefs(db, p.user.id);
     const ctx: CapabilityContext = {
+      ...(options.recordQuietReads ? { quietCoverage: true } : {}),
       ...(currentPrincipal.via === "assistant"
         ? { assistant_rule_checks: [] }
         : {}),
@@ -423,6 +427,9 @@ export async function execute(
               p.via === "assistant" ||
               options.primary,
             timeoutMs: READ_TIMEOUT_MS,
+            ...(options.recordQuietReads
+              ? { isolation: "repeatable read" as const }
+              : {}),
           })
         : options.write
           ? ((await options.write(run)) as Awaited<ReturnType<typeof run>>)
@@ -448,6 +455,8 @@ export async function execute(
         ),
       );
     }
+    if (answer.quietReads?.length)
+      await options.recordQuietReads?.(answer.quietReads);
     const structured = checked.data;
     const result = toResult(cap, structured, answer.markdown, answer.links);
     if (again) result._meta = { ...result._meta, "orbyn/replayed": true };

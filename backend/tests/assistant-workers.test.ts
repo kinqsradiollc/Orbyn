@@ -61,8 +61,15 @@ function fakeStart(calls: StartInput[]) {
     return transaction(async (db) => {
       const id = (
         await db.query<{ id: string }>(
-          "INSERT INTO ai_jobs (user_id) VALUES ($1) RETURNING id",
-          [input.userId],
+          "INSERT INTO ai_jobs (user_id,run_state) VALUES ($1,$2) RETURNING id",
+          [
+            input.userId,
+            // Routine receipts verify execution identity. Keep the unrelated
+            // legacy goal/idea fakes' lifecycle behavior unchanged in this file.
+            input.automation.kind === "routine"
+              ? { version: 1, request: { automation: input.automation } }
+              : null,
+          ],
         )
       ).rows[0].id;
       await input.onQueued?.(db, id);
@@ -165,6 +172,103 @@ test("a finished weekly check-in never runs again that week", async () => {
       `no new run ${later / MINUTE} minutes later`,
     );
   assert.equal(calls.length, 1);
+});
+
+test("an explicit execution started after a weekly claim prevents its stale queue admission", async () => {
+  const { startGoalExecution } =
+    await import("../src/modules/assistant-workspace/goal-executions.js");
+  const owner = await register();
+  const goal = (
+    await pool.query<{ id: string; revision: number }>(
+      "INSERT INTO goals(user_id,title) VALUES($1,'Competing goal intent') RETURNING id,revision",
+      [owner],
+    )
+  ).rows[0];
+  let execution: string | null = null;
+  let queuedJob: string | null = null;
+  let attempts = 0;
+  assert.equal(
+    await scanAssistantGoals(new Date(), {
+      only: [owner],
+      ai: fakeAi,
+      startAutomation: async (input) => {
+        attempts++;
+        const claim = (
+          await pool.query(
+            "SELECT status,job_id FROM goals_checkins WHERE goal_id=$1",
+            [goal.id],
+          )
+        ).rows[0];
+        assert.equal(claim.status, "running");
+        assert.equal(claim.job_id, null, "the old claim has not queued yet");
+        execution = await transaction((db) =>
+          startGoalExecution(db, owner, goal.id, {
+            request_id: randomUUID(),
+            expected_goal_revision: goal.revision,
+            criteria: [
+              { id: randomUUID(), text: "Review the result", kind: "person" },
+            ],
+            lane: "background",
+            effect_ceiling: "existing_scopes",
+            limits: {
+              max_attempts: 4,
+              token_limit: 20_000,
+              deadline: new Date(Date.now() + DAY).toISOString(),
+            },
+          }),
+        );
+        // Queue using the engine's transaction boundary and real work identity.
+        // The new guard must reject this stale claim and roll the job/chat back.
+        return transaction(async (db) => {
+          const chat = randomUUID();
+          await db.query(
+            "INSERT INTO ai_chats(id,user_id,title,origin) VALUES($1,$2,'Stale weekly claim','goal')",
+            [chat, owner],
+          );
+          const job = (
+            await db.query<{ id: string }>(
+              "INSERT INTO ai_jobs(user_id,chat_id,state,run_state,apply_tracking_version) VALUES($1,$2,'queued',$3,1) RETURNING id",
+              [
+                owner,
+                chat,
+                { version: 1, request: { automation: input.automation } },
+              ],
+            )
+          ).rows[0].id;
+          queuedJob = job;
+          await input.onQueued?.(db, job);
+          return job;
+        });
+      },
+    }),
+    0,
+  );
+  assert.equal(attempts, 1);
+  assert.ok(execution);
+  assert.ok(queuedJob);
+  assert.equal(
+    (await pool.query("SELECT id FROM ai_jobs WHERE id=$1", [queuedJob]))
+      .rowCount,
+    0,
+  );
+  assert.equal(await chatCount(owner), 0);
+  const claim = (
+    await pool.query(
+      "SELECT status,job_id FROM goals_checkins WHERE goal_id=$1",
+      [goal.id],
+    )
+  ).rows[0];
+  assert.equal(claim.status, "failed");
+  assert.equal(claim.job_id, null);
+  const preserved = (
+    await pool.query(
+      "SELECT state,attempt_count,current_job_id FROM assistant_goal_executions WHERE id=$1",
+      [execution],
+    )
+  ).rows[0];
+  assert.equal(preserved.state, "ready");
+  assert.equal(preserved.attempt_count, 0);
+  assert.equal(preserved.current_job_id, null);
 });
 
 test("a stuck or failed check-in retries with a backoff, at most three times a week", async () => {

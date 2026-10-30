@@ -538,24 +538,37 @@ function StudyBody({ report, onOpenPage, onPlanned }: Props) {
           <EmptyState
             icon={CONCEPT_ICON.study}
             title="No cards yet"
-            body="Any line written as Question :: Answer in a page becomes a card."
+            body="Choose course material, review card drafts, then schedule practice."
           >
             <div className="empty-actions">
               <button
                 className="primary"
                 disabled={action.pending}
-                onClick={() => void newPage()}
+                onClick={() => setPicking(true)}
               >
-                <Plus size={15} /> New study page
+                <FileText size={15} /> From your pages
               </button>
               <ImportButton
                 onFiles={(files) => void imports.importFiles(files)}
                 busy={imports.busy}
                 className="secondary"
-                label="Import notes"
+                label="Import material"
               />
             </div>
           </EmptyState>
+          <details className="study-manual-entry">
+            <summary>Write cards manually</summary>
+            <p className="muted">
+              A line written as Question :: Answer in a page becomes a card.
+            </p>
+            <button
+              className="secondary"
+              disabled={action.pending}
+              onClick={() => void newPage()}
+            >
+              <Plus size={15} /> New study page
+            </button>
+          </details>
         </section>
       ) : (
         <section className="study-section">

@@ -16,7 +16,8 @@ import { agentInboxRoutes } from "../modules/agent-inbox/routes.js";
 import { agentContextRoutes } from "../modules/agent-context/routes.js";
 import { assistantIdeasRoutes } from "../modules/assistant-ideas/routes.js";
 import { assistantGoalRoutes } from "../modules/assistant-workspace/goals.js";
-import { assistantRoutineRoutes } from "../modules/assistant-workspace/routines.js";
+import { goalExecutionRoutes } from "../modules/assistant-workspace/goal-executions.js";
+import { assistantRoutineRoutes } from "../modules/assistant-workspace/routine-routes.js";
 import { overnightRoutes } from "../modules/assistant-workspace/overnight.js";
 import { assistantActivityRoutes } from "../modules/assistant-workspace/activity.js";
 import { assistantConversationRoutes } from "../modules/assistant-workspace/conversation-routes.js";
@@ -102,6 +103,7 @@ export const apiModules = [
   assistantIdeasRoutes,
   // Private goals and weekly check-ins for the built-in assistant (Muse M8).
   assistantGoalRoutes,
+  goalExecutionRoutes,
   // Scheduled routines and approval scopes for the built-in assistant (Muse M9).
   assistantRoutineRoutes,
   overnightRoutes,

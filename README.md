@@ -36,9 +36,10 @@ that a hosted instance has it enabled.
 
 ## Accounts and teams
 
-Accounts are admins or members. The first account and addresses in `ADMIN_EMAILS`
-receive admin access. Admins manage accounts, providers, usage, storage and audit
-records. Team roles are owner, admin, member and viewer; team permissions also
+Accounts are admins or members. Public registration creates members, including
+addresses listed in `ADMIN_EMAILS`. Grant admin access explicitly with the
+server-side `admin:grant` command. Admins manage accounts, providers, usage, storage
+and audit records. Team roles are owner, admin, member and viewer; team permissions also
 bound connected agents. See [access control](docs/architecture.md#access-control).
 
 ## Repository layout
@@ -115,6 +116,24 @@ npm run start:assistant-overnight -w backend
 Run each process in its own terminal. Import conversion and the private PDF/LaTeX
 renderers also need their services; the full Compose stack supplies them.
 For mobile, see [docs/mobile.md](docs/mobile.md).
+
+## Development demo accounts and data
+
+Use the [local demo setup](docs/local-demo.md) to populate a verified local database.
+`npm run dev:seed` previews the setup; `--apply` creates the fixtures. The script
+preserves existing data and requires a database-level development marker.
+
+| Account                  | Purpose                                             |
+| ------------------------ | --------------------------------------------------- |
+| `admin@orbyn.local`      | Admin with a rich workspace                         |
+| `member@orbyn.local`     | Personal and team work                              |
+| `empty@orbyn.local`      | Empty workspace                                     |
+| `new@orbyn.local`        | First-run onboarding                                |
+| `agent-demo@orbyn.local` | Isolated live agent checks; starts empty and paused |
+
+All five start with the public, local-only password `Orbyn-Demo-2026!`.
+Reruns preserve passwords, roles and edits. Agent history is labeled sample data;
+no model is run and no provider is configured by the seed.
 
 ## Contributing
 

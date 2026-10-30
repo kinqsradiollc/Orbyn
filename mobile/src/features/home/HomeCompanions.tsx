@@ -19,7 +19,12 @@ import { AssistantAgents } from "../assistant/AssistantAgents";
 export function HomeCompanions({
   canOpen = false,
   onOpenChat = () => {},
-}: { canOpen?: boolean; onOpenChat?: (id: string) => void } = {}) {
+  onOpenPage,
+}: {
+  canOpen?: boolean;
+  onOpenChat?: (id: string) => void;
+  onOpenPage?: (id: string) => void;
+} = {}) {
   const accountBinding = session.token;
   const [identityState, setIdentityState] = useState<{
     binding: string;
@@ -73,6 +78,7 @@ export function HomeCompanions({
   return (
     <View style={[shared.card, { gap: 8 }]}>
       <AssistantAgents
+        onOpenPage={onOpenPage}
         visible={agentsOpen}
         lane={openLane}
         canOpen={canOpen}

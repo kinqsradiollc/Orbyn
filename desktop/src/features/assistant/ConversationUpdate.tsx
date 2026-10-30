@@ -1,3 +1,4 @@
+import { updateStatusLabel } from "./assistant-labels";
 import { CopyMessage } from "./ConversationMessage";
 import type { AssistantConversationEntry } from "@orbyn/core";
 
@@ -25,9 +26,25 @@ export function ConversationUpdate({
       <div className="ai-reply">
         <div className="ai-update-meta">
           <span>{entry.lane === "overnight" ? "Overnight" : "Background"}</span>
+          <strong>{updateStatusLabel(entry)}</strong>
         </div>
         <p className="ai-update-text">{entry.text}</p>
         <div className="ai-update-actions">
+          {entry.event !== "question" && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() =>
+                entry.execution_chat_id
+                  ? onWork(entry.execution_chat_id)
+                  : onActivity(entry.lane)
+              }
+            >
+              {entry.event === "morning_summary"
+                ? "Review activity"
+                : "Review result"}
+            </button>
+          )}
           <CopyMessage text={entry.text} />
           {entry.event === "question" && entry.actionable === false ? (
             <span>Closed</span>

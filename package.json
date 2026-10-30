@@ -24,7 +24,8 @@
     "build:pdf-preview": "node scripts/build-pdf-preview.mjs",
     "build:latex-html": "node scripts/build-latex-html.mjs",
     "check:latex-html": "node scripts/check-latex-html.mjs",
-    "generate:brand": "node scripts/generate-brand-assets.mjs"
+    "generate:brand": "node scripts/generate-brand-assets.mjs",
+    "dev:seed": "node backend/scripts/seed-ui-demo.mjs"
   },
   "overrides": {
     "xcode": {

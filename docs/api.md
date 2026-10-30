@@ -164,8 +164,10 @@ agreement once signed in.
 When a mail server is configured, a new member starts with `email_verified: false` and gets a
 confirmation email; until they confirm (or an admin does), every route except `GET /me`,
 `POST /auth/logout`, `POST /auth/verify-email` and `POST /auth/resend-verification` answers `403`.
-The first admin (and any address in `ADMIN_EMAILS`) is always created verified, and with no mail
-server configured every account is verified at once (there would be no way to confirm it).
+Public registration creates an ordinary member, including addresses listed in `ADMIN_EMAILS`;
+it never grants administrator access or bypasses email confirmation. Operators promote a known
+account through the server-side `admin:grant` command. With no mail server configured, new accounts
+are verified at once because there would be no way to confirm them.
 
 ### `POST /auth/login`
 
@@ -926,6 +928,278 @@ The separate conversation preference `muted` changes update alerts only.
 Pausing a page-maintenance schedule prevents future occurrences while healthy
 admitted runs continue against their unchanged snapshot. Source edits, deletion,
 permission changes and instruction rebinding still invalidate affected runs.
+
+### `GET /me/assistant/profiles` (session)
+
+Read-only, current-access snapshot `{ observed_at, profiles }` with separate
+Background and Overnight profiles. Takes no query parameters; returns private,
+no-store data from a primary repeatable-read transaction. Counts distinguish
+working, waiting, queued and recovery-pending jobs. `runtime.reporting=false`
+means no current worker heartbeat is available, not confirmed worker failure.
+A configured schedule or provider alone is not evidence of active execution.
+
+Clients sending `x-orbyn-outcomes: 1` receive additive fields:
+
+- `work`: at most 20 currently accessible queued/running/waiting jobs, each
+  `{ job_id, chat_id, title, state, cancel_requested, recovering, updated_at }`.
+  Waiting jobs sort first. `recovering` means a running lease is missing or expired;
+  it does not confirm a successful resume. `work_truncated` signals additional work.
+- `outputs`: at most five recent accessible finished **or failed** job results.
+  Each includes `job_id`, `chat_id`, `title`, `completed_at`, `state` (`done` or
+  `failed`) and `summary` (up to 1,200 characters of the authorized result answer,
+  empty when absent), plus optional `handoff` and `execution_outcome`.
+  Internal specialist reports are not used as previews. Missing outcome evidence
+  does not turn a failed result into a success.
+
+Without that header the previous profile shape remains: no per-job work fields,
+failed output additions, state/summary or execution receipts. These bounded output
+windows have no unread/reviewed or last-visit meaning. Source and chat access are
+rechecked; a retained activity event alone does not authorize its result.
+
+### Explicit goal executions (session mutations, authenticated reads)
+
+These routes use `packages/core/src/assistant/goal-executions.ts`. Starting work and
+pause/resume/stop/accept controls require a signed-in person using an Orbyn app;
+personal API keys and model/agent credentials cannot perform those mutations.
+They do not change the existing `/me/goals` or weekly `/me/goals/:id/checkins`
+contracts. An active planner goal does not implicitly start an execution.
+
+| Route                                  | Contract                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------ |
+| `POST /me/goals/:id/executions`        | Explicit start; returns `201 GoalExecutionDetails`                       |
+| `GET /me/goals/:id/executions`         | Owned execution metadata history: `{ goal_id, executions, next_cursor }` |
+| `GET /me/goal-executions/:id`          | Current source-authorized `GoalExecutionDetails`                         |
+| `GET /me/goal-executions/:id/attempts` | `{ execution_id, attempts, next_cursor }`                                |
+| `POST /me/goal-executions/:id/pause`   | Pause new admissions                                                     |
+| `POST /me/goal-executions/:id/resume`  | Revalidate and resume admissions                                         |
+| `POST /me/goal-executions/:id/stop`    | Close the generation and request cancellation of admitted work           |
+| `POST /me/goal-executions/:id/accept`  | Record person acceptance of the exact reviewed criteria and evidence     |
+
+Start accepts:
+
+```json
+{
+  "request_id": "uuid",
+  "expected_goal_revision": 1,
+  "criteria": [
+    { "id": "uuid", "text": "A criterion to review", "kind": "person" }
+  ],
+  "lane": "background",
+  "effect_ceiling": "existing_scopes",
+  "limits": {
+    "max_attempts": 6,
+    "token_limit": 200000,
+    "deadline": "2027-01-01T00:00:00Z"
+  }
+}
+```
+
+Criteria have distinct UUIDs, 1–10 entries and 1–500 characters of text. The lane is
+`background` or `overnight`; `effect_ceiling` is `suggest` or `existing_scopes` and
+can only restrict existing authority. Limits require 1–20 attempts, 1–1,000,000
+estimated tokens and a future ISO deadline. Execution allowance is cumulative;
+ordinary lane, night-window, provider and per-run limits continue to apply.
+
+Start is idempotent for the owner and `request_id`: the same body returns the same
+execution; different work with that ID returns `409`. Only one open execution is
+allowed per goal. Reviewed criteria/configuration hashes exclude worker progress;
+goal requirements, current sources and provider/scope changes can still hold work.
+
+Pause, resume and stop accept `{ request_id, expected_revision, generation }`.
+Resume also requires `expected_config_hash`. Accept additionally requires
+`expected_criteria_hash`, `expected_evidence_hash` and `accepted_criterion_ids`
+matching the complete criterion set. Stale controls or evidence return `409`;
+invalid bodies or incomplete criterion attestation return `422`. Replaying the
+most recent identical control does not repeat it. Controls return refreshed
+`GoalExecutionDetails`.
+
+Details always include execution metadata, reviewed hashes, limits and cumulative
+consumed/reserved estimates. `visibility: "available"` adds criteria, stable units,
+current job, latest authorized result, `waiting_results`, `evidence_hash`, `can_accept`, permission
+summary and any person acceptance record. Unit stages are `work`, `verify`, `repair`,
+`ready_for_acceptance`, `satisfied` and `blocked`. `effects_applied` and bound output
+IDs/versions prevent a consumed create plan from being recreated during repair.
+Results carry current job state, stop-request/recovery evidence, summary and optional
+execution outcome. A `restricted` response omits criteria, units, content, job/chat
+links and acceptance details. Attempt rows similarly restrict unavailable evidence.
+
+`current_job_id` is a presentation focus, not execution ownership. `waiting_results`
+contains at most one entry per parked unit (maximum 10). Each entry has the result
+fields plus `unit_id`, `criterion_id`, `mode` (`work`, `verify` or `repair`) and
+`waiting_kind` (`person`, `approval` or `review`). Entries preserve their original
+job/chat identity and current source authorization. Restricted details omit this
+collection. Answering an available question resumes its saved job through the
+existing Answer API; it does not start a new goal attempt.
+
+History queries accept `limit` (1–20, default 10) and optional opaque `cursor`.
+Pass a non-null `next_cursor` unchanged; it preserves database timestamp precision.
+Reads do not enqueue work or acknowledge results. Authority is rechecked on each
+page, including after job retention or source revocation.
+
+There is one open attempt per unit. An unanswered in-run question, approval or
+pending Review parks that unit while other runnable criteria may continue within
+the same shared allowance. A parked question retains its reservation; answering it
+requeues the same job. The existing ownership guard prevents two jobs for the same
+goal from running simultaneously. Verification is read-only. Repair currently
+supports versioned edits to bound tasks/documents, while unsupported repair,
+missing output identity and uncertain effects hold rather than recreate work.
+Budget settlement and frontier consumption are separate: pending Review can remain
+open after its producer's terminal accounting has settled. Pause does not stop
+admitted work. Stop changes the generation and requests cancellation of all
+execution jobs, including queued and parked jobs, while preserving committed
+effects and permitting accounting to settle without another wake.
+
+`can_accept` requires current criteria/evidence, no active work, unresolved questions,
+pending approval, uncertain effects or nonpassing required checks. A person
+attestation is stored separately from model output and legacy chat turns. A finished
+job, a proposal decision or manually setting `goals.status=done` cannot mint accepted
+completion. These APIs reuse existing Orbyn workers/providers and require migration
+300–301; their presence does not qualify a hosted rollout or native client behavior.
+
+### First-party routine setup
+
+`GET /me/agent-routines/setup-context` reads current approval categories, a CAS
+`snapshot`, `max_run_tokens` and `max_active_work_minutes`. Reading it does not
+grant access. `POST /me/agent-routines/setup` accepts `{ request_id, routine,
+expected_snapshot, allow_changes, run_limits? }` and atomically saves the schedule
+and explicitly selected routine-bound categories. Unselected categories retain
+their current settings; explicit ask/deny and sensitive-action Review still apply.
+
+Optional `run_limits` contains `token_limit` (integer 1–200,000) and
+`active_work_minutes` (integer 1–10). Legacy omitted limits retain the current
+200,000-token/10-minute defaults. These are per-attempt execution estimates,
+configured at creation, and do not enable retries. Active work includes resumes
+but excludes queued and parked time; tighter Night/recovery deadlines still apply.
+Human approval may finalize an existing saved plan in its existing short window;
+re-entering model work retains the original remaining allowance.
+
+The setup command is person-session-only and requires migration 304–305. An
+identical request replay returns its saved routine without regranting categories;
+a mismatched request ID or stale authority snapshot returns `409`. Deleted results
+remain tombstoned. Clients retain the same command after an unknown response.
+
+### Routine retry policy and occurrence recovery
+
+These separate routes use `packages/core/src/assistant/routine-retries.ts`. The
+strict `AgentRoutine`, routine mutation inputs and existing `/runs` response remain
+unchanged. Existing `/runs` rows continue to describe their original first job;
+recovery details carry subsequent attempts under the same occurrence.
+
+| Route                                             | Contract                                                           |
+| ------------------------------------------------- | ------------------------------------------------------------------ |
+| `GET /me/agent-routines/:id/retry-policy`         | First-party person session; `{ routine_id, revision, policy }`     |
+| `PUT /me/agent-routines/:id/retry-policy`         | First-party versioned policy update; returns the policy page       |
+| `GET /me/agent-routines/:id/runs/:runId/recovery` | Authenticated owned occurrence recovery, with current source gates |
+| `POST /me/agent-routines/:id/runs/:runId/stop`    | First-party occurrence Stop; returns refreshed recovery            |
+
+Policy update accepts `{ request_id, expected_revision, policy }`. Policy fields are:
+
+| Field                 | Default  | Bounds                                        |
+| --------------------- | -------- | --------------------------------------------- |
+| `enabled`             | `false`  | Boolean                                       |
+| `max_attempts`        | `3`      | 1–5, including the initial job                |
+| `token_limit`         | `200000` | 1–1,000,000 cumulative estimated tokens       |
+| `max_elapsed_minutes` | `180`    | 1–1,440                                       |
+| `backoff_seconds`     | `60`     | 5–3,600; exponential delay capped at one hour |
+
+Missing policy is disabled. Policy changes apply to future admissions and invalidate
+captured recovery configuration. They do not promote historical occurrences into
+retryable work. A stale revision or conflicting request ID returns `409`; replaying
+the most recent identical request does not repeat the policy change. API keys and
+agent credentials cannot mutate policy or stop occurrences.
+
+Recovery returns identity `{ routine_id, occurrence_id, scheduled_for }` with
+`recovery: "legacy"` for an untracked historical occurrence. Tracked occurrences use
+`recovery: "enabled"` and `visibility: "available" | "restricted"`. Shared metadata
+includes `state`, generation/revision, lane, captured policy, deadline,
+consumed/reserved estimates, attempt count, nullable `next_retry_at` and reason.
+States are `active`, `waiting`, `retry_scheduled`, `held`, `limited`, `completed` and
+`stopped`. `completed` means the occurrence finished; it is not person acceptance of
+a goal. Available recovery adds at most five attempts, each with ordinal, state,
+allocation/settlement, resume count and retry qualification. Currently authorized
+attempts include job/chat links, summary and optional job-bound outcome receipt.
+Restricted recovery omits attempts and private links/content.
+
+Stop accepts `{ request_id, expected_revision, generation }`, fences that occurrence's
+generation and requests cancellation of every admitted job. It does not pause the
+routine's future schedule or undo committed effects. Replaying the same Stop can
+finish interrupted cancellation without creating another control transition.
+Stale controls return `409`; legacy occurrences have no recovery controls.
+
+A fresh attempt requires a classified transient provider failure with confirmed no
+effects, current configuration/provider/scope and source authority, and remaining
+cumulative allowance. It keeps `scheduled_for` unchanged and uses the existing queue.
+The fixed deadline is capped by the next scheduled occurrence when available;
+backoff and checkpoint recovery do not extend it. Pending approval/Review, applied
+or uncertain effects, person Stop and unqualified failures do not acquire retry
+authority. Scheduler exhaustion may auto-pause a final recurrence while its captured
+recovery remains valid; a manual edit/pause or policy change advances intent and
+holds that recovery. Held occurrences require a deliberate Stop before later
+scheduled work is admitted. These contracts require migration 302; local source and
+tests do not qualify external providers or installed-native behavior.
+
+### `GET /me/agent-routines/:id/runs` (auth)
+
+Read an owned routine's admitted occurrence history, newest scheduled time first,
+then occurrence UUID descending. Returns `404` for a routine the account does not
+own. Query parameters are `limit` (integer 1–50, default 25) and optional `cursor`;
+unknown query fields are rejected. Returns `{ routine_id, runs, next_cursor }`.
+
+Each row has `{ id, scheduled_for, state, last_observed_at, resume_count,
+visibility }`. `id` identifies the ledger occurrence, not the execution job.
+`state` is `queued`, `running`, `waiting`, `done` or `failed`; `done` means **Run
+finished**, not accepted goal completion. `resume_count` records recovery resumes,
+not a promise of automatic retry, catch-up or a user continuation action.
+
+An `available` row also includes `job_id`, `chat_id`, `summary` (up to 2,000 answer
+characters or null) and optional `execution_outcome`. A `restricted` row contains
+only the occurrence metadata above: it omits job/chat/source identifiers, summary
+and receipt. This covers retained occurrences whose job was deleted or whose
+current source/chat access is unavailable. Clients show **Result no longer
+available** and cannot offer Open result from this row. Reading does not admit a
+job, acknowledge a result, alter the routine or call a provider.
+
+Each page uses a primary repeatable-read transaction and current source/chat
+access. Pass a non-null `next_cursor` unchanged to request older rows. It encodes
+the last returned exact `scheduled_for` timestamp, including database microseconds,
+then `|` and the occurrence UUID. Do not reconstruct it with millisecond date
+formatting. A null cursor ends the available history. This is cursor pagination,
+not a fixed multi-page access snapshot: later pages recheck current authority.
+History starts with ledger admission; it does not reconstruct every older run.
+
+### `POST /ai/chat/:id/stop` (auth)
+
+Request a stop for an owned active execution job. Returns `{ stopped: true }` when
+the request is accepted, or `409` when the run is no longer active. This response
+is not a terminal execution receipt. Continue polling the existing work/result
+read: `cancel_requested=true` means **Stop requested**, while terminal state and
+any execution receipt describe the observed result. A stop does not undo already
+committed changes. Lane admission pauses, routine pauses, notification mute and
+access revocation remain separate controls.
+
+### Execution receipts and Overnight review
+
+Negotiated profile/chat/conversation reads and available routine/Overnight results
+may include `execution_outcome`, the versioned `AssistantOutcomeReceipt` from
+`packages/core/src/assistant/assistant-outcomes.ts`. It records `job_id`, `process`
+(`waiting`, `finished`, `failed`, `cancelled`), `outcome` (`unverified`, `completed`,
+`partial`, `waiting`, `failed`, `interrupted`, `uncertain`), structured `reason`,
+`observed_at`, artifact references, performed/not-run checks, open questions and
+optional trusted acceptance. Missing or invalid evidence remains unverified.
+A finished process, answer prose, proposal approval or opened result cannot prove
+accepted goal completion. `completed` requires explicit trusted acceptance, a
+finished process and no unresolved questions or recorded non-passing checks; the
+current runtime does not supply an acceptance writer.
+
+Overnight results expose optional `execution_outcome` and `cancel_requested` after
+current-access projection. Review status is interpreted against the current
+proposal, including expiry. Web/mobile render change-decision captions and
+Keep/Undo only for accessible non-reflection rows with a proposal, staged steps
+or recorded changes. An informational answer's bookkeeping status is insufficient.
+Bulk controls require eligible change evidence; mixed review preserves the exact
+server finished-set IDs and decision tokens rather than silently filtering them.
+Orbyn's existing runtime/providers handle these lanes; the disabled optional
+external execution adapter adds no provider, scheduler or continuation guarantee.
 
 ### `GET /me/assistant/conversations/:id/history` (session)
 

@@ -43,3 +43,15 @@ known limits. Preserve failed attempts. Distinguish self-review from independent
 review, and local changes from committed/pushed/merged/deployed work. Use a scoped
 work record only when it helps a future handoff; do not recreate historical ADR
 queues as an active acceptance checklist.
+
+## Substantial workspace UI changes
+
+For a substantial redesign, record one scoped acceptance receipt for the changed
+candidate: find and act on representative work; cancel and return with drafts and
+focus intact; fail and recover without duplicate effects; inspect a relevant
+narrow layout and both themes. Use synthetic content and existing guarded fixture
+owners where possible. Include a bounded compatibility pass showing existing
+routes and object links remain reachable. Source/type/build checks support but do
+not replace rendered interaction evidence. Report unperformed native checks and
+unavailable build/feature identities explicitly. This does not authorize real
+user-data changes, provider calls, tests excluded above or a whole-app sweep.

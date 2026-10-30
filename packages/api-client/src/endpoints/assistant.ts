@@ -58,6 +58,9 @@ import {
   assistantHandoffSource,
   type AssistantIdea,
   assistantProfiles,
+  assistantRoutineRunsPage,
+  assistantRoutineRunsQuery,
+  type AssistantRoutineRunsQuery,
   assistantRulesInput,
   assistantRulesSnapshot,
   assistantSavedHistory,
@@ -270,7 +273,9 @@ export function callAiChats(
 }
 
 export function callProjectChat(this: OrbynClient, id: string) {
-  return this.request<AiChat>(`/ai/chats/${id}`);
+  return this.request<AiChat>(`/ai/chats/${id}`, {
+    headers: { "x-orbyn-outcomes": "1" },
+  });
 }
 
 export function callAiChat(
@@ -278,7 +283,11 @@ export function callAiChat(
   id: string,
   signal?: AbortSignal,
 ) {
-  return this.request<AiChat>(`/ai/chats/${id}`, { signal, fresh: true });
+  return this.request<AiChat>(`/ai/chats/${id}`, {
+    signal,
+    fresh: true,
+    headers: { "x-orbyn-outcomes": "1" },
+  });
 }
 
 /** Save a project chat after a reply; the same id updates the same chat. */
@@ -318,6 +327,25 @@ export function callDeleteProjectChat(this: OrbynClient, id: string) {
 
 export function callListAgentRoutines(this: OrbynClient) {
   return this.request<AgentRoutine[]>("/me/agent-routines");
+}
+
+export async function callListAgentRoutineRuns(
+  this: OrbynClient,
+  id: string,
+  input: AssistantRoutineRunsQuery = {},
+) {
+  const query = assistantRoutineRunsQuery.parse(input);
+  const params = new URLSearchParams({ limit: String(query.limit) });
+  if (query.cursor) params.set("cursor", query.cursor);
+  const page = assistantRoutineRunsPage.parse(
+    await this.request<unknown>(
+      `/me/agent-routines/${encodeURIComponent(id)}/runs?${params}`,
+      { fresh: true },
+    ),
+  );
+  if (page.routine_id !== id || page.runs.length > query.limit)
+    throw new Error("Run history does not match the requested routine.");
+  return page;
 }
 
 export function callCreateAgentRoutine(
@@ -644,6 +672,7 @@ export async function callAssistantProfiles(
   return assistantProfiles.parse(
     await this.request<unknown>("/me/assistant/profiles", {
       fresh: true,
+      headers: { "x-orbyn-outcomes": "1", "x-orbyn-review-origins": "1" },
       signal,
     }),
   );
@@ -809,7 +838,7 @@ export async function callAssistantConversationFeed(
   const page = assistantConversationPage.parse(
     await this.request<unknown>(
       `/me/assistant/conversations/${encodeURIComponent(destinationId)}?${new URLSearchParams({ after: query.after, limit: String(query.limit), ...(query.through ? { through: query.through } : {}) })}`,
-      { fresh: true, signal },
+      { fresh: true, signal, headers: { "x-orbyn-outcomes": "1" } },
     ),
   );
   if (
@@ -896,7 +925,7 @@ export async function callAssistantConversationEntry(
   const location = assistantConversationLocation.parse(
     await this.request<unknown>(
       `/me/assistant/conversations/${encodeURIComponent(destinationId)}/entries/${encodeURIComponent(entryId)}`,
-      { fresh: true, signal },
+      { fresh: true, signal, headers: { "x-orbyn-outcomes": "1" } },
     ),
   );
   if (

@@ -213,6 +213,117 @@ migrations, encryption keys and intent records; do not return to inline SMTP or
 start legacy notifier replicas that do not honor the pause flag. This procedure
 is a deployment requirement, not evidence that a production cutover has occurred.
 
+## Assistant apply recovery
+
+Apply migrations 298–299 before starting the compatible runtime. New chat and automation
+admissions explicitly set `ai_jobs.apply_tracking_version=1`; old rows and older
+admission writers keep null, with no backfill or stamping on resume. The current
+writer commits `apply_started_at` under its job lease before starting the effect
+transaction, which commits `apply_result` atomically with changes or a proposal.
+The database rejects that reviewed atomic writer on a tracked job without the
+marker, rolling back its effects. This guards the existing apply contract; it
+does not fence arbitrary writers that omit its receipt entirely.
+
+On an apply exception, primary reconciliation locks the same job, waits for any
+effect transaction, checks lease and current source/chat access, and validates the
+receipt. A confirmed receipt survives a lost commit acknowledgement. Missing,
+malformed, inaccessible or unavailable evidence remains unknown. Only a tracked
+job with positive current-writer knowledge, no marker and no receipt can establish
+that applying never began. A failed effect transaction can also record positive
+rollback evidence, provided COMMIT was never attempted and ROLLBACK was acknowledged.
+This evidence binds the exact apply marker and current lease. A new attempt clears
+it while renewing the marker. Failed COMMIT acknowledgement never qualifies for
+that path; failed rollback discards the connection. The runtime must not revise or repeat an uncertain
+apply. Internal `terminal_evidence` is optional, job-bound and not a retry command;
+older jobs stay unqualified rather than inheriting evidence from error prose.
+
+Migrations 298–299 alone do not enable a fresh-attempt scheduler. Preserve the columns,
+markers, receipts, current permissions and retained history during recovery or
+rollback. An older atomic apply writer encountering tracked unmarked work will
+fail its transaction; use a compatible runtime to reconcile or hold it, rather
+than dropping the constraint or clearing a marker. Coordinate execution workers
+before enabling any future automatic retry policy. Local source and guarded tests
+do not establish that a hosted rollout or worker cutover occurred.
+
+Explicit goal work requires migrations 300–301 before starting its API or compatible
+Background/Overnight consumers. It adds execution intent/frontier and attempt
+records around the existing `ai_jobs` queue; it does not create a second provider
+or planner queue, convert weekly check-ins, or start existing goals automatically.
+The API, runtime and worker must agree on the execution generation, stable unit and
+source/configuration checks. New Start is a person action, and accepted completion
+requires a separate first-party person attestation of current criteria and evidence.
+See [Assistant](assistant.md#explicit-goal-work) and the
+[API contract](api.md#explicit-goal-executions-session-mutations-authenticated-reads).
+
+Before a migration 301 cutover, stop and drain old Background/Overnight consumers.
+Their execution-wide settlement/admission code must not run against the new
+per-unit frontier. Apply the migration, then start compatible API/runtime/workers
+together. Migration 301 preserves settled history, keeps the current pending
+Review producer open, and replaces execution-wide ownership with one open attempt
+per unit. It also updates the database work-owner guard and adds the matching runner
+waiting-overlap predicate. Applying it locally does not establish a live production
+migration or worker deployment.
+
+A waiting question or approval parks its own unit and retains the same job,
+checkpoint and allowance reservation; independent criteria may proceed. Answer
+requeues that job. Pending Review retains the original producer/proposal while its
+terminal budget charge can already be settled. `processed_at` records frontier
+consumption separately from `settled_at`/`settled_tokens`; both are one-way records.
+The execution's current-job pointer is presentation only. Existing lane/night
+limits and cumulative attempt, estimated-token and deadline bounds apply across
+all work, read-only verification, versioned repair and parked reservations. Unknown
+usage keeps conservative accounting. Unknown effects, changed permission/configuration,
+pruned required evidence and unsupported repairs hold work instead of replaying a
+create operation. An open explicit execution excludes competing weekly/night
+check-in admission, and the work-owner guard still prevents simultaneous running
+jobs for one goal.
+
+Pause prevents new admissions; Stop invalidates the generation and requests
+cancellation of every queued, running or parked execution job without undoing
+committed effects. Controls lock retained jobs in stable order before the execution.
+Settlement must still charge each terminal or pruned attempt once after its
+current-job pointer is cleared, and must not reopen a stopped generation. If an
+API process ends after committing Stop but before finishing parked cancellation,
+the existing worker completes that cancellation without a provider call. Settling
+unchanged waiting questions or pending Review must not starve later terminal work.
+During recovery, preserve units, bound artifact IDs/versions, attempt lineage,
+settlement/consumption timestamps, hashes, reservations and acceptance records.
+Do not clear markers or relabel held work as complete to drain the queue. Deployment
+worker cutover, production query costs, full Open Duet parity and installed-native
+qualification require their own evidence; local source/tests do not establish them.
+
+Routine occurrence recovery requires migration 302 and compatible API, Background,
+Overnight and runtime writers. Stop/drain older consumers before cutover: old
+scanners do not understand open recovery ownership or intent versions. The migration
+adds a separate default-off policy and child attempts under the existing occurrence
+ledger; it does not backfill recovery eligibility or create another queue/provider.
+The original occurrence timestamp and first-job history remain unchanged.
+
+Preparation captures instruction, schedule, manual intent version, policy,
+provider/scope fingerprints and contextual destination/source-entry bindings. Queue
+admission rechecks that snapshot atomically with the first child. Canonical admission
+seeds known routine/turn provenance after binding delivery and before commit;
+runtime boundaries still require checked current/prior sources, and workspace reads
+are recorded before provider use. Do not bypass this gate for a new unchecked job.
+Scheduler progress and automatic exhaustion do not change manual intent; manual
+routine/configuration and retry-policy writers must increment it. A final occurrence
+can therefore recover after scheduler exhaustion without treating a person's Pause
+as permission to continue.
+
+Each occurrence has at most one unsettled child attempt. Charge it once, retain
+accounting after job pruning, and preserve its predecessor and terminal qualification.
+Only classified transient failures with confirmed no effects qualify for fresh
+attempts; applied/pending/uncertain outcomes remain held or in their existing Review
+flow. Token allowance and attempt count are cumulative. Deadline is fixed at initial
+admission, capped by the captured next scheduled occurrence, and never moved by
+backoff. Existing lane/night consent, windows and budgets remain independent gates.
+Occurrence Stop fences its generation and cancels all its jobs; expiry cancels
+parked/queued work with a distinct deadline cause. Neither action undoes effects or
+erases accounting. Preserve cancellation reason, intent versions, snapshots,
+reservations and immutable attempt lineage during recovery or rollback. This is a
+local migration/runtime contract, not evidence of a production deployment, real
+provider qualification or native interaction qualification.
+
 ## Assistant admission policy
 
 Migration 294 seeds one policy at revision 1, retaining the existing ceilings:
@@ -251,3 +362,29 @@ including sustained competing backlog, before choosing a scheduling or wait-time
 guarantee. The synthetic attribution fixture in
 `backend/tests/assistant-admission-policy.test.ts` demonstrates grouping and ages;
 it is not production fairness evidence. Current caps and queue order are retained.
+
+## Routine quiet-check evidence
+
+Quiet checks require migration 303 and compatible API and assistant workers. The
+watch is off by default and names at most twenty tasks or pages on an existing
+routine. It uses the existing provider connection and durable job runtime. A
+real watch-policy change advances routine intent and holds older recovery work;
+a repeated or unchanged save preserves the watch revision and intent.
+
+The first complete, stable check establishes a visible baseline. Later checks may
+stay quiet only when the lead explicitly requests no-change verification, every
+selected source has fresh server read receipts, all page continuations cover the
+same revision and digest, the current authorized projection still matches, and
+tracked execution proves there were no effects, decisions or useful reports.
+Questions, approval proposals, truncated provider inputs, missing reads, source or
+configuration changes, cancellation and failures remain visible. Historical
+source revision equality alone is not a delivery-suppression rule.
+
+Version one compares a task's own displayed record fields and notes, or a page's
+title and textual blocks. Child tasks, sessions, tags, joined labels, linked page
+content and files are separate sources. Imported, redacted, unsupported or
+truncated content cannot certify a complete read. Receipts contain coverage and
+hashes, not copied model output. Revoked or pruned history retains metadata while
+source names, identifiers and job/chat links are hidden. Preserve checks,
+receipt ranges and baseline lineage during retention or recovery; never promote
+an old run into a qualified baseline.

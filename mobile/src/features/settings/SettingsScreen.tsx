@@ -1,3 +1,4 @@
+import { AiConnectionsOverview } from "./AiConnectionsOverview";
 import { AgentWarmStartCards } from "../connections/AgentContext";
 import * as Crypto from "expo-crypto";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -32,6 +33,7 @@ import {
   durationText,
   statusHeadlines,
   type PlannerPrefs,
+  type WorkspacePreset,
   type PlannerPrefsInput,
   type User,
   type Session,
@@ -146,7 +148,7 @@ export function SettingsScreen(
 const CATEGORIES = [
   { id: "account", label: "Account" },
   { id: "planning", label: "Planning" },
-  { id: "assistants", label: "Assistants" },
+  { id: "assistants", label: "AI & connections" },
   { id: "connections", label: "Connections" },
   { id: "privacy", label: "Privacy" },
 ] as const;
@@ -192,6 +194,7 @@ function SettingsBody({
   onOpenStatus,
   onOpenPlanning,
   onOpenConnections,
+  onOpenAgentActivity,
   onOpenTags,
   onOpenHabits,
   onOpenSync,
@@ -201,6 +204,8 @@ function SettingsBody({
   onAccountDeleted,
   arrangement,
   onArrange,
+  presets = [],
+  onPresetsChange,
   preferencesReady = true,
   preferencesError = "",
   onReloadPreferences,
@@ -210,6 +215,8 @@ function SettingsBody({
   /** The one Arrange list (NAV-08), and saving it. */
   arrangement?: SidebarArrangement;
   onArrange?: (next: SidebarArrangement) => void;
+  presets?: WorkspacePreset[];
+  onPresetsChange?: (next: WorkspacePreset[]) => void;
   preferencesReady?: boolean;
   preferencesError?: string;
   onReloadPreferences?: () => void;
@@ -221,6 +228,7 @@ function SettingsBody({
   onOpenStatus: () => void;
   onOpenPlanning: () => void;
   onOpenConnections: () => void;
+  onOpenAgentActivity?: (lane: "background" | "overnight") => void;
   onOpenTags: () => void;
   onOpenHabits: () => void;
   /** Sync and devices: what's waiting on this phone, and where Orbyn is open. */
@@ -706,6 +714,30 @@ function SettingsBody({
           <ChatgptModelsSection userId={user?.id ?? ""} />
         </SettingsGroup>
         <SettingsGroup category="assistants" selected={category}>
+          <SettingsOverview>
+            <AiConnectionsOverview
+              userId={user?.id ?? ""}
+              visible={category === "assistants"}
+              onProviders={() => {
+                setCategory("account");
+                setFocus({
+                  key: sectionKey("AI connections & models"),
+                  seq: Date.now(),
+                });
+              }}
+              onAccess={onOpenConnections}
+              onRules={() =>
+                setFocus({
+                  key: sectionKey("Assistant rules"),
+                  seq: Date.now(),
+                })
+              }
+              onLimits={() =>
+                setFocus({ key: sectionKey("Work limits"), seq: Date.now() })
+              }
+              onOpenActivity={onOpenAgentActivity}
+            />
+          </SettingsOverview>
           <AgentWarmStartCards busy={busy} run={act} />
           <AssistantRulesSection userId={user?.id ?? ""} />
           <AssistantBudgetSection userId={user?.id ?? ""} />
@@ -827,6 +859,44 @@ function SettingsBody({
             <StartChoice />
           </SettingsSection>
 
+          {onPresetsChange && (
+            <SettingsSection title="Workspace presets">
+              <Text style={shared.small}>
+                Combine workspace shortcuts while keeping your projects and
+                saved views.
+              </Text>
+              {(["engineer", "student"] as const).map((preset) => (
+                <View key={preset} style={s.preference}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.prefTitle}>
+                      {preset === "engineer" ? "Engineer" : "Student"}
+                    </Text>
+                    <Text style={shared.small}>
+                      {preset === "engineer"
+                        ? "Project work, specifications and decisions"
+                        : "Course projects, source material and review"}
+                    </Text>
+                  </View>
+                  <Switch
+                    disabled={!preferencesReady}
+                    value={presets.includes(preset)}
+                    accessibilityLabel={`${preset === "engineer" ? "Engineer" : "Student"} preset`}
+                    onValueChange={(on) =>
+                      onPresetsChange(
+                        on
+                          ? [
+                              ...presets.filter((value) => value !== preset),
+                              preset,
+                            ]
+                          : presets.filter((value) => value !== preset),
+                      )
+                    }
+                  />
+                </View>
+              ))}
+              {preferencesError && <ErrorBanner error={preferencesError} />}
+            </SettingsSection>
+          )}
           {arrangement && onArrange && (
             <SettingsSection title="Arrange">
               {preferencesError && <ErrorBanner error={preferencesError} />}

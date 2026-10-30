@@ -954,7 +954,7 @@ test("publication defers through quiet hours without publishing or consuming the
   );
 });
 
-test("unchanged-source checks suppress rewritten summaries, while a real source revision publishes", async () => {
+test("source revision equality alone never suppresses a fresh useful report", async () => {
   const f = await fixture();
   const doc = randomUUID();
   await pool.query(
@@ -991,7 +991,7 @@ test("unchanged-source checks suppress rewritten summaries, while a real source 
   };
   assert.equal((await run("First wording")).published, true);
   const repeated = await run("Different model wording");
-  assert.equal(repeated.published, false);
+  assert.equal(repeated.published, true);
   assert.equal(
     (
       await pool.query(
@@ -999,7 +999,7 @@ test("unchanged-source checks suppress rewritten summaries, while a real source 
         [repeated.intent],
       )
     ).rows[0].reason,
-    "unchanged",
+    null,
   );
   await pool.query(
     "UPDATE docs SET version=version+1,updated_at=clock_timestamp() WHERE id=$1",
@@ -1009,7 +1009,7 @@ test("unchanged-source checks suppress rewritten summaries, while a real source 
   assert.equal(
     (await conversationFeed(pool, f.owner, f.destination.id, {})).entries
       .length,
-    2,
+    3,
   );
 });
 

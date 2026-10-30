@@ -1,21 +1,31 @@
+import { PageAgentWork } from "./PageAgentWork";
+import { CurrentAgentWork } from "./CurrentAgentWork";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { AssistantProfileStore } from "@orbyn/api-client";
 import { ASSISTANT_ACTIVITY_LABELS } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { onSessionChange, session } from "../../lib/session";
 import { Character } from "../../components/Character";
-import { AssistantHandoffAction } from "./AssistantHandoffAction";
+import { AgentResult } from "./AgentResult";
+import { LaneWorkControls } from "./LaneWorkControls";
 import "./assistant-agents.css";
 
 /** The background agent has its own work surface, independent of chat and night review. */
 export function BackgroundView({
   onOpenChat,
+  onOpenPage,
 }: {
   onOpenChat: (id: string) => void;
+  onOpenPage?: (id: string) => void;
 }) {
+  const binding = () => {
+    const value = session.binding();
+    return `${value.generation}:${value.token}`;
+  };
+  const owner = useSyncExternalStore(onSessionChange, binding);
   const store = useMemo(
-    () => new AssistantProfileStore(client, session.get),
-    [],
+    () => new AssistantProfileStore(client, binding),
+    [owner],
   );
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   useEffect(() => {
@@ -36,12 +46,27 @@ export function BackgroundView({
   const profile = snapshot.data?.profiles.find(
     (item) => item.lane === "background",
   );
+  const needsReview =
+    profile?.outputs.filter(
+      (output) =>
+        output.state === "failed" ||
+        (output.execution_outcome &&
+          ["partial", "waiting", "failed", "interrupted", "uncertain"].includes(
+            output.execution_outcome.outcome,
+          )),
+    ) ?? [];
+  const history =
+    profile?.outputs.filter((output) => !needsReview.includes(output)) ?? [];
   return (
     <section
       className="assistant-background-workspace"
       aria-label="Background agent"
     >
       <header className="assistant-background-head">
+        <div>
+          <h2>Background work</h2>
+          <p className="muted">Results, decisions and current activity</p>
+        </div>
         <button
           type="button"
           className="secondary"
@@ -87,7 +112,7 @@ export function BackgroundView({
               </div>
             </header>
             {!profile.runtime.reporting && (
-              <p role="status">Worker not responding</p>
+              <p role="status">Worker heartbeat unavailable</p>
             )}
             {(profile.counts.working > 0 ||
               profile.counts.waiting > 0 ||
@@ -109,53 +134,91 @@ export function BackgroundView({
               </p>
             )}
           </div>
+          <LaneWorkControls lane="background" />
           <div className="assistant-background-columns">
             <section aria-labelledby="background-results-title">
-              <h3 id="background-results-title">Results</h3>
-              {profile.outputs.length === 0 ? (
-                <p className="muted">No results yet</p>
-              ) : (
-                <ul className="assistant-agent-outputs">
-                  {profile.outputs.map((output) => (
-                    <li key={output.job_id}>
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() => onOpenChat(output.chat_id)}
-                      >
-                        {output.title || "Completed work"}
-                      </button>
-                      <time dateTime={output.completed_at}>
-                        {new Date(output.completed_at).toLocaleString()}
-                      </time>
-                      <AssistantHandoffAction
-                        jobId={output.job_id}
-                        title={output.title}
-                        lane="background"
-                        existing={output.handoff}
-                        onOpenChat={onOpenChat}
-                      />
-                    </li>
+              <h3 id="background-results-title">Review outcomes</h3>
+              {needsReview.length ? (
+                needsReview.map((output) => (
+                  <AgentResult
+                    key={output.job_id}
+                    output={output}
+                    lane="background"
+                    onOpenChat={onOpenChat}
+                  />
+                ))
+              ) : profile.outputs.length ? (
+                <p className="muted">
+                  No result decisions in the latest output window.
+                </p>
+              ) : null}
+              {profile.page_runs && (
+                <PageAgentWork
+                  runs={profile.page_runs}
+                  truncated={profile.page_runs_truncated}
+                  onRefresh={store.refresh}
+                  onOpenPage={
+                    onOpenPage
+                      ? (id) => {
+                          if (binding() === owner) onOpenPage(id);
+                        }
+                      : undefined
+                  }
+                />
+              )}
+              {profile.work &&
+                (profile.work.length > 0 ||
+                  !(profile.page_runs ?? []).some((run) =>
+                    ["queued", "running", "waiting"].includes(run.state),
+                  )) && (
+                  <CurrentAgentWork
+                    work={profile.work}
+                    truncated={profile.work_truncated}
+                    onOpenChat={onOpenChat}
+                    onRefresh={store.refresh}
+                  />
+                )}
+              {history.length > 0 && (
+                <details className="agent-result-history">
+                  <summary>
+                    Finished run history · latest {history.length}
+                  </summary>
+                  {history.map((output) => (
+                    <AgentResult
+                      key={output.job_id}
+                      output={output}
+                      lane="background"
+                      onOpenChat={onOpenChat}
+                    />
                   ))}
-                </ul>
+                </details>
+              )}
+              {!profile.outputs.length && (
+                <p className="muted">No saved results yet.</p>
               )}
             </section>
             <section aria-labelledby="background-activity-title">
-              <h3 id="background-activity-title">Activity</h3>
-              {profile.recent_activity.length === 0 ? (
-                <p className="muted">No recent activity</p>
-              ) : (
-                <ul className="assistant-agent-activity">
-                  {profile.recent_activity.map((event) => (
-                    <li key={event.sequence}>
-                      <span>{ASSISTANT_ACTIVITY_LABELS[event.kind]}</span>
-                      <time dateTime={event.created_at}>
-                        {new Date(event.created_at).toLocaleString()}
-                      </time>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <h3 id="background-activity-title">Runtime activity</h3>
+              <p className="muted">
+                Observed {new Date(snapshot.data!.observed_at).toLocaleString()}
+              </p>
+              <details>
+                <summary>Latest activity events</summary>
+                {profile.recent_activity.length === 0 ? (
+                  <p className="muted">No recent activity</p>
+                ) : (
+                  <ul className="assistant-agent-activity">
+                    {profile.recent_activity.map((event) => (
+                      <li key={event.sequence}>
+                        <span>{ASSISTANT_ACTIVITY_LABELS[event.kind]}</span>
+                        <time dateTime={event.created_at}>
+                          {new Date(event.created_at).toLocaleString()}
+                        </time>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </details>
             </section>
           </div>
         </>

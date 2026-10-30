@@ -9,6 +9,9 @@ const { ProviderError } =
   await import("../src/modules/ai/providers/adapters.js");
 const { TOOL_SPECS } = await import("../src/modules/ai/agent/tools.js");
 
+const { runAgent } = await import("../src/modules/ai/agent/loop.js");
+const { AI_PROVIDERS, SYSTEM_ROLES } = await import("@orbyn/core");
+
 const base = {
   kind: "openai-compatible",
   format: "openai" as const,
@@ -208,7 +211,7 @@ test("JSON fallback without a provider schema still describes its tools", async 
   assert.match(sent[0].body.messages[0].content, /"title":\{"type":"string"\}/);
 });
 
-test("the JSON protocol reads answers, and prose as the answer", async (t) => {
+test("the JSON protocol reads schema answers and legacy unstructured prose", async (t) => {
   const ai = { ...base, structuredOutput: "json_schema" as const };
   reply(t, {
     choices: [
@@ -230,7 +233,7 @@ test("the JSON protocol reads answers, and prose as the answer", async (t) => {
   assert.deepEqual(out, { text: "**Hi**\n- one", toolCalls: [] });
   t.mock.restoreAll();
   reply(t, { choices: [{ message: { content: "Your week is clear." } }] });
-  out = await step(ai, history, TOOL_SPECS, {
+  out = await step(base, history, TOOL_SPECS, {
     mode: "json",
     toolsAllowed: true,
     signal,
@@ -373,9 +376,6 @@ test("strict schemas require every field and let optional ones be null", () => {
 
 // ---- runAgent: the loop, and the fixed graph for Matilda ---------------------
 // These turns run no tools, so nothing touches the database.
-
-const { runAgent } = await import("../src/modules/ai/agent/loop.js");
-const { AI_PROVIDERS, SYSTEM_ROLES } = await import("@orbyn/core");
 
 /** An OpenAI-style reply with plain text content. */
 const answer = (content: string) => ({ choices: [{ message: { content } }] });
@@ -584,4 +584,61 @@ test("legacy JSON actions are not turned into planner changes", async (t) => {
   assert.equal(result.legacy, false);
   assert.equal(result.actions.length, 0);
   assert.equal(result.summary, legacy);
+});
+
+test("schema tool replies reject ambiguous JSON instead of exposing it as prose", async (t) => {
+  const content =
+    '{"finish":{"answer":"prefix cut\n\n' +
+    JSON.stringify({
+      finish: { answer: "The paper kite is blue.", steps: [] },
+      answer: null,
+    });
+  reply(t, {
+    id: "invalid-completed",
+    usage: { prompt_tokens: 17, completion_tokens: 11 },
+    choices: [{ message: { content }, finish_reason: "stop" }],
+  });
+  let completions = 0,
+    usage = 0;
+  await assert.rejects(
+    step(
+      {
+        ...base,
+        structuredOutput: "json_schema",
+        recordCompletion: async () => {
+          completions++;
+        },
+        recordUsage: async () => {
+          usage++;
+        },
+      },
+      history,
+      TOOL_SPECS,
+      { mode: "json", toolsAllowed: true, signal },
+    ),
+    (error) =>
+      error instanceof ProviderError &&
+      error.reason === "invalid_protocol" &&
+      error.receivedReplyBytes === Buffer.byteLength(content),
+  );
+  assert.equal(completions, 1);
+  assert.equal(usage, 1);
+});
+test("JSON tool replies cut off by length never execute their apparently valid prefix", async (t) => {
+  const content = JSON.stringify({
+    search_items: { query: "gym" },
+    answer: null,
+  });
+  reply(t, { choices: [{ message: { content }, finish_reason: "length" }] });
+  await assert.rejects(
+    step({ ...base, structuredOutput: "json_schema" }, history, TOOL_SPECS, {
+      mode: "json",
+      toolsAllowed: true,
+      signal,
+    }),
+    (error) =>
+      error instanceof ProviderError &&
+      error.reason === "truncated" &&
+      error.receivedReplyBytes === Buffer.byteLength(content),
+  );
 });
