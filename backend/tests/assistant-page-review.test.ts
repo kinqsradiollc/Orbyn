@@ -254,6 +254,70 @@ test("twenty active plus five terminal page rows do not truncate each other and 
   assert.equal(page.profiles[0].page_runs_truncated, true);
   assert.ok(!page.profiles[0].page_runs!.some((r) => r.id === hidden.run.id));
 });
+test("one eligibility statement retains complete counts and deterministic tied row ordering", async () => {
+  const p = await person();
+  const expected: { id: string; state: string }[] = [];
+  for (const state of ["waiting", "running", "queued", "done"] as const) {
+    const count = state === "done" ? 7 : 5;
+    for (let index = 0; index < count; index++) {
+      const value = await pageRun(p, {
+        state,
+        expired: state === "running" && index < 2,
+      });
+      expected.push({ id: value.run.id, state });
+    }
+  }
+  await pool.query(
+    "UPDATE assistant_page_runs SET updated_at='2026-10-30T12:00:00.123456Z' WHERE user_id=$1",
+    [p.id],
+  );
+  const statements: string[] = [];
+  const result = await readTransaction(
+    (db) =>
+      readAssistantPageReview(
+        {
+          query: ((...args: unknown[]) => {
+            statements.push(String(args[0]));
+            return Reflect.apply(db.query, db, args);
+          }) as typeof db.query,
+        },
+        p.id,
+        "background",
+        new Date(),
+      ),
+    { primary: true, isolation: "repeatable read", jit: false },
+  );
+  assert.equal(
+    statements.filter((sql) => sql.includes("FROM assistant_page_runs r"))
+      .length,
+    1,
+    "counts and selected rows share one eligibility evaluation",
+  );
+  assert.deepEqual(result.counts, {
+    working: 3,
+    waiting: 5,
+    queued: 5,
+    recovering: 2,
+  });
+  const ids = (state: string) =>
+    expected
+      .filter((row) => row.state === state)
+      .map((row) => row.id)
+      .sort();
+  assert.deepEqual(
+    result.runs.map((row) => row.id),
+    [
+      ...ids("waiting"),
+      ...ids("running"),
+      ...ids("queued"),
+      ...ids("done").slice(0, 5),
+    ],
+  );
+  assert.equal(result.truncated, true);
+  assert.ok(
+    result.runs.every((row) => row.updated_at === "2026-10-30T12:00:00.123Z"),
+  );
+});
 test("current project and grant/rule/privacy authority control titles and counts without effect-guard locks", async () => {
   const p = await person(),
     pr = (

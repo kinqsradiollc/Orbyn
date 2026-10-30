@@ -448,3 +448,37 @@ test("shared 204 replies retain undefined and settle cleanly", async () => {
   assert.deepEqual(await replies, [undefined, undefined]);
   assert.equal(count, 1);
 });
+
+// React Native supplies the abort-controller signal, without the newer browser
+// convenience method or a reason. Exercise that shape without replacing globals.
+test("legacy native signals can read and cancel without throwIfAborted or reason", async () => {
+  const hold = gate();
+  const stop = new AbortController();
+  Object.defineProperty(stop.signal, "throwIfAborted", { value: undefined });
+  Object.defineProperty(stop.signal, "reason", { value: undefined });
+  let count = 0;
+  const api = client(async () => {
+    count++;
+    if (count === 1) return Response.json({ read: true });
+    await hold.waiting;
+    return Response.json({ read: true });
+  });
+  assert.deepEqual(await api.request("/me", { signal: stop.signal }), {
+    read: true,
+  });
+  const cancelled = api.request("/me", { signal: stop.signal });
+  const failure = assert.rejects(cancelled, { name: "AbortError" });
+  await tick();
+  stop.abort();
+  await failure;
+  await assert.rejects(api.request("/me", { signal: stop.signal }), {
+    name: "AbortError",
+  });
+  assert.equal(
+    count,
+    2,
+    "an already cancelled native reader must not dispatch",
+  );
+  hold.release();
+  await tick();
+});
