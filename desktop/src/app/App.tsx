@@ -3045,6 +3045,10 @@ function WorkspaceController({
                   <OverviewView
                     onOpenPage={(id) => openPage(id)}
                     {...listProps}
+                    itemsPhase={planner.itemsPhase}
+                    onRetryItems={() =>
+                      void refresh({ force: true }).catch(report)
+                    }
                     onOpenAgentOutput={
                       canOpenAgentOutput ? openAgentOutput : undefined
                     }

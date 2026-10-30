@@ -43,6 +43,8 @@ type Props = {
   onOpenProject: (id: string) => void;
   onOpenAgentOutput?: (id: string) => void;
   items: Item[];
+  itemsPhase?: "loading" | "ready" | "error";
+  onRetryItems?: () => void;
   busy: boolean;
   canWrite: (item: Item) => boolean;
   onToggle: (item: Item) => void;
@@ -66,6 +68,8 @@ type Props = {
 
 export function OverviewView({
   items,
+  itemsPhase = "ready",
+  onRetryItems,
   busy,
   canWrite,
   onToggle,
@@ -196,17 +200,30 @@ export function OverviewView({
       <>
         {workspaceShortcuts}
         {morningReview}
-        <section className="card">
-          <EmptyState
-            icon={Sun}
-            title="No tasks yet"
-            body="Add a task or event."
-          >
-            <button className="primary" onClick={onNewItem}>
-              <Plus size={15} /> Add task
-            </button>
-          </EmptyState>
-        </section>
+        {itemsPhase !== "ready" ? (
+          <section className="card" aria-label="Your tasks">
+            <p role={itemsPhase === "error" ? "alert" : "status"}>
+              {itemsPhase === "error"
+                ? "Your tasks couldn't be loaded. Try again."
+                : "Loading your tasks…"}
+            </p>
+            {itemsPhase === "error" && onRetryItems && (
+              <button onClick={onRetryItems}>Retry</button>
+            )}
+          </section>
+        ) : (
+          <section className="card">
+            <EmptyState
+              icon={Sun}
+              title="No tasks yet"
+              body="Add a task or event."
+            >
+              <button className="primary" onClick={onNewItem}>
+                <Plus size={15} /> Add task
+              </button>
+            </EmptyState>
+          </section>
+        )}
         <AssistantIdeasCard onReview={() => onNavigate("Review")} />
       </>
     );

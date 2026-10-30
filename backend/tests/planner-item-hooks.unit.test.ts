@@ -178,6 +178,7 @@ function fixture(platform: Platform) {
     setToken: "token",
     setMaintenance: "maintenance",
     setLoading: "loading",
+    setItemRead: "itemRead",
     setRefreshing: "refreshing",
   }))
     values[setter] = (value: unknown) => {
@@ -626,4 +627,17 @@ test("mobile: proven lost access clears glance before a failing item read; gener
   g.failItems();
   await assert.rejects(g.refresh(), /companion failed/);
   assert.equal(g.calls.includes("clear-glance"), false);
+});
+
+test("desktop: initial item failure stays distinct from an empty successful read", async () => {
+  const f = fixture("desktop");
+  f.failItems();
+  await assert.rejects(f.refresh(), /companion failed/);
+  assert.equal((f.state.itemRead as { phase: string }).phase, "error");
+  const g = fixture("desktop");
+  await g.refresh();
+  assert.equal((g.state.itemRead as { phase: string }).phase, "ready");
+  g.failItems();
+  await assert.rejects(g.refresh(), /companion failed/);
+  assert.equal((g.state.itemRead as { phase: string }).phase, "ready");
 });

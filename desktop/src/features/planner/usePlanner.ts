@@ -51,6 +51,10 @@ export function usePlanner() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [itemRead, setItemRead] = useState<{
+    generation: number;
+    phase: "loading" | "ready" | "error";
+  } | null>(null);
   /** Maintenance mode, for the banner. Null until the first check. */
   const [maintenance, setMaintenance] = useState<Maintenance | null>(null);
   const tokenRef = useRef(token);
@@ -188,6 +192,11 @@ export function usePlanner() {
         session.binding().token === token &&
         session.binding().generation === generation;
       const seq = ++refreshSeq.current;
+      setItemRead((previous) =>
+        previous?.generation === generation && previous.phase !== "error"
+          ? previous
+          : { generation, phase: "loading" },
+      );
       if (!options?.silent) setLoading(true);
       try {
         const [n, t] = await Promise.allSettled([
@@ -231,7 +240,19 @@ export function usePlanner() {
           if (t.status === "fulfilled") setTeams(t.value);
           setRevision((r) => r + 1);
         }
-        if (read.status === "rejected") throw read.reason;
+        if (read.status === "rejected") {
+          setItemRead((previous) =>
+            previous?.generation === generation && previous.phase === "ready"
+              ? previous
+              : { generation, phase: "error" },
+          );
+          throw read.reason;
+        }
+        setItemRead((previous) =>
+          previous?.generation === generation && previous.phase === "ready"
+            ? previous
+            : { generation, phase: "ready" },
+        );
         for (const result of [n, t])
           if (result.status === "rejected") throw result.reason;
       } finally {
@@ -428,6 +449,10 @@ export function usePlanner() {
     setError,
     busy,
     loading,
+    itemsPhase:
+      itemRead?.generation === session.binding().generation
+        ? itemRead.phase
+        : ("loading" as const),
     maintenance,
     applyMaintenance,
     refresh,
