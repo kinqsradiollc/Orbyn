@@ -1,3 +1,4 @@
+import { RoutineQuietPolicyEditor } from "./RoutineQuietCheck";
 import { RoutineRetryPolicyEditor } from "./RoutineRecovery";
 import { GoalWorkSheet } from "./GoalWorkSheet";
 import { RoutineRunHistory } from "./RoutineRunHistory";
@@ -693,10 +694,16 @@ function UpcomingBody({
                 />
               </View>
               {form.id ? (
-                <RoutineRetryPolicyEditor
-                  routineId={form.id}
-                  disabled={saving || routineDraftKey !== routineBaseline}
-                />
+                <>
+                  <RoutineRetryPolicyEditor
+                    routineId={form.id}
+                    disabled={saving || routineDraftKey !== routineBaseline}
+                  />
+                  <RoutineQuietPolicyEditor
+                    routineId={form.id}
+                    disabled={saving || routineDraftKey !== routineBaseline}
+                  />
+                </>
               ) : (
                 <Text style={shared.small}>
                   Retries are off. Save this routine before configuring bounded

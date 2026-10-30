@@ -1,3 +1,4 @@
+import { RoutineQuietChecks } from "./RoutineQuietCheck";
 import { RoutineOccurrenceDetails } from "./RoutineRecovery";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -164,6 +165,12 @@ function HistoryBody({
               )}
               <small>Observed {when(run.last_observed_at)}</small>
               <RoutineOccurrenceDetails
+                routineId={routineId}
+                occurrenceId={run.id}
+                disabled={disabled}
+                onOpenChat={onOpenChat}
+              />
+              <RoutineQuietChecks
                 routineId={routineId}
                 occurrenceId={run.id}
                 disabled={disabled}

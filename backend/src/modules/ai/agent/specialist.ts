@@ -1,3 +1,4 @@
+import type { QuietReadEvidence } from "../../assistant-workspace/quiet-projection.js";
 import { z } from "zod";
 import { ASSISTANT_TOOL_DESCRIPTIONS } from "../../../capabilities/assistant.js";
 import { registry } from "../../../capabilities/index.js";
@@ -153,6 +154,8 @@ export async function runSpecialist(input: {
   resume?: SpecialistCheckpoint;
   checkpoint?: (value: SpecialistCheckpoint) => Promise<void>;
   recordSources?: (value: unknown, targets?: string[]) => Promise<void>;
+  recordQuietReads?: (evidence: QuietReadEvidence[]) => Promise<void>;
+  onReadCoverageLimited?: () => Promise<void>;
   beforeProvider?: () => Promise<void>;
 }): Promise<SpecialistReport> {
   const definition = SPECIALISTS[input.task.specialist];
@@ -249,6 +252,7 @@ export async function runSpecialist(input: {
           args,
           {
             primary: true,
+            recordQuietReads: input.recordQuietReads,
             log: (error) => input.log?.error({ err: error }, "MCP read failed"),
           },
         );
@@ -383,6 +387,7 @@ export async function runSpecialist(input: {
         forceToolLoop: true,
         signal: input.signal,
         tokenBudget: input.tokenBudget,
+        onReadCoverageLimited: input.onReadCoverageLimited,
       },
     );
   } catch (error) {

@@ -101,6 +101,8 @@ export type AgentLoopCheckpoint = {
 export type AgentLoopOptions = {
   /** Revalidate admitted private context immediately before every provider attempt. */
   beforeProvider?: () => Promise<void>;
+  /** A fitted provider request lost read content; it cannot prove complete coverage. */
+  onReadCoverageLimited?: () => Promise<void>;
   resume?: AgentLoopCheckpoint;
   /** Replay an already completed tool before retry/budget guards. */
   completedTool?: (call: ToolCall) => LoopToolResult | undefined;
@@ -322,6 +324,20 @@ export async function runAgent(
           ...(options.signal ? [options.signal] : []),
         ]);
         const fittedMessages = fit(messages, ai);
+        if (
+          options.onReadCoverageLimited &&
+          messages.some(
+            (original) =>
+              original.role === "tool" &&
+              !fittedMessages.some(
+                (fitted) =>
+                  fitted.role === "tool" &&
+                  fitted.tool_call_id === original.tool_call_id &&
+                  fitted.content === original.content,
+              ),
+          )
+        )
+          await options.onReadCoverageLimited();
         let inputCharge = 0;
         if (
           options.tokenBudget &&

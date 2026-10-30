@@ -1,3 +1,4 @@
+import { RoutineQuietPolicyEditor } from "./RoutineQuietCheck";
 import { RoutineRetryPolicyEditor } from "./RoutineRecovery";
 import { GoalWorkSheet } from "./GoalWorkSheet";
 import { RoutineRunHistory } from "./RoutineRunHistory";
@@ -966,10 +967,16 @@ function UpcomingBody({
           )}
           {goalForm ? goalFields : routineFields}
           {routineForm && routineForm !== "new" && (
-            <RoutineRetryPolicyEditor
-              routineId={routineForm}
-              disabled={saving || routineDraftKey !== routineBaseline}
-            />
+            <>
+              <RoutineRetryPolicyEditor
+                routineId={routineForm}
+                disabled={saving || routineDraftKey !== routineBaseline}
+              />
+              <RoutineQuietPolicyEditor
+                routineId={routineForm}
+                disabled={saving || routineDraftKey !== routineBaseline}
+              />
+            </>
           )}
           {routineForm === "new" && (
             <p className="muted">

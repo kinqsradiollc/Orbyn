@@ -1,3 +1,9 @@
+import { recordQuietReads, type QuietCheckBinding } from "./quiet-check.js";
+import {
+  prepareRoutineQuietCheck,
+  recordRoutineQuietCheck,
+  finalizeRoutineQuietCheck,
+} from "../../assistant-workspace/routine-quiet-checks.js";
 import {
   checkRoutineRecoveryBoundary,
   type RoutineRecoveryBinding,
@@ -240,6 +246,7 @@ export type AssistantAutomation = {
   kind: "idea" | "goal" | "routine" | "task" | "night" | "handoff";
   goal_execution?: GoalExecutionBinding;
   routine_recovery?: RoutineRecoveryBinding;
+  routine_quiet?: QuietCheckBinding;
   recipient_lane?: "background" | "overnight";
   handoff_id?: string;
   night_id?: string;
@@ -979,6 +986,24 @@ async function finishJob(
             ? "deadline"
             : "finished",
     });
+    const quietResult = await finalizeRoutineQuietCheck(db, user.id, jobId, {
+      requested: state.no_change_requested === true,
+      terminal:
+        terminal.cause === "finished" && !state.completion_limited
+          ? "succeeded"
+          : terminal.cause === "stopped"
+            ? "cancelled"
+            : "failed",
+      effects: terminal.effects,
+      hasUsefulOutput: !!state.answer?.trim() || state.reports.length > 0,
+      hasDecision:
+        state.quiet_coverage_limited === true ||
+        !!state.waiting ||
+        state.plan.length > 0 ||
+        state.selected_steps.length > 0 ||
+        outcome === "pending",
+    });
+    if (quietResult && state.no_change_requested) summary = quietResult.summary;
     await finishChatTurn(
       user.id,
       request.chat_id,
@@ -1285,6 +1310,25 @@ export async function startAssistantAutomation(input: {
   ).rows[0];
   if (!row) return null;
   const user = row as UserRow;
+  const routineId =
+    (input.automation.source_kind ?? input.automation.kind) === "routine"
+      ? input.automation.id
+      : undefined;
+  const quietPrepared = routineId
+    ? await prepareRoutineQuietCheck(
+        input.db,
+        input.userId,
+        routineId,
+        admissionLane,
+      )
+    : null;
+  if (quietPrepared) {
+    input.automation = {
+      ...input.automation,
+      routine_quiet: quietPrepared.binding,
+    };
+    input.message += `\n\nThis routine has a finite quiet check. Read every selected task record or every block of each selected page using fetch and its next_block continuations: ${quietPrepared.sources.map((s) => `${s.kind}:${s.id}`).join(", ")}. The watch covers each task's own displayed fields and notes, or each page's own title and textual blocks; child tasks, sessions, linked content and files are separate sources. If all required reads complete and there are no findings, questions or proposed changes, use report_no_change with empty arguments. Orbyn verifies coverage and changes; otherwise finish with the useful result or what remains unchecked.`;
+  }
   const chatId = randomUUID();
   const turnId = randomUUID();
   const history = await beginChatTurn(
@@ -1339,13 +1383,32 @@ export async function startAssistantAutomation(input: {
       )
     ).rows[0];
     if (row && input.onQueued) await input.onQueued(db, row.id);
+    if (row && quietPrepared) {
+      const occurrence =
+        input.automation.routine_recovery?.occurrence_id ??
+        (
+          await db.query<{ id: string }>(
+            "SELECT id FROM assistant_routine_runs WHERE routine_id=$1 AND owner_id=$2 AND job_id=$3",
+            [routineId, user.id, row.id],
+          )
+        ).rows[0]?.id;
+      await recordRoutineQuietCheck(
+        db,
+        user.id,
+        row.id,
+        quietPrepared,
+        occurrence,
+      );
+    }
     let scheduleRoute:
       Awaited<ReturnType<typeof scheduledConversationRoute>> | undefined;
     const scheduleKind = input.automation.source_kind ?? input.automation.kind;
     if (
       row &&
       !input.deliveryOrigin &&
-      (!input.deliveryDestinationId || input.automation.routine_recovery) &&
+      (!input.deliveryDestinationId ||
+        input.automation.routine_recovery ||
+        input.automation.routine_quiet) &&
       input.automation.id &&
       (scheduleKind === "task" ||
         scheduleKind === "goal" ||
@@ -1384,7 +1447,11 @@ export async function startAssistantAutomation(input: {
           ? `${input.automation.source_kind ?? input.automation.kind}:${input.automation.id}`
           : undefined,
       });
-    if (row && input.automation.routine_recovery && input.automation.id) {
+    if (
+      row &&
+      (input.automation.routine_recovery || input.automation.routine_quiet) &&
+      input.automation.id
+    ) {
       // Only the routine identity and admitted conversation dependencies are
       // known here. Context reads append their provenance before any provider call.
       await db.query(
@@ -1395,6 +1462,11 @@ export async function startAssistantAutomation(input: {
         `INSERT INTO assistant_job_sources(job_id,source_kind,source_id) SELECT $1,source_kind,source_id FROM assistant_chat_sources WHERE chat_id=$2 AND turn_id=$3 ON CONFLICT DO NOTHING`,
         [row.id, chatId, turnId],
       );
+      for (const source of quietPrepared?.sources ?? [])
+        await db.query(
+          "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+          [row.id, source.kind, source.id],
+        );
       await db.query(
         "UPDATE ai_jobs SET sources_checked=true WHERE id=$1 AND user_id=$2",
         [row.id, user.id],
@@ -1444,6 +1516,13 @@ async function waitFor(
       ],
     );
     if (!parked.rowCount) return false;
+    await finalizeRoutineQuietCheck(db, user.id, jobId, {
+      requested: envelope.state.no_change_requested === true,
+      terminal: "waiting",
+      effects: "none",
+      hasUsefulOutput: false,
+      hasDecision: true,
+    });
     await markTask(
       jobId,
       request,
@@ -2105,10 +2184,21 @@ export async function runAssistantJob(
               : currentMessage,
             history: request.history,
             goalExecution: request.automation?.goal_execution,
+            quietCheck: !!request.automation?.routine_quiet,
+            recordQuietReads: request.automation?.routine_quiet
+              ? (evidence) =>
+                  recordQuietReads(
+                    user.id,
+                    jobId,
+                    request.automation!.routine_quiet!,
+                    evidence,
+                  )
+              : undefined,
             beforeProvider:
               request.conversation_context ||
               request.automation?.goal_execution ||
-              request.automation?.routine_recovery
+              request.automation?.routine_recovery ||
+              request.automation?.routine_quiet
                 ? async () => {
                     await checkGoalExecutionBoundary(
                       user.id,
@@ -2227,7 +2317,7 @@ export async function runAssistantJob(
         if (!(await parked())) throw new Error("stopped");
         return;
       }
-      if (!result.state.answer)
+      if (!result.state.answer && !result.state.no_change_requested)
         result.state.answer = "I could not finish the request within this run.";
       if (!result.state.selected_steps.length) {
         await trace.flush();

@@ -1,3 +1,4 @@
+import type { QuietReadEvidence } from "../../assistant-workspace/quiet-projection.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ASSISTANT_TOOL_DESCRIPTIONS } from "../../../capabilities/assistant.js";
@@ -92,6 +93,8 @@ export type LeadWaiting =
     };
 
 export type LeadState = {
+  no_change_requested?: boolean;
+  quiet_coverage_limited?: boolean;
   goal_result?: z.output<typeof goalUnitResult>;
   original_request: string;
   memory: string;
@@ -229,9 +232,15 @@ export async function runLead(input: {
   signal?: AbortSignal;
   checkpoint?: () => Promise<void>;
   recordSources?: (value: unknown, targets?: string[]) => Promise<void>;
+  recordQuietReads?: (evidence: QuietReadEvidence[]) => Promise<void>;
+  quietCheck?: boolean;
   beforeProvider?: () => Promise<void>;
 }): Promise<{ state: LeadState; partial: boolean }> {
   const { state } = input;
+  // Finite watches can require twenty sources and page continuations. Their
+  // existing token, elapsed-time and effect ceilings still apply; receipt
+  // storage admits at most 200 pages plus this loop's final report.
+  const maxLeadSteps = input.quietCheck ? 201 : LEAD_MAX_STEPS;
 
   const systemPrompt = [
     `You are ${input.identity.name}, the lead assistant in Orbyn. ${input.identity.persona}`,
@@ -256,7 +265,7 @@ export async function runLead(input: {
 
   if (
     !state.loop &&
-    (state.lead_steps >= LEAD_MAX_STEPS ||
+    (state.lead_steps >= maxLeadSteps ||
       state.token_estimate >= state.token_budget)
   ) {
     // Out of steps or tokens before this turn began: one last answer
@@ -348,6 +357,13 @@ export async function runLead(input: {
             await input.checkpoint?.();
           },
           recordSources: input.recordSources,
+          recordQuietReads: input.recordQuietReads,
+          onReadCoverageLimited: input.quietCheck
+            ? async () => {
+                state.quiet_coverage_limited = true;
+                await input.checkpoint?.();
+              }
+            : undefined,
           beforeProvider: input.beforeProvider,
           timezone: input.timezone,
           identity: input.identity,
@@ -448,6 +464,30 @@ export async function runLead(input: {
       };
     }
 
+    if (call.name === "report_no_change") {
+      if (!input.quietCheck || !z.object({}).strict().safeParse(args).success)
+        return err("This run cannot request a quiet check.");
+      if (
+        state.plan.length ||
+        state.selected_steps.length ||
+        state.reports.length ||
+        state.waiting ||
+        state.answer?.trim() ||
+        state.completion_limited
+      )
+        return err(
+          "Report the useful result, changes, or question using finish instead.",
+        );
+      state.no_change_requested = true;
+      state.answer = null;
+      await input.checkpoint?.();
+      return {
+        content: JSON.stringify({ verification_requested: true }),
+        isError: false,
+        stop: true,
+      };
+    }
+
     if (call.name === "finish") {
       const parsed = (
         input.goalExecution ? goalFinishInput : finishInput
@@ -485,6 +525,7 @@ export async function runLead(input: {
           return err("Report only on this execution's current criterion.");
         state.goal_result = report;
       }
+      state.no_change_requested = false;
       state.answer = parsed.data.answer;
       state.waiting = null;
       await input.checkpoint?.();
@@ -516,6 +557,7 @@ export async function runLead(input: {
     try {
       const result = await execute(registry, input.principal, call.name, args, {
         primary: true,
+        recordQuietReads: input.recordQuietReads,
         log: (error) =>
           input.log?.error({ err: error }, "Assistant read failed"),
       });
@@ -565,19 +607,36 @@ export async function runLead(input: {
     {
       systemPrompt,
       beforeProvider: input.beforeProvider,
-      tools: input.goalExecution
-        ? leadTools.map((tool) =>
-            tool.name === "finish"
-              ? leadTool(
-                  "finish",
-                  "Finish this criterion unit with a structured readiness decision. ready requests person review after read-only verification; it never accepts the goal. repair explains remaining work on bound outputs; blocked identifies missing facts. Include goal_result for the exact criterion.",
-                  goalFinishInput,
-                )
-              : tool,
-          )
-        : leadTools,
+      onReadCoverageLimited: input.quietCheck
+        ? async () => {
+            state.quiet_coverage_limited = true;
+            await input.checkpoint?.();
+          }
+        : undefined,
+      tools: [
+        ...(input.quietCheck
+          ? [
+              leadTool(
+                "report_no_change",
+                "Request server verification that every watched source was fully checked and unchanged. Empty arguments only. Use only after fetching every source and every continuation page; no findings, questions or proposed work. The server alone decides whether this stays quiet.",
+                z.object({}).strict(),
+              ),
+            ]
+          : []),
+        ...(input.goalExecution
+          ? leadTools.map((tool) =>
+              tool.name === "finish"
+                ? leadTool(
+                    "finish",
+                    "Finish this criterion unit with a structured readiness decision. ready requests person review after read-only verification; it never accepts the goal. repair explains remaining work on bound outputs; blocked identifies missing facts. Include goal_result for the exact criterion.",
+                    goalFinishInput,
+                  )
+                : tool,
+            )
+          : leadTools),
+      ],
       executeTool,
-      maxSteps: Math.min(LEAD_MAX_STEPS - state.lead_steps, 8),
+      maxSteps: Math.max(0, maxLeadSteps - state.lead_steps),
       maxToolCallsPerStep: 1,
       forceToolLoop: true,
       signal: input.signal,
@@ -610,11 +669,15 @@ export async function runLead(input: {
       },
     },
   );
-  if (!state.answer && !state.waiting) state.answer = result.summary;
+  if (!state.answer && !state.waiting && !state.no_change_requested)
+    state.answer = result.summary;
   if (result.partial) state.completion_limited = true;
   if (result.partial)
     state.answer = `${state.answer || "I couldn't finish the request."}\n\n${LIMIT_NOTE}`;
   delete state.loop;
   await input.checkpoint?.();
-  return { state, partial: result.partial || !state.answer };
+  return {
+    state,
+    partial: result.partial || (!state.answer && !state.no_change_requested),
+  };
 }

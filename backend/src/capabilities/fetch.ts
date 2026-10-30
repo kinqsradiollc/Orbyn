@@ -1,3 +1,7 @@
+import {
+  readCurrentQuietProjection,
+  type QuietReadEvidence,
+} from "../modules/assistant-workspace/quiet-projection.js";
 import { z } from "zod";
 import {
   deadlineOf,
@@ -90,7 +94,7 @@ const output = z.object({
     next_block: z.string().nullable(),
   }),
 });
-type Fetched = z.output<typeof output>;
+type Fetched = z.output<typeof output> & { quietRead?: QuietReadEvidence };
 
 /** How much page text one fetch returns before continuing with next_block. */
 const PAGE_CHARS = MAX_RESULT_CHARS - 4_000;
@@ -166,6 +170,13 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     ref.id,
   );
   if (!t) throw notFound();
+  const quietProjection =
+    ctx.quietCoverage && t.kind === "task"
+      ? await readCurrentQuietProjection(ctx.db, ctx.principal, {
+          kind: "task",
+          id: t.id,
+        })
+      : null;
   const [steps, sessions, tags] = await Promise.all([
     ctx.db.query<{
       id: string;
@@ -271,6 +282,22 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
   if (t.notes.trim())
     lines.push("", "## Notes", labelled(t.notes, provenance, hide(ctx)));
   return {
+    ...(quietProjection
+      ? {
+          quietRead: {
+            kind: "task" as const,
+            source_id: t.id,
+            scope: "task_fields" as const,
+            revision: quietProjection.revision,
+            digest: quietProjection.digest,
+            start: 0,
+            end: 1,
+            total: 1,
+            complete: quietProjection.supported,
+            supported: quietProjection.supported,
+          },
+        }
+      : {}),
     id: r.id,
     title,
     text: lines.join("\n"),
@@ -322,6 +349,13 @@ async function fetchDoc(
     ref.id,
   );
   if (!d) throw notFound();
+  const quietProjection =
+    ctx.quietCoverage && d.kind !== "memory"
+      ? await readCurrentQuietProjection(ctx.db, ctx.principal, {
+          kind: "doc",
+          id: d.id,
+        })
+      : null;
   // Memory has its own privacy-aware tool; generic fetch stays for ordinary
   // pages and Agent notes.
   if (d.kind === "memory") throw notFound();
@@ -399,6 +433,26 @@ async function fetchDoc(
     ? `\n\n[The page continues: fetch again with next_block "${next}".]`
     : "";
   return {
+    ...(quietProjection
+      ? {
+          quietRead: {
+            kind: "doc" as const,
+            source_id: d.id,
+            scope: "doc_content" as const,
+            revision: quietProjection.revision,
+            digest: quietProjection.digest,
+            start,
+            end: start + parts.length,
+            total: blocks.length,
+            complete: quietProjection.supported && next === null,
+            supported:
+              quietProjection.supported &&
+              body.length < MAX_RESULT_CHARS &&
+              JSON.stringify(blocks) ===
+                JSON.stringify(Array.isArray(d.content) ? d.content : []),
+          },
+        }
+      : {}),
     id: refs({ type: "doc", id: d.id }).id,
     title: cleanTitle(d.title) || "Untitled",
     text: `${header}\n\n${body ? labelled(body, provenance, hide(ctx)) : "(empty page)"}${tail}`,
@@ -904,9 +958,10 @@ export const fetchCapability = defineCapability({
   tier: "R",
   jsonText: true,
   async run(ctx, a) {
-    const fetched = await fetchAny(ctx, a.id, a.next_block);
+    const { quietRead, ...fetched } = await fetchAny(ctx, a.id, a.next_block);
     return {
       structured: fetched,
+      ...(quietRead ? { quietReads: [quietRead] } : {}),
       markdown: fetched.text,
       targets: [fetched.id],
     };

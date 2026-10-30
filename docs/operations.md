@@ -362,3 +362,29 @@ including sustained competing backlog, before choosing a scheduling or wait-time
 guarantee. The synthetic attribution fixture in
 `backend/tests/assistant-admission-policy.test.ts` demonstrates grouping and ages;
 it is not production fairness evidence. Current caps and queue order are retained.
+
+## Routine quiet-check evidence
+
+Quiet checks require migration 303 and compatible API and assistant workers. The
+watch is off by default and names at most twenty tasks or pages on an existing
+routine. It uses the existing provider connection and durable job runtime. A
+real watch-policy change advances routine intent and holds older recovery work;
+a repeated or unchanged save preserves the watch revision and intent.
+
+The first complete, stable check establishes a visible baseline. Later checks may
+stay quiet only when the lead explicitly requests no-change verification, every
+selected source has fresh server read receipts, all page continuations cover the
+same revision and digest, the current authorized projection still matches, and
+tracked execution proves there were no effects, decisions or useful reports.
+Questions, approval proposals, truncated provider inputs, missing reads, source or
+configuration changes, cancellation and failures remain visible. Historical
+source revision equality alone is not a delivery-suppression rule.
+
+Version one compares a task's own displayed record fields and notes, or a page's
+title and textual blocks. Child tasks, sessions, tags, joined labels, linked page
+content and files are separate sources. Imported, redacted, unsupported or
+truncated content cannot certify a complete read. Receipts contain coverage and
+hashes, not copied model output. Revoked or pruned history retains metadata while
+source names, identifiers and job/chat links are hidden. Preserve checks,
+receipt ranges and baseline lineage during retention or recovery; never promote
+an old run into a qualified baseline.

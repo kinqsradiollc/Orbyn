@@ -1,3 +1,4 @@
+import type { QuietReadEvidence } from "../modules/assistant-workspace/quiet-projection.js";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type {
@@ -78,6 +79,8 @@ export type CursorCodec = {
 };
 
 export type CapabilityContext = {
+  /** Trusted runtime requests durable source coverage; never a model argument. */
+  quietCoverage?: boolean;
   /** Resolved by domain destinations, never copied from tool arguments. */
   assistant_rule_checks?: AssistantProposalGuard["checks"];
   principal: Principal;
@@ -151,6 +154,8 @@ export type ResultLink = {
 
 export type CapabilityResult<T> = {
   structured: T;
+  /** Server-only observed coverage; never serialized into a tool result. */
+  quietReads?: QuietReadEvidence[];
   /** Short Markdown for people and models (not used by JSON-text tools). */
   markdown: string;
   /** Objects the result is about, as MCP resource links. */

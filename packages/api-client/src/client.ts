@@ -167,6 +167,7 @@ import * as administration from "./endpoints/administration.js";
 import * as assistant from "./endpoints/assistant.js";
 import * as goalExecutions from "./endpoints/goal-executions.js";
 import * as routineRetries from "./endpoints/routine-retries.js";
+import * as routineQuiet from "./endpoints/routine-quiet-checks.js";
 import * as booking from "./endpoints/booking.js";
 import * as capture from "./endpoints/capture.js";
 import * as connections from "./endpoints/connections.js";
@@ -1204,6 +1205,22 @@ export class OrbynClient {
   }
   listAgentRoutines() {
     return assistant.callListAgentRoutines.call(this);
+  }
+  routineQuietPolicy(id: string) {
+    return routineQuiet.callRoutineQuietPolicy.call(this, id);
+  }
+  updateRoutineQuietPolicy(
+    id: string,
+    input: Parameters<typeof routineQuiet.callUpdateRoutineQuietPolicy>[1],
+  ) {
+    return routineQuiet.callUpdateRoutineQuietPolicy.call(this, id, input);
+  }
+  routineQuietChecks(routineId: string, occurrenceId: string) {
+    return routineQuiet.callRoutineQuietChecks.call(
+      this,
+      routineId,
+      occurrenceId,
+    );
   }
   routineRetryPolicy(id: string) {
     return routineRetries.callRoutineRetryPolicy.call(this, id);

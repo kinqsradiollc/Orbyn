@@ -1,3 +1,4 @@
+import { routineQuietDeliveryProof } from "./routine-quiet-checks.js";
 import {
   admitConversationWindow,
   conversationWindowForNight,
@@ -305,6 +306,8 @@ export async function bindConversationWork(
 const intentRow = z.object({
   id: z.uuid(),
   binding_id: z.uuid(),
+  work_kind: z.string(),
+  work_id: z.uuid(),
   owner_id: z.uuid(),
   destination_id: z.uuid(),
   state: z.string(),
@@ -342,7 +345,7 @@ export async function publishConversationIntent(
   );
   const raw = (
     await db.query(
-      `SELECT i.id,i.binding_id,b.owner_id,b.destination_id,b.timezone,b.attention_key,b.night_id,b.not_before,i.state,i.revision,i.payload,
+      `SELECT i.id,i.binding_id,b.work_kind,b.work_id,b.owner_id,b.destination_id,b.timezone,b.attention_key,b.night_id,b.not_before,i.state,i.revision,i.payload,
        coalesce((SELECT jsonb_agg(jsonb_build_object('kind',ds.source_kind,'id',ds.source_id) ORDER BY ds.source_kind,ds.source_id)
          FROM assistant_delivery_sources ds WHERE ds.binding_id=b.id),'[]') AS sources
      FROM assistant_delivery_intents i JOIN assistant_delivery_bindings b ON b.id=i.binding_id
@@ -408,22 +411,32 @@ export async function publishConversationIntent(
       ? await conversationChangeFingerprint(db, row.binding_id)
       : null;
   if (
-    fingerprint &&
-    (
-      await db.query(
-        `SELECT i.id FROM assistant_delivery_intents i
-    JOIN assistant_delivery_bindings b ON b.id=i.binding_id WHERE b.owner_id=$1
-      AND b.destination_id=$2 AND b.attention_key=$3
-      AND (i.state='published' OR (i.state='suppressed' AND i.reason='night_summary')) AND i.fingerprint=$4 LIMIT 1`,
-        [row.owner_id, row.destination_id, row.attention_key, fingerprint],
-      )
-    ).rowCount
+    payload.event === "result" &&
+    row.work_kind === "job" &&
+    (await routineQuietDeliveryProof(db, row.owner_id, row.work_id))
   ) {
     await db.query(
       "UPDATE assistant_delivery_intents SET state='suppressed',reason='unchanged',fingerprint=$2,updated_at=clock_timestamp() WHERE id=$1",
       [intentId, fingerprint],
     );
     return false;
+  }
+  if (
+    payload.event === "result" &&
+    row.work_kind === "job" &&
+    (
+      await db.query(
+        "SELECT id FROM assistant_quiet_checks WHERE owner_id=$1 AND job_id=$2 AND status='verified_unchanged'",
+        [row.owner_id, row.work_id],
+      )
+    ).rowCount
+  ) {
+    payload.text =
+      "This check was unchanged when it finished, but its sources or settings have since changed. Review this run.";
+    await db.query(
+      "UPDATE assistant_delivery_intents SET payload=$2::jsonb WHERE id=$1",
+      [intentId, JSON.stringify(payload)],
+    );
   }
   if (
     payload.event === "result" &&

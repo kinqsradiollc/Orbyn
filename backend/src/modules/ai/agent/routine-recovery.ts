@@ -1,3 +1,4 @@
+import { checkQuietBoundary } from "./quiet-check.js";
 import { transaction, type Queryable } from "../../../db/pool.js";
 import { assertAssistantLease } from "./lease.js";
 import {
@@ -14,6 +15,7 @@ export async function checkRoutineRecoveryBoundary(
   db?: Queryable,
   write = false,
 ) {
+  await checkQuietBoundary(owner, jobId, automation, db);
   const binding = automation?.routine_recovery;
   if (!binding) return;
   const check = async (current: Queryable) => {
