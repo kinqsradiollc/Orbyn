@@ -33,7 +33,10 @@ import { visibleItems, visibleProjects } from "../../lib/visibility.js";
 import { createDoc } from "../documents/service.js";
 import { enqueueMemory } from "../memory/service.js";
 
-import { assistantChatVisible } from "../../lib/assistant-visibility.js";
+import {
+  assistantChatContainerVisible,
+  assistantChatVisible,
+} from "../../lib/assistant-visibility.js";
 import { retainConversationTurn } from "../assistant-workspace/conversation-storage.js";
 import { untrackedHistoryTurn } from "../assistant-workspace/conversation-legacy.js";
 import { conversationExecutionChatVisible } from "../assistant-workspace/conversation-context.js";
@@ -43,10 +46,12 @@ import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 const PER_PROJECT = 50;
 const MAX_TRACE = 4_000;
 const projectSeen = visibleProjects("p");
-// Assistant history is itself AI data: a project kept out of AI, and the
-// chats scoped to it, must stay invisible here as well.
-const PROJECT_VISIBLE = conversationExecutionChatVisible();
 const HAS_CONVERSATION = `EXISTS(SELECT 1 FROM assistant_conversation_streams listed_stream WHERE listed_stream.chat_id=c.id AND listed_stream.owner_id=$1 AND listed_stream.retired_at IS NULL)`;
+// A retained conversation is eligible through its current container; individual
+// entries enforce their own sources. Check legacy sources only for the fallback.
+// Selected titles still require full legacy visibility to avoid disclosing a
+// source-derived title after access to that history has been revoked.
+const PROJECT_VISIBLE = `(${assistantChatContainerVisible()} AND CASE WHEN c.swept_at IS NULL AND ${HAS_CONVERSATION} THEN true ELSE ${assistantChatVisible()} END)`;
 const CHAT_TITLE = `CASE WHEN ${HAS_CONVERSATION} AND NOT ${assistantChatVisible()} THEN 'Conversation' ELSE c.title END`;
 const SUMMARY = `c.id, c.project_id, p.name AS project_name, ${CHAT_TITLE} AS title, c.pinned,
   CASE WHEN ${HAS_CONVERSATION} THEN (SELECT count(*)::int FROM assistant_conversation_entries e JOIN assistant_conversation_streams listed_entries ON listed_entries.id=e.destination_id WHERE listed_entries.chat_id=c.id AND listed_entries.owner_id=$1 AND listed_entries.retired_at IS NULL AND e.kind='turn' AND ${conversationEntryVisible()}) ELSE jsonb_array_length(c.turns)::int END AS turn_count, c.created_at, c.last_used_at,
@@ -441,6 +446,15 @@ export async function listAiChats(
   options: z.output<typeof listQuery>,
 ): Promise<AiChatSummary[]> {
   if (options.project_id) await visibleProject(db, userId, options.project_id);
+  // Omit search-only authorization subqueries before planning an ordinary list.
+  // Keep $3 typed because the statement still binds the remaining parameters.
+  const searchFilter =
+    options.search === ""
+      ? "AND $3::text = ''"
+      : `AND ($3 = '' OR (${CHAT_TITLE}) ILIKE '%' || $3 || '%'
+           OR (${HAS_CONVERSATION} AND EXISTS(SELECT 1 FROM assistant_conversation_entries e JOIN assistant_conversation_streams searched_stream ON searched_stream.id=e.destination_id WHERE searched_stream.chat_id=c.id AND searched_stream.owner_id=$1 AND searched_stream.retired_at IS NULL AND e.kind='turn' AND ${conversationEntryVisible()} AND e.payload->>'text' ILIKE '%' || $3 || '%'))
+           OR (NOT ${HAS_CONVERSATION} AND EXISTS (SELECT 1 FROM jsonb_array_elements(c.turns) t
+                       WHERE t->>'text' ILIKE '%' || $3 || '%')))`;
   const rows = (
     await db.query<SummaryRow>(
       `SELECT ${SUMMARY} FROM ai_chats c
@@ -450,10 +464,7 @@ export async function listAiChats(
          AND ($2::uuid IS NULL OR c.project_id = $2)
          AND ($5 = 'all' OR ($5 = 'chat' AND c.project_id IS NULL)
            OR ($5 = 'work' AND c.project_id IS NOT NULL))
-         AND ($3 = '' OR (${CHAT_TITLE}) ILIKE '%' || $3 || '%'
-           OR (${HAS_CONVERSATION} AND EXISTS(SELECT 1 FROM assistant_conversation_entries e JOIN assistant_conversation_streams searched_stream ON searched_stream.id=e.destination_id WHERE searched_stream.chat_id=c.id AND searched_stream.owner_id=$1 AND searched_stream.retired_at IS NULL AND e.kind='turn' AND ${conversationEntryVisible()} AND e.payload->>'text' ILIKE '%' || $3 || '%'))
-           OR (NOT ${HAS_CONVERSATION} AND EXISTS (SELECT 1 FROM jsonb_array_elements(c.turns) t
-                       WHERE t->>'text' ILIKE '%' || $3 || '%')))
+         ${searchFilter}
        ORDER BY c.pinned DESC, c.last_used_at DESC, c.id
        LIMIT $4`,
       [

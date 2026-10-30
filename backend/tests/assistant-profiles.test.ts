@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { defaultNightShift, assistantProfileState } from "@orbyn/core";
 import { helpers, trapNetwork } from "./mcp-helpers.js";
-const { pool } = await import("../src/db/pool.js");
+const { pool, readTransaction } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { readAssistantProfiles, assistantProfileWindow } =
   await import("../src/modules/assistant-workspace/profiles.js");
@@ -337,6 +337,72 @@ test("profile evidence keeps independent events and refreshes revoked source aut
   assert.ok(refreshed.recent_activity.length > 0);
   assert.ok(refreshed.recent_activity.every((event) => event.job_id === null));
   assert.equal(refreshed.last_activity_at, independentTime);
+});
+test("shared chat authorization retains each job's source boundary and refreshes chat revocation", async () => {
+  const user = await person();
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title) VALUES($1,'Shared profile source') RETURNING id",
+      [user.id],
+    )
+  ).rows[0].id;
+  const chat = (
+    await pool.query(
+      "INSERT INTO ai_chats(id,user_id,title,origin) VALUES(gen_random_uuid(),$1,'Shared profile work','task') RETURNING id",
+      [user.id],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO assistant_chat_sources(chat_id,turn_id,source_kind,source_id) VALUES($1,$2,'doc',$3)",
+    [chat, randomUUID(), doc],
+  );
+  const ids: string[] = [];
+  for (let index = 0; index < 3; index++) {
+    ids.push(
+      (
+        await pool.query(
+          "INSERT INTO ai_jobs(user_id,chat_id,state,sources_checked,run_state) VALUES($1,$2,'queued',true,$3) RETURNING id",
+          [
+            user.id,
+            chat,
+            { version: 1, request: { automation: { kind: "task" } } },
+          ],
+        )
+      ).rows[0].id,
+    );
+  }
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [ids[1], randomUUID()],
+  );
+  const read = () =>
+    readTransaction(
+      (db) => readAssistantProfiles(db, user.id, undefined, true, true),
+      { primary: true, isolation: "repeatable read", jit: false },
+    );
+  const visible = (await read()).profiles[0];
+  assert.equal(visible.counts.queued, 2);
+  assert.deepEqual(
+    visible.work!.map((row) => row.job_id).sort(),
+    [ids[0], ids[2]].sort(),
+  );
+  await pool.query("UPDATE ai_jobs SET sources_checked=false WHERE id=$1", [
+    ids[2],
+  ]);
+  const incomplete = (await read()).profiles[0];
+  assert.equal(incomplete.counts.queued, 1);
+  assert.deepEqual(
+    incomplete.work!.map((row) => row.job_id),
+    [ids[0]],
+  );
+  await pool.query("UPDATE ai_jobs SET sources_checked=true WHERE id=$1", [
+    ids[2],
+  ]);
+  await pool.query("UPDATE docs SET deleted_at=now() WHERE id=$1", [doc]);
+  const revoked = (await read()).profiles[0];
+  assert.equal(revoked.counts.queued, 0);
+  assert.deepEqual(revoked.work, []);
+  assert.deepEqual(revoked.outputs, []);
 });
 test("night windows are scheduled permissions, not executing work", () => {
   const settings = {

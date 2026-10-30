@@ -427,6 +427,7 @@ export async function execute(
               p.via === "assistant" ||
               options.primary,
             timeoutMs: READ_TIMEOUT_MS,
+            jit: cap.readJit,
             ...(options.recordQuietReads
               ? { isolation: "repeatable read" as const }
               : {}),

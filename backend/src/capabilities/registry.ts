@@ -183,6 +183,9 @@ export type Capability<
   /** Reads whose authority must see committed revocations use the primary.
    * The transaction remains read-only; omitted reads may use a replica. */
   readConsistency?: "primary";
+  /** Measured privacy-heavy reads may avoid compilation for their transaction.
+   * Omitted capabilities keep PostgreSQL's configured planning behavior. */
+  readJit?: false;
   tier: Tier;
   effects?: Effect[];
   /**
