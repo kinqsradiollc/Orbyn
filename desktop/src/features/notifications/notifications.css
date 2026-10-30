@@ -1,0 +1,29 @@
+.notice-source-group + .notice-source-group {
+  border-top: 1px solid var(--border);
+}
+.notice-source-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 12px 16px;
+}
+.notice-source-heading h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.notice-source-heading span {
+  color: var(--color-textMuted);
+  font-size: 12px;
+}
+.notice-source-group > .notice {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+}
+.notice-source-group > .notice:last-child {
+  border-bottom: 0;
+}
