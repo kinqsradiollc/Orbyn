@@ -1,3 +1,7 @@
+import {
+  prepareRoutineRecovery,
+  type PreparedRoutineRecovery,
+} from "../modules/assistant-workspace/routine-recovery.js";
 import { recordRoutineRun } from "../modules/assistant-workspace/routine-runs.js";
 import type { UserRow } from "../lib/auth.js";
 import { maintainedPageContext } from "../modules/documents/maintenance.js";
@@ -171,7 +175,7 @@ async function available(
         timezone: string;
         next_run_at: Date;
       }>(
-        "SELECT instruction,rrule,timezone,next_run_at FROM agent_routines WHERE id=$1 AND user_id=$2 AND NOT paused AND current_job_id IS NULL AND next_run_at <= $3 FOR UPDATE",
+        "SELECT instruction,rrule,timezone,next_run_at FROM agent_routines WHERE id=$1 AND user_id=$2 AND NOT paused AND current_job_id IS NULL AND next_run_at <= $3 AND NOT EXISTS(SELECT 1 FROM assistant_routine_runs recovery WHERE recovery.routine_id=agent_routines.id AND recovery.recovery_version=1 AND recovery.recovery_state IN ('active','waiting','retry_scheduled','held')) FOR UPDATE",
         [next.id, userId, now],
       )
     ).rows[0];
@@ -308,6 +312,7 @@ async function candidates(
       }>(
         `SELECT id, instruction, rrule, timezone, next_run_at FROM agent_routines
        WHERE user_id = $1 AND NOT paused AND next_run_at <= $2 AND current_job_id IS NULL
+       AND NOT EXISTS(SELECT 1 FROM assistant_routine_runs recovery WHERE recovery.routine_id=agent_routines.id AND recovery.recovery_version=1 AND recovery.recovery_state IN ('active','waiting','retry_scheduled','held'))
        ORDER BY next_run_at, id LIMIT 50`,
         [userId, now],
       )
@@ -535,6 +540,7 @@ async function claimSource(
   next: Candidate,
   jobId: string,
   now: Date,
+  prepared?: PreparedRoutineRecovery | null,
 ) {
   if (next.source === "task") {
     const changed = await db.query(
@@ -592,6 +598,7 @@ async function claimSource(
       next.id,
       occurrence.scheduled_for,
       jobId,
+      prepared,
     );
   }
 }
@@ -773,7 +780,7 @@ export async function scanNightShift(
           night.budget_used < budget &&
           (
             await db.query(
-              "SELECT id FROM assistant_goal_executions WHERE owner_id=$1 AND lane='overnight' AND state IN ('ready','active','waiting') AND NOT admissions_paused LIMIT 1",
+              "SELECT id FROM assistant_goal_executions WHERE owner_id=$1 AND lane='overnight' AND state IN ('ready','active','waiting') AND NOT admissions_paused UNION ALL SELECT id FROM assistant_routine_runs WHERE owner_id=$1 AND lane='overnight' AND recovery_version=1 AND recovery_state IN ('active','waiting','retry_scheduled') AND deadline>now() LIMIT 1",
               [person.id],
             )
           ).rowCount
@@ -833,6 +840,30 @@ export async function scanNightShift(
           );
           return 1;
         }
+        const initialOccurrence =
+          next.source === "routine" && next.id
+            ? (
+                await db.query<{ scheduled_for: string }>(
+                  "SELECT next_run_at::text AS scheduled_for FROM agent_routines WHERE id=$1 AND user_id=$2 FOR UPDATE",
+                  [next.id, person.id],
+                )
+              ).rows[0]
+            : null;
+        const prepared =
+          initialOccurrence && next.id
+            ? await prepareRoutineRecovery(
+                db,
+                person.id,
+                next.id,
+                "overnight",
+                initialOccurrence.scheduled_for,
+                {
+                  nextScheduledFor: next.next ?? null,
+                  now,
+                  allocationCap: budget - night.budget_used,
+                },
+              )
+            : null;
         const job = await startAssistantAutomation({
           userId: person.id,
           timezone: prefs.timezone,
@@ -849,15 +880,25 @@ export async function scanNightShift(
             id: next.id,
             week_of: next.week,
             wait_for_ok: prefs.wait_for_ok,
-            token_budget: Math.min(
-              next.kind === "reflection" ? 30_000 : LEAD_TOKEN_BUDGET,
-              budget - night.budget_used,
-            ),
-            end_at: plan.end_at,
+            ...(prepared ? { routine_recovery: prepared.binding } : {}),
+            token_budget:
+              prepared?.allocation ??
+              Math.min(
+                next.kind === "reflection" ? 30_000 : LEAD_TOKEN_BUDGET,
+                budget - night.budget_used,
+              ),
+            end_at: prepared
+              ? new Date(
+                  Math.min(
+                    Date.parse(prepared.deadline),
+                    Date.parse(plan.end_at),
+                  ),
+                ).toISOString()
+              : plan.end_at,
           },
           db,
           onQueued: async (inside, id) => {
-            await claimSource(inside, person.id, next, id, now);
+            await claimSource(inside, person.id, next, id, now, prepared);
             if (next.kind === "reflection")
               await claimReflectionSources(inside, person.id, id, sources);
             await inside.query(

@@ -1,3 +1,4 @@
+import { RoutineRetryPolicyEditor } from "./RoutineRecovery";
 import { GoalWorkSheet } from "./GoalWorkSheet";
 import { RoutineRunHistory } from "./RoutineRunHistory";
 import React, { useEffect, useRef, useState } from "react";
@@ -149,6 +150,17 @@ function UpcomingBody({
   const [routineDay, setRoutineDay] = useState(localDateKey(new Date(), "UTC"));
   const [routineTime, setRoutineTime] = useState(inAnHour);
   const [repeat, setRepeat] = useState<Repeat>("daily");
+  const routineDraftKey = JSON.stringify([
+    routineText,
+    routineDay,
+    routineTime.getTime(),
+    repeat,
+  ]);
+  const [routineBaseline, setRoutineBaseline] = useState("");
+  useEffect(() => {
+    setRoutineBaseline(routineDraftKey);
+  }, [form?.kind, form?.id]);
+
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -680,6 +692,17 @@ function UpcomingBody({
                   }}
                 />
               </View>
+              {form.id ? (
+                <RoutineRetryPolicyEditor
+                  routineId={form.id}
+                  disabled={saving || routineDraftKey !== routineBaseline}
+                />
+              ) : (
+                <Text style={shared.small}>
+                  Retries are off. Save this routine before configuring bounded
+                  recovery.
+                </Text>
+              )}
             </View>
           ) : (
             <View style={s.formActions}>

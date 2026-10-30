@@ -1,3 +1,4 @@
+import { RoutineOccurrenceDetails } from "./RoutineRecovery";
 import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
@@ -162,6 +163,12 @@ function HistoryBody({
           <Text style={shared.small}>
             Observed {when(run.last_observed_at)}
           </Text>
+          <RoutineOccurrenceDetails
+            routineId={routineId}
+            occurrenceId={run.id}
+            disabled={disabled}
+            onOpenChat={onOpenChat}
+          />
           {run.visibility === "restricted" ? (
             <Text style={shared.small}>Result no longer available</Text>
           ) : (

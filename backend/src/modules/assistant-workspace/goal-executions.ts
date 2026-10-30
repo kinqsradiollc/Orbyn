@@ -1,5 +1,11 @@
+import {
+  assistantExecutionDigest as goalExecutionDigest,
+  assistantExecutionContext as scopeContext,
+  assistantExecutionFingerprints as goalExecutionFingerprints,
+} from "./execution-authority.js";
+export { goalExecutionDigest, scopeContext, goalExecutionFingerprints };
 import { evidence } from "./goal-execution-evidence.js";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   fail,
@@ -19,8 +25,6 @@ import { Params, scopeFor } from "../../lib/visibility.js";
 import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
 
 import { policy } from "../../capabilities/policy.js";
-import { assistantPrincipal } from "../agents/assistant.js";
-import { readAiProviderChoice } from "../auth/ai-provider-choice.js";
 
 import { scheduledConversationRoute } from "./conversation-schedules.js";
 import { assistantAdmissionOpen } from "./work-controls.js";
@@ -55,21 +59,6 @@ type GoalFacts = {
   status: string;
   revision: number;
 };
-function canonical(value: unknown): unknown {
-  if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === "object")
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([k, v]) => [k, canonical(v)]),
-    );
-  return value;
-}
-export const goalExecutionDigest = (value: unknown) =>
-  createHash("sha256")
-    .update(JSON.stringify(canonical(value)))
-    .digest("hex");
 export function goalExecutionCriteriaHash(goal: GoalFacts, criteria: Criteria) {
   return goalExecutionDigest({
     criteria,
@@ -154,31 +143,6 @@ export async function lockGoalExecution(
   if (!row) fail(404, "Goal execution not found.");
   return row;
 }
-export async function scopeContext(
-  db: Queryable,
-  owner: string,
-  lane: GoalExecution["lane"],
-) {
-  const person = (
-    await db.query<{ id: string; name: string; role: "member" | "admin" }>(
-      "SELECT id,name,role FROM users WHERE id=$1 AND NOT disabled",
-      [owner],
-    )
-  ).rows[0];
-  const grant = (
-    await db.query(
-      "SELECT id FROM agent_grants WHERE user_id=$1 AND kind='assistant' AND revoked_at IS NULL AND suspended_at IS NULL AND (expires_at IS NULL OR expires_at>now()) FOR SHARE",
-      [owner],
-    )
-  ).rows[0];
-  if (!person || !grant) return null;
-  return assistantPrincipal(person, {
-    db,
-    touch: false,
-    lane,
-    refusePaused: true,
-  });
-}
 export async function goalFacts(
   db: Queryable,
   owner: string,
@@ -197,51 +161,6 @@ export async function goalFacts(
       )
     ).rows[0] ?? null
   );
-}
-export async function goalExecutionFingerprints(
-  db: Queryable,
-  owner: string,
-  lane: GoalExecution["lane"],
-) {
-  const principal = await scopeContext(db, owner, lane);
-  if (!principal) fail(409, "Your assistant permission is unavailable.");
-  const choice = await readAiProviderChoice(db, owner);
-  const managed =
-    (
-      await db.query(
-        `SELECT s.provider_id,s.model,s.generation_revision::text AS revision,p.generation_revision::text AS provider_revision,p.enabled FROM ai_settings s LEFT JOIN ai_providers p ON p.id=s.provider_id WHERE s.id`,
-      )
-    ).rows[0] ?? null;
-  const preference = choice.connection_id
-    ? ((
-        await db.query(
-          "SELECT model,version::text FROM chatgpt_model_preferences WHERE connection_id=$1",
-          [choice.connection_id],
-        )
-      ).rows[0] ?? null)
-    : null;
-  return {
-    provider_hash: goalExecutionDigest({
-      choice,
-      managed:
-        choice.primary === "default" || choice.fallback_to_default
-          ? managed
-          : null,
-      preference,
-    }),
-    scope_hash: goalExecutionDigest({
-      grant: principal.grant_id,
-      access: principal.access,
-      personal: principal.personal,
-      team_ids: principal.team_ids,
-      teams: principal.teams,
-      toolsets: principal.toolsets,
-      trust: principal.trust,
-      flags: principal.flags,
-      rules: principal.assistant_rules,
-      rules_revision: principal.assistant_rules_revision,
-    }),
-  };
 }
 export async function assertGoalExecutionCurrent(
   db: Queryable,

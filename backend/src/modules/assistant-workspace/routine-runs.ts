@@ -5,6 +5,10 @@ import {
   type AssistantRoutineRun,
   type AssistantRoutineRunsPage,
 } from "@orbyn/core";
+import {
+  assertPreparedRoutineRecovery,
+  type PreparedRoutineRecovery,
+} from "./routine-recovery.js";
 import type { Queryable } from "../../db/pool.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
@@ -17,7 +21,79 @@ export async function recordRoutineRun(
   routine: string,
   scheduledFor: Date | string,
   job: string,
+  prepared?: PreparedRoutineRecovery | null,
 ) {
+  // Serialize every initial admission through its routine, including a legacy
+  // policy-off writer racing an already captured recovery-enabled occurrence.
+  await db.query(
+    "SELECT id FROM agent_routines WHERE id=$1 AND user_id=$2 FOR UPDATE",
+    [routine, owner],
+  );
+  if (
+    (
+      await db.query(
+        "SELECT id FROM assistant_routine_runs WHERE routine_id=$1 AND recovery_version=1 AND recovery_state IN ('active','waiting','retry_scheduled','held') LIMIT 1",
+        [routine],
+      )
+    ).rowCount
+  )
+    fail(
+      409,
+      "This routine has an occurrence still awaiting recovery or review.",
+    );
+  if (prepared) {
+    await assertPreparedRoutineRecovery(db, owner, routine, prepared);
+    // Compare timestamps inside PostgreSQL so scheduled microseconds are preserved.
+    if (
+      !(
+        await db.query("SELECT $1::timestamptz=$2::timestamptz AS same", [
+          scheduledFor,
+          prepared.scheduled_for,
+        ])
+      ).rows[0]?.same
+    )
+      fail(409, "Routine occurrence changed before admission.");
+    await db.query(
+      `INSERT INTO assistant_routine_runs(id,owner_id,routine_id,scheduled_for,job_id,state,
+      recovery_version,recovery_state,lane,policy_snapshot,policy_revision,intent_version,instruction_snapshot,
+      config_hash,provider_hash,scope_hash,schedule_exhausted,deadline,destination_id,personal_only,
+      generation,revision,attempt_count,consumed_tokens,reserved_tokens,last_transition_reason,recovery_created_at,recovery_updated_at)
+      VALUES($1,$2,$3,$4,$5,'queued',1,'active',$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,1,1,1,0,$18,'A bounded routine occurrence was queued.',$19,$19)`,
+      [
+        prepared.occurrence_id,
+        owner,
+        routine,
+        scheduledFor,
+        job,
+        prepared.lane,
+        JSON.stringify(prepared.policy),
+        prepared.policy_revision,
+        prepared.intent_version,
+        prepared.instruction,
+        prepared.config_hash,
+        prepared.provider_hash,
+        prepared.scope_hash,
+        prepared.schedule_exhausted,
+        prepared.deadline,
+        prepared.destination_id,
+        prepared.personal_only,
+        prepared.allocation,
+        prepared.created_at,
+      ],
+    );
+    await db.query(
+      `INSERT INTO assistant_routine_attempts(id,occurrence_id,owner_id,ordinal,job_id,generation,allocated_tokens)
+      VALUES($1,$2,$3,1,$4,1,$5)`,
+      [
+        prepared.attempt_id,
+        prepared.occurrence_id,
+        owner,
+        job,
+        prepared.allocation,
+      ],
+    );
+    return;
+  }
   // A duplicate occurrence must reject the whole admission, not orphan another job.
   await db.query(
     `INSERT INTO assistant_routine_runs(owner_id,routine_id,scheduled_for,job_id,state)

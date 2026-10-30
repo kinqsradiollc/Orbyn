@@ -127,6 +127,37 @@ These contracts do not establish full Open Duet behavior parity, a hosted worker
 rollout or installed-native qualification. The existing runtime and provider
 configuration remain sufficient; an external execution adapter is not required.
 
+## Routine occurrence recovery
+
+Routine retries are an optional person setting, disabled by default. When enabled,
+a scheduled occurrence may make another bounded attempt after a classified transient
+provider failure with confirmed no effects. It keeps the original scheduled time;
+it does not count as a new scheduled occurrence or replay a saved plan. Existing
+checkpoint recovery still resumes the same job and is separate from a fresh attempt.
+
+The policy counts the initial attempt in its maximum, shares one estimated-token
+allowance across attempts, and fixes a deadline at admission. Backoff grows between
+attempts and never extends that deadline. Background and Overnight use their
+existing workers, provider selection, consent, lane budgets and night windows.
+Retry grants no additional action scope. Applied changes, pending Review, uncertain
+effects, person Stop, changed authority/configuration and unqualified failures are
+not automatically repeated.
+
+History retains the original occurrence and first run. Its recovery details show
+all bounded attempts, charges, next retry time and the recorded reason. Missing or
+revoked source access leaves metadata without private results or chat links. A
+finished occurrence is a process result; it does not establish accepted goal
+completion or verified no-change coverage.
+
+Editing, manually pausing or re-saving a routine, or changing its retry policy,
+changes its intent version and holds captured recovery rather than silently using
+new instructions. A final scheduled occurrence can still recover after the
+scheduler automatically pauses an exhausted recurrence, provided that intent is
+unchanged. Stop occurrence cancels all its queued, running or parked jobs and
+prevents further attempts of that occurrence, while preserving committed changes
+and accounting. Held recovery needs a deliberate decision; Stop releases it so a
+later scheduled occurrence can proceed if the routine remains enabled.
+
 ## Configuration and rollout
 
 Select providers and models in **Admin → AI**. Configure service encryption keys,

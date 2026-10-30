@@ -1,3 +1,7 @@
+import {
+  settleRoutineRecoveries,
+  scanRoutineRetries,
+} from "../worker/routine-recovery.js";
 import { scanMaintainedPages } from "../worker/maintained-page-scan.js";
 import { claimMaintainedPageWork } from "../worker/maintained-pages.js";
 import { claimScheduledAgendaWork } from "../worker/agenda-summaries.js";
@@ -45,6 +49,8 @@ export async function buildAssistantWorker(lane: "background" | "overnight") {
       },
       onTick: async () => {
         const now = Date.now();
+        await settleRoutineRecoveries(lane, new Date(now));
+        await scanRoutineRetries(lane, new Date(now));
         await settleGoalExecutions(lane, new Date(now));
         await scanGoalExecutions(lane, new Date(now));
         await settleAssistantHandoff(lane);

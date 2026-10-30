@@ -1,3 +1,4 @@
+import { routineRecoveryRoutes } from "./routine-recovery-routes.js";
 import { recordScheduleConversation } from "./conversation-schedules.js";
 import { readRoutineRuns } from "./routine-runs.js";
 import {
@@ -165,7 +166,7 @@ export async function saveAgentRoutine(
     ? (
         await db.query(
           `UPDATE agent_routines SET instruction = $3, rrule = $4, timezone = $5,
-             next_run_at = $6, paused = $7, updated_at = now()
+             next_run_at = $6, paused = $7, recovery_intent_version = recovery_intent_version + 1, updated_at = now()
            WHERE id = $1 AND user_id = $2 RETURNING id`,
           [
             id,
@@ -226,6 +227,7 @@ export async function deleteAgentRoutine(
 }
 
 export async function assistantRoutineRoutes(app: FastifyInstance) {
+  await routineRecoveryRoutes(app);
   app.get("/me/agent-routines", async (r) => {
     const user = await authenticate(r);
     return listAgentRoutines(pool, user.id);

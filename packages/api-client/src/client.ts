@@ -166,6 +166,7 @@ import * as account from "./endpoints/account.js";
 import * as administration from "./endpoints/administration.js";
 import * as assistant from "./endpoints/assistant.js";
 import * as goalExecutions from "./endpoints/goal-executions.js";
+import * as routineRetries from "./endpoints/routine-retries.js";
 import * as booking from "./endpoints/booking.js";
 import * as capture from "./endpoints/capture.js";
 import * as connections from "./endpoints/connections.js";
@@ -1203,6 +1204,34 @@ export class OrbynClient {
   }
   listAgentRoutines() {
     return assistant.callListAgentRoutines.call(this);
+  }
+  routineRetryPolicy(id: string) {
+    return routineRetries.callRoutineRetryPolicy.call(this, id);
+  }
+  updateRoutineRetryPolicy(
+    id: string,
+    input: import("@orbyn/core").RoutineRetryPolicyUpdateInput,
+  ) {
+    return routineRetries.callUpdateRoutineRetryPolicy.call(this, id, input);
+  }
+  routineRecovery(routineId: string, occurrenceId: string) {
+    return routineRetries.callRoutineRecovery.call(
+      this,
+      routineId,
+      occurrenceId,
+    );
+  }
+  stopRoutineRecovery(
+    routineId: string,
+    occurrenceId: string,
+    input: import("@orbyn/core").RoutineRecoveryStopInput,
+  ) {
+    return routineRetries.callStopRoutineRecovery.call(
+      this,
+      routineId,
+      occurrenceId,
+      input,
+    );
   }
   listAgentRoutineRuns(id: string, query: AssistantRoutineRunsQuery = {}) {
     return assistant.callListAgentRoutineRuns.call(this, id, query);

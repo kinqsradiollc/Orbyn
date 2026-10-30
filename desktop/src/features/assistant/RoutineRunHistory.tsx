@@ -1,3 +1,4 @@
+import { RoutineOccurrenceDetails } from "./RoutineRecovery";
 import { useEffect, useRef, useState } from "react";
 import {
   ASSISTANT_OUTCOME_LABELS,
@@ -162,6 +163,12 @@ function HistoryBody({
                 </small>
               )}
               <small>Observed {when(run.last_observed_at)}</small>
+              <RoutineOccurrenceDetails
+                routineId={routineId}
+                occurrenceId={run.id}
+                disabled={disabled}
+                onOpenChat={onOpenChat}
+              />
               {run.visibility === "restricted" ? (
                 <p className="muted">Result no longer available</p>
               ) : (

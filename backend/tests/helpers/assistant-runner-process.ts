@@ -41,7 +41,9 @@ if (
           /^\s*UPDATE\s+ai_jobs\s+SET\s+apply_started_at\b/i.test(text);
         const writeStopCheck =
           process.env.RUNNER_TEST_PAUSE_AFTER_MARKER === "true" &&
-          /^\s*SELECT\s+cancel_requested\s+FROM\s+ai_jobs\b/i.test(text) &&
+          /^\s*SELECT\s+cancel_requested(?:\s*,\s*cancel_reason)?\s+FROM\s+ai_jobs\b/i.test(
+            text,
+          ) &&
           text.includes("FOR UPDATE");
         const commit = /^\s*COMMIT\s*;?\s*$/i.test(text);
         if (/^\s*(BEGIN|ROLLBACK)\s*;?\s*$/i.test(text)) {
@@ -50,12 +52,14 @@ if (
         }
         if (
           process.env.RUNNER_TEST_PAUSE_AFTER_MARKER === "true" &&
-          text.startsWith("SELECT cancel_requested, claimed_by, lease_until")
+          /^\s*SELECT\s+cancel_requested\s*,(?:\s*cancel_reason\s*,)?\s*claimed_by\s*,\s*lease_until/i.test(
+            text,
+          )
         ) {
           // This fixture isolates the transactional stop guard. Keep the lease
           // poll working, but prevent its cancellation observation winning first.
           args[0] = text.replace(
-            "SELECT cancel_requested,",
+            /SELECT\s+cancel_requested\s*,/i,
             "SELECT false AS cancel_requested,",
           );
         }

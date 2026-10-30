@@ -292,6 +292,38 @@ Do not clear markers or relabel held work as complete to drain the queue. Deploy
 worker cutover, production query costs, full Open Duet parity and installed-native
 qualification require their own evidence; local source/tests do not establish them.
 
+Routine occurrence recovery requires migration 302 and compatible API, Background,
+Overnight and runtime writers. Stop/drain older consumers before cutover: old
+scanners do not understand open recovery ownership or intent versions. The migration
+adds a separate default-off policy and child attempts under the existing occurrence
+ledger; it does not backfill recovery eligibility or create another queue/provider.
+The original occurrence timestamp and first-job history remain unchanged.
+
+Preparation captures instruction, schedule, manual intent version, policy,
+provider/scope fingerprints and contextual destination/source-entry bindings. Queue
+admission rechecks that snapshot atomically with the first child. Canonical admission
+seeds known routine/turn provenance after binding delivery and before commit;
+runtime boundaries still require checked current/prior sources, and workspace reads
+are recorded before provider use. Do not bypass this gate for a new unchecked job.
+Scheduler progress and automatic exhaustion do not change manual intent; manual
+routine/configuration and retry-policy writers must increment it. A final occurrence
+can therefore recover after scheduler exhaustion without treating a person's Pause
+as permission to continue.
+
+Each occurrence has at most one unsettled child attempt. Charge it once, retain
+accounting after job pruning, and preserve its predecessor and terminal qualification.
+Only classified transient failures with confirmed no effects qualify for fresh
+attempts; applied/pending/uncertain outcomes remain held or in their existing Review
+flow. Token allowance and attempt count are cumulative. Deadline is fixed at initial
+admission, capped by the captured next scheduled occurrence, and never moved by
+backoff. Existing lane/night consent, windows and budgets remain independent gates.
+Occurrence Stop fences its generation and cancels all its jobs; expiry cancels
+parked/queued work with a distinct deadline cause. Neither action undoes effects or
+erases accounting. Preserve cancellation reason, intent versions, snapshots,
+reservations and immutable attempt lineage during recovery or rollback. This is a
+local migration/runtime contract, not evidence of a production deployment, real
+provider qualification or native interaction qualification.
+
 ## Assistant admission policy
 
 Migration 294 seeds one policy at revision 1, retaining the existing ceilings:

@@ -1,3 +1,4 @@
+import { RoutineRetryPolicyEditor } from "./RoutineRecovery";
 import { GoalWorkSheet } from "./GoalWorkSheet";
 import { RoutineRunHistory } from "./RoutineRunHistory";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -126,6 +127,17 @@ function UpcomingBody({
   );
   const [routineTime, setRoutineTime] = useState("09:00");
   const [repeat, setRepeat] = useState("daily");
+  const routineDraftKey = JSON.stringify([
+    routineText,
+    routineDay,
+    routineTime,
+    repeat,
+  ]);
+  const [routineBaseline, setRoutineBaseline] = useState("");
+  useEffect(() => {
+    setRoutineBaseline(routineDraftKey);
+  }, [routineForm]);
+
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [menu, setMenu] = useState<{
@@ -953,6 +965,18 @@ function UpcomingBody({
             </p>
           )}
           {goalForm ? goalFields : routineFields}
+          {routineForm && routineForm !== "new" && (
+            <RoutineRetryPolicyEditor
+              routineId={routineForm}
+              disabled={saving || routineDraftKey !== routineBaseline}
+            />
+          )}
+          {routineForm === "new" && (
+            <p className="muted">
+              Retries are off. Save this routine before configuring bounded
+              recovery.
+            </p>
+          )}
         </SettingsEditor>
       )}
       {menu && (menuGoal || menuRoutine) && (

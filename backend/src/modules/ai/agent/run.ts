@@ -1,4 +1,8 @@
 import {
+  checkRoutineRecoveryBoundary,
+  type RoutineRecoveryBinding,
+} from "./routine-recovery.js";
+import {
   checkGoalExecutionBoundary,
   captureGoalOutputs,
   type GoalExecutionBinding,
@@ -106,7 +110,15 @@ export const ASSISTANT_STALE_MS = 60_000;
 /** A question or approval card nobody answered expires after a week. */
 const WAITING_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000;
 const STOPPED_TEXT = "Stopped. Nothing was changed.";
-class AssistantStopRequested extends Error {}
+class AssistantStopRequested extends Error {
+  constructor(readonly reason: "stop" | "deadline" = "stop") {
+    super(
+      reason === "deadline"
+        ? "The execution deadline was reached."
+        : "Stop was requested.",
+    );
+  }
+}
 class AssistantApplyUncertain extends Error {
   constructor() {
     super(
@@ -139,8 +151,9 @@ async function terminalFacts(
       apply_tracking_version: number | null;
       rollback_confirmed: boolean;
       cancel_requested: boolean;
+      cancel_reason: "stopped" | "deadline" | null;
     }>(
-      `SELECT apply_result,apply_started_at,apply_tracking_version,cancel_requested,
+      `SELECT apply_result,apply_started_at,apply_tracking_version,cancel_requested,cancel_reason,
        (apply_tracking_version=1 AND apply_rolled_back_at>=apply_started_at AND apply_result IS NULL) AS rollback_confirmed FROM ai_jobs
       WHERE id=$1 AND user_id=$2 FOR UPDATE`,
       [jobId, owner],
@@ -149,7 +162,14 @@ async function terminalFacts(
   return classifyTerminalEvidence({
     job_id: jobId,
     ...facts,
-    ...(row?.cancel_requested ? { cause: "stopped" as const } : {}),
+    ...(row?.cancel_requested
+      ? {
+          cause:
+            row.cancel_reason === "deadline"
+              ? ("deadline" as const)
+              : ("stopped" as const),
+        }
+      : {}),
     effects: {
       mode: "live",
       apply_result: row?.apply_result,
@@ -219,6 +239,7 @@ export type AssistantAutomation = {
   /** A task handed to the agent (W3) carries its item's id. */
   kind: "idea" | "goal" | "routine" | "task" | "night" | "handoff";
   goal_execution?: GoalExecutionBinding;
+  routine_recovery?: RoutineRecoveryBinding;
   recipient_lane?: "background" | "overnight";
   handoff_id?: string;
   night_id?: string;
@@ -499,13 +520,16 @@ async function currentWriteAuthority(
 ) {
   // Serialize Stop with effect admission; polling alone leaves a cancellation gap.
   const execution = (
-    await db.query<{ cancel_requested: boolean }>(
-      "SELECT cancel_requested FROM ai_jobs WHERE id=$1 AND user_id=$2 AND state='running' FOR UPDATE",
+    await db.query<{ cancel_requested: boolean; cancel_reason: string | null }>(
+      "SELECT cancel_requested,cancel_reason FROM ai_jobs WHERE id=$1 AND user_id=$2 AND state='running' FOR UPDATE",
       [principal.assistant_job_id ?? null, user.id],
     )
   ).rows[0];
   if (!execution) throw new AssistantLeaseLost();
-  if (execution.cancel_requested) throw new AssistantStopRequested();
+  if (execution.cancel_requested)
+    throw new AssistantStopRequested(
+      execution.cancel_reason === "deadline" ? "deadline" : "stop",
+    );
   if (request.conversation_context) {
     await assertConversationContext(db, user.id, request.conversation_context);
     const visible = await db.query(
@@ -574,6 +598,7 @@ async function principalFor(
 ) {
   await currentNightConsent(pool, user.id, request);
   await checkGoalExecutionBoundary(user.id, jobId, request.automation);
+  await checkRoutineRecoveryBoundary(user.id, jobId, request.automation);
   const lane =
     request.automation?.kind === "night" ||
     request.automation?.night_id ||
@@ -1320,7 +1345,7 @@ export async function startAssistantAutomation(input: {
     if (
       row &&
       !input.deliveryOrigin &&
-      !input.deliveryDestinationId &&
+      (!input.deliveryDestinationId || input.automation.routine_recovery) &&
       input.automation.id &&
       (scheduleKind === "task" ||
         scheduleKind === "goal" ||
@@ -1359,6 +1384,22 @@ export async function startAssistantAutomation(input: {
           ? `${input.automation.source_kind ?? input.automation.kind}:${input.automation.id}`
           : undefined,
       });
+    if (row && input.automation.routine_recovery && input.automation.id) {
+      // Only the routine identity and admitted conversation dependencies are
+      // known here. Context reads append their provenance before any provider call.
+      await db.query(
+        `INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'routine',$2) ON CONFLICT DO NOTHING`,
+        [row.id, input.automation.id],
+      );
+      await db.query(
+        `INSERT INTO assistant_job_sources(job_id,source_kind,source_id) SELECT $1,source_kind,source_id FROM assistant_chat_sources WHERE chat_id=$2 AND turn_id=$3 ON CONFLICT DO NOTHING`,
+        [row.id, chatId, turnId],
+      );
+      await db.query(
+        "UPDATE ai_jobs SET sources_checked=true WHERE id=$1 AND user_id=$2",
+        [row.id, user.id],
+      );
+    }
     return row?.id ?? null;
   };
   const jobId = input.db ? await enqueue(input.db) : await transaction(enqueue);
@@ -1506,6 +1547,13 @@ async function approvePlan(
     undefined,
     state.selected_steps,
   );
+  await checkRoutineRecoveryBoundary(
+    user.id,
+    jobId,
+    request.automation,
+    undefined,
+    true,
+  );
   const checked = await checkMergedPlan(pool, principal, state.selected_steps);
   if (!checked.steps.length)
     return { applied: false, structured: null, why: [] as string[] };
@@ -1573,6 +1621,13 @@ async function approvePlan(
                 request.automation,
                 db,
                 checked.steps,
+              );
+              await checkRoutineRecoveryBoundary(
+                user.id,
+                jobId,
+                request.automation,
+                db,
+                true,
               );
               await currentWriteAuthority(db, user, principal, request);
               const scopes = (
@@ -1871,10 +1926,11 @@ export async function runAssistantJob(
     pool
       .query<{
         cancel_requested: boolean;
+        cancel_reason: string | null;
         claimed_by: string | null;
         leased: boolean;
       }>(
-        "SELECT cancel_requested, claimed_by, lease_until > now() AS leased FROM ai_jobs WHERE id = $1",
+        "SELECT cancel_requested,cancel_reason, claimed_by, lease_until > now() AS leased FROM ai_jobs WHERE id = $1",
         [jobId],
       )
       .then((result) => {
@@ -1884,7 +1940,10 @@ export async function runAssistantJob(
           (result.rows[0]?.claimed_by !== owner || !result.rows[0]?.leased)
         )
           interrupt("lease");
-        else if (result.rows[0]?.cancel_requested) interrupt("stop");
+        else if (result.rows[0]?.cancel_requested)
+          interrupt(
+            result.rows[0].cancel_reason === "deadline" ? "deadline" : "stop",
+          );
       })
       .catch(() => undefined);
   const pollCancel = setInterval(() => void checkCancel(), 1000);
@@ -2047,9 +2106,16 @@ export async function runAssistantJob(
             history: request.history,
             goalExecution: request.automation?.goal_execution,
             beforeProvider:
-              request.conversation_context || request.automation?.goal_execution
+              request.conversation_context ||
+              request.automation?.goal_execution ||
+              request.automation?.routine_recovery
                 ? async () => {
                     await checkGoalExecutionBoundary(
+                      user.id,
+                      jobId,
+                      request.automation,
+                    );
+                    await checkRoutineRecoveryBoundary(
                       user.id,
                       jobId,
                       request.automation,
@@ -2193,7 +2259,7 @@ export async function runAssistantJob(
         );
       } catch (error) {
         if (error instanceof AssistantStopRequested) {
-          interrupt("stop");
+          interrupt(error.reason);
           throw error;
         }
         if (error instanceof AssistantLeaseLost) throw error;
@@ -2310,7 +2376,7 @@ export async function runAssistantJob(
       leadSummary(envelope.state, fallback),
     );
   } catch (error) {
-    if (error instanceof AssistantStopRequested) interrupt("stop");
+    if (error instanceof AssistantStopRequested) interrupt(error.reason);
     if (error instanceof AssistantLeaseLost || stopReason === "lease") {
       controller.abort();
       return;
@@ -2575,7 +2641,7 @@ export async function answerAssistantQuestion(
     };
     await db.query(
       `UPDATE ai_jobs SET state = 'queued', run_state = $3::jsonb,
-         progress = $4::jsonb, cancel_requested = false, heartbeat_at = now(), lease_until = NULL, claimed_by = NULL
+         progress = $4::jsonb, cancel_requested = false,cancel_reason=NULL, heartbeat_at = now(), lease_until = NULL, claimed_by = NULL
        WHERE id = $1 AND user_id = $2`,
       [
         jobId,
@@ -2703,7 +2769,7 @@ export async function answerAssistantApproval(
     }
     await db.query(
       `UPDATE ai_jobs SET state = 'queued', run_state = $3::jsonb,
-       progress = $4::jsonb, cancel_requested = false, heartbeat_at = now(), lease_until = NULL, claimed_by = NULL
+       progress = $4::jsonb, cancel_requested = false,cancel_reason=NULL, heartbeat_at = now(), lease_until = NULL, claimed_by = NULL
        WHERE id = $1 AND user_id = $2`,
       [
         jobId,
@@ -2729,6 +2795,7 @@ export async function stopAssistantJob(
   jobId: string,
   user: UserRow,
   log?: FastifyBaseLogger,
+  options: { deadline?: boolean } = {},
 ) {
   const row = await transaction(async (db) => {
     const current = (
@@ -2740,9 +2807,9 @@ export async function stopAssistantJob(
     ).rows[0];
     if (!current) return null;
     await db.query(
-      `UPDATE ai_jobs SET cancel_requested = true,
+      `UPDATE ai_jobs SET cancel_requested = true,cancel_reason=$2,
          progress = jsonb_build_object('label', 'Stopping the run') WHERE id = $1`,
-      [jobId],
+      [jobId, options.deadline ? "deadline" : "stopped"],
     );
     return current;
   });
@@ -2752,14 +2819,16 @@ export async function stopAssistantJob(
     if (!envelope) {
       await transaction(async (db) => {
         const terminal = await terminalFacts(db, jobId, user.id, {
-          cause: "stopped",
+          cause: options.deadline ? "deadline" : "stopped",
         });
         await db.query(
           `UPDATE ai_jobs SET state = 'failed', error_status = 409,
            error_message = $2, run_state = NULL, terminal_evidence=$3::jsonb WHERE id = $1`,
           [
             jobId,
-            "Stopped. Review any earlier changes in the change history.",
+            options.deadline
+              ? "The occurrence time limit was reached. Review any earlier changes in the change history."
+              : "Stopped. Review any earlier changes in the change history.",
             JSON.stringify(terminal),
           ],
         );
@@ -2771,7 +2840,7 @@ export async function stopAssistantJob(
     const interrupted = await interruptedApplyResult(
       jobId,
       user.id,
-      false,
+      options.deadline === true,
       true,
     );
     await finishJob(
@@ -2788,7 +2857,7 @@ export async function stopAssistantJob(
     });
     return true;
   }
-  activeRuns.get(jobId)?.();
+  if (!options.deadline) activeRuns.get(jobId)?.();
   return true;
 }
 

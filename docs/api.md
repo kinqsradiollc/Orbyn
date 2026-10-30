@@ -1054,6 +1054,66 @@ job, a proposal decision or manually setting `goals.status=done` cannot mint acc
 completion. These APIs reuse existing Orbyn workers/providers and require migration
 300–301; their presence does not qualify a hosted rollout or native client behavior.
 
+### Routine retry policy and occurrence recovery
+
+These separate routes use `packages/core/src/assistant/routine-retries.ts`. The
+strict `AgentRoutine`, routine mutation inputs and existing `/runs` response remain
+unchanged. Existing `/runs` rows continue to describe their original first job;
+recovery details carry subsequent attempts under the same occurrence.
+
+| Route                                             | Contract                                                           |
+| ------------------------------------------------- | ------------------------------------------------------------------ |
+| `GET /me/agent-routines/:id/retry-policy`         | First-party person session; `{ routine_id, revision, policy }`     |
+| `PUT /me/agent-routines/:id/retry-policy`         | First-party versioned policy update; returns the policy page       |
+| `GET /me/agent-routines/:id/runs/:runId/recovery` | Authenticated owned occurrence recovery, with current source gates |
+| `POST /me/agent-routines/:id/runs/:runId/stop`    | First-party occurrence Stop; returns refreshed recovery            |
+
+Policy update accepts `{ request_id, expected_revision, policy }`. Policy fields are:
+
+| Field                 | Default  | Bounds                                        |
+| --------------------- | -------- | --------------------------------------------- |
+| `enabled`             | `false`  | Boolean                                       |
+| `max_attempts`        | `3`      | 1–5, including the initial job                |
+| `token_limit`         | `200000` | 1–1,000,000 cumulative estimated tokens       |
+| `max_elapsed_minutes` | `180`    | 1–1,440                                       |
+| `backoff_seconds`     | `60`     | 5–3,600; exponential delay capped at one hour |
+
+Missing policy is disabled. Policy changes apply to future admissions and invalidate
+captured recovery configuration. They do not promote historical occurrences into
+retryable work. A stale revision or conflicting request ID returns `409`; replaying
+the most recent identical request does not repeat the policy change. API keys and
+agent credentials cannot mutate policy or stop occurrences.
+
+Recovery returns identity `{ routine_id, occurrence_id, scheduled_for }` with
+`recovery: "legacy"` for an untracked historical occurrence. Tracked occurrences use
+`recovery: "enabled"` and `visibility: "available" | "restricted"`. Shared metadata
+includes `state`, generation/revision, lane, captured policy, deadline,
+consumed/reserved estimates, attempt count, nullable `next_retry_at` and reason.
+States are `active`, `waiting`, `retry_scheduled`, `held`, `limited`, `completed` and
+`stopped`. `completed` means the occurrence finished; it is not person acceptance of
+a goal. Available recovery adds at most five attempts, each with ordinal, state,
+allocation/settlement, resume count and retry qualification. Currently authorized
+attempts include job/chat links, summary and optional job-bound outcome receipt.
+Restricted recovery omits attempts and private links/content.
+
+Stop accepts `{ request_id, expected_revision, generation }`, fences that occurrence's
+generation and requests cancellation of every admitted job. It does not pause the
+routine's future schedule or undo committed effects. Replaying the same Stop can
+finish interrupted cancellation without creating another control transition.
+Stale controls return `409`; legacy occurrences have no recovery controls.
+
+A fresh attempt requires a classified transient provider failure with confirmed no
+effects, current configuration/provider/scope and source authority, and remaining
+cumulative allowance. It keeps `scheduled_for` unchanged and uses the existing queue.
+The fixed deadline is capped by the next scheduled occurrence when available;
+backoff and checkpoint recovery do not extend it. Pending approval/Review, applied
+or uncertain effects, person Stop and unqualified failures do not acquire retry
+authority. Scheduler exhaustion may auto-pause a final recurrence while its captured
+recovery remains valid; a manual edit/pause or policy change advances intent and
+holds that recovery. Held occurrences require a deliberate Stop before later
+scheduled work is admitted. These contracts require migration 302; local source and
+tests do not qualify external providers or installed-native behavior.
+
 ### `GET /me/agent-routines/:id/runs` (auth)
 
 Read an owned routine's admitted occurrence history, newest scheduled time first,

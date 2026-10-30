@@ -176,3 +176,5 @@ export * from "./assistant/assistant-outcomes.js";
 export * from "./assistant/routine-runs.js";
 
 export * from "./assistant/goal-executions.js";
+
+export * from "./assistant/routine-retries.js";
