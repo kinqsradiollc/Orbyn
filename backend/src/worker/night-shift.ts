@@ -1,3 +1,4 @@
+import { readRoutineRunLimits } from "../modules/assistant-workspace/routine-run-limits.js";
 import {
   prepareRoutineRecovery,
   type PreparedRoutineRecovery,
@@ -849,6 +850,10 @@ export async function scanNightShift(
                 )
               ).rows[0]
             : null;
+        const routineLimits =
+          next.source === "routine" && next.id
+            ? await readRoutineRunLimits(db, person.id, next.id)
+            : null;
         const prepared =
           initialOccurrence && next.id
             ? await prepareRoutineRecovery(
@@ -860,7 +865,10 @@ export async function scanNightShift(
                 {
                   nextScheduledFor: next.next ?? null,
                   now,
-                  allocationCap: budget - night.budget_used,
+                  allocationCap: Math.min(
+                    budget - night.budget_used,
+                    routineLimits?.token_limit ?? Infinity,
+                  ),
                 },
               )
             : null;
@@ -881,12 +889,18 @@ export async function scanNightShift(
             week_of: next.week,
             wait_for_ok: prefs.wait_for_ok,
             ...(prepared ? { routine_recovery: prepared.binding } : {}),
-            token_budget:
-              prepared?.allocation ??
-              Math.min(
-                next.kind === "reflection" ? 30_000 : LEAD_TOKEN_BUDGET,
-                budget - night.budget_used,
-              ),
+            ...(routineLimits
+              ? {
+                  max_active_work_ms:
+                    routineLimits.active_work_minutes * 60_000,
+                }
+              : {}),
+            token_budget: Math.min(
+              routineLimits?.token_limit ?? Infinity,
+              prepared?.allocation ?? Infinity,
+              next.kind === "reflection" ? 30_000 : LEAD_TOKEN_BUDGET,
+              budget - night.budget_used,
+            ),
             end_at: prepared
               ? new Date(
                   Math.min(

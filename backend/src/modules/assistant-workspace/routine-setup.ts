@@ -3,6 +3,7 @@ import {
   fail,
   routineSetupContext,
   routineSetupInput,
+  routineRunLimits,
   type RoutineSetupContext,
 } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
@@ -62,6 +63,7 @@ export async function readRoutineSetupContext(
     approval_scopes: scopes,
     snapshot: assistantExecutionDigest({
       version: 1,
+      run_limits_ceiling: routineRunLimits.parse({}),
       owner,
       disabled: person.disabled,
       grant: grant ?? null,
@@ -71,6 +73,7 @@ export async function readRoutineSetupContext(
           .sort((a, b) => a.id.localeCompare(b.id)) ?? [],
     }),
     max_run_tokens: LEAD_TOKEN_BUDGET,
+    max_active_work_minutes: 10,
     can_preauthorize: !!canPreauthorize,
   });
 }
@@ -114,7 +117,19 @@ export async function setupAgentRoutine(
     );
   if (input.allow_changes.length && !current.can_preauthorize)
     fail(409, "Assistant permission is unavailable for automatic changes.");
+  if (
+    input.run_limits &&
+    (input.run_limits.token_limit > current.max_run_tokens ||
+      input.run_limits.active_work_minutes > current.max_active_work_minutes)
+  )
+    fail(422, "Choose routine limits within the current runtime ceilings.");
   const routine = await saveAgentRoutine(db, owner, null, input.routine);
+  if (input.run_limits) {
+    await db.query(
+      "UPDATE agent_routines SET run_limits=$3::jsonb WHERE id=$2 AND user_id=$1",
+      [owner, routine.id, JSON.stringify(input.run_limits)],
+    );
+  }
   if (input.allow_changes.length) {
     const scopes = { ...current.approval_scopes };
     for (const kind of input.allow_changes)

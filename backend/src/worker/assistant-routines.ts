@@ -1,3 +1,4 @@
+import { readRoutineRunLimits } from "../modules/assistant-workspace/routine-run-limits.js";
 import { prepareRoutineRecovery } from "../modules/assistant-workspace/routine-recovery.js";
 import { nextOccurrence, type SystemRole } from "@orbyn/core";
 import { pool, transaction } from "../db/pool.js";
@@ -99,6 +100,9 @@ export async function scanAssistantRoutines(
       `This routine repeats using ${routine.rrule} in ${routine.timezone}. Use the current workspace, follow the built-in assistant's saved approval scopes, and report what you completed or what needs my attention.`,
     ].join("\n\n");
     try {
+      const limits = await transaction((db) =>
+        readRoutineRunLimits(db, routine.user_id, routine.id),
+      );
       const prepared = await transaction((db) =>
         prepareRoutineRecovery(
           db,
@@ -111,6 +115,7 @@ export async function scanAssistantRoutines(
               routine.next_run_at_after_claim?.toISOString() ?? null,
             now,
             expectedIntentVersion: routine.intent_version,
+            allocationCap: limits.token_limit,
           },
         ),
       );
@@ -122,10 +127,14 @@ export async function scanAssistantRoutines(
           automation: {
             kind: "routine",
             id: routine.id,
+            token_budget: Math.min(
+              limits.token_limit,
+              prepared?.allocation ?? Infinity,
+            ),
+            max_active_work_ms: limits.active_work_minutes * 60_000,
             ...(prepared
               ? {
                   routine_recovery: prepared.binding,
-                  token_budget: prepared.allocation,
                   end_at: prepared.deadline,
                 }
               : {}),

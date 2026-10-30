@@ -71,11 +71,52 @@ export function RoutineSetupReview({
       {state.error && <p role="alert">{state.error}</p>}
       {state.context && (
         <>
+          <h4>Limits for each automatic attempt</h4>
+          <label className="settings-field">
+            Token allowance (1–{state.context.max_run_tokens.toLocaleString()})
+            <input
+              type="number"
+              min={1}
+              max={state.context.max_run_tokens}
+              step={1}
+              value={state.runLimits.token_limit}
+              disabled={!active || state.saving || state.uncertain}
+              onChange={(event) =>
+                store.setRunLimits({
+                  ...state.runLimits,
+                  token_limit: Number(event.target.value),
+                })
+              }
+            />
+          </label>
+          <label className="settings-field">
+            Active AI work in minutes (1–{state.context.max_active_work_minutes}
+            )
+            <input
+              type="number"
+              min={1}
+              max={state.context.max_active_work_minutes}
+              step={1}
+              value={state.runLimits.active_work_minutes}
+              disabled={!active || state.saving || state.uncertain}
+              onChange={(event) =>
+                store.setRunLimits({
+                  ...state.runLimits,
+                  active_work_minutes: Number(event.target.value),
+                })
+              }
+            />
+          </label>
           <p>
-            Each run has a maximum of{" "}
-            {state.context.max_run_tokens.toLocaleString()} tokens. Account and
-            Overnight limits can stop it sooner. Retries are off until you
-            configure recovery.
+            Active AI work time counts while the attempt runs, including
+            resumes. Queueing and waiting for your decision do not use this
+            allowance. Account, Overnight and recovery limits can stop work
+            sooner.
+          </p>
+          <p>
+            Approving an existing saved plan uses its separate short
+            finalization window. These limits do not enable retries or new
+            permissions.
           </p>
           <details>
             <summary>Automatic changes · optional</summary>

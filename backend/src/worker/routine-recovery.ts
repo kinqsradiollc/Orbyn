@@ -1,3 +1,4 @@
+import { readRoutineRunLimits } from "../modules/assistant-workspace/routine-run-limits.js";
 import { randomUUID } from "node:crypto";
 import {
   nightShiftInput,
@@ -501,8 +502,14 @@ export async function scanRoutineRetries(
         )
       ).rows[0];
       if (!user) return;
+      const limits = await readRoutineRunLimits(
+        db,
+        row.owner_id,
+        row.routine_id,
+      );
       let allocation = Math.min(
         LEAD_TOKEN_BUDGET,
+        limits.token_limit,
         row.policy_snapshot.token_limit -
           row.consumed_tokens -
           row.reserved_tokens,
@@ -589,6 +596,7 @@ export async function scanRoutineRetries(
             ordinal,
           },
           token_budget: allocation,
+          max_active_work_ms: limits.active_work_minutes * 60_000,
           end_at: new Date(
             Math.min(row.deadline.getTime(), night?.end.getTime() ?? Infinity),
           ).toISOString(),

@@ -18,6 +18,7 @@ const context = {
   approval_scopes: {},
   snapshot,
   max_run_tokens: 200000,
+  max_active_work_minutes: 10,
   can_preauthorize: true,
 };
 const routine = {
@@ -241,4 +242,64 @@ test("a later denial cannot erase the identity of an earlier unknown save", asyn
   assert.deepEqual(commands[0], commands[1]);
   assert.deepEqual(commands[1], commands[2]);
   assert.equal(store.getSnapshot().result, routine);
+});
+
+test("explicit attempt limits freeze with an uncertain save and preserve retry-off permission", async () => {
+  const commands: RoutineSetupInput[] = [];
+  const store = new RoutineSetupStore(
+    {
+      routineSetupContext: async () => context,
+      setupAgentRoutine: async (command) => {
+        commands.push(structuredClone(command));
+        if (commands.length === 1) throw new TypeError("lost ACK");
+        return routine;
+      },
+    },
+    input,
+    () => id,
+  );
+  await store.load();
+  store.setRunLimits({ token_limit: 1200, active_work_minutes: 1 });
+  await store.save();
+  store.setRunLimits({ token_limit: 200000, active_work_minutes: 10 });
+  await store.save();
+  assert.deepEqual(commands[0], commands[1]);
+  assert.deepEqual(commands[0].run_limits, {
+    token_limit: 1200,
+    active_work_minutes: 1,
+  });
+  assert.deepEqual(commands[0].allow_changes, []);
+  assert.equal(Object.hasOwn(commands[0], "retry_policy"), false);
+});
+test("invalid or above-current-ceiling limits do not transmit a setup command", async () => {
+  let writes = 0;
+  const store = new RoutineSetupStore(
+    {
+      routineSetupContext: async () => ({
+        ...context,
+        max_run_tokens: 1000,
+        max_active_work_minutes: 2,
+      }),
+      setupAgentRoutine: async () => {
+        writes++;
+        return routine;
+      },
+    },
+    input,
+    () => id,
+  );
+  await store.load();
+  for (const value of [
+    { token_limit: 0, active_work_minutes: 1 },
+    { token_limit: 1001, active_work_minutes: 1 },
+    { token_limit: 1000, active_work_minutes: 3 },
+    { token_limit: 1000, active_work_minutes: 1.5 },
+  ]) {
+    store.setRunLimits(value);
+    assert.equal(await store.save(), null);
+  }
+  assert.equal(writes, 0);
+  store.setRunLimits({ token_limit: 1000, active_work_minutes: 2 });
+  assert.equal(await store.save(), routine);
+  assert.equal(writes, 1);
 });

@@ -1,3 +1,4 @@
+import { activeWorkRemainingMs } from "./active-work-limit.js";
 import { recordQuietReads, type QuietCheckBinding } from "./quiet-check.js";
 import {
   prepareRoutineQuietCheck,
@@ -255,6 +256,7 @@ export type AssistantAutomation = {
   source_kind?: "task" | "goal" | "routine";
   wait_for_ok?: boolean;
   token_budget?: number;
+  max_active_work_ms?: number;
   end_at?: string;
   id?: string;
   local_day?: string;
@@ -1985,7 +1987,7 @@ export async function runAssistantJob(
   const nightEnd = request.automation?.end_at
     ? Date.parse(request.automation.end_at)
     : NaN;
-  const deadline = setTimeout(
+  let deadline = setTimeout(
     () => interrupt("deadline"),
     Math.max(
       1,
@@ -1995,9 +1997,13 @@ export async function runAssistantJob(
           : Infinity,
         loaded?.reviewed
           ? 30_000
-          : assistantRunLimits.maxRunMs -
-              (loaded?.elapsed_ms ?? 0) -
-              (Date.now() - (loaded?.started_at ?? Date.now())),
+          : activeWorkRemainingMs(
+              assistantRunLimits.maxRunMs,
+              request.automation?.max_active_work_ms,
+              loaded?.elapsed_ms ?? 0,
+              loaded?.started_at,
+              Date.now(),
+            ),
       ),
     ),
   );
@@ -2171,6 +2177,29 @@ export async function runAssistantJob(
     let fallback = "";
     for (let attempt = 0; attempt < 3; attempt++) {
       if (controller.signal.aborted) throw new Error("stopped");
+      if (
+        !envelope.state.answer &&
+        request.automation?.max_active_work_ms !== undefined
+      ) {
+        // A reviewed saved plan may finalize in its existing short window.
+        // Re-entering model work after a checker rejection never inherits it.
+        const remaining = Math.min(
+          activeWorkRemainingMs(
+            assistantRunLimits.maxRunMs,
+            request.automation.max_active_work_ms,
+            envelope.elapsed_ms ?? 0,
+            envelope.started_at,
+            Date.now(),
+          ),
+          Number.isFinite(nightEnd) ? nightEnd - Date.now() : Infinity,
+        );
+        if (remaining <= 0) {
+          interrupt("deadline");
+          throw new AssistantStopRequested("deadline");
+        }
+        clearTimeout(deadline);
+        deadline = setTimeout(() => interrupt("deadline"), remaining);
+      }
       const result = envelope.state.answer
         ? { state: envelope.state, partial: false }
         : await runLead({

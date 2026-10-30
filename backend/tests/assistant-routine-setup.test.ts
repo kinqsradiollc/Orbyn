@@ -304,3 +304,108 @@ test("routine setup validation is strict, canonical save failures leave no grant
   assert.equal(Object.hasOwn(legacy.json(), "allow_changes"), false);
   assert.deepEqual(await f.scopes(), {});
 });
+
+test("setup captures explicit per-attempt bounds atomically without enabling recovery or expanding scopes", async () => {
+  const f = await fixture();
+  const input = {
+    ...(await f.input()),
+    run_limits: { token_limit: 1234, active_work_minutes: 1 },
+  };
+  const response = await f.call("POST", "/me/agent-routines/setup", input);
+  assert.equal(response.statusCode, 200, response.body);
+  const saved = response.json();
+  const row = (
+    await pool.query(
+      "SELECT run_limits,retry_policy FROM agent_routines WHERE id=$1 AND user_id=$2",
+      [saved.id, f.person.id],
+    )
+  ).rows[0];
+  assert.deepEqual(row.run_limits, input.run_limits);
+  assert.equal(row.retry_policy?.enabled ?? false, false);
+  assert.deepEqual(await f.scopes(), {});
+  const repeated = await f.call("POST", "/me/agent-routines/setup", input);
+  assert.equal(repeated.statusCode, 200, repeated.body);
+  assert.equal(repeated.json().id, saved.id);
+  const changed = await f.call("POST", "/me/agent-routines/setup", {
+    ...input,
+    run_limits: { token_limit: 1235, active_work_minutes: 1 },
+  });
+  assert.equal(changed.statusCode, 409, changed.body);
+  for (const limits of [
+    { token_limit: 200001, active_work_minutes: 1 },
+    { token_limit: 1234, active_work_minutes: 11 },
+  ]) {
+    const invalid = await f.call("POST", "/me/agent-routines/setup", {
+      ...input,
+      request_id: randomUUID(),
+      run_limits: limits,
+    });
+    assert.ok([400, 422].includes(invalid.statusCode), invalid.body);
+  }
+});
+
+test("background admission captures initial attempt bounds independently of retry opt-in", async () => {
+  const { scanAssistantRoutines } =
+    await import("../src/worker/assistant-routines.js");
+  const { readRoutineRunLimits } =
+    await import("../src/modules/assistant-workspace/routine-run-limits.js");
+  for (const run_limits of [
+    undefined,
+    { token_limit: 1234, active_work_minutes: 1 },
+  ]) {
+    const f = await fixture();
+    const input = {
+      ...(await f.input()),
+      ...(run_limits ? { run_limits } : {}),
+    };
+    const created = await f.call("POST", "/me/agent-routines/setup", input);
+    assert.equal(created.statusCode, 200, created.body);
+    const saved = created.json();
+    let captured:
+      | Parameters<
+          typeof import("../src/modules/ai/agent/run.js").startAssistantAutomation
+        >[0]
+      | undefined;
+    const result = await scanAssistantRoutines(
+      new Date(Date.parse(input.routine.next_run_at) + 1),
+      {
+        only: [f.person.id],
+        ai: {} as import("../src/modules/ai/providers/adapters.js").ResolvedAi,
+        startAutomation: async (command) => {
+          captured = command;
+          return null;
+        },
+      },
+    );
+    assert.equal(
+      result,
+      0,
+      "Read-only injected admission deliberately queues no job",
+    );
+    assert.ok(captured);
+    const effective = run_limits ?? {
+      token_limit: 200000,
+      active_work_minutes: 10,
+    };
+    assert.equal(captured.automation.token_budget, effective.token_limit);
+    assert.equal(
+      captured.automation.max_active_work_ms,
+      effective.active_work_minutes * 60000,
+    );
+    assert.equal(captured.automation.routine_recovery, undefined);
+    assert.equal(captured.automation.end_at, undefined);
+    assert.deepEqual(
+      await readRoutineRunLimits(pool, f.person.id, saved.id),
+      effective,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM ai_jobs WHERE user_id=$1",
+          [f.person.id],
+        )
+      ).rows[0].n,
+      0,
+    );
+  }
+});

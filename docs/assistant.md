@@ -52,6 +52,13 @@ Result previews use the authorized answer, with recorded outcome evidence availa
 in details; a failed run without a receipt still needs review. Missing worker
 heartbeat evidence is shown as unavailable, not proof that the worker failed.
 
+Creating a routine in Upcoming reviews its schedule, per-attempt token allowance,
+active AI work time and optional automatic-change categories together. Active time
+counts execution and resumes, excluding queueing and waiting for a decision.
+Tighter account, Overnight and recovery limits can stop work sooner. Approving
+saved changes can still finalize them; it does not give model work a fresh budget.
+These creation limits do not enable retries, which remain a separate opt-in.
+
 Upcoming offers lazy, paginated history for an individual routine. Each occurrence
 shows its scheduled time, observed execution state and recorded recovery count.
 Opening history does not rerun work or change the routine. Source/chat access is

@@ -4,7 +4,7 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Text, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import * as Crypto from "expo-crypto";
 import { RoutineSetupStore } from "@orbyn/api-client";
 import {
@@ -89,11 +89,52 @@ export function RoutineSetupReview({
       )}
       {state.context && (
         <>
+          <Text style={shared.sectionTitle} accessibilityRole="header">
+            Limits for each automatic attempt
+          </Text>
           <Text style={shared.small}>
-            Each run has a maximum of{" "}
-            {state.context.max_run_tokens.toLocaleString()} tokens. Account and
-            Overnight limits can stop it sooner. Retries are off until you
-            configure recovery.
+            Token allowance (1–{state.context.max_run_tokens.toLocaleString()})
+          </Text>
+          <TextInput
+            accessibilityLabel="Token allowance"
+            style={shared.input}
+            keyboardType="number-pad"
+            value={String(state.runLimits.token_limit)}
+            editable={active && !state.saving && !state.uncertain}
+            onChangeText={(value) =>
+              store.setRunLimits({
+                ...state.runLimits,
+                token_limit: Number(value),
+              })
+            }
+          />
+          <Text style={shared.small}>
+            Active AI work in minutes (1–{state.context.max_active_work_minutes}
+            )
+          </Text>
+          <TextInput
+            accessibilityLabel="Active AI work in minutes"
+            style={shared.input}
+            keyboardType="number-pad"
+            value={String(state.runLimits.active_work_minutes)}
+            editable={active && !state.saving && !state.uncertain}
+            onChangeText={(value) =>
+              store.setRunLimits({
+                ...state.runLimits,
+                active_work_minutes: Number(value),
+              })
+            }
+          />
+          <Text style={shared.small}>
+            Active AI work time counts while the attempt runs, including
+            resumes. Queueing and waiting for your decision do not use this
+            allowance. Account, Overnight and recovery limits can stop work
+            sooner.
+          </Text>
+          <Text style={shared.small}>
+            Approving an existing saved plan uses its separate short
+            finalization window. These limits do not enable retries or new
+            permissions.
           </Text>
           <InlineDetails title="Automatic changes · optional">
             <Text style={shared.small}>

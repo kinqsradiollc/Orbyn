@@ -1056,6 +1056,28 @@ job, a proposal decision or manually setting `goals.status=done` cannot mint acc
 completion. These APIs reuse existing Orbyn workers/providers and require migration
 300–301; their presence does not qualify a hosted rollout or native client behavior.
 
+### First-party routine setup
+
+`GET /me/agent-routines/setup-context` reads current approval categories, a CAS
+`snapshot`, `max_run_tokens` and `max_active_work_minutes`. Reading it does not
+grant access. `POST /me/agent-routines/setup` accepts `{ request_id, routine,
+expected_snapshot, allow_changes, run_limits? }` and atomically saves the schedule
+and explicitly selected routine-bound categories. Unselected categories retain
+their current settings; explicit ask/deny and sensitive-action Review still apply.
+
+Optional `run_limits` contains `token_limit` (integer 1–200,000) and
+`active_work_minutes` (integer 1–10). Legacy omitted limits retain the current
+200,000-token/10-minute defaults. These are per-attempt execution estimates,
+configured at creation, and do not enable retries. Active work includes resumes
+but excludes queued and parked time; tighter Night/recovery deadlines still apply.
+Human approval may finalize an existing saved plan in its existing short window;
+re-entering model work retains the original remaining allowance.
+
+The setup command is person-session-only and requires migration 304–305. An
+identical request replay returns its saved routine without regranting categories;
+a mismatched request ID or stale authority snapshot returns `409`. Deleted results
+remain tombstoned. Clients retain the same command after an unknown response.
+
 ### Routine retry policy and occurrence recovery
 
 These separate routes use `packages/core/src/assistant/routine-retries.ts`. The

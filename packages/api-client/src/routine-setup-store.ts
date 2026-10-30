@@ -2,6 +2,8 @@ import {
   HttpError,
   agentRoutineInput,
   routineSetupInput,
+  routineRunLimits,
+  type RoutineRunLimits,
   type AgentRoutine,
   type AgentRoutineInput,
   type AssistantChangeKind,
@@ -12,6 +14,7 @@ import type { OrbynClient } from "./client.js";
 export type RoutineSetupState = {
   context: RoutineSetupContext | null;
   selected: AssistantChangeKind[];
+  runLimits: RoutineRunLimits;
   loading: boolean;
   saving: boolean;
   uncertain: boolean;
@@ -25,6 +28,7 @@ export class RoutineSetupStore {
   private state: RoutineSetupState = {
     context: null,
     selected: [],
+    runLimits: routineRunLimits.parse({}),
     loading: false,
     saving: false,
     uncertain: false,
@@ -104,14 +108,40 @@ export class RoutineSetupStore {
         : this.state.selected.filter((k) => k !== kind),
     });
   };
+  setRunLimits = (limits: RoutineRunLimits) => {
+    if (
+      !this.owns() ||
+      this.read ||
+      this.write ||
+      this.state.uncertain ||
+      this.state.result
+    )
+      return;
+    this.command = null;
+    this.publish({ runLimits: { ...limits }, error: "" });
+  };
   save = (): Promise<AgentRoutine | null> => {
     if (!this.owns()) return Promise.resolve(null);
     if (this.write) return this.write;
     if (this.state.result) return Promise.resolve(this.state.result);
     if (!this.state.context || this.read) return Promise.resolve(null);
+    const checked = routineRunLimits.safeParse(this.state.runLimits);
+    if (
+      !checked.success ||
+      this.state.runLimits.token_limit > this.state.context.max_run_tokens ||
+      this.state.runLimits.active_work_minutes >
+        this.state.context.max_active_work_minutes
+    ) {
+      this.publish({
+        error:
+          "Choose a positive token allowance within the current ceiling and 1–10 minutes of active AI work.",
+      });
+      return Promise.resolve(null);
+    }
     this.command ??= routineSetupInput.parse({
       request_id: this.uuid(),
       routine: this.routine,
+      run_limits: checked.data,
       allow_changes: this.state.selected,
       expected_snapshot: this.state.context.snapshot,
     });
@@ -174,6 +204,7 @@ export class RoutineSetupStore {
     this.state = {
       context: null,
       selected: [],
+      runLimits: routineRunLimits.parse({}),
       loading: false,
       saving: false,
       uncertain: false,
