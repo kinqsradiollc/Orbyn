@@ -199,17 +199,26 @@ export function usePlanner() {
       );
       if (!options?.silent) setLoading(true);
       try {
-        const [n, t] = await Promise.allSettled([
-          client.listNotifications(),
-          client.listTeams(),
-        ]);
+        // Notifications are a companion read, not authority for task access.
+        // Publish them independently so a slow inbox cannot delay task data.
+        const notices = Promise.allSettled([client.listNotifications()]).then(
+          ([result]) => {
+            if (!current() || seq !== refreshSeq.current) return result;
+            if (result.status === "fulfilled")
+              setNotices((previous) =>
+                JSON.stringify(previous) === JSON.stringify(result.value)
+                  ? previous
+                  : result.value,
+              );
+            else if ((result.reason as HttpError).status === 401)
+              report(result.reason);
+            return result;
+          },
+        );
+        const [t] = await Promise.allSettled([client.listTeams()]);
         if (!current() || seq !== refreshSeq.current) return;
-        for (const result of [n, t])
-          if (
-            result.status === "rejected" &&
-            (result.reason as HttpError).status === 401
-          )
-            throw result.reason;
+        if (t.status === "rejected" && (t.reason as HttpError).status === 401)
+          throw t.reason;
         if (t.status === "fulfilled")
           itemStore.restrictTeams(t.value.map((team) => team.id));
         const scope =
@@ -231,12 +240,10 @@ export function usePlanner() {
         const all = itemStore.getSnapshot();
         const snapshot = JSON.stringify([
           all,
-          n.status === "fulfilled" ? n.value : null,
           t.status === "fulfilled" ? t.value : null,
         ]);
         if (!options?.silent || snapshot !== lastData.current) {
           lastData.current = snapshot;
-          if (n.status === "fulfilled") setNotices(n.value);
           if (t.status === "fulfilled") setTeams(t.value);
           setRevision((r) => r + 1);
         }
@@ -253,13 +260,17 @@ export function usePlanner() {
             ? previous
             : { generation, phase: "ready" },
         );
+        // Full refresh completion still includes the inbox and its errors.
+        // Task readiness above does not depend on this optional result.
+        const n = await notices;
+        if (!current() || seq !== refreshSeq.current) return;
         for (const result of [n, t])
           if (result.status === "rejected") throw result.reason;
       } finally {
         if (current() && !options?.silent) setLoading(false);
       }
     },
-    [token],
+    [token, report],
   );
 
   useEffect(() => {

@@ -6,6 +6,7 @@ import { assistantProposalSourcesVisible } from "../../lib/assistant-proposal-vi
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 import { conversationNoticeVisible } from "../assistant-workspace/conversation-notifications.js";
+import { canonicalUuidSql } from "../../lib/canonical-uuid-sql.js";
 
 /**
  * The in-app notification tray, for the routes and the agents (get_today
@@ -43,7 +44,7 @@ export async function listNotifications(
                 CASE WHEN p.source = 'assistant' THEN coalesce(nullif(agent.name, ''), 'Orbyn') END
               ) AS via_agent
        FROM notifications n LEFT JOIN items i ON i.id = n.item_id
-       LEFT JOIN proposals p ON n.kind = 'review' AND n.ref = 'proposal:' || p.id::text
+       LEFT JOIN proposals p ON n.kind = 'review' AND p.id = ${canonicalUuidSql("substring(n.ref FROM 10)")} AND n.ref = 'proposal:' || p.id::text
        LEFT JOIN agent_settings agent ON agent.user_id = n.user_id
        WHERE n.user_id = $1 AND n.channel = 'inapp'
          AND (n.item_id IS NULL OR ${visibleItems()})
@@ -73,19 +74,19 @@ export async function listNotifications(
           .map((n) => n.id),
         guard:
           () => `EXISTS(SELECT 1 FROM ai_chats c JOIN ai_jobs j ON j.chat_id=c.id
-          WHERE c.id::text=split_part(n.ref, ':', 2) AND j.id::text=split_part(n.ref, ':', 3)
+          WHERE c.id=${canonicalUuidSql("split_part(n.ref, ':', 2)")} AND j.id=${canonicalUuidSql("split_part(n.ref, ':', 3)")}
           AND ${assistantChatVisible()} AND ${assistantJobSourcesVisible()})`,
       },
       {
         ids: page.filter((n) => n.kind === "review").map((n) => n.id),
         guard:
-          () => `EXISTS(SELECT 1 FROM proposals p WHERE n.ref='proposal:' || p.id::text
+          () => `EXISTS(SELECT 1 FROM proposals p WHERE p.id=${canonicalUuidSql("substring(n.ref FROM 10)")} AND n.ref='proposal:' || p.id::text
           AND ${assistantProposalSourcesVisible("p")})`,
       },
       {
         ids: page.filter((n) => n.kind === "reminder_nudge").map((n) => n.id),
         guard: () => `EXISTS(SELECT 1 FROM assistant_nudges source_nudge
-          WHERE source_nudge.id::text=split_part(n.ref, ':', array_length(string_to_array(n.ref, ':'), 1))
+          WHERE source_nudge.id=${canonicalUuidSql("split_part(n.ref, ':', array_length(string_to_array(n.ref, ':'), 1))")}
           AND source_nudge.user_id=$1
           AND ${assistantSourceVisible("source_nudge.entity_kind", "source_nudge.entity_id")})`,
       },
