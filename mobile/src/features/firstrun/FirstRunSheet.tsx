@@ -6,12 +6,16 @@ import {
   FIRST_RUN_PURPOSES,
   PURPOSE_LABELS,
   startersFor,
+  workspacePresets,
+  WORKSPACE_PRESETS,
+  type WorkspacePresetChoice,
   type FirstRunPurpose,
   type FirstRunResult,
   type StarterId,
   type User,
 } from "@orbyn/core";
 import { Button } from "../../components/Button";
+import { Switch } from "../../components/Switch";
 import { Icon, type IconName } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { session } from "../../lib/session";
@@ -53,6 +57,9 @@ function FirstRunBody({
   const [teamName, setTeamName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [presetEnabled, setPresetEnabled] = useState(false);
+  const [presetChoice, setPresetChoice] =
+    useState<WorkspacePresetChoice | null>(null);
 
   const owner = session.token;
   const mounted = useRef(true);
@@ -98,11 +105,26 @@ function FirstRunBody({
       }
       if (current()) setStep(2);
     });
+  const loadPresets = () =>
+    run(async () => {
+      const prefs = await client.getPrefs();
+      if (current()) {
+        const selected = workspacePresets(prefs.views.workspace);
+        setPresetChoice({ selected, expected: selected });
+      }
+    });
   const finish = () =>
     run(async () => {
+      if (presetEnabled && !presetChoice)
+        throw new Error(
+          "Reload workspace choices or leave presets unchanged before finishing.",
+        );
       const made = await client.finishFirstRun({
         purpose,
         starter,
+        ...(presetEnabled && presetChoice
+          ? { workspace_presets: presetChoice }
+          : {}),
         ...(starter === "sprint" && teamName.trim()
           ? { team_name: teamName.trim() }
           : {}),
@@ -173,6 +195,68 @@ function FirstRunBody({
                   ),
                 )}
               </View>
+              <Text style={shared.label}>Workspace shortcuts · optional</Text>
+              <Text style={s.blurb}>
+                Choose either or both. This changes shortcuts, not your
+                projects, layout or permissions. You can change them later in
+                account layout.
+              </Text>
+              <Switch
+                accessibilityLabel="Choose workspace presets"
+                value={presetEnabled}
+                disabled={busy}
+                onValueChange={(enabled) => {
+                  setPresetEnabled(enabled);
+                  if (enabled && !presetChoice) void loadPresets();
+                }}
+              />
+              {presetEnabled && (
+                <>
+                  {WORKSPACE_PRESETS.map((preset) => (
+                    <View
+                      key={preset}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                      }}
+                    >
+                      <Text style={[shared.label, { flex: 1 }]}>
+                        {preset === "engineer" ? "Engineer" : "Student"}
+                      </Text>
+                      <Switch
+                        accessibilityLabel={
+                          preset === "engineer"
+                            ? "Engineer workspace preset"
+                            : "Student workspace preset"
+                        }
+                        disabled={busy || !presetChoice}
+                        value={presetChoice?.selected.includes(preset) ?? false}
+                        onValueChange={(enabled) =>
+                          setPresetChoice(
+                            (choice) =>
+                              choice && {
+                                ...choice,
+                                selected: enabled
+                                  ? [...choice.selected, preset]
+                                  : choice.selected.filter(
+                                      (value) => value !== preset,
+                                    ),
+                              },
+                          )
+                        }
+                      />
+                    </View>
+                  ))}
+                  <Button
+                    title="Reload workspace choices"
+                    secondary
+                    disabled={busy}
+                    onPress={() => void loadPresets()}
+                  />
+                </>
+              )}
             </>
           )}
           {step === 1 && (
@@ -237,6 +321,25 @@ function FirstRunBody({
             <Text style={s.error} accessibilityRole="alert">
               {error}
             </Text>
+          )}
+          {presetEnabled && step > 0 && (
+            <>
+              <Text style={s.blurb}>
+                Workspace shortcuts:{" "}
+                {presetChoice?.selected
+                  .map((value) =>
+                    value === "engineer" ? "Engineer" : "Student",
+                  )
+                  .join(", ") || "None"}
+                . Other layout choices stay unchanged.
+              </Text>
+              <Button
+                title="Reload workspace choices"
+                secondary
+                disabled={busy}
+                onPress={() => void loadPresets()}
+              />
+            </>
           )}
           <View style={s.foot}>
             <Button

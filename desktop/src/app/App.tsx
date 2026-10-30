@@ -3685,6 +3685,7 @@ function WorkspaceController({
               user={user}
               onDone={(_next, made) => {
                 markReleaseSeen();
+                accountPrefs.reload();
                 void refreshUser();
                 void refresh();
                 if (made?.brief_id) openPage(made.brief_id);

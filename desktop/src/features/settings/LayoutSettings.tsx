@@ -9,6 +9,7 @@ import {
 import {
   ALWAYS_SHOWN,
   workspacePresets,
+  withWorkspacePresets,
   arrangeEntries,
   COMMANDS,
   HOME_PANEL_LABELS,
@@ -288,14 +289,15 @@ export function HomeArrangeSettings() {
               type="checkbox"
               checked={presets.includes(preset)}
               onChange={() =>
-                setViewChoice("workspace", {
-                  ...workspace,
-                  pins: presets.includes(preset)
-                    ? (workspace?.pins ?? []).filter(
-                        (value) => value !== preset,
-                      )
-                    : [...(workspace?.pins ?? []), preset],
-                })
+                setViewChoice(
+                  "workspace",
+                  withWorkspacePresets(
+                    workspace,
+                    presets.includes(preset)
+                      ? presets.filter((value) => value !== preset)
+                      : [...presets, preset],
+                  ),
+                )
               }
             />
             <span>

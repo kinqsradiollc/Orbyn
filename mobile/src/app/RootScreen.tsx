@@ -18,6 +18,7 @@ import { clearAlerts } from "../lib/alert";
 import {
   createLabel,
   workspacePresets,
+  withWorkspacePresets,
   freshItem,
   planDayPrompt,
   readArrangement,
@@ -2310,10 +2311,13 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
                 onArrange={(sidebar) => accountPrefs.save({ sidebar })}
                 presets={workspacePresets(accountPrefs.prefs.views.workspace)}
                 onPresetsChange={(pins) =>
-                  accountPrefs.setViewChoice("workspace", {
-                    ...accountPrefs.prefs.views.workspace,
-                    pins,
-                  })
+                  accountPrefs.setViewChoice(
+                    "workspace",
+                    withWorkspacePresets(
+                      accountPrefs.prefs.views.workspace,
+                      pins,
+                    ),
+                  )
                 }
                 preferencesReady={accountPrefs.ready}
                 preferencesError={accountPrefs.error}
@@ -2374,6 +2378,7 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
             user={user}
             onDone={(next, made) => {
               markReleaseSeen();
+              accountPrefs.reload();
               setUser(next);
               void refresh();
               if (made?.brief_id) void openDocument(made.brief_id);
