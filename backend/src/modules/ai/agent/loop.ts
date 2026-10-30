@@ -85,6 +85,11 @@ export type AgentLoopCheckpoint = {
   over_budget: boolean;
   iterations?: number;
   final_call_used?: boolean;
+  /** Known completed malformed control reply; survives worker replacement. */
+  completed_protocol_failure?: {
+    reason: "invalid_protocol" | "truncated";
+    attempts: 1 | 2;
+  };
   pending_provider?: {
     id: string;
     model: string;
@@ -135,7 +140,7 @@ const PROMISE =
   /^(sure|ok(ay)?|absolutely|great)?[,!.\s-]*(i('| wi)ll|i am going to|let me|one moment|give me a (sec|moment)|checking|looking|i'm going to)\b/i;
 
 const RETRYABLE =
-  /^(timeout|network|http_(429|5\d\d)|no_choices|error_envelope)$/;
+  /^(timeout|network|http_(429|5\d\d)|no_choices|error_envelope|invalid_protocol|truncated)$/;
 
 /** Clip a message to the provider's per-message limit (Matilda: 16,000). */
 function fit(messages: AgentMessage[], ai: ResolvedAi): AgentMessage[] {
@@ -232,6 +237,7 @@ export async function runAgent(
   let iterations = options.resume?.iterations ?? 0;
   let finalCallUsed = options.resume?.final_call_used ?? false;
   let pendingProvider = options.resume?.pending_provider;
+  let completedProtocolFailure = options.resume?.completed_protocol_failure;
   let finishedResult = options.resume?.finished_result;
   const contextHash = () =>
     createHash("sha256")
@@ -277,6 +283,9 @@ export async function runAgent(
       over_budget: overBudget,
       iterations,
       final_call_used: finalCallUsed,
+      ...(completedProtocolFailure
+        ? { completed_protocol_failure: completedProtocolFailure }
+        : {}),
       ...(pendingProvider
         ? { pending_provider: structuredClone(pendingProvider) }
         : {}),
@@ -288,7 +297,16 @@ export async function runAgent(
 
   const replyReserve = 8192; // At most 32 KiB of serialized output is accepted.
   const call = async (toolsAllowed: boolean): Promise<StepResult> => {
-    for (let attempt = 1; ; attempt++) {
+    const initialAttempt = completedProtocolFailure
+      ? completedProtocolFailure.attempts +
+        (pendingProvider && ai.textTransport ? 0 : 1)
+      : 1;
+    for (let attempt = initialAttempt; ; attempt++) {
+      if (attempt > 2 && completedProtocolFailure)
+        throw new ProviderError(
+          completedProtocolFailure.reason,
+          "The provider could not return a usable answer within this run's limits.",
+        );
       await options.beforeProvider?.();
       try {
         if (
@@ -377,6 +395,11 @@ export async function runAgent(
         }
         if (pendingProvider) pendingProvider.reservation_charged = true;
         // Debit and persist before the provider call: a lost reply retains its reserve.
+        if (completedProtocolFailure)
+          completedProtocolFailure = {
+            ...completedProtocolFailure,
+            attempts: attempt as 1 | 2,
+          };
         await checkpoint();
         const callAi: ResolvedAi =
           pendingProvider && ai.textTransport
@@ -427,10 +450,36 @@ export async function runAgent(
         if (options.tokenBudget)
           options.tokenBudget.used += Math.ceil(replyBytes / 4) - replyReserve;
         if (pendingProvider) pendingProvider.result = structuredClone(result);
+        completedProtocolFailure = undefined;
         await checkpoint();
         return result;
       } catch (error) {
         if (options.signal?.aborted) throw error;
+        if (
+          error instanceof AgentTokenBudgetExhausted &&
+          completedProtocolFailure
+        )
+          throw new ProviderError(
+            completedProtocolFailure.reason,
+            "The provider could not return a usable answer within this run's limits.",
+          );
+        if (
+          error instanceof ProviderError &&
+          ["invalid_protocol", "truncated"].includes(error.reason)
+        ) {
+          completedProtocolFailure = {
+            reason: error.reason as "invalid_protocol" | "truncated",
+            attempts: attempt as 1 | 2,
+          };
+          if (
+            options.tokenBudget &&
+            typeof error.receivedReplyBytes === "number" &&
+            Number.isSafeInteger(error.receivedReplyBytes) &&
+            error.receivedReplyBytes >= 0
+          )
+            options.tokenBudget.used +=
+              Math.ceil(error.receivedReplyBytes / 4) - replyReserve;
+        }
         if (mode === "native" && rejectsTools(error)) {
           log?.warn(
             { event: "ai_agent_json_protocol", provider: ai.kind },
@@ -445,14 +494,26 @@ export async function runAgent(
           { event: "ai_agent_retry", attempt, reason, provider: ai.kind },
           "AI agent step failed",
         );
+        if (reason === "invalid_protocol" || reason === "truncated") {
+          pendingProvider = undefined;
+          if (attempt >= 2 || deadline.aborted) {
+            await checkpoint();
+            throw error;
+          }
+        }
         if (attempt >= 2 || deadline.aborted || !RETRYABLE.test(reason))
           throw error;
-        if (pendingProvider?.raw_reply !== undefined) {
-          // A malformed received answer is a completed call, not an uncertain transport.
+        if (
+          reason === "invalid_protocol" ||
+          reason === "truncated" ||
+          pendingProvider?.raw_reply !== undefined
+        ) {
+          // Retry only this bounded step; never execute or publish any part of
+          // an ambiguous envelope, and never reuse its cached malformed reply.
           messages.push({
             role: "user",
             content:
-              "Return a valid answer matching the requested JSON schema.",
+              "Return exactly one complete JSON object matching the requested tool schema. Do not include partial prefixes, multiple objects, prose or extra text. Use the finish tool with its required structured fields when the work is ready.",
           });
           pendingProvider = undefined;
           await checkpoint();

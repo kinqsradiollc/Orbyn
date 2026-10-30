@@ -79,6 +79,8 @@ export class ProviderError extends Error {
   constructor(
     readonly reason: string,
     message: string,
+    /** Known completed response size; never supplied for uncertain transport. */
+    readonly receivedReplyBytes?: number,
   ) {
     super(message);
     this.name = "ProviderError";
