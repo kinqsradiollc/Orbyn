@@ -1140,6 +1140,10 @@ function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
       tabTo("AI")();
       setSearch("");
     },
+    "go.background": () => {
+      tabTo("AI")();
+      setAssistantActivity("background");
+    },
     "go.notifications": tabTo("Inbox"),
     "go.agenda": () => present({ sheet: "agenda" }),
     "go.projects": () => present({ sheet: "projects" }),

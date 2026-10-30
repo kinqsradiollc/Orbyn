@@ -192,9 +192,10 @@ test("the command list covers every screen, once each", () => {
   const ids = COMMANDS.map((c) => c.id);
   assert.equal(new Set(ids).size, ids.length, "ids are unique");
   for (const entry of NAV)
-    assert.ok(
-      COMMANDS.some((c) => c.view === entry.label),
-      `Go to ${entry.label}`,
+    assert.equal(
+      COMMANDS.filter((c) => c.view === entry.label).length,
+      1,
+      `exactly one Go to ${entry.label} command`,
     );
   assert.ok(COMMANDS.some((c) => c.view === "Settings"));
   for (const id of [

@@ -63,17 +63,18 @@ test("pane tabs claim focus while shared header actions retain the current pane"
       "clicking a pane tab must reach its owning pane's focus capture",
     );
     for (const label of [
-      "Search or ask",
+      "Search and commands",
       "Notifications",
       "Toggle navigation",
       "Dark appearance",
-    ])
+    ]) {
+      const action = document.querySelector(`[aria-label="${label}"]`);
+      assert.ok(action, `${label} is available in the shared header`);
       assert.ok(
-        document
-          .querySelector(`[aria-label="${label}"]`)!
-          .closest("[data-shared-chrome]"),
+        action.closest("[data-shared-chrome]"),
         `${label} must preserve the previously focused pane`,
       );
+    }
   } finally {
     dom.window.close();
   }
