@@ -164,8 +164,10 @@ agreement once signed in.
 When a mail server is configured, a new member starts with `email_verified: false` and gets a
 confirmation email; until they confirm (or an admin does), every route except `GET /me`,
 `POST /auth/logout`, `POST /auth/verify-email` and `POST /auth/resend-verification` answers `403`.
-The first admin (and any address in `ADMIN_EMAILS`) is always created verified, and with no mail
-server configured every account is verified at once (there would be no way to confirm it).
+Public registration creates an ordinary member, including addresses listed in `ADMIN_EMAILS`;
+it never grants administrator access or bypasses email confirmation. Operators promote a known
+account through the server-side `admin:grant` command. With no mail server configured, new accounts
+are verified at once because there would be no way to confirm them.
 
 ### `POST /auth/login`
 

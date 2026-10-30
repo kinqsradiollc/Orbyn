@@ -377,7 +377,7 @@ function ConnectionsMapBody({
       )}
       {map?.truncated && (
         <Text style={s.small}>
-          Closest {map.nodes.length - 1} connections shown.
+          Loaded the closest {neighbours.length} connections.
         </Text>
       )}
     </View>

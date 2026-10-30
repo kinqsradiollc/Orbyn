@@ -125,7 +125,7 @@ dialog.connections-dialog > .section-heading h2 {
   text-decoration: underline;
 }
 
-.connections-list > summary {
+.connections-map-disclosure > summary {
   min-height: 44px;
   display: flex;
   align-items: center;
@@ -258,4 +258,12 @@ dialog.connections-dialog > .section-heading h2 {
 
 .connections-dialog .connections-space-canvas {
   max-width: 900px;
+}
+
+.connection-list-row.is-informational {
+  cursor: default;
+}
+.connections-list > .text-button {
+  min-height: 44px;
+  padding: 8px;
 }
