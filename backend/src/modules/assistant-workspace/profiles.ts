@@ -11,17 +11,14 @@ import {
   zonedInstant,
   fail,
   type AssistantProfile,
-  type AssistantProfileCounts,
   type NightShiftSettings,
 } from "@orbyn/core";
 import type { FastifyInstance } from "fastify";
 import { readTransaction, type Queryable } from "../../db/pool.js";
-import { assistantChatVisible } from "../../lib/assistant-visibility.js";
-import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { firstParty } from "../proposals/service.js";
 import { readAutomationIdentity } from "../agent-context/identities.js";
 import { assistantNightWindow } from "../../worker/night-window.js";
-import { assistantLastActivity, assistantRecentActivity } from "./activity.js";
+import { readAssistantProfileEvidence } from "./profile-evidence.js";
 
 /** Scheduler timezone/DST semantics; a permitted window is not working status. */
 export function assistantProfileWindow(
@@ -119,81 +116,15 @@ export async function readAssistantProfiles(
         [`assistant-${lane}`, observedAt],
       )
     ).rows[0];
-    const counts = (
-      await db.query<AssistantProfileCounts>(
-        `SELECT count(*) FILTER(WHERE j.state='running' AND j.lease_until>$2)::int AS working,
-       count(*) FILTER(WHERE j.state='waiting')::int AS waiting,count(*) FILTER(WHERE j.state='queued')::int AS queued,
-       count(*) FILTER(WHERE j.state='running' AND (j.lease_until IS NULL OR j.lease_until<=$2))::int AS recovering
-       FROM ai_jobs j LEFT JOIN ai_chats c ON c.id=j.chat_id
-       WHERE j.user_id=$1 AND j.runtime_lane=$3 AND j.state IN ('queued','running','waiting')
-       AND ${assistantChatVisible("c", "$1")} AND ${assistantJobSourcesVisible("j", "$1", false)}`,
-        [owner, observedAt, lane],
-      )
-    ).rows[0];
-    const work = includeOutcomes
-      ? (
-          await db.query<{
-            job_id: string;
-            chat_id: string;
-            title: string;
-            state: "queued" | "running" | "waiting";
-            cancel_requested: boolean;
-            recovering: boolean;
-            updated_at: Date;
-          }>(
-            `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,j.state,j.cancel_requested,
-      (j.state='running' AND (j.lease_until IS NULL OR j.lease_until<=$2)) AS recovering,
-      greatest(j.heartbeat_at,j.created_at) AS updated_at FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id
-      WHERE j.user_id=$1 AND j.runtime_lane=$3 AND j.state IN ('queued','running','waiting')
-      AND ${assistantChatVisible("c", "$1")} AND ${assistantJobSourcesVisible("j", "$1", false)}
-      ORDER BY (j.state='waiting') DESC,j.created_at,j.id LIMIT 20`,
-            [owner, observedAt, lane],
-          )
-        ).rows
-      : [];
-    const lastActivity = await assistantLastActivity(db, owner, lane);
-    const outputs = (
-      await db.query<{
-        job_id: string;
-        chat_id: string;
-        title: string;
-        completed_at: Date;
-        total_rows: number;
-        execution_outcome: unknown;
-        goal_acceptance: unknown;
-        state: "done" | "failed";
-        summary: string;
-        review_status: string | null;
-        handoff: {
-          id: string;
-          status:
-            "proposed" | "accepted" | "completed" | "failed" | "cancelled";
-          recipient_chat_id: string | null;
-        } | null;
-      }>(
-        `SELECT count(*) OVER()::int AS total_rows,j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at,j.result->'assistant_run'->'execution_outcome' AS execution_outcome,(SELECT accepted.acceptance FROM assistant_goal_executions accepted WHERE accepted.owner_id=$1 AND accepted.state='completed' AND accepted.acceptance->>'job_id'=j.id::text LIMIT 1) AS goal_acceptance,j.state,left(coalesce(j.result->>'answer',''),1200) AS summary,CASE WHEN p.status='pending' AND p.expires_at<=now() THEN 'expired' ELSE p.status END AS review_status,
-         (SELECT jsonb_build_object('id',h.id,'status',h.status,'recipient_chat_id',r.chat_id)
-          FROM assistant_handoffs h LEFT JOIN ai_jobs r ON r.id=h.recipient_job_id
-          WHERE h.producer_job_id=j.id AND h.owner_id=$1
-          ORDER BY h.created_at DESC,h.id DESC LIMIT 1) AS handoff
-       FROM assistant_activity_events e JOIN ai_jobs j ON j.id=e.job_id
-       JOIN ai_chats c ON c.id=j.chat_id LEFT JOIN proposals p ON p.user_id=$1 AND p.id=CASE WHEN j.result->'assistant_run'->>'proposal_id' ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN (j.result->'assistant_run'->>'proposal_id')::uuid END WHERE e.owner_id=$1 AND e.runtime_lane=$2
-       AND ((e.kind='done' AND j.state='done') ${includeOutcomes ? "OR (e.kind='failed' AND j.state='failed')" : ""}) AND j.result IS NOT NULL
-       AND j.runtime_lane=$2 AND ${assistantChatVisible("c", "$1")}
-       AND ${assistantJobSourcesVisible("j", "$1", false)}
-       ${
-         includeOutcomes && includeOrigins
-           ? `AND NOT (j.state='done'
-         AND EXISTS(SELECT 1 FROM assistant_quiet_checks quiet WHERE quiet.owner_id=$1 AND quiet.job_id=j.id AND quiet.status='verified_unchanged')
-         AND EXISTS(SELECT 1 FROM assistant_delivery_bindings binding JOIN assistant_delivery_intents intent ON intent.binding_id=binding.id
-           WHERE binding.owner_id=$1 AND binding.work_kind='job' AND binding.work_id=j.id
-             AND intent.event_key='result' AND intent.payload->>'event'='result' AND intent.state='suppressed' AND intent.reason='unchanged'))`
-           : ""
-       }
-       GROUP BY j.id,j.chat_id,c.title,p.status,p.expires_at ORDER BY ${includeOutcomes && includeOrigins ? "CASE WHEN p.status='pending' AND p.expires_at>now() THEN 0 WHEN j.state='failed' THEN 1 ELSE 2 END," : ""} max(e.created_at) DESC,j.id DESC LIMIT 5`,
-        [owner, lane],
-      )
-    ).rows;
+    const { counts, work, outputs, lastActivity, recentActivity } =
+      await readAssistantProfileEvidence(
+        db,
+        owner,
+        observedAt,
+        lane,
+        includeOutcomes,
+        includeOrigins,
+      );
     const pageReview =
       includeOutcomes && includeOrigins
         ? await readAssistantPageReview(db, owner, lane, observed)
@@ -227,7 +158,7 @@ export async function readAssistantProfiles(
           window.next_start_at !== null,
       ),
       last_activity_at: lastActivity,
-      recent_activity: await assistantRecentActivity(db, owner, lane),
+      recent_activity: recentActivity,
       ...(includeOutcomes
         ? {
             work: work.map((row) => ({

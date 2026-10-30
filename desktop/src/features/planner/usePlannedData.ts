@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { dayBounds, type PlannedFeed, type TodayList } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { onLive } from "../../lib/live";
 import { deviceTimeZone } from "./planning";
 import type { PlannedData } from "../../app/planned";
+import { onSessionChange, session } from "../../lib/session";
 
 /** How often it looks again while the tab stays open (the day moves on). */
 const REFRESH_MS = 5 * 60_000;
@@ -19,6 +27,11 @@ const stable = (feed: PlannedFeed | null, today: TodayList | null) =>
  * Older servers have neither; the apps work without them.
  */
 export function usePlannedData(token: string, revision: number): PlannedData {
+  const owner = useSyncExternalStore(onSessionChange, () => {
+    const binding = session.binding();
+    return token && binding.token === token ? binding.generation : null;
+  });
+  const [loadedFor, setLoadedFor] = useState<number | null>(null);
   const [feed, setFeed] = useState<PlannedFeed | null>(null);
   const [today, setToday] = useState<TodayList | null>(null);
   const [ready, setReady] = useState(false);
@@ -30,7 +43,13 @@ export function usePlannedData(token: string, revision: number): PlannedData {
   });
 
   const reload = useCallback(async () => {
-    if (!token) return;
+    const starting = session.binding();
+    if (
+      owner === null ||
+      starting.token !== token ||
+      starting.generation !== owner
+    )
+      return;
     const mine = ++seq.current;
     const { from, to } = dayBounds(new Date());
     // A request that fails (a blip, or a server without it) keeps what was
@@ -41,7 +60,14 @@ export function usePlannedData(token: string, revision: number): PlannedData {
         .catch(() => kept.current.feed),
       client.today(deviceTimeZone()).catch(() => kept.current.today),
     ]);
-    if (mine !== seq.current) return;
+    const binding = session.binding();
+    if (
+      mine !== seq.current ||
+      binding.token !== token ||
+      binding.generation !== owner
+    )
+      return;
+    setLoadedFor(owner);
     setReady(true);
     const snapshot = stable(f, t);
     if (snapshot === last.current) return;
@@ -49,23 +75,27 @@ export function usePlannedData(token: string, revision: number): PlannedData {
     kept.current = { feed: f, today: t };
     setFeed(f);
     setToday(t);
-  }, [token]);
+  }, [token, owner]);
+
+  // Hide old-account records during render, then clear retained fallback data
+  // before dispatching this owner's paired refresh.
+  useEffect(() => {
+    seq.current++;
+    last.current = "";
+    kept.current = { feed: null, today: null };
+    setFeed(null);
+    setToday(null);
+    setReady(false);
+    setLoadedFor(null);
+  }, [owner]);
 
   useEffect(() => {
-    if (!token) {
-      seq.current++;
-      last.current = "";
-      kept.current = { feed: null, today: null };
-      setFeed(null);
-      setToday(null);
-      setReady(false);
-      return;
-    }
+    if (owner === null) return;
     void reload();
-  }, [token, reload, revision]);
+  }, [owner, reload, revision]);
 
   useEffect(() => {
-    if (!token) return;
+    if (owner === null) return;
     let pending: ReturnType<typeof setTimeout> | null = null;
     const soon = () => {
       if (pending) clearTimeout(pending);
@@ -84,16 +114,19 @@ export function usePlannedData(token: string, revision: number): PlannedData {
       document.removeEventListener("visibilitychange", back);
       if (pending) clearTimeout(pending);
     };
-  }, [token, reload]);
+  }, [owner, reload]);
 
+  const owned = owner !== null && loadedFor === owner;
   return useMemo(
     () => ({
-      feed,
-      byItem: new Map((feed?.tasks ?? []).map((t) => [t.item_id, t])),
-      today,
-      ready,
+      feed: owned ? feed : null,
+      byItem: new Map(
+        (owned ? (feed?.tasks ?? []) : []).map((t) => [t.item_id, t]),
+      ),
+      today: owned ? today : null,
+      ready: owned && ready,
       reload,
     }),
-    [feed, today, ready, reload],
+    [owned, feed, today, ready, reload],
   );
 }

@@ -133,6 +133,7 @@ function fixture(platform: Platform) {
     lastData,
     itemStore,
     useCallback: (callback: unknown) => callback,
+    report: () => {},
     knownTeams: { current: teamRows },
     kept: { current: { planned: previous.planned, today: previous.today } },
     plannedAt: { current: { at: 0, items: "" } },

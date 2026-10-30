@@ -287,6 +287,57 @@ test("output/activity lists are bounded, isolated by lane and omit invented hist
     [night],
   );
 });
+test("profile evidence keeps independent events and refreshes revoked source authority", async () => {
+  const user = await person();
+  const other = await person();
+  const task = (
+    await pool.query(
+      "INSERT INTO items(user_id,title) VALUES($1,'Profile source') RETURNING id",
+      [user.id],
+    )
+  ).rows[0].id;
+  const done = await job(user.id, "background");
+  const waiting = await job(user.id, "background");
+  for (const id of [done, waiting])
+    await pool.query(
+      "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'task',$2)",
+      [id, task],
+    );
+  await pool.query("UPDATE ai_jobs SET state='done',result='{}' WHERE id=$1", [
+    done,
+  ]);
+  await pool.query("UPDATE ai_jobs SET state='waiting' WHERE id=$1", [waiting]);
+  const deleted = await job(user.id, "background");
+  await pool.query("UPDATE ai_jobs SET state='done',result='{}' WHERE id=$1", [
+    deleted,
+  ]);
+  await pool.query("DELETE FROM ai_jobs WHERE id=$1", [deleted]);
+  const first = (
+    await readAssistantProfiles(pool, user.id, undefined, true, true)
+  ).profiles[0];
+  assert.equal(first.counts.waiting, 1);
+  assert.deepEqual(
+    first.work?.map((row) => row.job_id),
+    [waiting],
+  );
+  assert.deepEqual(
+    first.outputs.map((row) => row.job_id),
+    [done],
+  );
+  assert.ok(first.recent_activity.some((event) => event.job_id === null));
+  const independentTime = first.last_activity_at;
+
+  await pool.query("UPDATE items SET user_id=$2 WHERE id=$1", [task, other.id]);
+  const refreshed = (
+    await readAssistantProfiles(pool, user.id, undefined, true, true)
+  ).profiles[0];
+  assert.equal(refreshed.counts.waiting, 0);
+  assert.deepEqual(refreshed.work, []);
+  assert.deepEqual(refreshed.outputs, []);
+  assert.ok(refreshed.recent_activity.length > 0);
+  assert.ok(refreshed.recent_activity.every((event) => event.job_id === null));
+  assert.equal(refreshed.last_activity_at, independentTime);
+});
 test("night windows are scheduled permissions, not executing work", () => {
   const settings = {
     ...defaultNightShift(),

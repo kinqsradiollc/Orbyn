@@ -193,6 +193,20 @@ export function OverviewView({
       onOpenChat={onOpenAgentOutput}
     />
   );
+  const todayCard = (
+    <TodayCard
+      today={planned.today}
+      items={items}
+      onOpen={onOpenById}
+      onFocus={focusById}
+      onPlanIt={onPlanIt}
+      onPlanAgain={onPlanAgain}
+      onOpenCalendar={() => onNavigate("Calendar")}
+      onPlanDay={onPlanMyDay}
+      onShowLate={onShowLate}
+      onCheckedIn={() => void planned.reload()}
+    />
+  );
 
   // Start with a single task action when the planner is empty.
   if (!items.length)
@@ -200,6 +214,7 @@ export function OverviewView({
       <>
         {workspaceShortcuts}
         {morningReview}
+        {hasDaily && todayCard}
         {itemsPhase !== "ready" ? (
           <section className="card" aria-label="Your tasks">
             <p role={itemsPhase === "error" ? "alert" : "status"}>
@@ -260,18 +275,7 @@ export function OverviewView({
         <div className="overview-main">
           {/* Older servers have no Today list: what's due today, as before. */}
           {!planned.ready || hasDaily ? (
-            <TodayCard
-              today={planned.today}
-              items={items}
-              onOpen={onOpenById}
-              onFocus={focusById}
-              onPlanIt={onPlanIt}
-              onPlanAgain={onPlanAgain}
-              onOpenCalendar={() => onNavigate("Calendar")}
-              onPlanDay={onPlanMyDay}
-              onShowLate={onShowLate}
-              onCheckedIn={() => void planned.reload()}
-            />
+            todayCard
           ) : (
             <OverviewSection
               icon={Sun}
