@@ -35,6 +35,13 @@ export const DEMO_ACCOUNTS = [
     role: "member",
     onboarding: true,
   },
+  {
+    key: "live",
+    email: "agent-demo@orbyn.local",
+    name: "Live agent checks · Demo",
+    role: "member",
+    onboarding: false,
+  },
 ].map((account) => ({ ...account, id: fixtureId(`account-${account.key}`) }));
 export function seedOptions(args, root) {
   const result = {
@@ -165,6 +172,7 @@ export const SCENARIOS = [
   "member personal/team visibility",
   "empty workspace",
   "first-run onboarding",
+  "isolated live-agent check account (starts empty and paused)",
   "overdue/in-progress/blocked/completed tasks",
   "long titles and Unicode",
   "calendar and manual focus sessions",

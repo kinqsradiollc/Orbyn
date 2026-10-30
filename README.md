@@ -123,14 +123,15 @@ Use the [local demo setup](docs/local-demo.md) to populate a verified local data
 `npm run dev:seed` previews the setup; `--apply` creates the fixtures. The script
 preserves existing data and requires a database-level development marker.
 
-| Account              | Purpose                     |
-| -------------------- | --------------------------- |
-| `admin@orbyn.local`  | Admin with a rich workspace |
-| `member@orbyn.local` | Personal and team work      |
-| `empty@orbyn.local`  | Empty workspace             |
-| `new@orbyn.local`    | First-run onboarding        |
+| Account                  | Purpose                                             |
+| ------------------------ | --------------------------------------------------- |
+| `admin@orbyn.local`      | Admin with a rich workspace                         |
+| `member@orbyn.local`     | Personal and team work                              |
+| `empty@orbyn.local`      | Empty workspace                                     |
+| `new@orbyn.local`        | First-run onboarding                                |
+| `agent-demo@orbyn.local` | Isolated live agent checks; starts empty and paused |
 
-All four start with the public, local-only password `Orbyn-Demo-2026!`.
+All five start with the public, local-only password `Orbyn-Demo-2026!`.
 Reruns preserve passwords, roles and edits. Agent history is labeled sample data;
 no model is run and no provider is configured by the seed.
 

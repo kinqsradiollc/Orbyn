@@ -195,7 +195,7 @@ try {
     assert.equal(await argon2.verify(row.password_hash, DEMO_PASSWORD), true);
     assert.equal(row.first_run_at === null, account.onboarding);
   }
-  for (const key of ["empty", "onboarding"]) {
+  for (const key of ["empty", "onboarding", "live"]) {
     const account = DEMO_ACCOUNTS.find((a) => a.key === key);
     assert.equal(
       (

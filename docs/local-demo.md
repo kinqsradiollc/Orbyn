@@ -38,14 +38,15 @@ catalog's reference day; otherwise it uses the current Melbourne date.
 
 ## Accounts
 
-| Email                | Role   | Scenario                                    |
-| -------------------- | ------ | ------------------------------------------- |
-| `admin@orbyn.local`  | Admin  | Rich workspace and admin navigation         |
-| `member@orbyn.local` | Member | Personal and team work                      |
-| `empty@orbyn.local`  | Member | Empty workspace, onboarding already skipped |
-| `new@orbyn.local`    | Member | First-run onboarding                        |
+| Email                    | Role   | Scenario                                               |
+| ------------------------ | ------ | ------------------------------------------------------ |
+| `admin@orbyn.local`      | Admin  | Rich workspace and admin navigation                    |
+| `member@orbyn.local`     | Member | Personal and team work                                 |
+| `empty@orbyn.local`      | Member | Empty workspace, onboarding already skipped            |
+| `new@orbyn.local`        | Member | First-run onboarding                                   |
+| `agent-demo@orbyn.local` | Member | Live agent checks; starts empty with automation paused |
 
-Initial password for all four: **`Orbyn-Demo-2026!`**. These are public local-only
+Initial password for all five: **`Orbyn-Demo-2026!`**. These are public local-only
 credentials. Normal product consent gates still apply. Fixture accounts have verified
 email and opt out of analytics and reminder email. Existing passwords and roles
 are never reset; conflicting account identities are refused rather than promoted.
@@ -53,6 +54,12 @@ are never reset; conflicting account identities are refused rather than promoted
 To add the catalog to an established `demo@orbyn.local` member, pass
 `--existing-member-id <verified-uuid>`. The script checks the email, UUID and member
 role. It preserves that user's settings, original data, password and role.
+
+Use `agent-demo@orbyn.local` for explicitly authorized real provider checks. It
+starts without projects, goals or routines, so a short test window cannot admit
+unrelated sample work. Configure providers through the existing Admin → AI owner;
+the seed never stores a key or enables execution. Restore its admission settings
+after a check. Real test results remain on rerun and are distinct from synthetic history.
 
 ## Scenarios and reruns
 
