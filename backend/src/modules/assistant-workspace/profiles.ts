@@ -249,7 +249,7 @@ export async function assistantProfileRoutes(app: FastifyInstance) {
             request.headers["x-orbyn-review-origins"] === "1",
           );
         },
-        { primary: true },
+        { primary: true, jit: false },
       );
     },
   );

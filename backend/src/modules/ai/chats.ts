@@ -20,7 +20,13 @@ import {
   type ProjectChatInput,
   type SavedChatTurn,
 } from "@orbyn/core";
-import { pool, reader, transaction, type Queryable } from "../../db/pool.js";
+import {
+  pool,
+  reader,
+  readTransaction,
+  transaction,
+  type Queryable,
+} from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { visibleItems, visibleProjects } from "../../lib/visibility.js";
@@ -725,17 +731,25 @@ async function saveChatAsNote(user: UserRow, id: string) {
 export async function projectChatRoutes(app: FastifyInstance) {
   app.get("/ai/chats", async (r): Promise<AiChatSummary[]> => {
     const u = await authenticate(r);
-    return listAiChats(reader(r.headers), u.id, listQuery.parse(r.query));
+    const query = listQuery.parse(r.query);
+    return readTransaction((db) => listAiChats(db, u.id, query), {
+      primary: reader(r.headers) === pool,
+      jit: false,
+    });
   });
 
   app.get("/ai/projects/:id/chats", async (r): Promise<AiChatSummary[]> => {
     const u = await authenticate(r);
     const id = idParam(r);
-    return listAiChats(reader(r.headers), u.id, {
-      search: "",
-      project_id: id,
-      limit: PER_PROJECT,
-    });
+    return readTransaction(
+      (db) =>
+        listAiChats(db, u.id, {
+          search: "",
+          project_id: id,
+          limit: PER_PROJECT,
+        }),
+      { primary: reader(r.headers) === pool, jit: false },
+    );
   });
 
   app.get("/ai/chats/:id", async (r): Promise<AiChat> => {
