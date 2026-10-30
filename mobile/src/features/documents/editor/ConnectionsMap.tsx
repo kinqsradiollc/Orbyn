@@ -172,7 +172,7 @@ function ConnectionsMapBody({
       onLayout={(e) => setWidth(Math.floor(e.nativeEvent.layout.width))}
     >
       <View style={s.head}>
-        <Text style={s.label}>CONNECTIONS</Text>
+        <Text style={s.label}>RELATED</Text>
         <View style={s.depth} accessibilityRole="radiogroup">
           {([1, 2] as const).map((d) => (
             <Pressable

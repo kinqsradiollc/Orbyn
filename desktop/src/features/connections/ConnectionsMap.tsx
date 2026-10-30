@@ -123,7 +123,7 @@ function ConnectionsMapBody({
   return (
     <section className={`${className} connections`}>
       <div className="connections-head">
-        <h3>Connections</h3>
+        <h3>Related</h3>
         <div
           className="connections-depth"
           role="group"
@@ -277,7 +277,7 @@ function ConnectionsDialog({
       }}
     >
       <div className="section-heading">
-        <h2 id="connections-dialog-title">Connections</h2>
+        <h2 id="connections-dialog-title">Related</h2>
         <button className="icon-button" aria-label="Close" onClick={onClose}>
           <X size={18} />
         </button>
