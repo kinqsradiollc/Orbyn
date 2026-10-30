@@ -2,7 +2,8 @@
 .drawer-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 4;
+  /* Keep the drawer header and Close above workspace chrome and its dock. */
+  z-index: 100;
   display: flex;
   justify-content: flex-end;
   background: var(--color-backdrop);

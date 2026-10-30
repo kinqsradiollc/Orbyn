@@ -1130,7 +1130,8 @@ footer svg {
   inset: 0;
   background: var(--color-backdrop);
   backdrop-filter: none;
-  z-index: 5;
+  /* Editors sit above workspace chrome and the overlay dock (90). */
+  z-index: 110;
   display: flex;
   align-items: center;
   justify-content: center;

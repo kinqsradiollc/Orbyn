@@ -387,7 +387,8 @@ a.drawer-fact {
 /* Popover menus (calendar entries and blocks). */
 .popover {
   position: fixed;
-  z-index: 7;
+  /* Owned menus remain above drawers and editors. */
+  z-index: 120;
   width: min(300px, calc(100vw - 16px));
   padding: 14px;
   border: 1px solid var(--border);
@@ -656,7 +657,7 @@ kbd {
 .command-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 9;
+  z-index: 130;
   display: flex;
   justify-content: center;
   align-items: flex-start;
