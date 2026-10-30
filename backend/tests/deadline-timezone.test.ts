@@ -201,27 +201,33 @@ test("a project deadline already gone gives way to the task's own", () => {
 });
 
 test("the Sessions card names the moment its status is measured against", () => {
-  const own = sessionsDeadlineWords({
-    deadline_at: DUE,
-    due_all_day: false,
-    planning_deadline_at: DUE,
-    fit: { deadline_at: DUE },
-    time_zone: TZ,
-  });
+  const own = sessionsDeadlineWords(
+    {
+      deadline_at: DUE,
+      due_all_day: false,
+      planning_deadline_at: DUE,
+      fit: { deadline_at: DUE },
+      time_zone: TZ,
+    },
+    MORNING,
+  );
   assert.equal(own.due, `Due ${dueDate(DUE, false, TZ)}`);
   assert.match(own.due!, /27/);
   assert.match(own.due!, /11:59|23:59/);
   assert.equal(own.sooner, null);
   assert.equal(own.by, `before ${dueDate(DUE, false, TZ)}`);
   // An earlier project deadline still ahead is named beside the due date.
-  const capped = sessionsDeadlineWords({
-    deadline_at: DUE,
-    due_all_day: false,
-    project_deadline: PROJECT,
-    planning_deadline_at: PROJECT,
-    fit: { deadline_at: PROJECT },
-    time_zone: TZ,
-  });
+  const capped = sessionsDeadlineWords(
+    {
+      deadline_at: DUE,
+      due_all_day: false,
+      project_deadline: PROJECT,
+      planning_deadline_at: PROJECT,
+      fit: { deadline_at: PROJECT },
+      time_zone: TZ,
+    },
+    MORNING,
+  );
   assert.equal(capped.sooner, `project ends ${dueDate(PROJECT, false, TZ)}`);
   assert.equal(capped.by, `before ${dueDate(PROJECT, false, TZ)}`);
   // Named in the account's zone, whatever the device's: 13:59 UTC is 23:59
@@ -233,12 +239,15 @@ test("the Sessions card names the moment its status is measured against", () => 
     all_day: true,
     timezone: TZ,
   })!;
-  const words = sessionsDeadlineWords({
-    deadline_at: allDay,
-    due_all_day: true,
-    planning_deadline_at: allDay,
-    time_zone: TZ,
-  });
+  const words = sessionsDeadlineWords(
+    {
+      deadline_at: allDay,
+      due_all_day: true,
+      planning_deadline_at: allDay,
+      time_zone: TZ,
+    },
+    MORNING,
+  );
   assert.equal(words.due, `Due ${dueDate(allDay, true, TZ)}`);
   assert.match(words.due!, /27/);
   assert.equal(words.by, `by the end of ${dueDate(allDay, true, TZ)}`);
