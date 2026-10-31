@@ -46,16 +46,17 @@ bound connected agents. See [access control](docs/architecture.md#access-control
 
 Orbyn is a TypeScript npm workspaces monorepo.
 
-| Path                      | Owner                                                                     |
-| ------------------------- | ------------------------------------------------------------------------- |
-| `packages/core/`          | Shared Zod schemas, domain types and planner helpers                      |
-| `packages/api-client/`    | Typed API client used by web/desktop and mobile                           |
-| `backend/`                | Fastify API, PostgreSQL migrations, provider adapters and service workers |
-| `desktop/`                | React/Vite web app and Electron packaging                                 |
-| `mobile/`                 | Expo/React Native client for iOS and Android                              |
-| `gateway/`, `pgbouncer/`  | nginx routing and database connection pooling                             |
-| `deploy/`, `compose.yaml` | Service definitions, isolation profiles and deployment tooling            |
-| `docs/`                   | Product, setup, architecture and operational references                   |
+| Path                      | Owner                                                                        |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| `packages/core/`          | Shared Zod schemas, domain types and planner helpers                         |
+| `packages/api-client/`    | Typed API client used by web/desktop and mobile                              |
+| `backend/`                | Fastify API, PostgreSQL migrations, provider adapters and service workers    |
+| `desktop/`                | React/Vite web app and Electron packaging                                    |
+| `web/`                    | Rebuilt web client, in progress; see [the rebuild](docs/work/web-rebuild.md) |
+| `mobile/`                 | Expo/React Native client for iOS and Android                                 |
+| `gateway/`, `pgbouncer/`  | nginx routing and database connection pooling                                |
+| `deploy/`, `compose.yaml` | Service definitions, isolation profiles and deployment tooling               |
+| `docs/`                   | Product, setup, architecture and operational references                      |
 
 Clients use `@orbyn/api-client` and `@orbyn/core`; the API client depends on core.
 Shared packages do not import application code. Backend services share an image

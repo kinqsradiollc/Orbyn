@@ -6,7 +6,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOTS = (
-    "backend/src", "desktop/src", "mobile/src",
+    "backend/src", "desktop/src", "web/src", "mobile/src",
     "packages/core/src", "packages/api-client/src",
 )
 RETIRED = (

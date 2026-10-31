@@ -18,6 +18,7 @@ COPY packages/core/package.json packages/core/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
 COPY backend/package.json backend/package.json
 COPY desktop/package.json desktop/package.json
+COPY web/package.json web/package.json
 COPY mobile/package.json mobile/package.json
 
 # Compile shared packages and the backend with dev dependencies available.

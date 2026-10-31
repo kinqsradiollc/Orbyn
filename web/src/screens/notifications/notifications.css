@@ -1,0 +1,193 @@
+.nt {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 820px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 24px 28px 96px;
+}
+.nt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.nt-unread {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font: 400 13px/18px var(--sans);
+  letter-spacing: 0;
+}
+.nt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.nt-section h2 {
+  font-size: 15px;
+  line-height: 21px;
+}
+.nt-section ul,
+.nt-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nt-group {
+  min-width: 0;
+}
+.nt-group + .nt-group {
+  margin-top: 12px;
+}
+.nt-group h3,
+.nt-asks h3 {
+  display: flex;
+  gap: 6px;
+  padding: 0 10px 2px;
+  color: var(--text-soft);
+  font: 600 13px/18px var(--sans);
+  letter-spacing: 0;
+}
+.nt-group h3 span,
+.nt-asks h3 span {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.nt-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 2px 0;
+  border-radius: var(--r-md);
+  min-width: 0;
+}
+.nt-main {
+  display: flex;
+  flex: 1 1 280px;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  text-align: left;
+}
+.nt-main:hover {
+  background: var(--hover);
+}
+.nt-main > svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+.nt-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.nt-title {
+  overflow-wrap: anywhere;
+  font-weight: 500;
+  text-align: left;
+}
+.nt-row.is-read .nt-title {
+  font-weight: 400;
+  color: var(--text-soft);
+}
+.nt-body {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 18px;
+}
+.nt small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+.nt-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.nt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-right: 10px;
+}
+.nt-actions:empty {
+  display: none;
+}
+.nt-error {
+  flex: 1 0 100%;
+  padding: 0 10px;
+}
+.nt-questions li,
+.nt-asks > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  min-width: 0;
+}
+.nt-questions .nt-actions {
+  margin-top: 4px;
+}
+.nt-mentions button {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  text-align: left;
+}
+.nt-mentions button:hover {
+  background: var(--hover);
+}
+.nt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--raised);
+  min-width: 0;
+}
+.nt-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 10px;
+}
+.nt-panel h2 {
+  font-size: 15px;
+  line-height: 21px;
+}
+.nt-panel > p {
+  padding: 0 10px 8px;
+}
+.nt-panel small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+@media (max-width: 800px) {
+  .nt {
+    padding: 16px 16px 96px;
+  }
+  .nt-actions {
+    padding: 0 10px 8px 40px;
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@orbyn/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@orbyn/api-client": "1.0.0",
+    "@orbyn/core": "1.0.0",
+    "@simplewebauthn/browser": "^13.3.0",
+    "katex": "^0.16.47",
+    "latex.js": "0.12.6",
+    "lucide-react": "^0.577.0",
+    "mermaid": "^11.17.2",
+    "pdfjs-dist": "6.4.299",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/katex": "^0.16.8",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
+  }
+}

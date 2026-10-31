@@ -11,6 +11,7 @@ and owning modules before choosing commands or dependencies.
 | Shared domain       | TypeScript and Zod in `packages/core`                                             |
 | Transport           | TypeScript fetch client in `packages/api-client`                                  |
 | Web and desktop     | React, Vite and Electron in `desktop`                                             |
+| Rebuilt web client  | React and Vite in `web`, in progress; see [the rebuild](work/web-rebuild.md)      |
 | Mobile              | Expo and React Native in `mobile`                                                 |
 | API and workers     | Fastify, TypeScript and PostgreSQL in `backend`                                   |
 | Assistant           | Repository-owned orchestration in `backend/src/modules/ai/` and service workers   |
@@ -51,6 +52,7 @@ commands that consume their exports. There is no root `npm run lint`.
 | Build shared packages            | `npm run build:packages`                                                                 |
 | Combined development HTTP server | `PORT=8008 npm run dev:api`                                                              |
 | Web development                  | `API_PROXY_URL=http://127.0.0.1:8008 npm run dev -w desktop -- --port 5174`              |
+| Rebuilt web client               | `API_PROXY_URL=http://127.0.0.1:8008 npm run dev:new-web`                                |
 | Expo web renderer                | `EXPO_PUBLIC_API_URL=http://127.0.0.1:8008 npm run start -w mobile -- --web --port 8083` |
 | Workspace type checks            | `npm run typecheck`                                                                      |
 | Backend default suite            | `npm test`                                                                               |

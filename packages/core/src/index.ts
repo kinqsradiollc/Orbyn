@@ -11,6 +11,7 @@ export * from "./planner/time.js";
 export * from "./planner/planner.js";
 export * from "./planner/deadlines.js";
 export * from "./planner/fit.js";
+export * from "./planner/week-scene.js";
 export * from "./planner/today.js";
 export * from "./planner/priority.js";
 export * from "./theme/presentation.js";

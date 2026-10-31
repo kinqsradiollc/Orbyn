@@ -7,6 +7,7 @@ COPY packages/core/package.json packages/core/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
 COPY backend/package.json backend/package.json
 COPY desktop/package.json desktop/package.json
+COPY web/package.json web/package.json
 COPY mobile/package.json mobile/package.json
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 RUN npm ci --workspace=@orbyn/core --workspace=@orbyn/api-client --workspace=@orbyn/desktop --include-workspace-root=false
