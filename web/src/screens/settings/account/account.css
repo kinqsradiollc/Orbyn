@@ -1,0 +1,126 @@
+.settings-account {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.settings-account-row,
+.settings-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.settings-account-row {
+  justify-content: space-between;
+}
+.settings-account-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0;
+}
+.settings-account-list > li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.settings-account-list > li > div {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.settings-account :is(p, strong, dd, code, label) {
+  overflow-wrap: anywhere;
+}
+.settings-account-identity {
+  display: grid;
+  gap: 12px;
+}
+.settings-account-identity div {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.25fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.settings-account-identity dt {
+  color: var(--text-soft);
+}
+.settings-account-identity dd {
+  margin: 0;
+}
+.settings-account-secret {
+  display: block;
+  padding-block: 12px;
+  white-space: pre-wrap;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.settings-account-codes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  list-style: none;
+  gap: 12px;
+  margin-block: 16px;
+  padding: 0;
+}
+.settings-account form,
+.settings-account-preference {
+  display: grid;
+  gap: 12px;
+}
+.settings-account-order {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.settings-account-order > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.settings-account-order .check {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.settings-account-shortcuts {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+.settings-account-shortcuts > li {
+  display: grid;
+  gap: 8px;
+}
+.settings-account .btn {
+  white-space: normal;
+  height: auto;
+  min-height: var(--control);
+  padding-block: 8px;
+}
+@media (max-width: 600px) {
+  .settings-account .btn {
+    min-height: 44px;
+  }
+  .settings-account-identity div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .settings-account-list > li {
+    align-items: start;
+  }
+  .settings-account-shortcuts kbd {
+    overflow-wrap: anywhere;
+  }
+}
+
+.settings-account-signing {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}

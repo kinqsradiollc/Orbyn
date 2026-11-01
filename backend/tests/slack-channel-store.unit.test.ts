@@ -1,3 +1,4 @@
+import { HttpError } from "@orbyn/core";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SlackChannelStore } from "../../packages/api-client/src/slack-channel-store.js";
@@ -202,4 +203,37 @@ test("provider/server errors stay generic and overlapping clicks cannot dispatch
   assert.equal(attempts, 1);
   assert.equal(f.store.getSnapshot().busy, false);
   assert.doesNotMatch(f.store.getSnapshot().error, /private/);
+});
+
+test("slack distinguishes definitive mutation refusals from uncertain outcomes", async () => {
+  for (const status of [400, 403, 409, 422, 408, 425, 429, 500, 503]) {
+    const f = fixture();
+    await f.store.refresh();
+    f.api.setSlackDmPermission = async () => {
+      throw new HttpError(status, "private-response-detail");
+    };
+    await f.store.permission(true);
+    assert.equal(
+      f.store.getSnapshot().failureKind,
+      [400, 403, 409, 422].includes(status) ? "refused" : "unknown",
+      String(status),
+    );
+    assert.equal(f.store.getSnapshot().status?.connection?.version, 4);
+    assert.doesNotMatch(f.store.getSnapshot().error, /private-response-detail/);
+  }
+});
+test("slack read failures never claim an uncertain mutation and a fresh retry clears the outcome", async () => {
+  const f = fixture();
+  const read = f.api.slackChannel;
+  f.api.slackChannel = async () => {
+    throw new HttpError(503, "private-read-detail");
+  };
+  await f.store.refresh();
+  assert.equal(f.store.getSnapshot().failureKind, "read");
+  f.api.slackChannel = read;
+  await f.store.refresh();
+  assert.equal(f.store.getSnapshot().failureKind, null);
+  await f.store.permission(true);
+  assert.equal(f.store.getSnapshot().failureKind, null);
+  assert.equal(f.store.getSnapshot().status?.connection?.dm_enabled, true);
 });

@@ -1,4 +1,5 @@
 import {
+  HttpError,
   CALENDAR_KIND_DEFAULTS,
   CALENDAR_KINDS,
   CALENDAR_REMINDER_CHOICES,
@@ -18,8 +19,8 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
-import { messageOf, useResource } from "../../lib/resource";
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { messageOf } from "../../lib/resource";
 import { client } from "../../lib/session";
 import {
   Button,
@@ -37,6 +38,94 @@ import {
 } from "../../ui/kit";
 import { SWATCHES, timeAgo } from "../shared-task/format";
 import { plural } from "./model";
+import {
+  useSettingsExit,
+  useSettingsOwner,
+  useSettingsRead,
+} from "../settings/shared";
+import type { RoutineEditorState } from "./ManageRoutines";
+
+type StateBridge = (state: RoutineEditorState) => void;
+function useCalendarAction(
+  dirty: boolean,
+  sensitive: boolean,
+  onStateChange?: StateBridge,
+) {
+  const owned = useSettingsOwner(),
+    lock = useRef(false),
+    unconfirmed = useRef(false);
+  const [busy, setBusy] = useState(false),
+    [unknown, setUnknown] = useState(false),
+    [error, setError] = useState("");
+  const sent = useRef(false),
+    received = useRef(false);
+  useSettingsExit({
+    dirty,
+    pending: busy || unknown,
+    sensitive,
+    message:
+      "Finish the calendar change and save any new private link before leaving.",
+  });
+  useLayoutEffect(() => {
+    onStateChange?.({ dirty, pending: busy, uncertain: unknown || sensitive });
+  }, [dirty, busy, unknown, sensitive, onStateChange]);
+  useLayoutEffect(
+    () => () =>
+      onStateChange?.({ dirty: false, pending: false, uncertain: false }),
+    [onStateChange],
+  );
+  async function send<T>(call: () => Promise<T>): Promise<T> {
+    if (!owned()) throw Error("This calendar belongs to an earlier sign-in.");
+    sent.current = true;
+    const value = await call();
+    received.current = true;
+    if (!owned()) throw Error("This calendar belongs to an earlier sign-in.");
+    return value;
+  }
+  async function run(work: () => Promise<void>) {
+    if (lock.current || unconfirmed.current || sensitive || !owned()) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    sent.current = false;
+    received.current = false;
+    try {
+      await work();
+    } catch (failure) {
+      if (owned()) {
+        if (
+          sent.current &&
+          !received.current &&
+          (!(failure instanceof HttpError) ||
+            failure.statusCode >= 500 ||
+            [408, 425, 429].includes(failure.statusCode))
+        ) {
+          unconfirmed.current = true;
+          setUnknown(true);
+        }
+        setError(
+          messageOf(
+            failure,
+            "Could not change this calendar. Your draft is kept.",
+          ),
+        );
+      }
+    } finally {
+      lock.current = false;
+      if (owned()) setBusy(false);
+    }
+  }
+  return {
+    owned,
+    send,
+    run,
+    busy,
+    unknown,
+    error,
+    setError,
+    blocked: busy || unknown || sensitive,
+  };
+}
 
 type Draft = {
   name: string;
@@ -89,16 +178,34 @@ const summary = (s: CalendarSubscription) =>
     .join(" · ");
 
 /** Calendars from other apps by their link: read-only, refreshed hourly. */
-export function SubscriptionsPanel({ onChanged }: { onChanged: () => void }) {
+export function SubscriptionsPanel({
+  onChanged,
+  onStateChange,
+}: {
+  onChanged: () => void;
+  onStateChange?: StateBridge;
+}) {
   const confirm = useConfirm();
   const toast = useToast();
-  const subs = useResource(() => client.listCalendarSubscriptions(), []);
+  const reading = useSettingsRead(() => client.listCalendarSubscriptions());
+  const subs = {
+    ...reading,
+    set: (
+      update: (
+        value: CalendarSubscription[] | undefined,
+      ) => CalendarSubscription[] | undefined,
+    ) => {
+      const next = update(reading.data);
+      if (next) reading.commit(next);
+    },
+  };
   const [editor, setEditor] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [draft, setDraft] = useState<Draft>(draftFor("other"));
   const [kindPicked, setKindPicked] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const action = useCalendarAction(editor !== null, false, onStateChange);
+  const { error, setError } = action;
+  const busy = action.blocked || !reading.fresh;
   const [query, setQuery] = useState("");
   const list = subs.data ?? [];
   const selected = list.find((s) => s.id === editor);
@@ -110,22 +217,16 @@ export function SubscriptionsPanel({ onChanged }: { onChanged: () => void }) {
   const replace = (next: CalendarSubscription) =>
     subs.set((all) => all?.map((s) => (s.id === next.id ? next : s)));
 
-  const act = async (work: () => Promise<string | undefined>) => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    try {
+  const act = (work: () => Promise<string | undefined>) =>
+    action.run(async () => {
       const text = await work();
+      if (!action.owned()) return;
       if (text) toast({ text });
       onChanged();
-    } catch (failure) {
-      setError(messageOf(failure, "Couldn't change that calendar."));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
   const open = (sub?: CalendarSubscription) => {
+    if (action.blocked || !reading.fresh || !action.owned()) return;
     setError("");
     setDraft(sub ? draftOf(sub) : draftFor("other"));
     setKindPicked(!!sub);
@@ -136,11 +237,13 @@ export function SubscriptionsPanel({ onChanged }: { onChanged: () => void }) {
     event.preventDefault();
     void act(async () => {
       if (editor === "new") {
-        const made = await client.createCalendarSubscription({
-          url: url.trim(),
-          ...draft,
-          name: draft.name.trim(),
-        });
+        const made = await action.send(() =>
+          client.createCalendarSubscription({
+            url: url.trim(),
+            ...draft,
+            name: draft.name.trim(),
+          }),
+        );
         setEditor(null);
         await subs.reload();
         return made.last_error
@@ -149,10 +252,12 @@ export function SubscriptionsPanel({ onChanged }: { onChanged: () => void }) {
       }
       if (!selected) throw new Error("That calendar is gone. Reload the list.");
       replace(
-        await client.updateCalendarSubscription(selected.id, {
-          ...draft,
-          name: draft.name.trim(),
-        }),
+        await action.send(() =>
+          client.updateCalendarSubscription(selected.id, {
+            ...draft,
+            name: draft.name.trim(),
+          }),
+        ),
       );
       setEditor(null);
       return "Calendar saved.";
@@ -175,155 +280,181 @@ export function SubscriptionsPanel({ onChanged }: { onChanged: () => void }) {
 
   if (editor)
     return (
-      <form className="calendar-form" onSubmit={save} aria-busy={busy}>
-        <h3>{editor === "new" ? "Add calendar" : "Edit calendar"}</h3>
-        {editor === "new" && (
-          <Field label="Calendar link">
-            <Input
-              required
-              maxLength={1000}
-              inputMode="url"
-              spellCheck={false}
-              placeholder="webcal://… or https://…"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-            />
-          </Field>
-        )}
-        <Field
-          label="What's in it"
-          hint={CALENDAR_KIND_DEFAULTS[draft.kind].hint}
-        >
-          <SelectBox
-            value={draft.kind}
-            onChange={(e) => {
-              const kind = e.target.value as CalendarKind;
-              change({
-                ...draftFor(kind, draft.name, draft.color),
-                visible: draft.visible,
-              });
-            }}
-          >
-            {CALENDAR_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {CALENDAR_KIND_DEFAULTS[k].label}
-              </option>
-            ))}
-          </SelectBox>
-        </Field>
-        <Field label="Name">
-          <Input
-            required
-            dir="auto"
-            maxLength={80}
-            placeholder="Uni timetable"
-            value={draft.name}
-            onChange={(e) => change({ ...draft, name: e.target.value })}
-          />
-        </Field>
-        <fieldset className="calendar-fieldset">
-          <legend>Colour</legend>
-          <div
-            className="calendar-swatches"
-            role="radiogroup"
-            aria-label="Calendar colour"
-          >
-            {SWATCHES.map((c) => (
-              <button
-                key={c}
-                type="button"
-                role="radio"
-                aria-checked={draft.color.toLowerCase() === c}
-                aria-label={c}
-                style={{ background: c }}
-                onClick={() => setDraft({ ...draft, color: c })}
+      <form className="calendar-form" onSubmit={save} aria-busy={action.busy}>
+        <fieldset className="calendar-fieldset" disabled={busy}>
+          <h3>{editor === "new" ? "Add calendar" : "Edit calendar"}</h3>
+          {action.unknown && (
+            <p role="alert">
+              Receipt unconfirmed. This change will not be repeated.
+            </p>
+          )}
+          {editor === "new" && (
+            <Field label="Calendar link">
+              <Input
+                required
+                maxLength={1000}
+                inputMode="url"
+                spellCheck={false}
+                placeholder="webcal://… or https://…"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
               />
-            ))}
-          </div>
-        </fieldset>
-        <div className="calendar-checks">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.busy}
-              onChange={(e) => setDraft({ ...draft, busy: e.target.checked })}
-            />
-            Counts as busy, so planning avoids these times
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.all_day_busy}
-              disabled={!draft.busy}
-              onChange={(e) =>
-                setDraft({ ...draft, all_day_busy: e.target.checked })
-              }
-            />
-            All-day events block the day
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.visible}
-              onChange={(e) =>
-                setDraft({ ...draft, visible: e.target.checked })
-              }
-            />
-            Show on my calendar
-          </label>
-        </div>
-        <div className="calendar-form-grid">
-          <Field label="Teammates see">
+            </Field>
+          )}
+          <Field
+            label="What's in it"
+            hint={CALENDAR_KIND_DEFAULTS[draft.kind].hint}
+          >
             <SelectBox
-              value={draft.sharing}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  sharing: e.target.value as CalendarSharing,
-                })
-              }
+              value={draft.kind}
+              onChange={(e) => {
+                const kind = e.target.value as CalendarKind;
+                change({
+                  ...draftFor(kind, draft.name, draft.color),
+                  visible: draft.visible,
+                });
+              }}
             >
-              <option value="busy">When you're busy, never titles</option>
-              <option value="hidden">Nothing</option>
-            </SelectBox>
-          </Field>
-          <Field label="Reminders">
-            <SelectBox
-              value={String(draft.reminder_minutes)}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  reminder_minutes:
-                    e.target.value === "null" ? null : Number(e.target.value),
-                })
-              }
-            >
-              {CALENDAR_REMINDER_CHOICES.map((m) => (
-                <option key={String(m)} value={String(m)}>
-                  {reminderLabel(m)}
+              {CALENDAR_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {CALENDAR_KIND_DEFAULTS[k].label}
                 </option>
               ))}
             </SelectBox>
           </Field>
-        </div>
-        {error && <ErrorNotice message={error} />}
-        <div className="dialog-actions">
-          <Button
-            variant="ghost"
-            disabled={busy}
-            onClick={() => setEditor(null)}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            busy={busy}
-            disabled={!draft.name.trim() || (editor === "new" && !url.trim())}
-          >
-            {busy ? "Saving" : editor === "new" ? "Add calendar" : "Save"}
-          </Button>
-        </div>
+          <Field label="Name">
+            <Input
+              required
+              dir="auto"
+              maxLength={80}
+              placeholder="Uni timetable"
+              value={draft.name}
+              onChange={(e) => change({ ...draft, name: e.target.value })}
+            />
+          </Field>
+          <fieldset className="calendar-fieldset">
+            <legend>Colour</legend>
+            <div
+              className="calendar-swatches"
+              role="radiogroup"
+              aria-label="Calendar colour"
+            >
+              {SWATCHES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  role="radio"
+                  aria-checked={draft.color.toLowerCase() === c}
+                  aria-label={c}
+                  style={{ background: c }}
+                  onClick={() => setDraft({ ...draft, color: c })}
+                />
+              ))}
+            </div>
+          </fieldset>
+          <div className="calendar-checks">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.busy}
+                onChange={(e) => setDraft({ ...draft, busy: e.target.checked })}
+              />
+              Counts as busy, so planning avoids these times
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.all_day_busy}
+                disabled={!draft.busy}
+                onChange={(e) =>
+                  setDraft({ ...draft, all_day_busy: e.target.checked })
+                }
+              />
+              All-day events block the day
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.visible}
+                onChange={(e) =>
+                  setDraft({ ...draft, visible: e.target.checked })
+                }
+              />
+              Show on my calendar
+            </label>
+          </div>
+          <div className="calendar-form-grid">
+            <Field label="Teammates see">
+              <SelectBox
+                value={draft.sharing}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    sharing: e.target.value as CalendarSharing,
+                  })
+                }
+              >
+                <option value="busy">When you're busy, never titles</option>
+                <option value="hidden">Nothing</option>
+              </SelectBox>
+            </Field>
+            <Field label="Reminders">
+              <SelectBox
+                value={String(draft.reminder_minutes)}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    reminder_minutes:
+                      e.target.value === "null" ? null : Number(e.target.value),
+                  })
+                }
+              >
+                {CALENDAR_REMINDER_CHOICES.map((m) => (
+                  <option key={String(m)} value={String(m)}>
+                    {reminderLabel(m)}
+                  </option>
+                ))}
+              </SelectBox>
+            </Field>
+          </div>
+          {error && <ErrorNotice message={error} />}
+          <div className="dialog-actions">
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() =>
+                void act(async () => {
+                  if (
+                    !(await confirm({
+                      title: "Discard calendar draft?",
+                      action: "Discard",
+                      danger: true,
+                    }))
+                  )
+                    return;
+                  if (action.owned()) setEditor(null);
+                  return undefined;
+                })
+              }
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              busy={action.busy}
+              disabled={
+                busy || !draft.name.trim() || (editor === "new" && !url.trim())
+              }
+            >
+              {action.busy
+                ? "Saving"
+                : editor === "new"
+                  ? "Add calendar"
+                  : "Save"}
+            </Button>
+          </div>
+        </fieldset>
       </form>
     );
 
@@ -331,12 +462,12 @@ export function SubscriptionsPanel({ onChanged }: { onChanged: () => void }) {
     <div className="calendar-form">
       <div className="calendar-side-head">
         <span className="small muted">Read-only · refreshes hourly</span>
-        <Button onClick={() => open()}>
+        <Button disabled={busy} onClick={() => open()}>
           <Plus aria-hidden="true" /> Add calendar
         </Button>
       </div>
       {error && <ErrorNotice message={error} />}
-      {subs.error && !subs.data && (
+      {subs.error && (
         <ErrorNotice message={subs.error} onRetry={() => void subs.reload()} />
       )}
       {subs.loading && !subs.data && <Loading label="Loading calendars" />}
@@ -383,9 +514,11 @@ export function SubscriptionsPanel({ onChanged }: { onChanged: () => void }) {
               onClick={() =>
                 void act(async () => {
                   replace(
-                    await client.updateCalendarSubscription(sub.id, {
-                      visible: !sub.visible,
-                    }),
+                    await action.send(() =>
+                      client.updateCalendarSubscription(sub.id, {
+                        visible: !sub.visible,
+                      }),
+                    ),
                   );
                   return sub.visible ? "Calendar hidden." : "Calendar shown.";
                 })
@@ -422,8 +555,8 @@ export function SubscriptionsPanel({ onChanged }: { onChanged: () => void }) {
                     onClick={() => {
                       close();
                       void act(async () => {
-                        const next = await client.refreshCalendarSubscription(
-                          sub.id,
+                        const next = await action.send(() =>
+                          client.refreshCalendarSubscription(sub.id),
                         );
                         replace(next);
                         if (next.last_error)
@@ -448,8 +581,10 @@ export function SubscriptionsPanel({ onChanged }: { onChanged: () => void }) {
                           action: "Remove",
                           danger: true,
                         });
-                        if (!yes) return undefined;
-                        await client.deleteCalendarSubscription(sub.id);
+                        if (!yes || !action.owned()) return undefined;
+                        await action.send(() =>
+                          client.deleteCalendarSubscription(sub.id),
+                        );
                         subs.set((all) => all?.filter((s) => s.id !== sub.id));
                         return "Calendar removed.";
                       });
@@ -468,6 +603,7 @@ export function SubscriptionsPanel({ onChanged }: { onChanged: () => void }) {
 }
 
 function LinkBox({ label, url }: { label: string; url: string }) {
+  const owned = useSettingsOwner();
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
   return (
@@ -478,13 +614,19 @@ function LinkBox({ label, url }: { label: string; url: string }) {
         <small className="muted">Shown once. Keep this link private.</small>
         <Button
           onClick={() =>
-            void navigator.clipboard.writeText(url).then(
-              () => {
-                setCopied(true);
-                setFailed(false);
-              },
-              () => setFailed(true),
-            )
+            void Promise.resolve()
+              .then(() => navigator.clipboard.writeText(url))
+              .then(
+                () => {
+                  if (owned()) {
+                    setCopied(true);
+                    setFailed(false);
+                  }
+                },
+                () => {
+                  if (owned()) setFailed(true);
+                },
+              )
           }
         >
           <Copy aria-hidden="true" /> {copied ? "Copied" : "Copy"}
@@ -500,26 +642,26 @@ function LinkBox({ label, url }: { label: string; url: string }) {
 }
 
 /** Your calendar for other apps: a full link, a busy-only link, and sessions. */
-export function FeedPanel() {
+export function FeedPanel({
+  onStateChange,
+}: { onStateChange?: StateBridge } = {}) {
   const confirm = useConfirm();
-  const settings = useResource(() => client.calendarFeedSettings(), []);
-  const [links, setLinks] = useState<{ full?: string; busy?: string }>({});
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const s = settings.data;
-
-  const act = async (work: () => Promise<void>) => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      await work();
-    } catch (failure) {
-      setError(messageOf(failure, "Couldn't change that link."));
-    } finally {
-      setBusy(false);
-    }
+  const reading = useSettingsRead(() => client.calendarFeedSettings());
+  const settings = {
+    ...reading,
+    set: (update: (value: typeof reading.data) => typeof reading.data) => {
+      const next = update(reading.data);
+      if (next) reading.commit(next);
+    },
   };
+  const [links, setLinks] = useState<{ full?: string; busy?: string }>({});
+  const [acknowledged, setAcknowledged] = useState(false);
+  const sensitive = !acknowledged && !!(links.full || links.busy);
+  const action = useCalendarAction(false, sensitive, onStateChange);
+  const busy = action.blocked || !reading.fresh;
+  const error = action.error;
+  const s = settings.data;
+  const act = (work: () => Promise<void>) => action.run(work);
   const make = (forBusy: boolean) =>
     void act(async () => {
       const had = forBusy ? s?.busy_enabled : s?.enabled;
@@ -532,7 +674,10 @@ export function FeedPanel() {
         }))
       )
         return;
-      const feed = await client.createCalendarFeed({ busy: forBusy });
+      const feed = await action.send(() =>
+        client.createCalendarFeed({ busy: forBusy }),
+      );
+      setAcknowledged(false);
       setLinks((l) => ({ ...l, [forBusy ? "busy" : "full"]: feed.url }));
       settings.set(
         (v) => v && { ...v, [forBusy ? "busy_enabled" : "enabled"]: true },
@@ -551,7 +696,7 @@ export function FeedPanel() {
         }))
       )
         return;
-      await client.deleteCalendarFeed({ busy: forBusy });
+      await action.send(() => client.deleteCalendarFeed({ busy: forBusy }));
       setLinks((l) => ({ ...l, [forBusy ? "busy" : "full"]: undefined }));
       settings.set(
         (v) => v && { ...v, [forBusy ? "busy_enabled" : "enabled"]: false },
@@ -598,7 +743,7 @@ export function FeedPanel() {
     );
   };
 
-  if (settings.error && !s)
+  if (settings.error)
     return (
       <ErrorNotice
         message="Couldn't load feed settings."
@@ -621,15 +766,25 @@ export function FeedPanel() {
           onChange={(e) => {
             const on = e.target.checked;
             void act(async () => {
-              const next = await client.updateCalendarFeedSettings({
-                include_blocks: on,
-              });
+              const next = await action.send(() =>
+                client.updateCalendarFeedSettings({ include_blocks: on }),
+              );
               settings.set(() => next);
             });
           }}
         />
         Include sessions in the full feed, with task names and deadlines
       </label>
+      {sensitive && (
+        <Button onClick={() => setAcknowledged(true)}>
+          I saved the private calendar link
+        </Button>
+      )}
+      {action.unknown && (
+        <p role="alert">
+          Receipt unconfirmed. This calendar change will not be repeated.
+        </p>
+      )}
       {error && <ErrorNotice message={error} />}
     </div>
   );

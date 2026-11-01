@@ -263,6 +263,7 @@
 .calendar-task .check {
   font-size: 13px;
   align-items: flex-start;
+  min-height: var(--control);
 }
 .calendar-checks .check input,
 .calendar-task .check input {
@@ -275,8 +276,8 @@
   gap: 6px;
 }
 .calendar-swatches button {
-  width: 28px;
-  height: 28px;
+  width: var(--control);
+  height: var(--control);
   border-radius: 50%;
 }
 .calendar-swatches button[aria-checked="true"] {
@@ -289,8 +290,8 @@
   gap: 4px;
 }
 .calendar-daychoice button {
-  min-width: 40px;
-  min-height: 34px;
+  min-width: var(--control);
+  min-height: var(--control);
   padding: 0 6px;
   border-radius: 999px;
   background: var(--chip);
@@ -345,6 +346,7 @@
 }
 .calendar-tabs {
   overflow-x: auto;
+  flex-shrink: 0;
 }
 .calendar-set {
   display: flex;

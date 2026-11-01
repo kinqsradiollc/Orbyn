@@ -1,0 +1,104 @@
+.settings-automation {
+  min-width: 0;
+}
+.settings-automation h4 {
+  margin: 16px 0 8px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.settings-automation-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  min-width: 0;
+}
+.settings-automation-overview > article {
+  min-width: 0;
+  padding: 14px;
+  background: var(--sunken);
+  border-radius: var(--r-md);
+}
+.settings-automation-overview > article > h4:first-child {
+  margin-top: 0;
+}
+.settings-automation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-block: 12px;
+}
+.settings-automation-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+.settings-automation-list > li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding-block: 14px;
+}
+.settings-automation-list > li + li {
+  border-top: 1px solid var(--line-soft);
+}
+.settings-automation-list p {
+  margin: 8px 0;
+}
+.settings-automation-verbatim {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.settings-automation-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  background: var(--sunken);
+  border: 0;
+  border-radius: var(--r-md);
+}
+.settings-automation-fields legend {
+  padding: 0;
+  margin-block-end: 8px;
+  font-weight: 500;
+}
+.settings-automation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.settings-automation-recovery {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--warn-soft);
+  border-radius: var(--r-md);
+  margin-block: 12px;
+}
+.settings-automation pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  font-size: 13px;
+}
+.settings-automation .check {
+  min-height: 36px;
+}
+@media (max-width: 600px) {
+  .settings-automation-overview,
+  .settings-automation-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings-automation input:not([type="checkbox"]),
+  .settings-automation textarea,
+  .settings-automation select {
+    font-size: 16px;
+    min-height: 44px;
+    max-width: 100%;
+  }
+  .settings-automation .check,
+  .settings-automation .btn {
+    min-height: 44px;
+  }
+}

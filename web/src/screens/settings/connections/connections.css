@@ -1,0 +1,84 @@
+.settings-connections {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+.settings-connections .settings-row {
+  flex-wrap: wrap;
+}
+.settings-connections pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  font-size: 13px;
+  user-select: text;
+}
+.settings-connections code,
+.settings-connections a,
+.settings-connections p,
+.settings-connections h4 {
+  overflow-wrap: anywhere;
+}
+.settings-connections fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+.settings-connections details {
+  min-width: 0;
+  padding-block: 8px;
+}
+.settings-connections summary {
+  cursor: pointer;
+  min-height: var(--control);
+  display: list-item;
+  align-content: center;
+  font-size: 15px;
+}
+.settings-connections .check {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: var(--control);
+}
+.settings-connections .check > input {
+  flex: none;
+}
+.settings-connections-editor,
+.settings-connections-grant,
+.settings-connections-channel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-block: 12px;
+}
+.settings-connections-grant {
+  border-block-end: 1px solid var(--line);
+}
+.settings-connections-grant[hidden] {
+  display: none;
+}
+.settings-connections-activity,
+.settings-connections-import-summary {
+  padding-block: 8px;
+  min-width: 0;
+}
+.settings-connections .settings-secret {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.settings-connections textarea {
+  min-height: 120px;
+}
+@media (max-width: 600px) {
+  .settings-connections .settings-actions {
+    flex-wrap: wrap;
+  }
+  .settings-connections .settings-row > div {
+    max-width: 100%;
+    min-width: 0;
+  }
+}

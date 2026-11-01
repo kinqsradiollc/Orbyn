@@ -2,8 +2,8 @@
 
 A new web client in `web/`, written from scratch to replace `desktop/`. No code is
 copied from `desktop/`, which stays the behavior reference until cutover. Shared
-`@orbyn/core` and `@orbyn/api-client` stay. This work is in progress and unfinished:
-`web/` is not deployed and nothing points at it.
+`@orbyn/core` and `@orbyn/api-client` stay. This work is in progress and unfinished. The local preview uses
+`http://localhost:5175`; deployment and packaged-client cutover remain out of scope.
 
 The rebuild has no copied presentation: every screen is new markup and CSS on the kit
 in `web/src/ui`. Macro was a design reference only. It is AGPL-3.0 and Orbyn is MIT, so
@@ -22,17 +22,21 @@ explicit remaining permission/provider limits are separate from this checkpoint.
 Agents implementation and scoped qualification are complete: Assistant, Background,
 Overnight and Review now use the shared conversation, decision, character and
 settings components. Scoped runtime evidence is recorded below, including the rollout-off chat fallback.
-All seven required checkpoint source/build gates passed. Settings is next.
+All seven required checkpoint source/build gates passed. This group is committed
+locally as `abc3cdd7`. Settings scoped qualification is complete, as recorded below.
 
 Not built, and showing "This screen hasn't been rebuilt yet": Teams, Booking,
-Admin, Settings, Developers, OAuth consent and public booking pages.
+Admin, Developers, OAuth consent and public booking pages. Settings now has its
+modal and all six category implementations, including ChatGPT and legacy aliases.
+This stage has completed its scoped interaction checks and required checkpoint gates.
+External delivery/provider limits and the final whole-client checks remain open.
 
 ## How to run
 
     docker compose up -d postgres mailpit
     npm run migrate
-    PORT=8008 npm run dev:api
-    API_PROXY_URL=http://127.0.0.1:8008 npm run dev:new-web
+    APP_URL=http://localhost:5175 PORT=8008 npm run dev:api
+    API_PROXY_URL=http://127.0.0.1:8008 npm run dev -w web -- --host 127.0.0.1 --port 5175 --strictPort
 
 ## Parity gaps
 
@@ -506,3 +510,297 @@ public scrolling source changed to satisfy that correction. These are an assembl
 full-run and focused receipt, not a claimed clean rerun of all seven parts. All seven frozen-candidate checkpoint gates passed: formatting, workspace types,
 code organization, project docs, GitHub helper tests, web build and week-scene tests.
 External model/worker execution remains unqualified and provider configuration is unchanged.
+
+### Settings — implementation and scoped verification
+
+Stage 3 started from `abc3cdd7`. Root owns the Settings modal, catalog search and
+route entries, registered exit ownership, Tags, Privacy, ChatGPT and integration.
+Account and Planning have disjoint screen owners; existing Calendar frame/habit
+editors are reused with optional state reports and stronger lifetime guards.
+Connections and automation settings are being implemented separately. This is
+unfinished work; no Settings checkpoint or whole-client qualification is claimed.
+
+A shared browser probe passed 17/17 without API writes. Registered navigation
+checks preserve the current entry before asking about Back/Forward, refuse a
+cancelled exit, and fence older approvals behind newer navigation. Device theme
+controls now share one external-store owner, propagate explicit cross-tab changes
+and suppress transitions while the palette commits. The original ready preview
+still has no idle motion.
+
+An account preference queue probe passed 5/5 on the actual browser modules with
+synthetic transport only. A held old save receipt cannot overwrite a new account
+generation; a queued write is never dispatched after A→signed out→A. The probe
+initially imported a separate Vite timestamped session module; its corrected run
+resolves the exact session URL consumed by the preferences module. Failed harness
+attempts are retained separately and are not product failures or passing evidence.
+
+Real named-member Tags CRUD passed 18/18 with zero browser errors: fresh personal
+tag creation, exact API readback, retained draft after a synthetic 422 refusal,
+cancelled discard, successful edit preserving scope/color, cancelled delete, exact
+delete and final absence with prior tags retained. Phone controls/layout and the
+real consent/data controls in Privacy were inspected. No privacy mutations,
+provider calls, work starts or unrelated writes were forwarded. The exact test tag
+was removed. Subsequent visual refinements add saved tag colors and place Privacy
+feedback beside its initiating action; they still need the next rendered check.
+
+Two interim combined web no-emit checks passed. The latter includes the final
+Account security exit corrections and Calendar habit timezone/retry-age guards.
+The final seven checkpoint gates, security/planning flows, dark rendering and
+remaining Settings categories are outstanding. No additional group is committed.
+
+All six Settings categories now have implementations. Account includes real
+browser capability handling, one-time recovery material acknowledgment and
+session/device controls. Planning reuses the Calendar frame/habit owners and
+adds preferences, places and learning evidence. Automation reuses the agent
+identity/limits/schedule dialogs with optional exit reports; their successful
+receipts are checked and uncertain writes require authoritative readback before
+adoption. Connections includes grants/access/activity/rules/channels, personal
+and clipper keys, webhooks, calendar feeds/subscriptions, delivery, portability
+and developer/CalDAV references. These are implementation claims; their full
+mutation and failure qualification is outstanding.
+
+The browser ChatGPT owner uses the existing remote catalog store with a numeric
+session-generation adapter. Provider fallback remains explicit, recorded usage
+is on demand, and morning-summary permission is independently bound to provider
+and model revisions. Configuration changes refresh the summary permission; an
+older permission receipt cannot replace a newer configuration read. Source
+review found and corrected a lost-selection recovery dead end after discovery
+failure and an expired-catalog no-dispatch case incorrectly treated as an
+uncertain write. Those corrections still need dedicated runtime fixtures.
+
+The complete Settings read-through passed 34/35 with zero browser errors and no
+domain mutations: all categories in light desktop and dark phone, catalog search,
+Signing in targeting, and both legacy aliases. The failure was an instruction
+button repeating a long team name. The corrected focused dark375 check passed
+3/3 with content clientWidth=scrollWidth=359, zero overflowing elements and exact
+space identity retained in the accessible action label. The phone screenshot was
+inspected. This is assembled broad and focused evidence, not a claimed clean
+35-check rerun. Shared navigation/theme verification now passes 20/20, including
+preserving the original feature return path across Settings aliases.
+
+CalDAV inspection found missing preview routing. The new web Vite server now
+proxies /dav and exact /.well-known/caldav to the existing API without rewriting
+its DAV hrefs. Unauthenticated PROPFIND checks returned 401 with the Orbyn Basic
+realm at /dav/ and 301 to /dav/ at discovery, rather than frontend HTML. No records
+or credentials were used. The production web proxy still needs that routing when
+the new client is deliberately cut over; production configuration/deployment was
+not changed. A fourth interim combined web typecheck passed after the final
+recovery and proxy changes. A fifth interim combined typecheck also passed after the navigation and copy
+changes. All Settings changes remain local and uncommitted.
+
+The full Settings ChatGPT fixture flow now passes 27/27 with zero browser errors
+and a frozen manifest including untracked source. All model, provider-choice and
+summary-permission writes were synthetic; real account reads are separate and
+no provider/configuration write reached the server. Coverage includes empty
+discovery, deliberate exact-device selection, a lost committed model receipt,
+failed discovery followed by exact-device recovery without replay, expired
+catalog no-dispatch, retained model draft, explicit default saving, explicit
+fallback and preserving its draft when reselecting the same provider, consent
+bound to current provider/model versions, and renewed review after model change.
+
+The fixture run reproduced a stale success notice after a model change: the
+permission correctly became inactive but its earlier success copy remained.
+The notice now clears on configuration changes; the failing receipt and passing
+rerun are retained. The final phone model controls were scrolled into view and
+visually inspected. Earlier harness failures selected the account's unrelated
+Refresh devices action or allowed the transport's normal GET retry to heal a
+single simulated discovery failure. The corrected fixture scopes actions to the
+ChatGPT section and holds discovery unavailable through all transport retries.
+Those harness corrections do not change product guards or passing tolerances.
+
+Outstanding stage-3 qualification includes Account security/recovery/device flows,
+full Planning CRUD/preferences/preview and unknown-state cases, Automation rules/
+instructions/settings recovery, and Connections grants/keys/channels/import/export/
+calendar/delivery failure and permission cases. Requalify the shared agent dialogs
+and Calendar consumers affected by these changes. The final seven checkpoint
+gates and local commit remain pending. Admin/Developers, Teams/Booking/public
+flows, shell parity and the final whole-client audit remain subsequent stages.
+
+The latest sixth combined web no-emit check passes after the consent-notice and
+fallback-draft fixes. Project-doc links, source organization and diff whitespace
+checks also pass. The seven final checkpoint gates remain pending.
+
+### Settings qualification — security, privacy and planner records
+
+The personal-key and CalDAV flow passes 19/19. A fresh local member key was
+created, used for authenticated PROPFIND through the preview proxy (207),
+acknowledged and revoked; the revoked key then returned 401. Copy refusal and
+one-time-material exit guards were exercised. Temporary keys from both attempts
+were revoked. No key material was persisted in the evidence. The first run's final
+revoked request stalled on the browser's Basic-auth challenge; the corrected final
+check uses a bounded protocol read after the actual key lifecycle.
+
+Account security fixtures pass 90/90 on localhost, including nested draft-close
+confirmation and browser Back, recovery-code acknowledgment/copy failure, session
+and device receipt recovery, virtual passkey ceremony and account-generation
+fencing. All server security mutations were intercepted. Registration on an IP
+address is now unavailable with domain-name guidance; the separate IP control is
+pending. Browser Back previously replaced a nested confirmation and stranded its
+promise; pending confirmation state now participates in the exit guard. These
+checks do not qualify a real authenticator or backend registration.
+
+Privacy passes 17/17. The actual local account archive downloaded successfully,
+passed ZIP CRC verification and contained the expected data sections and current
+consent metadata. Analytics and account-deletion refusal/uncertain-state checks
+were synthetic; no real privacy mutation or account deletion was forwarded. The
+real account identity remained present. No provider calls occurred.
+
+Actual Places create/edit/delete passed in the broader Planning run. Its Habit
+edit initially stopped on an icon-action selector; a focused rerun then exposed a
+helper assumption that a controlled numeric input could remain empty. Both were
+private harness issues. With native selection replacement and exact final-value
+verification, the inactive Habit flow passes 8/8: create, edit, full-field readback
+and delete. All temporary Places/Habits from these runs were removed. No habit
+was activated. Frame qualification and the remaining Planning/Automation/Connections
+recovery cases are still in progress; the final seven Settings gates remain pending.
+
+The focused real Frame flow passes 23/23. It first created and proved a fresh
+personal list empty across all current item kinds/statuses, then created a
+busy:false Frame filtered exclusively to that list. Editing changed only its
+name/color; complete readback preserved all other fields and filters. The Frame
+was deleted before its exact unchanged empty list. No planning/apply/session,
+provider, worker or delivery command was forwarded. The first attempt stopped
+before Frame creation when the native filter click did not stick; the corrected
+helper centers the input, proves its pointer hit target and awaits checked state.
+Both runs cleaned their owned lists. The saved success screenshot shows lower
+Planning sections, so it is not counted as Frame-specific visual acceptance.
+
+Planning preference recovery passes 8/8 with synthetic lost receipts: an old
+nonmatching snapshot cannot unlock the draft, the exact submitted patch resolves
+without replay. Place/Frame uncertain create/update/delete recovery passes 32/32: a
+pre-existing matching ID cannot settle creation, exact-ID updates require matching
+fields, and deletion requires absence. These are intercepted UI-recovery checks,
+separate from the real local CRUD receipts above. One initial browser launch timed
+out before scenarios began; the next run used a longer launch timeout, retaining
+all interaction assertions. Habit retry-age and preview/apply cases remain pending.
+
+Habit same-attempt retry checks pass 14/14 with synthetic responses: normal
+retries preserve the exact body/key, while the 23-hour boundary and a backwards
+clock dispatch no further request and retain the unknown state. Preview/apply and
+digest recovery are still pending.
+
+The Automation instruction probe reproduced an old-readback recovery defect
+(3/5): a lost save followed by the previous instruction text still enabled saved
+context adoption. Context and Assistant rules now capture immutable submitted
+attempts, validate successful receipts and require matching space/text or an
+advanced CAS revision before unknown-state adoption. Profile creation retains a
+validated receipt document ID; even a definitive follow-up read failure keeps
+creation uncertain. Confirmations recheck the current attempt, observation and
+account owner. These two local source corrections passed a web-only no-emit
+TypeScript check and diff whitespace; their runtime requalification is underway.
+
+### Settings qualification — Automation and Connected agents
+
+The corrected instruction unknown-state flow passes 9/9 and the context-page
+receipt/follow-up-read flow passes 10/10: a confirmed create followed by a 403
+read remains uncertain, a different document ID cannot be adopted, and the exact
+known ID resolves without another create. A combined Automation run completed
+75 passing checks before a private wait matched “receipt” in the draft rather
+than waiting for the response state. Its screenshot showed the product correctly
+blocked. The corrected focused receipt/owner run passes 12/12. These are assembled
+scoped receipts, not a clean rerun of the entire combined batch.
+
+Reminders now also captures and validates its immutable six-field submission; an
+old nonmatching snapshot cannot resolve an unknown write. The supplemental run
+completed 67 passing checks covering normal/refused/unknown/mismatched reminder
+saves and direct Background/Overnight identity and limits dialog Cancel/Escape,
+pending and unknown receipts. It stopped when its Schedule helper queried before
+the async control mounted. The corrected focused Schedule/owner run is pending.
+Broader direct-agent Sidebar/Back navigation is still a separate shell/route
+qualification target; these dialog checks do not establish that behavior.
+
+The first Connected agents batch completed 49/51: grant/activity/undo checks
+passed, but an immediate React-state inspection and numeric-input selection
+assumption stopped the remaining flow. The corrected permission run passes
+17/17, including the real parent dirty-edit refusal, held browser Back, trust
+and toolset bodies and phone containment. Plugin permission now validates the
+exact grant, expected next revision and provider/limits before accepting a PUT
+receipt. Matching authoritative reconciliation also clears the saved draft. Its
+focused run passes 29/29, including a well-shaped wrong-grant response, no replay,
+clean category exit and revoked permission removing enabling controls.
+
+All server Automation, grant, undo and provider-permission mutations in these
+fixtures were intercepted; none qualifies provider execution or external delivery.
+Web-only no-emit checks 7–9 passed as the Context/Rules, Reminders and Plugin
+corrections landed. Full checkpoint gates remain pending, along with remaining
+Connections/import/calendar/channel flows and the separate real-local WebAuthn
+check. No further local group commit, push, PR, merge or deployment occurred.
+
+The focused Automation supplement tail passes 20/20, completing Overnight
+schedule Cancel/Escape/pending/unknown recovery and the stronger direct-consumer
+account switch. A new owner dialog was opened and typed before releasing the old
+receipt; its draft and dialog survived, with session generation advancing twice.
+This supplements the prior 67 passing checks; it is not an entire clean rerun.
+
+Real local WebAuthn now passes 11/11. After verifying the persisted development
+database marker, the private preview APP_URL was set to localhost:5175 and only
+the owned API/preview processes restarted. Chrome's virtual authenticator created
+a real attestation through the new Settings UI; actual backend verification
+returned 201, the fresh credential was read back, and its exact deletion returned
+204 with the original passkey baseline preserved. No security-bypass flags,
+physical authenticator, sign-in/session mutation or simulated verification was
+used. Raw credential/challenge/attestation material was kept only in memory.
+The run recipe above now states the required canonical origin and strict port.
+The initial preview restart hit npm argument forwarding and served the wrong
+port; that owned process was stopped and the direct workspace command corrected
+before any security write. These are local setup changes, not a deployment.
+
+The corrected real Markdown import run passes 22/22 with process exit0: native
+file selection, real preview, one keyed apply, exact personal page/folder content
+and ownership, and conditional cleanup. Existing library IDs and folder snapshots
+were preserved. The initial run completed all 21 functional/cleanup checks but
+exited1 solely because two aborted Google Fonts CSS requests were counted as
+violations. The private classifier now labels those expected blocked assets while
+still aborting every external request and failing unexpected origins/methods.
+
+Real native CSV task import passes 15/15 with exit0. The imported due-less personal
+task was verified against its committed receipt, fresh ID, complete fields and
+owner, then removed through the version/session guard; existing task IDs remained.
+Zero active member webhooks was verified before import and deletion. No planner
+preferences were changed; source confirms a task without due date or sessions
+cannot become a scheduler/nudge delivery candidate. Ordinary audit/tombstone data
+was retained. These real happy paths supplement the pending synthetic portability
+failure/replay checks; they do not qualify Notion parsing or external conversion.
+
+### Settings qualification — final connections, portability and layout
+
+Calendar feeds/subscriptions and the shared Manage bridge pass 61/61 scoped
+checks. They cover explicit permissions, stale/refused/unknown receipts, draft
+preservation and phone containment. The shared colour/day controls now use the
+36px/44px control token; segmented actions retain that height, and tall Manage
+forms no longer collapse the tab strip. Connection secrets, webhook delivery/rules
+and wake controls pass 89/89 synthetic checks; no external delivery occurred.
+
+Slack/Teams store outcomes now distinguish failed reads, definitive mutation
+refusals and uncertain writes. This additive SDK metadata was necessary because
+the earlier generic error trapped known refusals behind the unknown-write lock.
+The store regression batch failed four new assertions before the change and
+passes 24/24 afterward. The full channel UI fixture passes 42/42, including an
+explicit retry after each provider's 422 and read-only reconciliation that never
+unlocks or repeats an uncertain write. An earlier Teams refusal fixture used the
+wrong heading, stopped before dispatch and was corrected. External OAuth, personal
+chat delivery and provider execution remain unqualified.
+
+Synthetic portability checks completed 86 checks before a private download
+filename collision stopped the combined run. The corrected actual export tail
+passes 12/12 with separate download directories and inspected JSON/ZIP containers.
+Those receipts supplement the real Markdown/task imports recorded above; they
+are not a clean rerun of the entire combined batch.
+
+Final read-only Settings navigation passes 61/61 across all six categories,
+light desktop and dark phone, catalog search and legacy aliases. Viewport captures
+and hit testing exposed and then verified a modal scrolling correction: only the
+content pane scrolls; the Settings title and Close remain visible. The focused
+Frame phone flow passes 7/7, including native colour selection and 44px colour/day
+targets. Earlier element captures and beyond-viewport screenshots are not used as
+whole-modal visual evidence. Screenshots of current phone Planning and Frame
+states were inspected directly. All fixture mutations were intercepted; real
+security/import happy paths are identified separately above.
+
+All seven frozen-candidate checkpoint gates passed: repository formatting,
+workspace types, code organization, project docs, GitHub helper tests, web build
+and all 11 week-scene tests. A second final-document receipt qualifies this
+record before the local Settings commit. Staged Admin/Developers/Teams/Booking/OAuth drafts remain private
+preparation, with integration and runtime qualification still outstanding. Shell
+parity and the final guarded backend suite remain open. No push, PR, merge,
+deployment or packaged-client cutover has occurred.

@@ -8,7 +8,12 @@ import {
 } from "@orbyn/core";
 import { useEffect, useSyncExternalStore } from "react";
 import { messageOf } from "../../lib/resource";
-import { client, getToken, onToken } from "../../lib/session";
+import {
+  client,
+  getSessionVersion,
+  getToken,
+  onToken,
+} from "../../lib/session";
 
 export type PrefsState = {
   prefs: AccountPrefs;
@@ -31,14 +36,16 @@ const publish = (next: Partial<PrefsState>) => {
 /** Reads the account's choices. Only the newest read for this account counts. */
 export async function reloadPrefs() {
   const token = getToken();
+  const owner = getSessionVersion();
   const id = ++run;
   started = true;
   publish({ phase: state.phase === "ready" ? "ready" : "loading", error: "" });
   try {
     const prefs = await client.getPrefs();
-    if (id === run && token === getToken()) publish({ prefs, phase: "ready" });
+    if (id === run && token === getToken() && owner === getSessionVersion())
+      publish({ prefs, phase: "ready" });
   } catch (error) {
-    if (id === run && token === getToken())
+    if (id === run && token === getToken() && owner === getSessionVersion())
       publish({
         phase: state.phase === "ready" ? "ready" : "error",
         error: messageOf(error, "Couldn't load your layout."),
@@ -78,6 +85,7 @@ export function savePrefs(input: AccountPrefsInput): Promise<void> {
       new Error("Your layout hasn't loaded. Reload it before saving."),
     );
   const token = getToken();
+  const owner = getSessionVersion();
   const before = state.prefs;
   const { views, ...whole } = input;
   const nextViews = { ...before.views };
@@ -89,12 +97,14 @@ export function savePrefs(input: AccountPrefsInput): Promise<void> {
     prefs: { ...before, ...(whole as Partial<AccountPrefs>), views: nextViews },
   });
   const write = queue.then(async () => {
-    if (token !== getToken()) return;
+    if (token !== getToken() || owner !== getSessionVersion()) return;
     try {
       const prefs = await client.savePrefs(input);
-      if (token === getToken()) publish({ prefs });
+      if (token === getToken() && owner === getSessionVersion())
+        publish({ prefs });
     } catch (error) {
-      if (token === getToken()) publish({ prefs: before });
+      if (token === getToken() && owner === getSessionVersion())
+        publish({ prefs: before });
       throw error;
     }
   });

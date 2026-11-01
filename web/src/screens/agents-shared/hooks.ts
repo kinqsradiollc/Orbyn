@@ -20,6 +20,22 @@ import {
   onToken,
 } from "../../lib/session";
 
+export type AgentEditorState = {
+  dirty: boolean;
+  pending: boolean;
+  uncertain: boolean;
+};
+export function useAgentEditorState(
+  report: ((state: AgentEditorState) => void) | undefined,
+  state: AgentEditorState,
+) {
+  const callback = useRef(report);
+  callback.current = report;
+  useLayoutEffect(() => {
+    callback.current?.(state);
+  }, [state.dirty, state.pending, state.uncertain]);
+}
+
 export type Lane = "background" | "overnight";
 export const LANE_NAME: Record<Lane, string> = {
   background: "Background",

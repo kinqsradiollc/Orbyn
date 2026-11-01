@@ -1,3 +1,4 @@
+import { channelFailure, type ChannelFailureKind } from "./channel-error.js";
 import {
   slackInstallationId,
   type SlackChannelConnection,
@@ -20,6 +21,8 @@ export type SlackChannelState = {
   authorizationUrl: string | null;
   busy: boolean;
   error: string;
+  /** Optional for compatibility with previously captured snapshots. */
+  failureKind?: ChannelFailureKind | null;
 };
 /** Shared, session-bound channel settings. Tokens and OAuth callback data never enter this store. */
 export class SlackChannelStore {
@@ -29,6 +32,7 @@ export class SlackChannelStore {
     authorizationUrl: null,
     busy: false,
     error: "",
+    failureKind: null,
   };
   private listeners = new Set<() => void>();
   private abort = new AbortController();
@@ -64,7 +68,10 @@ export class SlackChannelStore {
     this.remember(null);
     this.publish({ installation: null, authorizationUrl: null });
   }
-  private async run(action: () => Promise<void>) {
+  private async run(
+    action: () => Promise<void>,
+    effect: "read" | "write" = "write",
+  ) {
     if (!this.current()) {
       if (!this.abort.signal.aborted)
         this.publish({
@@ -77,12 +84,13 @@ export class SlackChannelStore {
       return;
     }
     if (this.state.busy) return;
-    this.publish({ busy: true, error: "" });
+    this.publish({ busy: true, error: "", failureKind: null });
     try {
       await action();
-    } catch {
+    } catch (failure) {
       if (this.current())
         this.publish({
+          failureKind: channelFailure(failure, effect),
           error:
             "Could not update Slack. Refresh and review the current connection before trying again.",
         });
@@ -124,8 +132,8 @@ export class SlackChannelStore {
       this.pendingId = parsed.success ? parsed.data : null;
       if (id && !parsed.success) this.remember(null);
       await this.read();
-    });
-  refresh = () => this.run(() => this.read());
+    }, "read");
+  refresh = () => this.run(() => this.read(), "read");
   /** The caller reserves a web popup synchronously, then opens this validated provider URL. */
   start = (open: (url: string) => void | Promise<void>) =>
     this.run(async () => {
@@ -214,6 +222,7 @@ export class SlackChannelStore {
       authorizationUrl: null,
       busy: false,
       error: "",
+      failureKind: null,
     };
   };
 }

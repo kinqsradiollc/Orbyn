@@ -1,3 +1,4 @@
+import { HttpError } from "@orbyn/core";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TeamsChannelStore } from "../../packages/api-client/src/teams-channel-store.js";
@@ -293,4 +294,37 @@ test("Teams confirmation disables old local conversation authority even when its
   assert.equal(f.store.getSnapshot().status?.connection?.dm_enabled, false);
   assert.equal(f.store.getSnapshot().status?.connection?.version, 5);
   assert.ok(f.store.getSnapshot().challenge);
+});
+
+test("teams distinguishes definitive mutation refusals from uncertain outcomes", async () => {
+  for (const status of [400, 403, 409, 422, 408, 425, 429, 500, 503]) {
+    const f = fixture();
+    await f.store.refresh();
+    f.api.setTeamsDmPermission = async () => {
+      throw new HttpError(status, "private-response-detail");
+    };
+    await f.store.permission(true);
+    assert.equal(
+      f.store.getSnapshot().failureKind,
+      [400, 403, 409, 422].includes(status) ? "refused" : "unknown",
+      String(status),
+    );
+    assert.equal(f.store.getSnapshot().status?.connection?.version, 4);
+    assert.doesNotMatch(f.store.getSnapshot().error, /private-response-detail/);
+  }
+});
+test("teams read failures never claim an uncertain mutation and a fresh retry clears the outcome", async () => {
+  const f = fixture();
+  const read = f.api.teamsChannel;
+  f.api.teamsChannel = async () => {
+    throw new HttpError(503, "private-read-detail");
+  };
+  await f.store.refresh();
+  assert.equal(f.store.getSnapshot().failureKind, "read");
+  f.api.teamsChannel = read;
+  await f.store.refresh();
+  assert.equal(f.store.getSnapshot().failureKind, null);
+  await f.store.permission(true);
+  assert.equal(f.store.getSnapshot().failureKind, null);
+  assert.equal(f.store.getSnapshot().status?.connection?.dm_enabled, true);
 });

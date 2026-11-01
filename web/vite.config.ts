@@ -15,6 +15,8 @@ export default defineConfig({
         headers: { "X-Forwarded-Prefix": "/api" },
       },
       "^/(p|s)/": { target: api },
+      "^/dav(?:/|$)": { target: api },
+      "^/\\.well-known/caldav$": { target: api },
     },
   },
 });

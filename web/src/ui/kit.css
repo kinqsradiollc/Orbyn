@@ -103,7 +103,7 @@ textarea.input {
   background: var(--hover);
 }
 .segmented button {
-  min-height: calc(var(--control) - 6px);
+  min-height: var(--control);
   padding: 0 12px;
   border-radius: 999px;
   font-size: var(--action-fs);

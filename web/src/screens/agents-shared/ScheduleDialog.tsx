@@ -1,4 +1,5 @@
 import {
+  HttpError,
   NIGHT_SHIFT_KINDS,
   nightShiftInput,
   type NightShiftSettings,
@@ -15,7 +16,7 @@ import {
   Loading,
   useConfirm,
 } from "../../ui/kit";
-import { useOwned } from "./hooks";
+import { useOwned, useAgentEditorState, type AgentEditorState } from "./hooks";
 import { Check } from "./parts";
 
 const KINDS: Record<(typeof NIGHT_SHIFT_KINDS)[number], string> = {
@@ -33,7 +34,9 @@ const KINDS: Record<(typeof NIGHT_SHIFT_KINDS)[number], string> = {
 export function ScheduleDialog({
   onClose,
   onSaved,
+  onStateChange,
 }: {
+  onStateChange?: (state: AgentEditorState) => void;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -47,6 +50,18 @@ export function ScheduleDialog({
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [uncertain, setUncertain] = useState(false),
+    [fresh, setFresh] = useState(true),
+    [observed, setObserved] = useState<NightShiftSettings | null>(null);
+  const uncertainRef = useRef(false);
+  const submitted = useRef<NightShiftSettings | null>(null);
+  const matches = (saved: NightShiftSettings, input: NightShiftSettings) => {
+    const checked = nightShiftInput.safeParse(saved);
+    return (
+      checked.success && JSON.stringify(checked.data) === JSON.stringify(input)
+    );
+  };
+
   useEffect(() => {
     let live = true;
     if (!owned()) return;
@@ -57,6 +72,8 @@ export function ScheduleDialog({
     void client.nightShiftSettings().then(
       (next) => {
         if (!live || !owned()) return;
+        setFresh(true);
+        setObserved(null);
         setValue(next);
         setBaseline(next);
       },
@@ -71,9 +88,14 @@ export function ScheduleDialog({
   }, [attempt]);
   const dirty =
     !!value && !!baseline && JSON.stringify(value) !== JSON.stringify(baseline);
-  const locked = saving || confirming;
+  useAgentEditorState(onStateChange, {
+    dirty,
+    pending: saving || confirming,
+    uncertain,
+  });
+  const locked = saving || confirming || uncertain;
   const leave = async (reload = false) => {
-    if (!owned() || pending.current) return;
+    if (!owned() || pending.current || uncertainRef.current) return;
     pending.current = true;
     setConfirming(true);
     try {
@@ -96,28 +118,116 @@ export function ScheduleDialog({
     }
   };
   const save = async () => {
-    if (!owned() || !value || !dirty || pending.current) return;
+    if (
+      !owned() ||
+      !value ||
+      !dirty ||
+      pending.current ||
+      uncertainRef.current ||
+      !fresh
+    )
+      return;
     const parsed = nightShiftInput.safeParse(value);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Check the schedule values.");
       return;
     }
+    const input = structuredClone(parsed.data);
+    submitted.current = input;
+    setObserved(null);
     pending.current = true;
     setSaving(true);
     setError("");
     try {
-      await client.updateNightShiftSettings(parsed.data);
+      const saved = await client.updateNightShiftSettings(input);
       if (!owned()) return;
+      if (submitted.current !== input || !matches(saved, input))
+        throw new Error(
+          "The saved schedule receipt does not match this change. Check saved state.",
+        );
       onSaved();
       if (owned()) onClose();
     } catch (failure) {
-      if (owned())
+      if (owned()) {
+        const unknown =
+          !(failure instanceof HttpError) ||
+          failure.statusCode >= 500 ||
+          [408, 429].includes(failure.statusCode);
+        uncertainRef.current = unknown;
+        setUncertain(unknown);
+        setFresh(false);
         setError(
           messageOf(failure, "Couldn't save the schedule. Your draft is kept."),
         );
+      }
     } finally {
       pending.current = false;
       if (owned()) setSaving(false);
+    }
+  };
+  const checkSaved = async () => {
+    const input = submitted.current;
+    if (!owned() || pending.current || !uncertainRef.current || !input) return;
+    pending.current = true;
+    setSaving(true);
+    try {
+      const saved = await client.nightShiftSettings();
+      if (owned() && submitted.current === input) {
+        setObserved(saved);
+        if (!matches(saved, input))
+          setError(
+            "The saved schedule does not match this request. Its outcome is still unconfirmed; keep checking before leaving.",
+          );
+        else setError("");
+      }
+    } catch (failure) {
+      if (owned())
+        setError(messageOf(failure, "Couldn't check the saved schedule."));
+    } finally {
+      pending.current = false;
+      if (owned()) setSaving(false);
+    }
+  };
+  const canAdopt =
+    !!observed && !!submitted.current && matches(observed, submitted.current);
+  const keepSaved = async () => {
+    const input = submitted.current;
+    if (
+      !owned() ||
+      pending.current ||
+      !observed ||
+      !uncertainRef.current ||
+      !input ||
+      !canAdopt
+    )
+      return;
+    const saved = observed;
+    pending.current = true;
+    setConfirming(true);
+    try {
+      if (
+        !(await confirm({
+          title: "Use saved schedule?",
+          body: "Discard this local draft and keep the current saved version. This does not prove which request saved it.",
+          action: "Use saved schedule",
+          danger: true,
+        }))
+      )
+        return;
+      if (
+        !owned() ||
+        observed !== saved ||
+        submitted.current !== input ||
+        !matches(saved, input)
+      )
+        return;
+      uncertainRef.current = false;
+      setUncertain(false);
+      onSaved?.();
+      if (owned()) onClose();
+    } finally {
+      pending.current = false;
+      if (owned()) setConfirming(false);
     }
   };
   return (
@@ -137,7 +247,7 @@ export function ScheduleDialog({
             <Button
               variant="primary"
               busy={saving}
-              disabled={confirming || !dirty}
+              disabled={confirming || uncertain || !fresh || !dirty}
               onClick={() => void save()}
             >
               {saving ? "Saving…" : "Save schedule"}
@@ -162,6 +272,41 @@ export function ScheduleDialog({
                 Reload latest schedule
               </Button>
             </>
+          )}
+          {uncertain && (
+            <div>
+              <p>
+                The save is unconfirmed. Your draft is kept and cannot be sent
+                again.
+              </p>
+              <Button
+                disabled={saving || confirming}
+                onClick={() => void checkSaved()}
+              >
+                Check saved schedule
+              </Button>
+              {observed && (
+                <>
+                  <details>
+                    <summary>Current saved schedule</summary>
+                    <pre
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {JSON.stringify(observed, null, 2)}
+                    </pre>
+                  </details>
+                  <Button
+                    disabled={saving || confirming || !canAdopt}
+                    onClick={() => void keepSaved()}
+                  >
+                    Use saved schedule
+                  </Button>
+                </>
+              )}
+            </div>
           )}
           <Check
             label="Work overnight"

@@ -5,9 +5,16 @@ import {
   type Team,
 } from "@orbyn/core";
 import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { messageOf, useResource } from "../../lib/resource";
-import { client } from "../../lib/session";
+import { client, getSessionVersion, getToken } from "../../lib/session";
+import { onBeforeNavigate } from "../../lib/router";
 import {
   Button,
   Dialog,
@@ -16,9 +23,15 @@ import {
   IconButton,
   Input,
   Segmented,
+  useConfirm,
+  useToast,
 } from "../../ui/kit";
 import { FeedPanel, SubscriptionsPanel } from "./ManageCalendars";
-import { FramesPanel, HabitsPanel } from "./ManageRoutines";
+import {
+  FramesPanel,
+  HabitsPanel,
+  type RoutineEditorState,
+} from "./ManageRoutines";
 import type { Workspace } from "./useWorkspace";
 
 export type ManageTab = "sets" | "subscribed" | "feeds" | "frames" | "habits";
@@ -45,8 +58,100 @@ export function ManageDialog({
   onChanged: () => void;
 }) {
   const [current, setCurrent] = useState<ManageTab>(tab);
+  const confirm = useConfirm(),
+    toast = useToast();
+  const generation = useRef(getSessionVersion()).current,
+    mounted = useRef(true),
+    checking = useRef(false),
+    currentTab = useRef(current);
+  currentTab.current = current;
+  const editor = useRef<RoutineEditorState>({
+    dirty: false,
+    pending: false,
+    uncertain: false,
+  });
+  const owned = useCallback(
+    () => mounted.current && !!getToken() && getSessionVersion() === generation,
+    [generation],
+  );
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const report = useCallback((next: RoutineEditorState) => {
+    const prior = editor.current;
+    if (
+      prior.dirty !== next.dirty ||
+      prior.pending !== next.pending ||
+      prior.uncertain !== next.uncertain
+    )
+      editor.current = next;
+  }, []);
+  const canLeave = useCallback(async () => {
+    if (!owned()) return true;
+    if (checking.current) return false;
+    const state = editor.current;
+    if (state.pending || state.uncertain) {
+      toast({
+        text: state.uncertain
+          ? "Resolve the unconfirmed calendar change or save the private link before leaving."
+          : "Wait for the calendar change to finish.",
+        error: true,
+      });
+      return false;
+    }
+    if (!state.dirty) return true;
+    const panel = currentTab.current;
+    checking.current = true;
+    try {
+      const yes = await confirm({
+        title: "Discard unsaved calendar changes?",
+        body: "Your saved calendar settings will stay as they are.",
+        action: "Discard changes",
+        danger: true,
+      });
+      return (
+        yes &&
+        owned() &&
+        currentTab.current === panel &&
+        !editor.current.pending &&
+        !editor.current.uncertain
+      );
+    } finally {
+      checking.current = false;
+    }
+  }, [owned, confirm, toast]);
+  useLayoutEffect(() => onBeforeNavigate(canLeave), [canLeave]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      const state = editor.current;
+      if (owned() && (state.dirty || state.pending || state.uncertain)) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [owned]);
+  const close = async () => {
+    if (await canLeave()) {
+      if (owned()) onClose();
+    }
+  };
+  const choose = async (next: ManageTab) => {
+    const previous = currentTab.current;
+    if (next === previous) return;
+    if (await canLeave()) {
+      if (!owned() || currentTab.current !== previous) return;
+      editor.current = { dirty: false, pending: false, uncertain: false };
+      setCurrent(next);
+    }
+  };
+
   return (
-    <Dialog wide title="Manage calendar" onClose={onClose}>
+    <Dialog wide title="Manage calendar" onClose={() => void close()}>
       <div className="calendar-tabs">
         <Segmented
           label="What to manage"
@@ -58,7 +163,7 @@ export function ManageDialog({
             { value: "frames", label: "Frames" },
             { value: "habits", label: "Habits" },
           ]}
-          onChange={setCurrent}
+          onChange={(next) => void choose(next)}
         />
       </div>
       {current === "sets" && (
@@ -73,16 +178,21 @@ export function ManageDialog({
           }}
         />
       )}
-      {current === "subscribed" && <SubscriptionsPanel onChanged={onChanged} />}
-      {current === "feeds" && <FeedPanel />}
+      {current === "subscribed" && (
+        <SubscriptionsPanel onChanged={onChanged} onStateChange={report} />
+      )}
+      {current === "feeds" && <FeedPanel onStateChange={report} />}
       {current === "frames" && (
         <FramesPanel
           workspace={workspace}
           startId={frameId}
           onChanged={onChanged}
+          onStateChange={report}
         />
       )}
-      {current === "habits" && <HabitsPanel onChanged={onChanged} />}
+      {current === "habits" && (
+        <HabitsPanel onChanged={onChanged} onStateChange={report} />
+      )}
     </Dialog>
   );
 }

@@ -1,4 +1,6 @@
 import {
+  HttpError,
+  automationAgentIdentityInput,
   characterAppearance,
   CHARACTER_PERSONAS,
   type AutomationAgentIdentity,
@@ -18,18 +20,30 @@ import {
 } from "../../ui/kit";
 import { Character } from "./Character";
 import { CharacterEditor } from "./CharacterEditor";
-import { useOwned, LANE_NAME, type Lane } from "./hooks";
+import {
+  useOwned,
+  LANE_NAME,
+  useAgentEditorState,
+  type AgentEditorState,
+  type Lane,
+} from "./hooks";
 
 /** Each worker's own name, style and character. Chat never waits on this. */
-export function IdentityDialog({
-  lane,
-  onClose,
-  onSaved,
-}: {
+type IdentityProps = {
   lane: Lane;
   onClose: () => void;
   onSaved?: () => void;
-}) {
+  onStateChange?: (state: AgentEditorState) => void;
+};
+export function IdentityDialog(props: IdentityProps) {
+  return <IdentityBody key={props.lane} {...props} />;
+}
+function IdentityBody({
+  lane,
+  onClose,
+  onSaved,
+  onStateChange,
+}: IdentityProps) {
   const owned = useOwned();
   const confirm = useConfirm();
   const pending = useRef(false);
@@ -45,6 +59,13 @@ export function IdentityDialog({
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [uncertain, setUncertain] = useState(false),
+    [fresh, setFresh] = useState(true),
+    [observed, setObserved] = useState<AutomationAgentIdentity | null>(null);
+  const uncertainRef = useRef(false);
+  const submitted = useRef<ReturnType<
+    typeof automationAgentIdentityInput.parse
+  > | null>(null);
 
   const adopt = (value: AutomationAgentIdentity) => {
     setIdentity(value);
@@ -61,7 +82,11 @@ export function IdentityDialog({
     setLoadFailed(false);
     void client.automationAgentIdentity(lane).then(
       (value) => {
-        if (live && owned()) adopt(value);
+        if (live && owned()) {
+          adopt(value);
+          setFresh(true);
+          setObserved(null);
+        }
       },
       () => {
         if (live && owned()) setLoadFailed(true);
@@ -79,9 +104,14 @@ export function IdentityDialog({
       persona !== identity.persona ||
       JSON.stringify(look) !==
         JSON.stringify(characterAppearance(identity.character)));
-  const locked = saving || confirming;
+  useAgentEditorState(onStateChange, {
+    dirty,
+    pending: saving || confirming,
+    uncertain,
+  });
+  const locked = saving || confirming || uncertain;
   const leave = async (reload = false) => {
-    if (!owned() || pending.current) return;
+    if (!owned() || pending.current || uncertainRef.current) return;
     pending.current = true;
     setConfirming(true);
     try {
@@ -104,33 +134,140 @@ export function IdentityDialog({
     }
   };
   const save = async () => {
-    if (!owned() || !identity || !dirty || !name.trim() || pending.current)
+    if (
+      !owned() ||
+      !identity ||
+      !dirty ||
+      !name.trim() ||
+      pending.current ||
+      uncertainRef.current ||
+      !fresh
+    )
       return;
+    const checked = automationAgentIdentityInput.safeParse({
+      expected_revision: identity.revision,
+      name,
+      persona,
+      character: look,
+    });
+    if (!checked.success) {
+      setError(checked.error.issues[0]?.message ?? "Check the agent settings.");
+      return;
+    }
+    const input = structuredClone(checked.data);
+    submitted.current = input;
+    setObserved(null);
     pending.current = true;
     setSaving(true);
     setError("");
     try {
-      const value = await client.updateAutomationAgentIdentity(lane, {
-        expected_revision: identity.revision,
-        name,
-        persona,
-        character: look,
-      });
+      const value = await client.updateAutomationAgentIdentity(lane, input);
       if (!owned()) return;
+      if (
+        submitted.current !== input ||
+        value.lane !== lane ||
+        value.revision !== input.expected_revision + 1 ||
+        value.name !== input.name ||
+        value.persona !== input.persona ||
+        JSON.stringify(characterAppearance(value.character)) !==
+          JSON.stringify(characterAppearance(input.character))
+      )
+        throw new Error(
+          "The saved agent receipt does not match this change. Check saved state.",
+        );
       adopt(value);
       onSaved?.();
       if (owned()) onClose();
     } catch (failure) {
-      if (owned())
+      if (owned()) {
+        const unknown =
+          !(failure instanceof HttpError) ||
+          failure.statusCode >= 500 ||
+          [408, 429].includes(failure.statusCode);
+        uncertainRef.current = unknown;
+        setUncertain(unknown);
+        setFresh(false);
         setError(
           messageOf(failure, "Couldn't save this agent. Your draft is kept."),
         );
+      }
     } finally {
       pending.current = false;
       if (owned()) setSaving(false);
     }
   };
 
+  const checkSaved = async () => {
+    const input = submitted.current;
+    if (!owned() || pending.current || !uncertainRef.current || !input) return;
+    pending.current = true;
+    setSaving(true);
+    try {
+      const saved = await client.automationAgentIdentity(lane);
+      if (owned() && submitted.current === input) {
+        if (saved.lane !== lane)
+          throw new Error("This saved identity belongs to another runtime.");
+        setObserved(saved);
+        if (saved.revision <= input.expected_revision)
+          setError(
+            "The saved revision has not advanced. The earlier request may still commit; keep checking before leaving.",
+          );
+        else setError("");
+      }
+    } catch (failure) {
+      if (owned())
+        setError(messageOf(failure, "Couldn't check the saved agent."));
+    } finally {
+      pending.current = false;
+      if (owned()) setSaving(false);
+    }
+  };
+  const canAdopt =
+    !!observed &&
+    !!submitted.current &&
+    observed.lane === lane &&
+    observed.revision > submitted.current.expected_revision;
+  const keepSaved = async () => {
+    const input = submitted.current;
+    if (
+      !owned() ||
+      pending.current ||
+      !observed ||
+      !uncertainRef.current ||
+      !input ||
+      !canAdopt
+    )
+      return;
+    const saved = observed;
+    pending.current = true;
+    setConfirming(true);
+    try {
+      if (
+        !(await confirm({
+          title: "Use saved agent?",
+          body: "Discard this local draft and keep the current saved version. This does not prove which request saved it.",
+          action: "Use saved agent",
+          danger: true,
+        }))
+      )
+        return;
+      if (
+        !owned() ||
+        observed !== saved ||
+        submitted.current !== input ||
+        saved.lane !== lane ||
+        saved.revision <= input.expected_revision
+      )
+        return;
+      uncertainRef.current = false;
+      setUncertain(false);
+      onSaved?.();
+      if (owned()) onClose();
+    } finally {
+      pending.current = false;
+      if (owned()) setConfirming(false);
+    }
+  };
   return (
     <Dialog
       title={`${LANE_NAME[lane]} agent`}
@@ -149,7 +286,9 @@ export function IdentityDialog({
             <Button
               variant="primary"
               busy={saving}
-              disabled={confirming || !dirty || !name.trim()}
+              disabled={
+                confirming || uncertain || !fresh || !dirty || !name.trim()
+              }
               onClick={() => void save()}
             >
               {saving ? "Saving…" : "Save"}
@@ -174,6 +313,41 @@ export function IdentityDialog({
                 Reload latest agent
               </Button>
             </>
+          )}
+          {uncertain && (
+            <div>
+              <p>
+                The save is unconfirmed. Your draft is kept and cannot be sent
+                again.
+              </p>
+              <Button
+                disabled={saving || confirming}
+                onClick={() => void checkSaved()}
+              >
+                Check saved agent
+              </Button>
+              {observed && (
+                <>
+                  <details>
+                    <summary>Current saved agent</summary>
+                    <pre
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {JSON.stringify(observed, null, 2)}
+                    </pre>
+                  </details>
+                  <Button
+                    disabled={saving || confirming || !canAdopt}
+                    onClick={() => void keepSaved()}
+                  >
+                    Use saved agent
+                  </Button>
+                </>
+              )}
+            </div>
           )}
           <Field label="Name">
             <Input

@@ -1,3 +1,4 @@
+import { channelFailure, type ChannelFailureKind } from "./channel-error.js";
 import {
   teamsInstallationId,
   type TeamsChannelConnection,
@@ -23,6 +24,8 @@ export type TeamsChannelState = {
   challenge: { command: string; expiresAt: string } | null;
   busy: boolean;
   error: string;
+  /** Optional for compatibility with previously captured snapshots. */
+  failureKind?: ChannelFailureKind | null;
 };
 /** Shared, session-bound channel settings. Tokens and OAuth callback data never enter this store. */
 export class TeamsChannelStore {
@@ -33,6 +36,7 @@ export class TeamsChannelStore {
     challenge: null,
     busy: false,
     error: "",
+    failureKind: null,
   };
   private listeners = new Set<() => void>();
   private abort = new AbortController();
@@ -68,7 +72,10 @@ export class TeamsChannelStore {
     this.remember(null);
     this.publish({ installation: null, authorizationUrl: null });
   }
-  private async run(action: () => Promise<void>) {
+  private async run(
+    action: () => Promise<void>,
+    effect: "read" | "write" = "write",
+  ) {
     if (!this.current()) {
       if (!this.abort.signal.aborted)
         this.publish({
@@ -82,12 +89,13 @@ export class TeamsChannelStore {
       return;
     }
     if (this.state.busy) return;
-    this.publish({ busy: true, error: "" });
+    this.publish({ busy: true, error: "", failureKind: null });
     try {
       await action();
-    } catch {
+    } catch (failure) {
       if (this.current())
         this.publish({
+          failureKind: channelFailure(failure, effect),
           error:
             "Could not update Teams. Refresh and review the current connection before trying again.",
         });
@@ -137,8 +145,8 @@ export class TeamsChannelStore {
       this.pendingId = parsed.success ? parsed.data : null;
       if (id && !parsed.success) this.remember(null);
       await this.read();
-    });
-  refresh = () => this.run(() => this.read());
+    }, "read");
+  refresh = () => this.run(() => this.read(), "read");
   /** Erase an expired in-memory command without triggering a network retry loop. */
   expireChallenge = () => {
     if (
@@ -288,6 +296,7 @@ export class TeamsChannelStore {
       challenge: null,
       busy: false,
       error: "",
+      failureKind: null,
     };
   };
 }

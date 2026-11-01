@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 export type Theme = "light" | "dark";
 
@@ -15,21 +15,47 @@ function initial(): Theme {
   return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-document.documentElement.dataset.theme = initial();
+let theme = initial();
+const listeners = new Set<() => void>();
+let transitionFrame = 0;
+
+function apply(next: Theme, persist: boolean) {
+  // Commit every surface's palette together, then restore hover transitions.
+  document.documentElement.setAttribute("data-theme-changing", "");
+  theme = next;
+  document.documentElement.dataset.theme = next;
+  if (persist) {
+    try {
+      localStorage.setItem(KEY, next);
+    } catch {
+      // The explicit choice still lasts for this page.
+    }
+  }
+  cancelAnimationFrame(transitionFrame);
+  transitionFrame = requestAnimationFrame(() => {
+    transitionFrame = requestAnimationFrame(() => {
+      document.documentElement.removeAttribute("data-theme-changing");
+    });
+  });
+  listeners.forEach((listener) => listener());
+}
+
+apply(theme, true);
+window.addEventListener("storage", (event) => {
+  if (
+    event.key === KEY &&
+    (event.newValue === "light" || event.newValue === "dark")
+  )
+    apply(event.newValue, false);
+});
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+};
+export const setTheme = (next: Theme) => apply(next, true);
+const toggle = () => setTheme(theme === "dark" ? "light" : "dark");
 
 export function useTheme() {
-  const [theme, setTheme] = useState(initial);
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    try {
-      localStorage.setItem(KEY, theme);
-    } catch {
-      // The choice lasts for this page without storage.
-    }
-  }, [theme]);
-  const toggle = useCallback(
-    () => setTheme((t) => (t === "dark" ? "light" : "dark")),
-    [],
-  );
-  return [theme, toggle] as const;
+  const value = useSyncExternalStore(subscribe, () => theme);
+  return [value, toggle] as const;
 }

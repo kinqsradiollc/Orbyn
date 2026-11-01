@@ -1,0 +1,209 @@
+.settings-backdrop > .dialog {
+  width: min(900px, calc(100vw - 48px));
+  max-width: 900px;
+  overflow: clip;
+}
+.settings-backdrop > .dialog > .dialog-body {
+  padding: 0;
+  overflow: clip;
+  min-height: 0;
+}
+.settings-backdrop > .dialog > .dialog-body > .dialog-head {
+  padding: 18px 22px 14px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.settings-workspace {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  height: min(650px, calc(100dvh - 140px));
+  min-height: 240px;
+}
+.settings-navigation {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  background: var(--sunken);
+}
+.settings-navigation > select {
+  display: none;
+}
+.settings-category-list {
+  display: grid;
+  gap: 4px;
+}
+.settings-category-list .btn {
+  justify-content: flex-start;
+  width: 100%;
+}
+.settings-category-list [aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.settings-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.settings-search {
+  flex-shrink: 0;
+  position: relative;
+  padding: 10px 22px;
+}
+.settings-search > input {
+  width: 100%;
+}
+.settings-results {
+  position: absolute;
+  inset: calc(100% - 4px) 22px auto;
+  max-height: min(420px, 55dvh);
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--float);
+  z-index: 2;
+}
+.settings-results > button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 10px;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.settings-results > button:hover {
+  background: var(--hover);
+}
+.settings-results strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+.settings-results span {
+  font-size: 13px;
+}
+.settings-content {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 22px 24px;
+  scroll-padding-block: 16px;
+}
+.settings-content .calendar-form .dialog-actions {
+  margin-inline: 0;
+  padding-inline: 0;
+}
+.settings-section {
+  padding-block: 20px;
+  min-width: 0;
+  outline-offset: -2px;
+}
+.settings-section + .settings-section {
+  border-top: 1px solid var(--line);
+}
+.settings-section h3 {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 14px;
+}
+.settings-section p {
+  overflow-wrap: anywhere;
+}
+.settings-row {
+  min-height: var(--control);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-block: 10px;
+  min-width: 0;
+}
+.settings-tag-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.settings-tag-label strong {
+  overflow-wrap: anywhere;
+}
+.settings-tag-color {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 50%;
+}
+.settings-row > div:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.settings-form {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.settings-form .input {
+  width: 100%;
+}
+.settings-form .check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.settings-secret {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  user-select: all;
+}
+@media (max-width: 650px) {
+  .settings-backdrop > .dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .settings-backdrop > .dialog > .dialog-body > .dialog-head {
+    padding: 10px 14px;
+  }
+  .settings-workspace {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 100px);
+  }
+  .settings-navigation {
+    padding: 8px 14px;
+  }
+  .settings-navigation > select {
+    display: block;
+    width: 100%;
+  }
+  .settings-category-list {
+    display: none;
+  }
+  .settings-main {
+    flex: 1;
+  }
+  .settings-search {
+    padding: 8px 14px;
+  }
+  .settings-content {
+    padding: 0 14px 20px;
+  }
+  .settings-section {
+    padding-block: 16px;
+  }
+  .settings-row {
+    flex-wrap: wrap;
+  }
+}

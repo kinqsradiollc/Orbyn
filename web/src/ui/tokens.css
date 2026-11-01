@@ -1,5 +1,11 @@
 /* Orbyn's design tokens. Neutrals carry structure, ink is the primary action,
    blue means live or selected, and edges come from light, not borders. */
+:root[data-theme-changing] *,
+:root[data-theme-changing] *::before,
+:root[data-theme-changing] *::after {
+  transition: none !important;
+}
+
 :root {
   color-scheme: light;
   --canvas: #f4f4f3;
