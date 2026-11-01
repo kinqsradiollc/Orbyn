@@ -128,3 +128,60 @@ test("Teams OAuth codes and state never enter request URL serialization", () => 
     );
   }
 });
+
+test("private booking, invite and RSVP capabilities never enter URL logs", () => {
+  for (const prefix of ["", "/api"])
+    for (const path of [
+      "/book/confirm",
+      "/book/cancel",
+      "/book/manage",
+      "/invite",
+      "/rsvp",
+    ])
+      for (const suffix of [
+        "/synthetic-private-capability",
+        "/synthetic-private-capability/slots?extra=synthetic-private-capability",
+        "%2Fsynthetic-private-capability",
+      ])
+        assert.equal(
+          serializeFileRequest({ url: `${prefix}${path}${suffix}` }).url,
+          `${prefix}${path}/:token`,
+        );
+  for (const url of [
+    "/book/sprint-review?timezone=UTC",
+    "/api/bookings/booking-id/approve",
+    "/api/open-invites/invite-id",
+    "/rsvps/summary",
+  ])
+    assert.equal(serializeFileRequest({ url }).url, url);
+});
+
+test("Fastify's actual booking request logs omit private link and query tokens", async () => {
+  const stream = new PassThrough();
+  let output = "";
+  stream.on("data", (value) => {
+    output += value.toString();
+  });
+  const app = Fastify({
+    logger: { stream, serializers: { req: serializeFileRequest } },
+  });
+  app.post("/book/confirm/:token", async (_r, reply) =>
+    reply.code(403).send({ message: "Invalid link" }),
+  );
+  try {
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/book/confirm/synthetic-private-booking-capability?extra=synthetic-private-booking-capability",
+        })
+      ).statusCode,
+      403,
+    );
+    assert.match(output, /\/book\/confirm\/:token/);
+    assert.doesNotMatch(output, /synthetic-private-booking-capability|extra=/);
+  } finally {
+    await app.close();
+    stream.destroy();
+  }
+});

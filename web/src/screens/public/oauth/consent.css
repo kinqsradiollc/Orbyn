@@ -1,0 +1,170 @@
+.connect-main {
+  width: min(100%, 760px);
+  margin-inline: auto;
+  padding: 32px 24px 56px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-wrap: anywhere;
+}
+.connect-main h1 {
+  font-size: 24px;
+  line-height: 1.3;
+}
+.connect-main h2 {
+  font-size: 18px;
+  line-height: 1.4;
+}
+.connect-main p,
+.connect-main li {
+  line-height: 1.6;
+}
+.connect-main a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.connect-main .small {
+  color: var(--text-soft);
+}
+.connect-main .btn {
+  white-space: normal;
+  text-align: start;
+}
+.connect-heading,
+.connect-identity,
+.connect-signin,
+.connect-recovery,
+.connect-reauth {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.connect-title-row,
+.connect-account {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.connect-title-row h2,
+.connect-account p {
+  min-width: 0;
+}
+.connect-warning {
+  color: var(--warn);
+  background: var(--warn-soft);
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+}
+.connect-existing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-block: 12px;
+  border-block: 1px solid var(--line-soft);
+}
+.connect-choices {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.connect-choices > legend {
+  font-size: 18px;
+  font-weight: 600;
+  padding-block: 8px 16px;
+}
+.connect-choices > section {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.connect-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.connect-option {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  min-height: 44px;
+  padding-block: 10px;
+  min-width: 0;
+  cursor: pointer;
+}
+.connect-option > input {
+  margin: 3px 0;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.connect-option > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.6;
+}
+.connect-option:has(input:disabled) {
+  cursor: default;
+  color: var(--text-soft);
+}
+.connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.connect-actions a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.connect-reauth {
+  padding-block: 8px 24px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.connect-reauth form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.connect-recovery {
+  padding: 16px;
+  background: var(--sunken);
+  border-radius: var(--r-md);
+}
+.connect-problem {
+  color: var(--danger);
+}
+.connect-main a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--r-sm);
+}
+@media (max-width: 600px) {
+  .connect-main {
+    padding: 24px 16px 40px;
+    gap: 20px;
+  }
+  .connect-title-row {
+    align-items: flex-start;
+  }
+  .connect-account {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

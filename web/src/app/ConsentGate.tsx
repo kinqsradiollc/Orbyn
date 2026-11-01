@@ -5,6 +5,7 @@ import { client, getToken, getSessionVersion } from "../lib/session";
 import { Button } from "../ui/kit";
 import { useAccount } from "./account";
 import "../screens/public/public.css";
+import { withAuthNext } from "../lib/auth-return";
 
 /** Held before the app until the current Terms are accepted. */
 export function ConsentGate({ legal }: { legal: LegalSummary }) {
@@ -51,8 +52,8 @@ export function ConsentGate({ legal }: { legal: LegalSummary }) {
       <div className="auth-form">
         <h1>{updated ? "Our terms have changed" : "Review the terms"}</h1>
         <p className="muted">
-          Read the <a href="/terms">Terms of Service</a> and{" "}
-          <a href="/privacy">Privacy Policy</a> to continue.
+          Read the <a href={withAuthNext("/terms")}>Terms of Service</a> and{" "}
+          <a href={withAuthNext("/privacy")}>Privacy Policy</a> to continue.
         </p>
         <label className="check">
           <input

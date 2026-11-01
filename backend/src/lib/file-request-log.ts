@@ -1,4 +1,4 @@
-/** Preserve normal request fields while keeping signed file capabilities out of logs. */
+/** Preserve normal request fields while keeping private link capabilities out of logs. */
 export function serializeFileRequest(request: {
   method?: string;
   url?: string;
@@ -12,6 +12,11 @@ export function serializeFileRequest(request: {
     method: request.method,
     url: request.url
       ?.replace(/^\/files\/([upr])(?:\/|%2f).*$/i, "/files/$1/:token")
+      .replace(
+        /^(\/(?:api\/)?book\/(?:confirm|cancel|manage))(?:\/|%2f).*$/i,
+        "$1/:token",
+      )
+      .replace(/^(\/(?:api\/)?(?:invite|rsvp))(?:\/|%2f).*$/i, "$1/:token")
       .replace(/^(\/(?:api\/)?s)(?:\/|%2f).*$/i, "$1/:token")
       .replace(
         /^(\/(?:api\/)?agent-channels\/(?:slack|teams)\/(?:callback|interactions|events|activities)\/?)(?:\?.*)?$/i,

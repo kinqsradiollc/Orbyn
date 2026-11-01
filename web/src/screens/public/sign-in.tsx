@@ -2,23 +2,29 @@ import { startAuthentication } from "@simplewebauthn/browser";
 import { MINIMUM_AGE, type LegalSummary } from "@orbyn/core";
 import { ArrowRight, KeyRound, Orbit } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { navigate, usePath, useTitle } from "../../lib/router";
+import { navigate, usePath, useSearch, useTitle } from "../../lib/router";
 import { messageOf } from "../../lib/resource";
 import { client, setToken } from "../../lib/session";
-import { Button, Field, Input } from "../../ui/kit";
+import { Button, ErrorNotice, Field, Input } from "../../ui/kit";
 import "./public.css";
-
-/** Only this app's own /app paths are followed after signing in. */
-function nextPath() {
-  const next = new URLSearchParams(location.search).get("next");
-  return next && next.startsWith("/app") && !next.startsWith("//")
-    ? next
-    : "/app";
-}
+import { useAccount } from "../../app/account";
+import { currentAuthReturn, withAuthNext } from "../../lib/auth-return";
+import { useAuthOwner } from "./auth-owner";
 
 export default function SignIn() {
-  const path = usePath();
-  const register = path === "/signup";
+  const path = usePath(),
+    search = useSearch(),
+    { version } = useAccount();
+  return (
+    <SignInForm
+      key={`${version}:${path}:${search}`}
+      register={path === "/signup"}
+    />
+  );
+}
+
+function SignInForm({ register }: { register: boolean }) {
+  const owner = useAuthOwner();
   useTitle(register ? "Create your space" : "Sign in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,20 +33,58 @@ export default function SignIn() {
   const [needsCode, setNeedsCode] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [legal, setLegal] = useState<LegalSummary | null>(null);
+  const [legalAttempt, setLegalAttempt] = useState(0);
+  const [legalLoading, setLegalLoading] = useState(register);
+  const [legalError, setLegalError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (register) void client.legal().then(setLegal, () => undefined);
-  }, [register]);
+    if (!register) return;
+    let active = true;
+    setLegal(null);
+    setLegalLoading(true);
+    setLegalError("");
+    setAgreed(false);
+    void client
+      .legal()
+      .then((value) => {
+        if (!value?.terms_version) throw new Error("Missing terms version");
+        if (active && owner.current()) setLegal(value);
+      })
+      .catch(() => {
+        if (active && owner.current())
+          setLegalError(
+            "The terms could not be loaded. Your details are kept.",
+          );
+      })
+      .finally(() => {
+        if (active && owner.current()) setLegalLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [register, legalAttempt]);
 
-  const finish = (token: string) => {
+  const finish = (token: string, destination: string) => {
+    if (!owner.current()) return;
+    if (typeof token !== "string" || !token)
+      throw new Error("The sign-in receipt was incomplete. Try again.");
     setToken(token);
-    navigate(nextPath(), true);
+    navigate(destination, true);
   };
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (!owner.current()) return;
+    if (register && (!agreed || !legal)) {
+      setError(
+        "Read and agree to the loaded terms before creating an account.",
+      );
+      return;
+    }
+    if (!owner.acquire()) return;
+    const destination = currentAuthReturn();
     setBusy(true);
     setError("");
     try {
@@ -52,32 +96,42 @@ export default function SignIn() {
             accept_terms: legal?.terms_version,
           })
         : await client.login({ email, password, code: code || undefined });
-      finish(result.token);
+      finish(result.token, destination);
     } catch (failure) {
-      if ((failure as Error).message === "totp_required") {
+      if (!owner.current()) return;
+      if (failure instanceof Error && failure.message === "totp_required") {
         setNeedsCode(true);
         setError("Enter the 6-digit code from your authenticator app.");
       } else setError(messageOf(failure, "Couldn't sign in. Try again."));
-      setBusy(false);
+    } finally {
+      owner.release();
+      if (owner.current()) setBusy(false);
     }
   }
 
   async function passkey() {
+    if (!owner.acquire()) return;
+    const destination = currentAuthReturn();
     setBusy(true);
     setError("");
     try {
       const { handle, options } = await client.passkeyLoginOptions(
         email || undefined,
       );
+      if (!owner.current()) return;
       const response = await startAuthentication({
         optionsJSON: options as Parameters<
           typeof startAuthentication
         >[0]["optionsJSON"],
       });
-      finish((await client.passkeyLogin(handle, response)).token);
+      if (!owner.current()) return;
+      finish((await client.passkeyLogin(handle, response)).token, destination);
     } catch (failure) {
-      setError(messageOf(failure, "Couldn't use that passkey."));
-      setBusy(false);
+      if (owner.current())
+        setError(messageOf(failure, "Couldn't use that passkey."));
+    } finally {
+      owner.release();
+      if (owner.current()) setBusy(false);
     }
   }
 
@@ -91,6 +145,7 @@ export default function SignIn() {
         {register && (
           <Field label="Name">
             <Input
+              disabled={busy}
               id="name"
               autoComplete="name"
               value={name}
@@ -100,6 +155,7 @@ export default function SignIn() {
         )}
         <Field label="Email">
           <Input
+            disabled={busy}
             id="email"
             type="email"
             required
@@ -113,6 +169,7 @@ export default function SignIn() {
           hint={register ? "At least 10 characters" : undefined}
         >
           <Input
+            disabled={busy}
             id="password"
             type="password"
             required
@@ -125,6 +182,7 @@ export default function SignIn() {
         {needsCode && (
           <Field label="Authenticator code">
             <Input
+              disabled={busy}
               id="code"
               autoComplete="one-time-code"
               placeholder="123456 or a recovery code"
@@ -133,18 +191,32 @@ export default function SignIn() {
             />
           </Field>
         )}
+        {register && legalLoading && (
+          <p role="status" className="small">
+            Loading terms…
+          </p>
+        )}
+        {register && legalError && (
+          <ErrorNotice
+            message={legalError}
+            onRetry={() => {
+              if (!busy) setLegalAttempt((value) => value + 1);
+            }}
+          />
+        )}
         {register && (
           <label className="check">
             <input
               type="checkbox"
               required
+              disabled={busy || legalLoading || !legal}
               checked={agreed}
               onChange={(e) => setAgreed(e.target.checked)}
             />
             <span>
               I'm {MINIMUM_AGE} or older and agree to the{" "}
-              <a href="/terms">Terms of Service</a> and{" "}
-              <a href="/privacy">Privacy Policy</a>
+              <a href={withAuthNext("/terms")}>Terms of Service</a> and{" "}
+              <a href={withAuthNext("/privacy")}>Privacy Policy</a>
             </span>
           </label>
         )}
@@ -153,7 +225,12 @@ export default function SignIn() {
             {error}
           </p>
         )}
-        <Button type="submit" variant="primary" busy={busy}>
+        <Button
+          type="submit"
+          variant="primary"
+          busy={busy}
+          disabled={register && (legalLoading || !legal)}
+        >
           {register ? "Create account" : "Sign in"} <ArrowRight />
         </Button>
         {!register && (
@@ -162,10 +239,12 @@ export default function SignIn() {
           </Button>
         )}
         <div className="auth-links small">
-          <a href={register ? "/login" : "/signup"}>
+          <a href={withAuthNext(register ? "/login" : "/signup")}>
             {register ? "I already have an account" : "Create an account"}
           </a>
-          {!register && <a href="/forgot-password">Forgot your password?</a>}
+          {!register && (
+            <a href={withAuthNext("/forgot-password")}>Forgot your password?</a>
+          )}
         </div>
       </form>
     </main>

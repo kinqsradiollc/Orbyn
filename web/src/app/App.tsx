@@ -4,11 +4,16 @@ import { client } from "../lib/session";
 import { messageOf } from "../lib/resource";
 import { ConsentGate } from "./ConsentGate";
 import { VerifyGate } from "./VerifyGate";
-import { match, navigate, usePath } from "../lib/router";
+import { match, navigate, usePath, useSearch } from "../lib/router";
 import { Button, Empty, ErrorNotice, Loading } from "../ui/kit";
 import { AccountProvider, useAccount } from "./account";
 import { APP_ROUTES, PUBLIC_ROUTES, type Route } from "./routes";
 import { Shell } from "./Shell";
+import {
+  currentAuthReturn,
+  nextFromSearch,
+  withAuthNext,
+} from "../lib/auth-return";
 
 function find(routes: Route[], path: string) {
   for (const route of routes) {
@@ -19,18 +24,20 @@ function find(routes: Route[], path: string) {
 }
 
 function Routed() {
-  const path = usePath();
+  const path = usePath(),
+    search = useSearch();
   const { token, version, user, error, refresh, signOut } = useAccount();
   const inApp = path === "/app" || path.startsWith("/app/");
 
+  const requiresAccount = inApp || (path === "/oauth/authorize" && !!token);
+
   useEffect(() => {
     if (inApp && !token) {
-      const next = encodeURIComponent(path + location.search + location.hash);
-      navigate(`/login?next=${next}`, true);
+      navigate(withAuthNext("/login", currentAuthReturn()), true);
     }
     if (token && (path === "/login" || path === "/signup"))
-      navigate("/app", true);
-  }, [inApp, path, token]);
+      navigate(nextFromSearch(search), true);
+  }, [inApp, path, search, token]);
 
   const [legalState, setLegalState] = useState<{
     token: string;
@@ -63,7 +70,7 @@ function Routed() {
     legalState.token === token && legalState.version === version;
   const legal = sameLegalSession ? legalState.data : null;
 
-  if (inApp) {
+  if (requiresAccount) {
     if (!token || !user) {
       if (error)
         return (
@@ -89,18 +96,20 @@ function Routed() {
       );
     if (user.terms_version !== legal.terms_version)
       return <ConsentGate key={version} legal={legal} />;
-    const hit = find(APP_ROUTES, path);
-    return (
-      <Shell key={version}>
-        <Suspense fallback={<Loading />}>
-          {hit ? (
-            <hit.route.screen key={hit.route.path} params={hit.params} />
-          ) : (
-            <Empty title="This page doesn't exist" />
-          )}
-        </Suspense>
-      </Shell>
-    );
+    if (inApp) {
+      const hit = find(APP_ROUTES, path);
+      return (
+        <Shell key={version}>
+          <Suspense fallback={<Loading />}>
+            {hit ? (
+              <hit.route.screen key={hit.route.path} params={hit.params} />
+            ) : (
+              <Empty title="This page doesn't exist" />
+            )}
+          </Suspense>
+        </Shell>
+      );
+    }
   }
   const hit = find(PUBLIC_ROUTES, path);
   return (

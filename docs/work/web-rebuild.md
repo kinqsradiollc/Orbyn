@@ -25,12 +25,14 @@ settings components. Scoped runtime evidence is recorded below, including the ro
 All seven required checkpoint source/build gates passed. This group is committed
 locally as `abc3cdd7`. Settings scoped qualification is complete, as recorded below.
 
-Not built, and showing "This screen hasn't been rebuilt yet": Teams, Booking,
-OAuth consent and public booking pages. Admin and Developers are integrated locally
-with scoped Stage 4 qualification recorded below. Settings now has its
-modal and all six category implementations, including ChatGPT and legacy aliases.
-This stage has completed its scoped interaction checks and required checkpoint gates.
-External delivery/provider limits and the final whole-client checks remain open.
+Teams, Booking, OAuth consent and public booking pages have completed their scoped
+Stage 5 interaction checks and all seven required checkpoint gates, as recorded
+below. Real local Booking evidence covers queued mail and the confirmation,
+approval and cancellation lifecycle, with no SMTP delivery. Admin/Developers and
+Settings have their scoped qualification and local checkpoint commits. Settings
+includes its modal and all six categories, ChatGPT and legacy aliases. Stage 6
+shell integration, Stage 7 parity closure, external delivery/provider limits and
+the final whole-client checks remain open.
 
 ## How to run
 
@@ -933,3 +935,325 @@ Stage 5 full Teams/Booking/OAuth source and qualification tools remain private
 preparation. Stage 6 shell and Stage 7 parity work, all-route/theme/phone audit and
 the guarded full backend suite remain open. No source has been pushed, merged,
 deployed or cut over from desktop.
+
+## Stage 5 — Teams, Booking and OAuth integration
+
+Entry checkpoint: local commit `fc41a7e6`, whose Admin/Developers candidate passed
+all seven required checks. Thirty-six newly authored Stage 5 files now replace the
+Teams, Booking, public booking and OAuth placeholders. The initial combined web
+no-emit check passes. The shared auth-return integration also passes web no-emit:
+one local destination policy retains app and exact OAuth request URLs through
+sign-in links and completion. Signed-in OAuth requests use the existing email and
+Terms gates at the original URL, with no automatic acceptance or grant.
+
+This group is uncommitted and its interaction qualification is beginning. Planned
+fixtures intercept all booking, membership, authentication and consent effects;
+real local happy paths need separately guarded fixtures and readback. No model
+provider, external delivery or production operation is part of this qualification.
+
+The existing forgot-password API takes only email and sends a reset URL without a
+return destination. URL-only continuation preserves an incoming reset URL already
+carrying `next`; it cannot add that parameter to an existing generated email.
+The original OAuth tab retains its request URL. This cross-email continuation
+boundary remains open for parity review; no second stored return owner or backend
+contract extension has been added.
+
+Additional final-audit gap: the current HTML loads an external Google Fonts
+stylesheet. Qualification blocks that request and uses local fallback fonts.
+Resolve font delivery before final acceptance; the blocked stylesheet is not
+visual proof of the externally loaded font.
+
+The first Booking fixture passes 15/15: a focused deep link independent of filtered
+inbox rows, complete answers including removed questions, newer-query ownership,
+dirty Close cancellation, and denied-refresh privacy with authored-draft retention.
+The wide recovery capture was inspected. The private Booking journal holds these
+checks; the common bootstrap summary contains no checks and is not their receipt.
+All booking reads/effects in this batch are synthetic; only named local identity
+and legal bootstrap reads reached the API.
+
+Source review then corrected exact team identity before authority/reconciliation,
+revoked member-role fallback, fresh create/member receipt IDs, and a duplicate
+TaskHost mount. The existing Shell remains the single task-dialog owner. Booking
+heading sizes now use the agreed 24/18 roles. Combined web no-emit checks 1–3 pass.
+These source corrections still require their targeted runtime qualification.
+
+The first host replay fixture stopped because it admitted only one keyed 503,
+while the existing API transport correctly retries that response once. The
+corrected fixture admits exactly two identical body/key failures before testing
+an explicit replay. The failed fixture and its refused extra request are retained;
+no backend/transport guard was changed and no booking write was forwarded.
+
+The corrected host replay batch passes 12/12: two transport-level lost 503
+responses and the explicit replay all use the original body/key, with the
+independent reason preserved. The separate clock-rollback/expired-window batch
+passes 17/17 and admits no additional mutation after either unsafe window.
+
+A focused initial-detail identity regression failed before correction at its
+intended assertion: a wrong booking ID was displayed for the requested deep link.
+The corrected read rejects it and offers explicit refresh; the follow-up passes
+10/10 including exact-ID recovery without a mutation. Booking co-host reads also
+validate each requested team ID before returning its people/role data. Numeric
+and coercible-array receipt IDs are refused by explicit string guards. Latest
+combined web no-emit check 4 passes; co-host identity and additional malformed
+receipt runtime cases remain to be exercised.
+
+The combined auth-return batch passes 119/119 with fully synthetic accounts,
+authentication, legal metadata and consent effects; no API request was forwarded.
+It exercises the actual safe-next helper, exact encoded OAuth URLs through native
+links and already-signed-in entry, password/TOTP refusal and success, unchecked
+signup, passkey failure before a ceremony, supplied reset/verify URLs, stale
+route/account callbacks, double-submit fencing, and email then explicit Terms
+before returning to the same OAuth request. No callback, popup or OAuth Allow is
+admitted. The returned consent-choice capture was inspected directly.
+
+Registration Terms-read failure now has an in-place retry that preserves authored
+name/email/password fields and requires a loaded version before accepting or
+submitting. The focused before fixture failed on the absent retry; the combined
+corrected batch verifies retry and no automatic registration/acceptance. Web
+no-emit check 6 passes. Earlier auth runs stopped in helpers around full-page
+navigation, wrapped inline-link hit regions and lazy/recovery container mounting;
+those failed receipts remain separate from the clean 119-check run. Successful
+native passkey ceremonies, actual auth/reset delivery, generated-email next and
+final phone/theme qualification remain unclaimed.
+
+The focused Teams identity batch passes 36/36: wrong-ID initial detail and
+management preflight, unknown rename reconciliation, membership revoked between
+two fresh reads, array/number/null member-ID receipts and readbacks, wrong-team
+member reconciliation, creation-baseline failure without POST, preexisting-ID
+creation receipts and same-key replay, and one global task-dialog owner. All team
+mutations are synthetic; only verified named identity/legal GETs are real.
+
+Earlier Teams runs stopped on helper assumptions: bootstrap Terms needed an exact
+synthetic document response; a refusal fixture used the wrong error DTO property;
+and the shared create dialog is titled New item. One unchanged helper run was
+started after a failed patch assertion, then stopped by SIGINT to its verified
+owned driver; Puppeteer owns that browser shutdown. The clean combined run uses
+correct native controls, exact request/owner/key guards and unchanged source
+hashes. These focused checks do not qualify the remaining full team/planning,
+booking editor/public, OAuth decision, real metadata or phone/theme cases.
+
+The broader Teams batch passes 65/65: explicit route and query handling,
+owner/admin/member/viewer controls, nonmember system-administrator privacy,
+creation/refusal/refresh recovery, rename/member unknown outcomes, role changes,
+all team policy/access modes, revoked-authority preflight, availability/pinning,
+capacity privacy, budgets, meeting search and draft-only event selection, plus
+SPA and account-generation fences. An additional planning capture batch passes
+17/17 after correcting the synthetic busy date to the displayed week. Both
+current phone themes were inspected: no sideways overflow, 16px fields, 44px tab
+controls and the intended heading visible below the fixed header. Earlier helper
+failures around field-loading waits, initial disabled membership controls, the
+team access enum and capture positioning remain recorded separately.
+
+The focused auth ownership batch additionally passes 21/21 with two actual
+pointer clicks. The installed browser driver's count option performs repeated
+clicks; its clickCount option alone did not establish that evidence. Stale
+route/account/ABA receipts still cannot authenticate or navigate another owner.
+
+Stage 5 remains uncommitted. The safe real-local paused-page/empty-team metadata
+runner is prepared only and requires fresh binding/marker/source/identity proof
+before execution. Full Booking editors/public flows, OAuth consent decisions,
+remaining caller-specific adverse cases and the final family visual audit still
+need qualification. The required seven checkpoint checks have not yet run for
+Stage 5. Shell, remaining parity work and the final guarded backend suite remain
+open; no publication, deployment or cutover has occurred.
+
+### Stage 5 — departures, Booking and local metadata qualification
+
+The Teams departure batch passes 36/36 for confirmation cancellation, Delete and
+Leave success/refusal/unknown results, member removal, self-role changes and fresh
+identity/role checks. The initial native probe reproduced a self-block: the
+Workspace marked its confirmation pending before asking its own exit guard.
+The corrected order checks exit first, then rechecks the live mutex and command
+state before opening confirmation. No authority or uncertain-result guard was
+removed. All effects in that batch are synthetic.
+
+A separate native keyboard regression reproduced Cancel returning focus to the
+page body rather than the original Delete/Leave button. The shared confirmation
+now captures the opener before the caller disables it. Dialog cleanup first tries
+its normal return, then permits one deferred return after the caller re-enables
+the trigger. That callback requires the same URL, a connected enabled non-inert
+opener, body focus and no newer open dialog. The follow-up native Teams batch
+passes 11/11 without forcing focus in the driver. An initial correction still
+failed: native tracing showed Cancel retained focus during cleanup until its DOM
+was removed. The corrected scheduling retains that failed receipt separately.
+Additional primitive guards and affected-caller coverage remain in progress.
+
+Booking editor/public batches now pass: page fields and sharing 33/33; profile
+conflicts and uncertain saves 25/25; one-time invite authoring/withdrawal 24/24;
+public confirmation and explicit legacy cancellation 15/15; private manage-link
+recovery 22/22; one-use invite states 20/20; RSVP 14/14; public profile 12/12;
+public slot contention 18/18; and unknown public submission 17/17. Each dedicated
+Booking result records zero unexpected effects/errors and unchanged source for
+its own run. These are deterministic synthetic Booking operations, not actual
+meeting, email, invitation or RSVP delivery.
+
+The page clipboard run uses native clipboard access and verifies exact copied
+text; its manual fallback is separately simulated. The first run's permission
+and focus setup was corrected without changing application copy behavior. The
+invite failure fixture now keeps both automatic read attempts failing until an
+explicit refresh; its first version cleared the injected error too early.
+Segmented date/time inputs are DOM-event fixtures, not physical picker evidence.
+Selected phone captures were inspected, including pending/unknown public booking,
+RSVP, profile, page sharing and invite controls. This is not the final family
+light/dark/phone sweep. Inspection also exposed technical endpoint/replay prose in
+the public unknown state; its copy now describes retained details, paused changes
+and checking email/contacting the host. The safety behavior is unchanged. Combined
+web no-emit check 9 passes for the latest shared focus and copy corrections.
+
+Separate real local metadata checks pass 17/17 for a fresh paused personal booking
+page and 14/14 for a fresh owner-only empty team. Both use actual native create,
+edit and delete controls, actual 201/200/204 receipts and independent primary
+readbacks. All original page/team configurations remain identical, and only the
+two exact newly created resources were deleted. The page never accepted bookings;
+no actual booking, invitation, email, calendar event, provider or authorization
+operation was performed.
+
+Their fresh one-use local proofs verify the running API/UI owners, canonical
+localhost origin and proxy, actual loopback database binding, persisted development
+marker, database owner, absent replica/production settings and the accepted verified
+member identity. Seven existing metadata trigger bodies were compared with their
+canonical migrations and traced: local grant/reference/proposal pruning, Study
+queueing for pages in the affected team and advisory source fences. The new empty
+team had no pages or dependent work; no custom or network-delivery trigger was
+admitted. Exact receipts, baseline fingerprints and source equality remain private.
+No database marker, fixture account, existing configuration or unrelated resource
+was changed for these checks.
+
+Stage 5 is still uncommitted. OAuth decision/reauthentication qualification,
+remaining Booking host actions and Teams caller-specific cases, final visual
+coverage and the seven checkpoint gates remain open. Stages 6–7 and final guarded
+backend qualification remain part of the full objective.
+
+### Stage 5 — host actions and OAuth issuer boundary
+
+The Booking host-action batch passes 130/130 with exact synthetic action/body/key
+checks: approve/decline/cancel, no-show true/false and timing, offered/custom moves,
+409 slot refresh, dirty-note guards, known failures, wrong/malformed receipts,
+terminal readback and supported replay. No host action reached the real API.
+Custom segmented datetime remains a DOM-event fixture, not a physical picker test.
+The captured phone host detail was inspected; the final family visual sweep is
+still separate.
+
+OAuth choice qualification initially stopped on an invalid fixture expectation:
+the UI offers the shared 30/90/365-day presets within the server cap plus that cap,
+so seven days was not an available option under a 14-day maximum. The corrected
+fixture exercises a 45-day cap and selects its supported 30-day option. Its
+controlled-select event and actual expiry helper are checked separately from
+native radio/checkbox input; native popup keyboard selection remains unclaimed.
+Lazy sign-in mounting and synthetic public Terms metadata were also corrected in
+the private driver without broadening its write permissions.
+
+A pure probe of the actual OAuth helper reproduced three accepted malformed
+receipts: wrong issuer, whitespace issuer and whitespace-only code. The server
+issuer can differ from the browser origin, so the correction reads the existing
+API-owned authorization-server discovery document fresh and anonymously before
+Allow or Decline. Its unknown metadata is validated, each completion retains the
+request/account lifetime fence, and the callback must match that exact issuer.
+Blank codes are refused without imposing a new opaque-code format. Native and
+loopback callbacks and the backend's current fixed-query handling remain intact;
+no backend/core/API-client contract was changed.
+
+The corrected actual-helper matrix passes 31 callback cases and 36 metadata-parser
+cases, with no API or callback navigation. The native issuer batch passes 16/16,
+including failed/malformed discovery before a grant, rejected receipts remaining
+unknown, and late discovery after an A-out-A account lifetime. The integrated
+OAuth batch then passes 71/71 across parsing, auth links, permission choices,
+approval/decline outcomes, request/account fences, reauthentication uncertainty and
+issuer recovery. All grant/reauth/check responses and callbacks in those batches
+are synthetic; actual forwarded traffic is limited to named identity/legal reads.
+The valid synthetic callback is captured and aborted before dispatch.
+
+An additional anonymous real GET through the current local Vite proxy returns
+200 for the existing discovery endpoint and the canonical localhost development
+issuer. It performs no grant, token exchange or callback. Combined web no-emit
+checks 10 and 11 pass. Native app launches, physical authenticators, actual OAuth
+grants/token exchange, external providers and mail delivery remain unqualified.
+Shared dialog primitive qualification also passes 30/30, including refusing stale
+focus restoration after newer focus/modal/navigation or opener removal.
+
+The remaining Stage 5 work includes Teams pin/Capacity/policy/activity recovery
+batches, other caller/date boundary cases, final family visuals, additional guarded
+real Booking lifecycle coverage and the seven checkpoint gates. No new group is
+committed. Stages 6–7 and the full guarded backend suite remain open.
+
+### Stage 5 — recovery completion and real local Booking lifecycle
+
+Teams planning recovery passes 22/22, covering pin conflicts and uncertain outcomes,
+Capacity drafts and timezone handling, and refusal of mismatched identities or
+permissions. Policy and Activity recovery passes 33/33, including retained drafts,
+access uncertainty, cursor/filter changes, retry and object-link wiring. These use
+controlled effects; the Activity link check does not qualify the full task editor.
+The corrected public Booking recovery copy passes 17/17. OAuth phone layout checks
+pass 30/30, followed by 16/16 for the final connection-replacement copy. Selected
+light/dark phone captures were inspected; this is not the final all-route sweep.
+
+Review before the real Booking test found that request logging retained private
+confirmation, management, invite and RSVP capability paths. The existing serializer
+now redacts these tokens and their query tails, including API-prefixed and encoded
+separator forms. Two focused regressions failed before the correction; all eight
+serializer tests now pass, including actual Fastify log serialization. This changes
+logging only, with no API or persistence contract change.
+
+The real local Booking lifecycle passes 15/15 against the existing development
+member and primary database. Native controls create one fresh personal paused page,
+activate it with a 48-hour minimum notice and host approval, and anonymously request
+an actual offered slot. Confirmation consumes the exact new booking's capability;
+host approval creates one matching personal calendar event, and host cancellation
+removes that event before page cleanup. The exact page, booking and queued outbox
+rows are then removed. All eight writes have validated receipts; original pages
+retain their configuration fingerprints. There are no unexpected boundary requests,
+browser errors or source changes during the run.
+
+This qualifies **queued mail, not delivered mail**. The confirmation entry is a
+fixture link recovered only in memory from the exact newly encrypted outbox payload;
+no SMTP sender, notifier, mailbox, provider or agent worker is invoked. One fresh
+in-app booking notice and the event's sync tombstone remain intentionally. There
+are no retained source markers. Actual email delivery, external calendars and
+provider execution remain unqualified.
+
+Fresh read-only admission verifies the running local API/UI/database binding,
+development marker, effective loopback Mailpit settings, empty initial outbox,
+absent owner webhooks and zero agent grants eligible for this personal booking
+notice. Fourteen direct trigger rows and their two secondary functions match the
+reviewed definitions; those hashes and grant eligibility are checked again before
+each write. Existing connections, keys and configuration are unchanged.
+
+Two earlier pilot attempts remain recorded. The first stopped before any write
+because the driver expected an empty list to have a visible rectangle. The second
+created and activated only its fresh page, then stopped on an inline SVG favicon
+outside the driver's allowlist. Independent guarded recovery paused and removed
+that exact empty page; its first DELETE was rejected for an empty JSON content type,
+then the corrected bodyless request succeeded after fresh readback. No booking or
+event was created by either failed attempt. The final pilot uses corrected list
+mounting and inline-image handling without widening network or mutation scope.
+
+Stage 5 remains uncommitted pending its final visual review and all seven required
+checkpoint checks. The full objective still includes Stage 6 shell integration,
+Stage 7 parity closure and guarded full backend qualification.
+
+### Stage 5 checkpoint
+
+The final read-only family layout pass visits Teams and all four Booking tabs in
+light/dark at 1440px and 375px: 20 combinations, zero placeholder/overflow checks,
+zero browser exceptions and no unexpected writes. Representative captures were
+inspected alongside the public Booking, OAuth and populated Teams fixtures above.
+Inspection reproduced a desktop tab-switch layout shift: auto horizontal margins
+let the Booking workspace shrink to each tab's content. Giving that workspace its
+available width fixes the shift; repeated measurements now prove equal positions
+and widths across all four tabs for every tested theme/viewport. This CSS-only
+change follows the real Booking lifecycle run; it does not alter its API behavior.
+
+All seven required checks passed again after the layout correction:
+`npm run format:check`, `npm run typecheck`,
+`python3 scripts/check-code-organization.py`,
+`python3 scripts/check-project-docs.py`,
+`python3 -m unittest discover -s .github/tests` (31 tests),
+`npm run build -w web`, and the backend's
+`npx tsx --test tests/week-scene.test.ts` (11 tests).
+The build retains warnings about large chunks, an ineffective Library dynamic
+import and Vite's future native-config import-extension rule; it exits successfully.
+No Docker build, CI, publication, deployment or full backend-suite result is claimed.
+
+This closes the scoped Stage 5 checkpoint. It does not close the full rebuild:
+Stage 6 shell work and Stage 7 remaining parity, font delivery, final all-route
+light/dark/phone qualification and the guarded full backend suite remain required.

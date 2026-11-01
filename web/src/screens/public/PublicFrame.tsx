@@ -1,10 +1,15 @@
 import { ArrowUpRight, Moon, Orbit, Sun } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 import { useAccount } from "../../app/account";
-import { navigate } from "../../lib/router";
+import { navigate, useSearch } from "../../lib/router";
 import { useTheme } from "../../lib/theme";
 import { IconButton } from "../../ui/kit";
 import "./public.css";
+import {
+  currentAuthReturn,
+  safeNext,
+  withAuthNext,
+} from "../../lib/auth-return";
 
 export const go = (path: string) => (event: MouseEvent) => {
   event.preventDefault();
@@ -23,11 +28,18 @@ const SECTIONS = [
 export function PublicFrame({
   children,
   nav,
+  authNext,
 }: {
   children: ReactNode;
   nav?: ReactNode;
+  authNext?: string;
 }) {
   const { token } = useAccount();
+  useSearch();
+  const destination =
+    authNext === undefined ? currentAuthReturn() : safeNext(authNext);
+  const login = withAuthNext("/login", destination),
+    signup = withAuthNext("/signup", destination);
   const [theme, toggle] = useTheme();
   return (
     <div className="site">
@@ -48,19 +60,22 @@ export function PublicFrame({
           {theme === "dark" ? <Sun /> : <Moon />}
         </IconButton>
         {token ? (
-          <a className="btn btn-primary" href="/app" onClick={go("/app")}>
-            Open your planner <ArrowUpRight aria-hidden="true" />
+          <a
+            className="btn btn-primary"
+            href={destination}
+            onClick={go(destination)}
+          >
+            {destination.startsWith("/oauth/authorize")
+              ? "Continue connection"
+              : "Open your planner"}{" "}
+            <ArrowUpRight aria-hidden="true" />
           </a>
         ) : (
           <>
-            <a className="btn btn-ghost" href="/login" onClick={go("/login")}>
+            <a className="btn btn-ghost" href={login} onClick={go(login)}>
               Sign in
             </a>
-            <a
-              className="btn btn-primary"
-              href="/signup"
-              onClick={go("/signup")}
-            >
+            <a className="btn btn-primary" href={signup} onClick={go(signup)}>
               Get started <ArrowUpRight aria-hidden="true" />
             </a>
           </>

@@ -146,19 +146,22 @@ export function Dialog({
   wide,
   actions,
   children,
+  returnFocusTo,
 }: {
   title: string;
   onClose: () => void;
   wide?: boolean;
   actions?: ReactNode;
   children: ReactNode;
+  returnFocusTo?: HTMLElement | null;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useLayoutEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    const opener = document.activeElement;
+    const opener = returnFocusTo ?? document.activeElement;
+    const openedAt = location.href;
     if (!dialog.open) dialog.showModal();
     return () => {
       const ownedFocus =
@@ -170,8 +173,22 @@ export function Dialog({
         opener instanceof HTMLElement &&
         opener.isConnected &&
         !document.querySelector("dialog[open]")
-      )
+      ) {
         opener.focus({ preventScroll: true });
+        // The caller may re-enable its trigger after the confirmation resolves.
+        if (document.activeElement !== opener)
+          requestAnimationFrame(() => {
+            if (
+              location.href === openedAt &&
+              opener.isConnected &&
+              !opener.matches(":disabled") &&
+              !opener.closest("[inert]") &&
+              document.activeElement === document.body &&
+              !document.querySelector("dialog[open]")
+            )
+              opener.focus({ preventScroll: true });
+          });
+      }
     };
   }, []);
   return (
@@ -374,13 +391,17 @@ export const useConfirm = () => useContext(ConfirmContext);
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [ask, setAsk] = useState<
-    (Ask & { done: (ok: boolean) => void }) | null
+    (Ask & { done: (ok: boolean) => void; opener: HTMLElement | null }) | null
   >(null);
   const confirm = useCallback(
     (next: Ask) =>
       new Promise<boolean>((resolve) =>
         setAsk({
           ...next,
+          opener:
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : null,
           done: (ok) => {
             setAsk(null);
             resolve(ok);
@@ -395,6 +416,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       {ask && (
         <Dialog
           title={ask.title}
+          returnFocusTo={ask.opener}
           onClose={() => ask.done(false)}
           actions={
             <>
