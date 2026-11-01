@@ -7,10 +7,12 @@ import {
 } from "@orbyn/core";
 import { AlertTriangle, CalendarRange, Clock } from "lucide-react";
 import { useRef, useState } from "react";
+import { HttpError } from "@orbyn/core";
+import { client } from "../../lib/session";
 import { messageOf } from "../../lib/resource";
 import { Button } from "../../ui/kit";
 import { deviceTimeZone, minutesLabel, plural } from "../shared-task";
-import { useOwned } from "./hooks";
+import { useOwned, useOwner } from "./hooks";
 import { More } from "./parts";
 
 const LIMIT = 6;
@@ -29,30 +31,35 @@ const clock = (iso: string, timeZone: string) =>
   });
 
 /** A schedule the assistant proposed: its days, moves, risks, and Apply. */
-export function PlanPreview({
+function PlanPreviewBody({
   plan,
   onApply,
   onOpen,
   onShowOnCalendar,
+  onRefresh,
 }: {
   plan: Plan;
   /** Saves the plan with these moves; resolves with what it did. */
   onApply?: (moves: string[]) => Promise<string>;
-  onOpen?: () => void;
-  onShowOnCalendar?: (at: string) => void;
+  onOpen?: () => void | Promise<void>;
+  /** Re-read this exact saved plan after a missing apply receipt. */
+  onRefresh?: () => Promise<Plan>;
+  onShowOnCalendar?: (at: string) => void | Promise<void>;
 }) {
   const owned = useOwned();
   const zone = deviceTimeZone();
   const running = useRef(false);
   const [ticks, setTicks] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [uncertain, setUncertain] = useState(false);
+  const [confirmedApplied, setConfirmedApplied] = useState(false);
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<{
     ok: boolean;
     text: string;
     at?: string;
   } | null>(null);
-  const applied = plan.applied || !!outcome?.ok;
+  const applied = plan.applied || confirmedApplied || !!outcome?.ok;
   const moves = plan.moves ?? [];
   const chosen = moves
     .filter((move) => ticks[move.block_id] ?? move.selected)
@@ -70,18 +77,81 @@ export function PlanPreview({
   ].sort()[0];
 
   const apply = async () => {
-    if (!owned() || !onApply || running.current || applied) return;
+    if (!owned() || !onApply || running.current || applied || uncertain) return;
     running.current = true;
     setPending(true);
     setOutcome(null);
     try {
       const text = await onApply(chosen);
-      if (owned()) setOutcome({ ok: true, text, at: firstAt });
+      if (owned()) {
+        setConfirmedApplied(true);
+        setOutcome({ ok: true, text, at: firstAt });
+      }
+    } catch (failure) {
+      if (owned()) {
+        const status = failure instanceof HttpError ? failure.statusCode : 0;
+        setUncertain(
+          !status || status >= 500 || status === 408 || status === 429,
+        );
+        setOutcome({
+          ok: false,
+          text: messageOf(
+            failure,
+            "Couldn't confirm whether the plan was applied. Check its saved state before trying again.",
+          ),
+        });
+      }
+    } finally {
+      running.current = false;
+      if (owned()) setPending(false);
+    }
+  };
+
+  const open = async (action: () => void | Promise<void>) => {
+    if (!owned()) return;
+    try {
+      await action();
     } catch (failure) {
       if (owned())
         setOutcome({
           ok: false,
-          text: messageOf(failure, "Couldn't apply the plan."),
+          text: messageOf(failure, "Couldn't open this plan destination."),
+        });
+    }
+  };
+  const reconcile = async () => {
+    if (!owned() || running.current) return;
+    running.current = true;
+    setPending(true);
+    try {
+      const current = await (onRefresh ? onRefresh() : client.getPlan(plan.id));
+      if (!owned()) return;
+      if (current.id !== plan.id)
+        throw new Error("The refreshed plan doesn't match this preview.");
+      if (current.applied) {
+        setConfirmedApplied(true);
+        setUncertain(false);
+        setOutcome({
+          ok: true,
+          text: "The saved plan confirms it was applied.",
+          at: firstAt,
+        });
+      } else {
+        // An earlier apply may still commit after this read. Keep its decision frozen.
+        setUncertain(true);
+        setOutcome({
+          ok: false,
+          text: "The latest saved snapshot is not applied yet. The earlier request may still finish. Check again or open this plan in the planner.",
+        });
+      }
+    } catch (failure) {
+      if (owned())
+        setOutcome({
+          ok: false,
+          text: messageOf(
+            failure,
+            "Couldn't check this saved plan. Apply remains blocked.",
+          ),
         });
     } finally {
       running.current = false;
@@ -160,7 +230,7 @@ export function PlanPreview({
               <input
                 type="checkbox"
                 checked={chosen.includes(move.block_id)}
-                disabled={pending || applied || !onApply}
+                disabled={pending || applied || uncertain || !onApply}
                 onChange={(event) =>
                   setTicks((now) => ({
                     ...now,
@@ -217,18 +287,25 @@ export function PlanPreview({
             <Button
               variant="primary"
               busy={pending}
-              disabled={applied || (!plan.blocks.length && !chosen.length)}
+              disabled={
+                applied || uncertain || (!plan.blocks.length && !chosen.length)
+              }
               onClick={() => void apply()}
             >
               {applied ? "Plan applied" : pending ? "Applying…" : "Apply plan"}
             </Button>
           )}
           {onOpen && (
-            <Button disabled={pending} onClick={onOpen}>
+            <Button disabled={pending} onClick={() => void open(onOpen)}>
               Open in planner
             </Button>
           )}
         </div>
+      )}
+      {uncertain && (
+        <Button disabled={pending} onClick={() => void reconcile()}>
+          Check saved plan
+        </Button>
       )}
       {outcome && (
         <p
@@ -239,7 +316,12 @@ export function PlanPreview({
           {outcome.ok && onShowOnCalendar && outcome.at && (
             <Button
               variant="ghost"
-              onClick={() => onShowOnCalendar(outcome.at!)}
+              onClick={() => {
+                if (owned() && outcome.at) {
+                  const at = outcome.at;
+                  void open(() => onShowOnCalendar(at));
+                }
+              }}
             >
               Show on calendar
             </Button>
@@ -247,5 +329,15 @@ export function PlanPreview({
         </p>
       )}
     </section>
+  );
+}
+
+export function PlanPreview(props: Parameters<typeof PlanPreviewBody>[0]) {
+  const owner = useOwner();
+  return (
+    <PlanPreviewBody
+      key={`${owner}:${JSON.stringify(props.plan)}`}
+      {...props}
+    />
   );
 }

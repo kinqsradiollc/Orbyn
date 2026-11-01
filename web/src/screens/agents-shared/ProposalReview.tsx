@@ -1,4 +1,5 @@
 import {
+  HttpError,
   aiFeatureProviderLabel,
   dateLabel,
   describeRrule,
@@ -20,14 +21,15 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { navigate } from "../../lib/router";
-import { client } from "../../lib/session";
-import { Button, Pill } from "../../ui/kit";
+import { messageOf } from "../../lib/resource";
+import { client, getSessionVersion } from "../../lib/session";
+import { Button, ErrorNotice, Pill } from "../../ui/kit";
 import { refreshPlanner, tasks } from "../shared-task";
 import { alertLabel } from "../shared-task/format";
 import { DraftNotes } from "./DraftNotes";
-import { useOwner } from "./hooks";
+import { useOwner, useOwned } from "./hooks";
 import { More } from "./parts";
 import { PlanPreview } from "./PlanPreview";
 import { ProjectDraft } from "./ProjectDraft";
@@ -46,15 +48,15 @@ export type ProposalReviewProps = {
   /** Defaults to pending when the reply proposes changes. */
   state?: ProposalState;
   /** Approve. `giveTasksDeadlines` applies to drafted projects. */
-  onApply: (giveTasksDeadlines: boolean) => void;
-  onDismiss: () => void;
+  onApply: (giveTasksDeadlines: boolean) => void | Promise<void>;
+  onDismiss: () => void | Promise<void>;
   /** Sends a suggested reply. Only the newest reply takes one. */
-  onFollowUp?: (text: string) => void;
+  onFollowUp?: (text: string) => void | Promise<void>;
   onApplyPlan?: (plan: Plan, moves: string[]) => Promise<string>;
-  onOpenPlan?: (plan: Plan) => void;
-  onShowOnCalendar?: (at: string) => void;
-  onOpenSource?: (source: AssistantSource) => void;
-  onKeptNote?: (docId: string) => void;
+  onOpenPlan?: (plan: Plan) => void | Promise<void>;
+  onShowOnCalendar?: (at: string) => void | Promise<void>;
+  onOpenSource?: (source: AssistantSource) => void | Promise<void>;
+  onKeptNote?: (docId: string) => void | Promise<void>;
   /** Sources are read from a details panel instead. */
   hideSourceDetails?: boolean;
 };
@@ -222,7 +224,9 @@ function ChangeDetail({
 }
 
 const sourceKey = (source: AssistantSource) =>
-  "doc_id" in source ? `page:${source.doc_id}` : `${source.kind}:${source.id}`;
+  "doc_id" in source
+    ? `page:${source.doc_id}:${source.block_id ?? ""}:${source.number}`
+    : `${source.kind}:${source.id}:${source.number}`;
 
 /**
  * One assistant reply: its answer, what it read, each proposed change and the
@@ -249,6 +253,42 @@ function Reply({
   onKeptNote,
   hideSourceDetails = false,
 }: ProposalReviewProps) {
+  const owned = useOwned();
+  const lock = useRef(false);
+  const [acting, setActing] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const [error, setError] = useState("");
+  const act = async (perform: () => void | Promise<void>) => {
+    if (!owned() || lock.current || busy || uncertain) return;
+    lock.current = true;
+    setActing(true);
+    setError("");
+    try {
+      await perform();
+    } catch (failure) {
+      if (owned()) {
+        const status = failure instanceof HttpError ? failure.statusCode : 0;
+        const unknown =
+          !status || status >= 500 || status === 408 || status === 429;
+        setUncertain(unknown);
+        setError(
+          unknown
+            ? "The decision receipt is unavailable. Check this reply's saved outcome before making another decision."
+            : messageOf(failure, "Couldn't save this decision."),
+        );
+      }
+    } finally {
+      lock.current = false;
+      if (owned()) setActing(false);
+    }
+  };
+  useEffect(() => {
+    if (state === "applied" || state === "discarded") {
+      setUncertain(false);
+      setError("");
+    }
+  }, [state]);
+  const blocked = busy || acting || uncertain;
   const count = proposal.actions.length;
   const session = proposal.session_change;
   const total = count + Number(!!session);
@@ -265,6 +305,7 @@ function Reply({
   return (
     <div className="agents-proposal">
       <ReplyText text={proposal.summary} />
+      {error && <ErrorNotice message={error} />}
       {proposal.provider && (
         <p className="muted small">
           {aiFeatureProviderLabel(proposal.provider)}
@@ -288,7 +329,22 @@ function Reply({
                       type="button"
                       title={source.quote}
                       disabled={!onOpenSource}
-                      onClick={() => onOpenSource?.(source)}
+                      onClick={() => {
+                        if (!owned() || !onOpenSource) return;
+                        void Promise.resolve()
+                          .then(() => {
+                            if (owned()) return onOpenSource(source);
+                          })
+                          .catch((failure) => {
+                            if (owned())
+                              setError(
+                                messageOf(
+                                  failure,
+                                  "Couldn't open this source.",
+                                ),
+                              );
+                          });
+                      }}
                     >
                       <FileText aria-hidden="true" />
                       <span dir="auto">
@@ -315,7 +371,7 @@ function Reply({
         <label className="check agents-check">
           <input
             type="checkbox"
-            disabled={busy}
+            disabled={blocked}
             checked={deadlines}
             onChange={(event) => setDeadlines(event.target.checked)}
           />
@@ -371,14 +427,14 @@ function Reply({
         <div className="agents-buttons">
           <Button
             variant="primary"
-            disabled={busy}
-            onClick={() => onApply(deadlines)}
+            disabled={blocked}
+            onClick={() => void act(() => onApply(deadlines))}
           >
             {proposal.project
               ? "Create project and schedule"
               : `Approve ${total} ${total === 1 ? "change" : "changes"}`}
           </Button>
-          <Button disabled={busy} onClick={onDismiss}>
+          <Button disabled={blocked} onClick={() => void act(onDismiss)}>
             Discard
           </Button>
         </div>
@@ -397,8 +453,8 @@ function Reply({
             <button
               key={index}
               type="button"
-              disabled={busy}
-              onClick={() => onFollowUp(text)}
+              disabled={blocked}
+              onClick={() => void act(() => onFollowUp(text))}
               dir="auto"
             >
               {text}
@@ -413,7 +469,9 @@ function Reply({
 /** Where a proposal's links go, for a screen that has no reason to differ. */
 export const proposalLinks = {
   onApplyPlan: async (plan: Plan, moves: string[]) => {
+    const owner = getSessionVersion();
     const result = await client.applyPlan(plan.id, { moves });
+    if (getSessionVersion() !== owner) return "";
     await refreshPlanner(true).catch(() => undefined);
     return planOutcome(result, plan.at_risk);
   },
@@ -424,10 +482,12 @@ export const proposalLinks = {
   onOpenSource: (source: AssistantSource) => {
     if ("doc_id" in source)
       navigate(
-        `/app/doc/${source.doc_id}${source.block_id ? `?block=${encodeURIComponent(source.block_id)}` : ""}`,
+        `/app/doc/${encodeURIComponent(source.doc_id)}${source.block_id ? `#${encodeURIComponent(source.block_id)}` : ""}`,
       );
     else if (source.kind === "task") tasks.open(source.id);
-    else if (source.project_id) navigate(`/app/project/${source.project_id}`);
+    else if (source.project_id)
+      navigate(`/app/project/${encodeURIComponent(source.project_id)}`);
   },
-  onKeptNote: (docId: string) => navigate(`/app/doc/${docId}`),
+  onKeptNote: (docId: string) =>
+    navigate(`/app/doc/${encodeURIComponent(docId)}`),
 };

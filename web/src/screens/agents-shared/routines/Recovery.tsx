@@ -1,4 +1,5 @@
 import {
+  HttpError,
   ASSISTANT_OUTCOME_LABELS,
   assistantOutcomeDetails,
   routineRetryPolicy,
@@ -10,19 +11,24 @@ import { useEffect, useRef, useState } from "react";
 import { messageOf } from "../../../lib/resource";
 import { client } from "../../../lib/session";
 import { Button, ErrorNotice, Field, Input, useConfirm } from "../../../ui/kit";
-import { useOwned } from "../hooks";
+import { useOwned, useOwner } from "../hooks";
 import { Check } from "../parts";
 import { unavailable, uuid } from "../words";
 
 /** Bounded retries for one routine. Off by default, and they grant nothing new. */
-export function RetryPolicyEditor({
+function RetryPolicyEditorBody({
   routineId,
   disabled,
+  onDirty,
 }: {
   routineId: string;
   disabled: boolean;
+  onDirty?: (dirty: boolean) => void;
 }) {
   const owned = useOwned();
+  const confirm = useConfirm();
+  const blocked = useRef(disabled);
+  blocked.current = disabled;
   const ticket = useRef(0);
   const lock = useRef(false);
   const request = useRef<{ key: string; id: string } | null>(null);
@@ -30,10 +36,18 @@ export function RetryPolicyEditor({
   const [draft, setDraft] = useState<RoutineRetryPolicy | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const uncertainRef = useRef(false);
+  const [confirming, setConfirming] = useState(false);
+  const currentPage = useRef(page);
+  currentPage.current = page;
+  const currentDraft = useRef(draft);
+  currentDraft.current = draft;
+  const [stale, setStale] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const load = async () => {
-    if (lock.current || !owned()) return;
+    if (lock.current || !owned() || uncertain) return;
     lock.current = true;
     const mine = ++ticket.current;
     setBusy(true);
@@ -41,8 +55,11 @@ export function RetryPolicyEditor({
     try {
       const value = await client.routineRetryPolicy(routineId);
       if (owned() && mine === ticket.current) {
+        if (value.routine_id !== routineId)
+          throw new Error("These settings belong to another routine.");
         setPage(value);
         setDraft((old) => old ?? value.policy);
+        setStale(false);
       }
     } catch {
       if (owned() && mine === ticket.current) {
@@ -62,9 +79,20 @@ export function RetryPolicyEditor({
   }, []);
 
   const dirty =
-    !!page && !!draft && JSON.stringify(page.policy) !== JSON.stringify(draft);
+    !!draft && (!page || JSON.stringify(page.policy) !== JSON.stringify(draft));
+  useEffect(() => {
+    if (owned()) onDirty?.(dirty || uncertain);
+  }, [dirty, uncertain, owned, onDirty]);
   const save = async () => {
-    if (!page || !draft || !dirty || disabled || lock.current || !owned())
+    if (
+      !page ||
+      !draft ||
+      (!dirty && !uncertain) ||
+      disabled ||
+      stale ||
+      lock.current ||
+      !owned()
+    )
       return;
     const checked = routineRetryPolicy.safeParse(draft);
     if (!checked.success) {
@@ -86,18 +114,83 @@ export function RetryPolicyEditor({
         request_id: request.current.id,
       });
       if (owned()) {
+        if (value.routine_id !== routineId)
+          throw new Error("These settings belong to another routine.");
         setPage(value);
         setDraft(value.policy);
+        uncertainRef.current = false;
+        setUncertain(false);
         setSaved(true);
       }
     } catch (failure) {
       if (owned()) {
+        const status = failure instanceof HttpError ? failure.statusCode : 0;
+        const unknown =
+          uncertain ||
+          !status ||
+          status >= 500 ||
+          status === 408 ||
+          status === 429;
+        uncertainRef.current = unknown;
+        setUncertain(unknown);
+        if (!unknown) setStale(true);
         if (unavailable(failure)) setPage(null);
-        setError(messageOf(failure, "Couldn't save recovery settings."));
+        setError(
+          unknown
+            ? "Save status is unknown. Check and retry this same save; the reviewed limits are kept."
+            : messageOf(
+                failure,
+                "Couldn't save recovery settings. Refresh its saved revision before trying again.",
+              ),
+        );
       }
     } finally {
       lock.current = false;
       if (owned()) setBusy(false);
+    }
+  };
+  const discard = async () => {
+    if (
+      !owned() ||
+      blocked.current ||
+      lock.current ||
+      busy ||
+      uncertainRef.current ||
+      !dirty ||
+      !page
+    )
+      return;
+    const baseline = page,
+      buffer = draft,
+      mine = ticket.current;
+    lock.current = true;
+    setConfirming(true);
+    try {
+      if (
+        !(await confirm({
+          title: "Discard recovery changes?",
+          body: "Reset your unsaved recovery settings to the last confirmed version.",
+          action: "Discard changes",
+          danger: true,
+        }))
+      )
+        return;
+      if (
+        !owned() ||
+        blocked.current ||
+        uncertainRef.current ||
+        mine !== ticket.current ||
+        currentPage.current !== baseline ||
+        currentDraft.current !== buffer ||
+        baseline.routine_id !== routineId
+      )
+        return;
+      setDraft(baseline.policy);
+      setSaved(false);
+      if (!stale) setError("");
+    } finally {
+      lock.current = false;
+      if (owned()) setConfirming(false);
     }
   };
   const number = (
@@ -108,7 +201,7 @@ export function RetryPolicyEditor({
       <Input
         type="number"
         value={String(draft?.[name] ?? "")}
-        disabled={busy || disabled}
+        disabled={busy || confirming || disabled || uncertain || stale}
         onChange={(event) => {
           setSaved(false);
           setDraft((old) =>
@@ -141,7 +234,7 @@ export function RetryPolicyEditor({
           <Check
             label="Retry safe failures"
             checked={draft.enabled}
-            disabled={busy || disabled}
+            disabled={busy || confirming || disabled || uncertain || stale}
             onChange={() => {
               setSaved(false);
               setDraft({ ...draft, enabled: !draft.enabled });
@@ -168,13 +261,34 @@ export function RetryPolicyEditor({
           </p>
           <div className="agents-buttons">
             <Button
-              disabled={busy || disabled || !dirty}
+              disabled={
+                busy ||
+                confirming ||
+                disabled ||
+                stale ||
+                (!dirty && !uncertain)
+              }
               onClick={() => void save()}
             >
-              {busy ? "Saving…" : "Save recovery settings"}
+              {busy
+                ? "Saving…"
+                : uncertain
+                  ? "Check and retry same save"
+                  : "Save recovery settings"}
             </Button>
-            <Button variant="ghost" disabled={busy} onClick={() => void load()}>
-              Reload saved recovery settings
+            <Button
+              variant="ghost"
+              disabled={busy || confirming || uncertain}
+              onClick={() => void load()}
+            >
+              Refresh saved recovery settings
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy || confirming || disabled || uncertain || !dirty}
+              onClick={() => void discard()}
+            >
+              Discard changes
             </Button>
             {saved && (
               <span className="agents-done small" role="status">
@@ -199,7 +313,7 @@ const STATES = {
 };
 
 /** Every bounded attempt of one scheduled occurrence. */
-export function OccurrenceRecovery({
+function OccurrenceRecoveryBody({
   routineId,
   occurrenceId,
   disabled,
@@ -215,6 +329,8 @@ export function OccurrenceRecovery({
   const ticket = useRef(0);
   const lock = useRef(false);
   const request = useRef<{ key: string; id: string } | null>(null);
+  const blocked = useRef(disabled);
+  blocked.current = disabled;
   const [data, setData] = useState<RoutineRecovery | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -229,6 +345,11 @@ export function OccurrenceRecovery({
     setError("");
     try {
       const value = await client.routineRecovery(routineId, occurrenceId);
+      if (
+        value.routine_id !== routineId ||
+        value.occurrence_id !== occurrenceId
+      )
+        throw new Error("This recovery belongs to another occurrence.");
       if (owned() && mine === ticket.current) {
         setData(value);
         if (
@@ -275,7 +396,9 @@ export function OccurrenceRecovery({
         !requested)
     )
       return;
-    const timer = setInterval(() => void load(), 10_000);
+    const timer = setInterval(() => {
+      if (!document.hidden) void load();
+    }, 10_000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openState, live, requested, error]);
@@ -285,6 +408,7 @@ export function OccurrenceRecovery({
       !data ||
       data.recovery !== "enabled" ||
       disabled ||
+      requested ||
       stale ||
       lock.current ||
       !owned()
@@ -298,7 +422,15 @@ export function OccurrenceRecovery({
       danger: true,
     });
     lock.current = false;
-    if (!yes || !owned()) return;
+    if (
+      !yes ||
+      !owned() ||
+      blocked.current ||
+      requested ||
+      data.recovery !== "enabled" ||
+      ["completed", "stopped"].includes(data.state)
+    )
+      return;
     const body = {
       expected_revision: data.revision,
       generation: data.generation,
@@ -313,6 +445,11 @@ export function OccurrenceRecovery({
         ...body,
         request_id: request.current.id,
       });
+      if (
+        value.routine_id !== routineId ||
+        value.occurrence_id !== occurrenceId
+      )
+        throw new Error("This stop receipt belongs to another occurrence.");
       if (owned()) {
         setData(value);
         setRequested(true);
@@ -459,6 +596,7 @@ export function OccurrenceRecovery({
                 busy ||
                 disabled ||
                 stale ||
+                requested ||
                 ["completed", "stopped"].includes(data.state)
               }
               onClick={() => void stop()}
@@ -469,5 +607,29 @@ export function OccurrenceRecovery({
         </>
       )}
     </div>
+  );
+}
+
+export function RetryPolicyEditor(
+  props: Parameters<typeof RetryPolicyEditorBody>[0],
+) {
+  const owner = useOwner();
+  return (
+    <RetryPolicyEditorBody
+      key={`${owner}:${props.routineId}:${"occurrenceId" in props ? props.occurrenceId : ""}`}
+      {...props}
+    />
+  );
+}
+
+export function OccurrenceRecovery(
+  props: Parameters<typeof OccurrenceRecoveryBody>[0],
+) {
+  const owner = useOwner();
+  return (
+    <OccurrenceRecoveryBody
+      key={`${owner}:${props.routineId}:${"occurrenceId" in props ? props.occurrenceId : ""}`}
+      {...props}
+    />
   );
 }

@@ -3,7 +3,7 @@ import { MoreHorizontal } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { IconButton, Menu, Pill } from "../../ui/kit";
 import { Character } from "./Character";
-import { LANE_NAME, type Lane } from "./hooks";
+import { LANE_NAME, useOwned, useOwner, type Lane } from "./hooks";
 import { IdentityDialog } from "./IdentityDialog";
 import { LimitsDialog } from "./LimitsDialog";
 import { ScheduleDialog } from "./ScheduleDialog";
@@ -27,21 +27,29 @@ const counts = (profile: AssistantProfile) =>
     .join(" · ");
 
 /** A worker's identity and factual state. An idle character never implies work. */
-export function LaneHead({
-  lane,
-  profiles,
-  title,
-  sub,
-  actions,
-  onChanged,
-}: {
+type LaneHeadProps = {
   lane: Lane;
   profiles: AssistantProfiles | null;
   title: string;
   sub?: ReactNode;
   actions?: ReactNode;
   onChanged: () => void;
-}) {
+};
+
+export function LaneHead(props: LaneHeadProps) {
+  const owner = useOwner();
+  return <OwnedLaneHead key={`${owner}:${props.lane}`} {...props} />;
+}
+
+function OwnedLaneHead({
+  lane,
+  profiles,
+  title,
+  sub,
+  actions,
+  onChanged,
+}: LaneHeadProps) {
+  const owned = useOwned();
   const profile = profiles?.profiles.find((one) => one.lane === lane);
   const [dialog, setDialog] = useState<
     "identity" | "limits" | "schedule" | null
@@ -52,8 +60,10 @@ export function LaneHead({
     profile.counts.recovering > 0 &&
     profile.counts.queued === 0;
   const close = () => {
-    setDialog(null);
-    onChanged();
+    if (owned()) setDialog(null);
+  };
+  const changed = () => {
+    if (owned()) onChanged();
   };
   return (
     <header className="agents-head">
@@ -113,7 +123,7 @@ export function LaneHead({
         )}
         {profile?.budget && (
           <p className="muted small">
-            Night estimate {profile.budget.estimated_tokens.toLocaleString()} /{" "}
+            Estimated usage {profile.budget.estimated_tokens.toLocaleString()} /{" "}
             {profile.budget.limit_tokens.toLocaleString()} tokens
           </p>
         )}
@@ -136,6 +146,7 @@ export function LaneHead({
             <>
               <button
                 onClick={() => {
+                  if (!owned()) return;
                   done();
                   setDialog("identity");
                 }}
@@ -145,6 +156,7 @@ export function LaneHead({
               {lane === "overnight" && (
                 <button
                   onClick={() => {
+                    if (!owned()) return;
                     done();
                     setDialog("schedule");
                   }}
@@ -154,6 +166,7 @@ export function LaneHead({
               )}
               <button
                 onClick={() => {
+                  if (!owned()) return;
                   done();
                   setDialog("limits");
                 }}
@@ -164,10 +177,14 @@ export function LaneHead({
           )}
         </Menu>
       </div>
-      {dialog === "identity" && <IdentityDialog lane={lane} onClose={close} />}
-      {dialog === "limits" && <LimitsDialog lane={lane} onClose={close} />}
+      {dialog === "identity" && (
+        <IdentityDialog lane={lane} onClose={close} onSaved={changed} />
+      )}
+      {dialog === "limits" && (
+        <LimitsDialog lane={lane} onClose={close} onSaved={changed} />
+      )}
       {dialog === "schedule" && (
-        <ScheduleDialog onClose={() => setDialog(null)} onSaved={onChanged} />
+        <ScheduleDialog onClose={close} onSaved={changed} />
       )}
     </header>
   );

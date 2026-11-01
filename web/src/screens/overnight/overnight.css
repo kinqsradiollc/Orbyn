@@ -1,0 +1,100 @@
+.overnight-screen {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 76rem;
+  margin-inline: auto;
+  padding: clamp(0.75rem, 2vw, 2rem);
+  min-width: 0;
+}
+.overnight-screen > *,
+.night-result,
+.night-decision,
+.night-results,
+.night-page {
+  min-width: 0;
+}
+.night-results {
+  display: grid;
+  gap: 1rem;
+}
+.night-result {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: clamp(0.75rem, 2vw, 1.25rem);
+  display: grid;
+  gap: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.night-result-heading,
+.night-page,
+.night-choice {
+  display: flex;
+  align-items: start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+.night-result-heading h3 {
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+.night-result-heading > div {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.night-decision {
+  display: grid;
+  gap: 0.75rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+.night-decision form {
+  display: grid;
+  gap: 0.75rem;
+}
+.night-choice .agents-check {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.night-changes,
+.night-unfinished {
+  display: grid;
+  gap: 1rem;
+  padding-inline-start: 1.25rem;
+}
+.night-changes > li {
+  display: grid;
+  gap: 0.5rem;
+}
+.night-uncertain {
+  border-inline-start: 3px solid var(--text-soft);
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.night-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.night-page {
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+@media (max-width: 540px) {
+  .night-result-heading > .btn,
+  .night-choice > .btn {
+    width: 100%;
+  }
+  .night-result {
+    padding: 0.75rem;
+  }
+}
+
+.overnight-screen .btn {
+  white-space: normal;
+  height: auto;
+  padding-block: 8px;
+  overflow-wrap: anywhere;
+}

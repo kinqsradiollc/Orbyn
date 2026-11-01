@@ -5,7 +5,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../../lib/session";
 import { Button, ErrorNotice } from "../../../ui/kit";
-import { useOwned } from "../hooks";
+import { useOwned, useOwner } from "../hooks";
 import { Evidence, More } from "../parts";
 import { when } from "../words";
 import { OccurrenceQuietChecks } from "./QuietChecks";
@@ -27,7 +27,7 @@ const stateWords = (run: AssistantRoutineRun) =>
             : "Running";
 
 /** Lazy history for one routine. Reading it reruns nothing. */
-export function RunHistory({
+function RunHistoryBody({
   routineId,
   timezone,
   disabled,
@@ -66,6 +66,8 @@ export function RunHistory({
         ...(next ? { cursor: next } : {}),
       });
       if (!owned() || mine !== ticket.current) return;
+      if (page.routine_id !== routineId)
+        throw new Error("This history belongs to another routine.");
       setRows((old) => [
         ...new Map(
           [...(append ? (old ?? []) : []), ...page.runs].map((row) => [
@@ -193,5 +195,15 @@ export function RunHistory({
         </Button>
       )}
     </div>
+  );
+}
+
+export function RunHistory(props: Parameters<typeof RunHistoryBody>[0]) {
+  const owner = useOwner();
+  return (
+    <RunHistoryBody
+      key={`${owner}:${props.routineId}:${"occurrenceId" in props ? props.occurrenceId : ""}`}
+      {...props}
+    />
   );
 }

@@ -1,3 +1,4 @@
+import "./agents-shared.css";
 import {
   CHARACTER_LAYERS,
   CHARACTER_STATE_LABELS,
@@ -14,8 +15,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 const stillness = () => matchMedia("(prefers-reduced-motion: reduce)");
 
 /**
- * A worker's layered character, drawn from the shared rig and artwork. At rest
- * outside the editor it holds still: movement marks work, not idleness.
+ * Shared artwork with motion only for active work or a brief explicit greeting.
+ * Ready previews hold still, and hidden/reduced-motion characters schedule no frames.
  */
 export function Character({
   appearance,
@@ -29,7 +30,7 @@ export function Character({
   state?: CharacterState;
   size?: number;
   name?: string;
-  /** In the editor: always drawn, and alive at rest. */
+  /** In the editor: draw even when the saved presence is hidden. */
   preview?: boolean;
   greeting?: number;
 }) {
@@ -42,6 +43,9 @@ export function Character({
   );
   const node = useRef<SVGSVGElement>(null);
   const greetedAt = useRef(-Infinity);
+  const finishedAt = useRef(performance.now());
+  const [waving, setWaving] = useState(false);
+  const [celebrating, setCelebrating] = useState(state === "done");
   const [pose, setPose] = useState(STILL_CHARACTER_POSE);
   const [visible, setVisible] = useState(false);
   const [shown, setShown] = useState(!document.hidden);
@@ -59,8 +63,19 @@ export function Character({
     };
   }, []);
   useEffect(() => {
-    if (greeting) greetedAt.current = performance.now();
+    if (!greeting) return;
+    greetedAt.current = performance.now();
+    setWaving(true);
+    const timer = window.setTimeout(() => setWaving(false), 1800);
+    return () => window.clearTimeout(timer);
   }, [greeting]);
+  useEffect(() => {
+    setCelebrating(state === "done");
+    if (state !== "done") return;
+    finishedAt.current = performance.now();
+    const timer = window.setTimeout(() => setCelebrating(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [state]);
   useEffect(() => {
     if (!node.current) return;
     const watcher = new IntersectionObserver(([entry]) =>
@@ -75,14 +90,31 @@ export function Character({
     visible &&
     shown &&
     !reduced &&
-    (preview || greeting > 0 || state !== "ready");
+    (state === "working" || waving || celebrating);
   useEffect(() => {
-    setPose(STILL_CHARACTER_POSE);
+    setPose(
+      state === "ready" || state === "done"
+        ? STILL_CHARACTER_POSE
+        : characterPose(state, 0, Infinity, look.movement),
+    );
     if (!moving) return;
     const start = performance.now();
     let frame = 0;
     let last = -Infinity;
     const tick = (now: number) => {
+      if (document.hidden || stillness().matches) return;
+      if (
+        state !== "working" &&
+        now -
+          Math.max(
+            greetedAt.current,
+            state === "done" ? finishedAt.current : -Infinity,
+          ) >=
+          1800
+      ) {
+        setPose(STILL_CHARACTER_POSE);
+        return;
+      }
       if (now - last >= 1000 / 30) {
         setPose(
           characterPose(

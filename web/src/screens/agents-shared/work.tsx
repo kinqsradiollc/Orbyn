@@ -8,7 +8,7 @@ import { useRef, useState } from "react";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, Pill, useConfirm } from "../../ui/kit";
 import { Handoff } from "./Handoff";
-import { useControls, useOwned, LANE_NAME, type Lane } from "./hooks";
+import { useControls, useOwned, useOwner, LANE_NAME, type Lane } from "./hooks";
 import { Band, Check, Evidence, More, Time } from "./parts";
 import { runWords } from "./words";
 
@@ -48,7 +48,7 @@ export function PauseLane({ lane }: { lane: Lane }) {
 }
 
 /** What runs now, from the authorized job snapshot. A stop request is not a stop. */
-export function CurrentWork({
+function CurrentWorkBody({
   work,
   truncated,
   onOpenChat,
@@ -85,7 +85,14 @@ export function CurrentWork({
       await client.stopAssistantRun(id);
       if (!owned()) return;
       setRequested((now) => new Set(now).add(id));
-      await onRefresh();
+      try {
+        await onRefresh();
+      } catch {
+        if (owned())
+          setError(
+            "Stop requested. Current work could not be refreshed; check its status before acting again.",
+          );
+      }
     } catch {
       if (owned())
         setError(
@@ -144,7 +151,7 @@ export function CurrentWork({
 }
 
 /** Scoped page updates are reviewed in their page, never through a chat decision. */
-export function PageWork({
+function PageWorkBody({
   runs,
   truncated,
   onOpenPage,
@@ -162,9 +169,10 @@ export function PageWork({
   latest.current = runs;
   const [stopping, setStopping] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [requested, setRequested] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState("");
   const stop = async (id: string) => {
-    if (lock.current || !owned()) return;
+    if (lock.current || !owned() || requested.has(id)) return;
     lock.current = true;
     setStopping(id);
     try {
@@ -183,12 +191,20 @@ export function PageWork({
       setError("");
       const result = await client.stopPageMaintenanceRun(run.doc_id, run.id);
       if (!owned()) return;
+      setRequested((now) => new Set(now).add(id));
       setNotice(
         result.stopped
           ? "This run was stopped. Its schedule is unchanged."
           : "The run already ended. Its saved result is unchanged.",
       );
-      await onRefresh();
+      try {
+        await onRefresh();
+      } catch {
+        if (owned())
+          setError(
+            "Stop receipt received. Page work could not be refreshed; check its status before acting again.",
+          );
+      }
     } catch {
       if (owned())
         setError(
@@ -225,7 +241,7 @@ export function PageWork({
         {["queued", "running", "waiting"].includes(run.state) && (
           <Button
             variant="ghost"
-            disabled={!!stopping}
+            disabled={!!stopping || requested.has(run.id)}
             onClick={() => void stop(run.id)}
           >
             {stopping === run.id ? "Stopping…" : "Stop this page run"}
@@ -258,7 +274,7 @@ export function PageWork({
 }
 
 /** Evidence first; the transcript and a follow-up are optional. */
-export function ResultRow({
+function ResultRowBody({
   output,
   lane,
   onOpenChat,
@@ -267,6 +283,7 @@ export function ResultRow({
   lane: Lane;
   onOpenChat: (id: string) => void;
 }) {
+  const owned = useOwned();
   const receipt = output.execution_outcome;
   const status = runWords({ state: output.state ?? "done", outcome: receipt });
   return (
@@ -294,7 +311,7 @@ export function ResultRow({
         </More>
       </div>
       <div className="agents-buttons">
-        <Button onClick={() => onOpenChat(output.chat_id)}>
+        <Button onClick={() => owned() && onOpenChat(output.chat_id)}>
           {receipt?.outcome === "waiting" ? "Review decision" : "Open result"}
         </Button>
       </div>
@@ -332,4 +349,19 @@ export function ActivityLog({
       )}
     </Band>
   );
+}
+
+export function CurrentWork(props: Parameters<typeof CurrentWorkBody>[0]) {
+  const owner = useOwner();
+  return <CurrentWorkBody key={owner} {...props} />;
+}
+
+export function PageWork(props: Parameters<typeof PageWorkBody>[0]) {
+  const owner = useOwner();
+  return <PageWorkBody key={owner} {...props} />;
+}
+
+export function ResultRow(props: Parameters<typeof ResultRowBody>[0]) {
+  const owner = useOwner();
+  return <ResultRowBody key={`${owner}:${props.output.job_id}`} {...props} />;
 }

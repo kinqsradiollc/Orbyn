@@ -344,6 +344,44 @@ test("setup captures explicit per-attempt bounds atomically without enabling rec
   }
 });
 
+test("routine setup returns the final revision for conditional follow-on updates", async () => {
+  const f = await fixture();
+  const input = {
+    ...(await f.input()),
+    run_limits: { token_limit: 1234, active_work_minutes: 1 },
+  };
+  const response = await f.call("POST", "/me/agent-routines/setup", input);
+  assert.equal(response.statusCode, 200, response.body);
+  const saved = response.json();
+  const row = (
+    await pool.query(
+      "SELECT revision,run_limits FROM agent_routines WHERE id=$1 AND user_id=$2",
+      [saved.id, f.person.id],
+    )
+  ).rows[0];
+  assert.ok(row);
+  assert.deepEqual(row.run_limits, input.run_limits);
+  assert.equal(saved.revision, row.revision);
+  const listed = await f.call("GET", "/me/agent-routines");
+  assert.equal(listed.statusCode, 200, listed.body);
+  assert.deepEqual(
+    listed.json().find((routine: { id: string }) => routine.id === saved.id),
+    saved,
+  );
+
+  const updated = await f.call("PUT", `/me/agent-routines/${saved.id}`, {
+    expected_revision: saved.revision,
+    paused: true,
+  });
+  assert.equal(updated.statusCode, 200, updated.body);
+  assert.equal(updated.json().paused, true);
+  assert.ok(updated.json().revision > saved.revision);
+  const replay = await f.call("POST", "/me/agent-routines/setup", input);
+  assert.equal(replay.statusCode, 200, replay.body);
+  assert.deepEqual(replay.json(), updated.json());
+  assert.deepEqual(await f.scopes(), {});
+});
+
 test("background admission captures initial attempt bounds independently of retry opt-in", async () => {
   const { scanAssistantRoutines } =
     await import("../src/worker/assistant-routines.js");

@@ -1,1 +1,439 @@
-/* Styles for the Agents screens. The Agents rebuild is unfinished. */
+/* Shared presentation for Agents. Route owners arrange their own workspace. */
+.agents-head,
+.agents-head-text,
+.agents-band,
+.agents-more,
+.agents-more-body,
+.agents-row-main,
+.agents-proposal,
+.agents-plan,
+.agents-project,
+.agents-stack,
+.agents-editor-controls {
+  min-width: 0;
+}
+.agents-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.agents-head-text {
+  flex: 1 1 240px;
+}
+.agents-head-text h1 {
+  font-size: 24px;
+  line-height: 32px;
+  overflow-wrap: anywhere;
+}
+.agents-head-text > p {
+  color: var(--text-soft);
+  margin-top: 4px;
+}
+.agents-row-meta,
+.agents-buttons,
+.agents-chips,
+.agents-facts,
+.agents-sources,
+.agents-sources-picked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.agents-row-meta {
+  gap: 4px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+.agents-row-meta > *,
+.agents-sources > *,
+.agents-sources-picked > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.agents-end {
+  justify-content: flex-end;
+}
+.agents-band {
+  display: grid;
+  gap: 12px;
+  margin-block: 24px;
+}
+.agents-band > header,
+.agents-more-body > header,
+.agents-plan > header,
+.agents-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-width: 0;
+}
+.agents-band h2 {
+  font-size: 18px;
+  line-height: 26px;
+}
+.agents-stack,
+.agents-more-body,
+.agents-proposal,
+.agents-plan,
+.agents-project,
+.agents-drafts,
+.agents-history,
+.agents-log,
+.agents-attempts,
+.agents-policy {
+  display: grid;
+  gap: 16px;
+}
+.agents-rows,
+.agents-changes,
+.agents-plan-day > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.agents-rows > li,
+.agents-changes > li,
+.agents-plan-day > ul > li {
+  padding-block: 12px;
+  overflow-wrap: anywhere;
+}
+.agents-rows > li + li,
+.agents-changes > li + li,
+.agents-plan-day > ul > li + li {
+  box-shadow: 0 -1px 0 var(--line-soft);
+}
+.agents-row-main {
+  flex: 1 1 220px;
+}
+.agents-row-main > strong,
+.agents-row-main h3 {
+  display: block;
+  font-size: 15px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.agents-row-main > p {
+  margin-top: 4px;
+}
+.agents-more {
+  padding: 12px 16px;
+  border-radius: var(--r-lg);
+  background: var(--sunken);
+}
+.agents-more > summary {
+  min-height: var(--control);
+  align-content: center;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+.agents-more[open] > summary {
+  margin-bottom: 12px;
+}
+.agents-lines {
+  margin: 0;
+  padding-inline-start: 20px;
+}
+.agents-lines > li + li {
+  margin-top: 6px;
+}
+.agents-notes,
+.agents-prewrap,
+.agents-reply {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.agents-reply {
+  display: grid;
+  gap: 12px;
+}
+.agents-reply h3 {
+  font-size: 18px;
+  line-height: 26px;
+}
+.agents-reply p,
+.agents-reply ul,
+.agents-reply ol {
+  margin: 0;
+}
+.agents-reply code {
+  background: var(--chip);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.agents-table {
+  max-width: 100%;
+  min-width: 0;
+  overflow: auto;
+  border-radius: var(--r-md);
+  box-shadow: var(--raised);
+  background: var(--surface);
+}
+.agents-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 20px;
+}
+.agents-table :is(th, td) {
+  padding: 8px 12px;
+  min-width: 100px;
+  max-width: 320px;
+  text-align: start;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--line-soft);
+}
+.agents-table th {
+  background: var(--sunken);
+  font-weight: 600;
+}
+.agents-changes > li > label,
+.agents-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: var(--control);
+  padding-block: 8px;
+  overflow-wrap: anywhere;
+}
+.agents-check > input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+.agents-check > span {
+  min-width: 0;
+}
+.agents-changes.is-discarded {
+  color: var(--text-muted);
+}
+.agents-changes > li > p {
+  margin-top: 6px;
+}
+.agents-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.agents-fact svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+.agents-plan-day h3 {
+  font-size: 15px;
+  line-height: 22px;
+  margin-bottom: 4px;
+}
+.agents-plan-flag,
+.agents-warn,
+.agents-failed,
+.agents-done,
+.agents-pause {
+  padding: 12px;
+  border-radius: var(--r-md);
+  overflow-wrap: anywhere;
+}
+.agents-plan-flag,
+.agents-warn {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+.agents-failed {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.agents-done {
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+.agents-pause {
+  color: var(--text-soft);
+  background: var(--sunken);
+}
+.agents-clip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agents-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.agents-fieldset {
+  margin: 0;
+  padding: 12px 0;
+  border: 0;
+  display: grid;
+  gap: 4px;
+}
+.agents-fieldset > legend {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.agents-chips button,
+.agents-presets button {
+  min-height: var(--control);
+  border: 0;
+  border-radius: var(--r-md);
+  color: var(--text-soft);
+  background: var(--sunken);
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.agents-chips button:hover,
+.agents-presets button:hover {
+  background: var(--hover);
+}
+.agents-chips button:disabled,
+.agents-presets button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.agents-editor {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(0, 3fr);
+  gap: 24px;
+  min-width: 0;
+}
+.agents-editor-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.agents-editor-stage > strong {
+  overflow-wrap: anywhere;
+  text-align: center;
+  max-width: 100%;
+}
+.agents-editor-controls,
+.agents-editor-fields {
+  display: grid;
+  gap: 16px;
+}
+.agents-editor-tabs,
+.agents-editor-tabs .segmented {
+  min-width: 0;
+  max-width: 100%;
+}
+.agents-editor-tabs .segmented {
+  display: flex;
+  flex-wrap: wrap;
+}
+.agents-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+.agents-presets button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: start;
+}
+.agents-character {
+  --char-tone: var(--ok);
+  --char-body: color-mix(in srgb, var(--char-tone) 38%, var(--surface));
+  --char-edge: color-mix(in srgb, var(--char-tone) 65%, var(--text));
+  --char-face: var(--text);
+  --char-shine: var(--surface);
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: visible;
+}
+.agents-palette-sage {
+  --char-tone: color-mix(in srgb, var(--ok) 45%, var(--text-muted));
+}
+.agents-palette-ink {
+  --char-tone: var(--text-muted);
+}
+.agents-palette-honey {
+  --char-tone: var(--warn);
+}
+.agents-palette-coral {
+  --char-tone: var(--danger);
+}
+.agents-palette-paper {
+  --char-tone: var(--text-soft);
+  --char-body: var(--surface);
+}
+@media (max-width: 700px) {
+  .agents-head {
+    gap: 12px;
+  }
+  .agents-pair,
+  .agents-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .agents-editor-stage {
+    padding-bottom: 12px;
+  }
+  .agents-more {
+    padding: 8px 12px;
+  }
+  .agents-chips button,
+  .agents-presets button {
+    font-size: var(--action-fs);
+  }
+  .agents-head-text {
+    flex-basis: 180px;
+  }
+}
+.agents-sources button,
+.agents-sources-picked button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control);
+  max-width: 100%;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--chip);
+  color: var(--text-soft);
+  padding: 8px 12px;
+  font: inherit;
+  font-size: var(--action-fs);
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.agents-sources button svg,
+.agents-sources-picked button svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.agents-sources button:disabled,
+.agents-sources-picked button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.agents-sources button:hover:not(:disabled),
+.agents-sources-picked button:hover:not(:disabled) {
+  background: var(--hover);
+}
+.agents-search {
+  width: 100%;
+  min-width: 0;
+}

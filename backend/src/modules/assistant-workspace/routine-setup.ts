@@ -143,5 +143,8 @@ export async function setupAgentRoutine(
     "INSERT INTO assistant_routine_setup_receipts(owner_id,request_id,payload_digest,routine_id) VALUES($1,$2,$3,$4)",
     [owner, input.request_id, digest, routine.id],
   );
-  return routine;
+  // Setup writes can advance the routine's revision after its initial save.
+  const confirmed = await readAgentRoutine(db, owner, routine.id);
+  if (!confirmed) fail(500, "Routine setup could not be confirmed.");
+  return confirmed;
 }

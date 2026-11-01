@@ -7,13 +7,14 @@ import {
   type AssistantChangeKind,
 } from "@orbyn/core";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { client, getToken } from "../../../lib/session";
-import { Button, ErrorNotice, Field, Input } from "../../../ui/kit";
+import { client, getSessionVersion } from "../../../lib/session";
+import { Button, ErrorNotice, Field, Input, useConfirm } from "../../../ui/kit";
+import { useOwner, useOwned } from "../hooks";
 import { Check, More } from "../parts";
 import { CHANGE_KINDS, uuid } from "../words";
 
 /** Review the schedule, limits and optional permissions together, once. */
-export function RoutineSetup({
+function RoutineSetupBody({
   input,
   ruleLabel,
   onBack,
@@ -30,19 +31,48 @@ export function RoutineSetup({
   onUncertain: (value: boolean) => void;
   onCheck: () => void;
 }) {
+  const owned = useOwned();
+  const confirm = useConfirm();
   const [store] = useState(
-    () => new RoutineSetupStore(client, input, uuid, getToken),
+    () => new RoutineSetupStore(client, input, uuid, getSessionVersion),
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const initialLimits = useRef(JSON.stringify(state.runLimits)).current;
+  const closing = useRef(false);
+  const back = async () => {
+    if (!owned() || closing.current || state.saving || state.uncertain) return;
+    closing.current = true;
+    try {
+      const dirty =
+        state.selected.length > 0 ||
+        JSON.stringify(state.runLimits) !== initialLimits;
+      if (
+        dirty &&
+        !(await confirm({
+          title: "Leave this setup review?",
+          body: "Your schedule stays in the form. Unsaved permission and work-limit choices will be discarded.",
+          action: "Back to schedule",
+        }))
+      )
+        return;
+      if (owned()) onBack();
+    } finally {
+      closing.current = false;
+    }
+  };
   useEffect(() => {
     void store.load();
     return () => store.dispose();
   }, [store]);
-  useEffect(() => onBusy(state.saving), [state.saving, onBusy]);
-  useEffect(() => onUncertain(state.uncertain), [state.uncertain, onUncertain]);
+  useEffect(() => {
+    if (owned()) onBusy(state.saving);
+  }, [state.saving, onBusy]);
+  useEffect(() => {
+    if (owned()) onUncertain(state.uncertain);
+  }, [state.uncertain, onUncertain]);
   const reported = useRef(false);
   useEffect(() => {
-    if (state.result && !reported.current) {
+    if (owned() && state.result && !reported.current) {
       reported.current = true;
       onSaved();
     }
@@ -166,15 +196,15 @@ export function RoutineSetup({
         </>
       )}
       <div className="agents-buttons agents-end">
-        <Button variant="ghost" disabled={frozen} onClick={onBack}>
+        <Button variant="ghost" disabled={frozen} onClick={() => void back()}>
           Back to schedule
         </Button>
         {!state.context && !state.loading && (
           <Button onClick={() => void store.load()}>Reload permissions</Button>
         )}
         {state.uncertain && (
-          <Button disabled={state.saving} onClick={onCheck}>
-            Close and check Upcoming
+          <Button disabled={state.saving} onClick={() => owned() && onCheck()}>
+            Check Upcoming
           </Button>
         )}
         <Button
@@ -191,5 +221,15 @@ export function RoutineSetup({
         </Button>
       </div>
     </section>
+  );
+}
+
+export function RoutineSetup(props: Parameters<typeof RoutineSetupBody>[0]) {
+  const owner = useOwner();
+  return (
+    <RoutineSetupBody
+      key={`${owner}:${JSON.stringify(props.input)}`}
+      {...props}
+    />
   );
 }

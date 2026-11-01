@@ -19,10 +19,13 @@ Daily brief and Study. The consolidated runtime checks and all seven required ch
 have passed. Final all-route visual sweeps and the
 explicit remaining permission/provider limits are separate from this checkpoint.
 
-Not built, and showing "This screen hasn't been rebuilt yet": Assistant, Background,
-Overnight, Review, Teams, Booking, Admin, Settings, Developers, OAuth consent and public
-booking pages. `web/src/screens/agents-shared` holds an unfinished start on the Agents
-screens that nothing imports yet.
+Agents implementation and scoped qualification are complete: Assistant, Background,
+Overnight and Review now use the shared conversation, decision, character and
+settings components. Scoped runtime evidence is recorded below, including the rollout-off chat fallback.
+All seven required checkpoint source/build gates passed. Settings is next.
+
+Not built, and showing "This screen hasn't been rebuilt yet": Teams, Booking,
+Admin, Settings, Developers, OAuth consent and public booking pages.
 
 ## How to run
 
@@ -399,3 +402,107 @@ sent no document PUT and preserved the server baseline, then explicit Restore
 saved the exact tree, title, IDs, metadata and agenda date. The original downloaded
 file remained unchanged; the exact owned fixture was removed after readback.
 The Gone, review-offer and restored-page screenshots were inspected.
+
+### Agents foundation in progress
+
+Library, Brief and Study were checkpointed locally in `dd50114d`. The seven
+required source gates passed, with the final evidence-only document update checked
+again for formatting and local links. This is a local commit; it was not pushed,
+submitted for review or deployed. The shared editor/stream changes still require
+a new full guarded backend qualification before the whole rebuild is complete.
+
+Stage 2 now owns the existing shared Agents components before route integration.
+Account ownership uses session generations, stream reconnects trigger catch-up,
+and live/foreground refresh bursts are coalesced. Ready characters and previews
+remain still, with bounded greetings/completion motion and no hidden-tab frames.
+Identity, budget and schedule forms retain failed drafts and confirm dirty close
+or reload; outcome and routine controls are being integrated against their existing
+revision and request-identity contracts. These are implementation changes in
+progress, not browser or model-execution qualification. No provider was configured.
+
+The initial Review route check passed 28/28 with no browser errors. The named
+member's inbox was read from the real API; intercepted exact-ID proposals then
+qualified full before/after content, partial selection excluding stale changes,
+all-mode stale refusal, decline confirmation/Cancel, a lost committed receipt,
+failed-refresh retention and access-revocation clearing. It inspected light desktop
+and dark phone layouts, including long multilingual content and 44px decision
+controls. The synthetic writes never reached the server. Real proposal application
+is not qualified by that receipt.
+
+Source integration also caught unsupported generic idempotency keys on assistant
+endpoints before runtime qualification. Existing backend policy allows keys only
+on its explicit route list. Handoff now sends its initial request without such a
+key; an ambiguous result can only read and match the saved handoff's source
+revision, instruction, title and lanes. No blind resend is offered. Night and
+Assistant owners are applying their existing domain receipt/revision contracts;
+no backend idempotency policy was expanded.
+
+The shared settings check passed 20/20. A real named-member identity write and UI
+restoration preserved the original persona and complete appearance; final API
+readback confirmed restoration. A synthetically refused save retained its draft,
+dirty-close cancellation kept the editor open, invalid timezone input sent no
+schedule write, and the ready character preview scheduled no idle frames. Phone
+controls and layout were inspected. The local server has conversation rollout off;
+notification preferences are now capability-gated so the independent pause controls
+remain usable. No rollout flag or provider configuration was changed.
+
+Night controls passed 87/87 against exact synthetic fixtures, with real named-member,
+profile and latest-night reads recorded separately. Coverage includes selected
+keep/undo, bulk decision tokens, question/free-answer/approval identities, stale
+preflight refusal, unknown-result read-only checks, exact page-cancellation
+reconciliation, post-save refresh failure, revocation, full evidence and history
+expansion. Long dark-phone results remained contained and visible controls met
+44px targets. Synthetic decisions never reached the server; model/worker execution
+remains unqualified.
+
+Real paused-goal CRUD passed 18/18: UI create, API readback, retained fields after a
+refused conditional edit, successful edit, deletion cancellation, exact deletion
+and final absence verification. The fresh personal goal stayed paused with no
+project or plan-page association. Existing goals remained present. The exact
+owned test record was removed; no execution was started.
+
+All four Agents route families and their shared components passed combined web
+no-emit typechecking before the next runtime correction. Real-server inspection
+then identified the personal/saved-chat controller's assumption that conversation
+rollout is enabled. The legacy chat API fallback is implemented and verified below; canonical
+conversation links report their unavailable capability honestly when rollout is off.
+
+The paused-routine UI check reproduced a backend revision defect. Native setup
+saved the routine, wrote its run limits (advancing the row revision), then returned
+the earlier snapshot. Setup now rereads the final owner-scoped row within the
+same transaction after all writes and receipt insertion; an unexpectedly missing
+row fails the transaction. This narrow backend need was reported before editing.
+The owning nine-test suite passes, including current response/list revision,
+conditional follow-on update, atomic permission behavior and request replay. The
+first paused test routine was verified unchanged and removed. The successful fresh UI rerun is recorded below. No schema, provider
+configuration or rollout flag changed.
+
+The clean paused-routine rerun passed 68/68 with zero browser errors. It covered
+native setup with exact current revision, a retained draft after confirmed edit
+failure, successful edit, saved timezone/future occurrence/pause preservation,
+history/policy reads and exact UI deletion. New checks reproduced then verified
+fixes for a policy callback render loop and nested Escape propagation. Stable,
+idempotent dirty callbacks stop the loop; the shared dialog keeps cancellation
+local. Both policy editors now offer confirmed local discard without sending a
+write or clearing uncertain saves. Cancelled discard and dirty Escape preserve
+the panel, explicit discard restores the baseline, and saved policies remain
+unchanged. The exact owned routine was removed; no grants or work were started.
+The owning backend setup suite remains 9/9.
+
+Assistant's seven-part runtime run passed 322/323 with zero browser errors, no
+forwarded model/work mutations and unchanged source throughout. It covers legacy
+personal/task/project/saved chat when conversation rollout is off, all six deep-link
+forms, independent drafts, waiting decisions, visible-only acknowledgment, account
+switch ownership and unknown-result recovery. Failed sends retain the original
+prompt and new typing without clipping; uncertain goal/project creation cannot
+blindly retry. Canonical conversation APIs were not called in the rollout-off
+cases. Real account/capability reads are recorded separately from synthetic work.
+
+The sole initial failure measured the reading anchor before the browser scrolled
+the Earlier messages button into view. The corrected focused history check passed
+22/22, measuring immediately before the actual pointer action with the unchanged
+three-pixel tolerance: the same entry stayed at a 93px offset after prepend. No
+public scrolling source changed to satisfy that correction. These are an assembled
+full-run and focused receipt, not a claimed clean rerun of all seven parts. All seven frozen-candidate checkpoint gates passed: formatting, workspace types,
+code organization, project docs, GitHub helper tests, web build and week-scene tests.
+External model/worker execution remains unqualified and provider configuration is unchanged.

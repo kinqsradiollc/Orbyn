@@ -1,5 +1,5 @@
 import type { AssistantBudgetView } from "@orbyn/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { client } from "../../lib/session";
 import {
   Button,
@@ -8,6 +8,7 @@ import {
   Field,
   Input,
   Loading,
+  useConfirm,
 } from "../../ui/kit";
 import { useOwned, LANE_NAME, type Lane } from "./hooks";
 import { More } from "./parts";
@@ -33,11 +34,16 @@ type Key = (typeof FIELDS)[number]["key"];
 export function LimitsDialog({
   lane,
   onClose,
+  onSaved,
 }: {
   lane: Lane;
   onClose: () => void;
+  onSaved?: () => void;
 }) {
   const owned = useOwned();
+  const confirm = useConfirm();
+  const pending = useRef(false);
+  const [confirming, setConfirming] = useState(false);
   const [budget, setBudget] = useState<AssistantBudgetView | null>(null);
   const [draft, setDraft] = useState<Record<Key, string> | null>(null);
   const [saving, setSaving] = useState(false);
@@ -46,6 +52,8 @@ export function LimitsDialog({
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
+    if (!owned()) return;
+    setError("");
     setBudget(null);
     setDraft(null);
     setLoadFailed(false);
@@ -74,8 +82,32 @@ export function LimitsDialog({
     !!budget &&
     !!draft &&
     FIELDS.some(({ key }) => draft[key] !== String(budget[key]));
+  const locked = saving || confirming;
+  const leave = async (reload = false) => {
+    if (!owned() || pending.current) return;
+    pending.current = true;
+    setConfirming(true);
+    try {
+      if (
+        dirty &&
+        !(await confirm({
+          title: reload ? "Reload limits?" : "Discard limit changes?",
+          body: "Your unsaved limits will be lost.",
+          action: reload ? "Reload" : "Discard",
+          danger: true,
+        }))
+      )
+        return;
+      if (!owned()) return;
+      if (reload) setAttempt((n) => n + 1);
+      else onClose();
+    } finally {
+      pending.current = false;
+      if (owned()) setConfirming(false);
+    }
+  };
   const save = async () => {
-    if (!budget || !draft || saving) return;
+    if (!owned() || !budget || !draft || !dirty || pending.current) return;
     const values = Object.fromEntries(
       FIELDS.map(({ key }) => [key, Number(draft[key])]),
     ) as Record<Key, number>;
@@ -90,6 +122,7 @@ export function LimitsDialog({
       setError("Check the limit values.");
       return;
     }
+    pending.current = true;
     setSaving(true);
     setError("");
     try {
@@ -97,6 +130,8 @@ export function LimitsDialog({
         revision: budget.revision,
         ...values,
       });
+      if (!owned()) return;
+      onSaved?.();
       if (owned()) onClose();
     } catch {
       if (owned())
@@ -104,25 +139,28 @@ export function LimitsDialog({
           "Couldn't save limits. Your draft is kept. Retry, or reload the latest limits.",
         );
     } finally {
+      pending.current = false;
       if (owned()) setSaving(false);
     }
   };
   return (
     <Dialog
       title={`${LANE_NAME[lane]} limits`}
-      onClose={() => {
-        if (!saving) onClose();
-      }}
+      onClose={() => void leave()}
       actions={
         draft && (
           <>
-            <Button variant="ghost" disabled={saving} onClick={onClose}>
+            <Button
+              variant="ghost"
+              disabled={locked}
+              onClick={() => void leave()}
+            >
               Cancel
             </Button>
             <Button
               variant="primary"
               busy={saving}
-              disabled={!dirty}
+              disabled={confirming || !dirty}
               onClick={() => void save()}
             >
               {saving ? "Saving…" : "Save limits"}
@@ -134,7 +172,7 @@ export function LimitsDialog({
       {loadFailed && (
         <ErrorNotice
           message="Couldn't load limits."
-          onRetry={() => setAttempt((n) => n + 1)}
+          onRetry={() => void leave(true)}
         />
       )}
       {!budget && !loadFailed && <Loading label="Loading limits" />}
@@ -144,17 +182,16 @@ export function LimitsDialog({
             {budget.estimated_tokens.toLocaleString()} /{" "}
             {budget.daily_token_limit.toLocaleString()} estimated tokens today ·{" "}
             {budget.starts_last_hour} / {budget.hourly_start_limit} starts this
-            hour
+            hour · {budget.active_reserved_tokens.toLocaleString()} tokens
+            reserved
           </p>
           {error && (
-            <ErrorNotice
-              message={error}
-              onRetry={
-                error.startsWith("Couldn't")
-                  ? () => setAttempt((n) => n + 1)
-                  : undefined
-              }
-            />
+            <>
+              <ErrorNotice message={error} />
+              <Button disabled={locked} onClick={() => void leave(true)}>
+                Reload latest limits
+              </Button>
+            </>
           )}
           {FIELDS.map(({ key, label, min, max }) => (
             <Field key={key} label={label}>
@@ -164,7 +201,7 @@ export function LimitsDialog({
                 min={min}
                 max={max}
                 value={draft[key]}
-                disabled={saving}
+                disabled={locked}
                 onChange={(event) =>
                   setDraft({ ...draft, [key]: event.target.value })
                 }

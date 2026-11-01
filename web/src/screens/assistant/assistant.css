@@ -1,0 +1,216 @@
+.assistant-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  width: min(100%, 1080px);
+  margin-inline: auto;
+  padding: 28px 32px;
+}
+.assistant-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.assistant-title {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.assistant-title h1 {
+  font-size: 28px;
+  line-height: 36px;
+}
+.assistant-title p {
+  overflow-wrap: anywhere;
+}
+.assistant-toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.assistant-toolbar > .field {
+  flex: 1 1 220px;
+  max-width: 420px;
+}
+.assistant-transcript-wrap {
+  position: relative;
+  min-width: 0;
+}
+.assistant-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-height: calc(100dvh - 390px);
+  min-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 8px 12px 24px;
+}
+.assistant-message {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.assistant-message-user {
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--r-lg);
+  padding: 16px 20px;
+  margin-left: min(10%, 72px);
+}
+.assistant-message:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.assistant-date {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  margin-block: 8px;
+}
+.assistant-empty {
+  padding: 24px 0;
+  display: grid;
+  gap: 16px;
+}
+.assistant-empty h2 {
+  font-size: 24px;
+  line-height: 32px;
+}
+.assistant-composer {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--raised);
+}
+.assistant-compose-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+.assistant-composer textarea {
+  min-height: 92px;
+  background: var(--bg);
+}
+.assistant-reply-target {
+  display: grid;
+  gap: 8px;
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+}
+.assistant-reply-target blockquote {
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.assistant-waiting,
+.assistant-reminder {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.assistant-selection {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px;
+  background: var(--accent-soft);
+  border-radius: var(--r-md);
+}
+.assistant-latest {
+  position: absolute;
+  right: 20px;
+  bottom: 8px;
+  box-shadow: var(--raised);
+}
+.assistant-records {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.assistant-records > li {
+  display: grid;
+  gap: 8px;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.assistant-records .btn {
+  white-space: normal;
+  text-align: start;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.assistant-selected {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.assistant-history {
+  max-height: 55dvh;
+  overflow: auto;
+  display: grid;
+  gap: 20px;
+}
+.assistant-workspace pre {
+  max-width: 100%;
+  overflow: auto;
+}
+@media (max-width: 650px) {
+  .assistant-workspace {
+    padding: 20px 12px;
+    gap: 16px;
+  }
+  .assistant-header {
+    gap: 12px;
+  }
+  .assistant-header > .agents-buttons {
+    width: 100%;
+  }
+  .assistant-header > .agents-buttons > .btn {
+    flex: 1 1 100px;
+  }
+  .assistant-header > .agents-buttons > .btn svg {
+    display: none;
+  }
+  .assistant-transcript {
+    min-height: 240px;
+    max-height: 52dvh;
+    padding-inline: 4px;
+  }
+  .assistant-message-user {
+    margin-left: 12px;
+    padding: 14px;
+  }
+  .assistant-composer {
+    padding: 14px;
+  }
+  .assistant-workspace .input {
+    font-size: 16px;
+  }
+  .assistant-compose-actions > .agents-buttons {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+  .assistant-workspace .btn {
+    min-height: 44px;
+  }
+}

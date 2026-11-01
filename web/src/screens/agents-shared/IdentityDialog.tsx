@@ -3,7 +3,7 @@ import {
   CHARACTER_PERSONAS,
   type AutomationAgentIdentity,
 } from "@orbyn/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { messageOf } from "../../lib/resource";
 import { client } from "../../lib/session";
 import {
@@ -24,12 +24,16 @@ import { useOwned, LANE_NAME, type Lane } from "./hooks";
 export function IdentityDialog({
   lane,
   onClose,
+  onSaved,
 }: {
   lane: Lane;
   onClose: () => void;
+  onSaved?: () => void;
 }) {
   const owned = useOwned();
   const confirm = useConfirm();
+  const pending = useRef(false);
+  const [confirming, setConfirming] = useState(false);
   const [identity, setIdentity] = useState<AutomationAgentIdentity | null>(
     null,
   );
@@ -50,6 +54,10 @@ export function IdentityDialog({
   };
   useEffect(() => {
     let live = true;
+    if (!owned()) return;
+    setIdentity(null);
+    setEditing(false);
+    setError("");
     setLoadFailed(false);
     void client.automationAgentIdentity(lane).then(
       (value) => {
@@ -71,22 +79,34 @@ export function IdentityDialog({
       persona !== identity.persona ||
       JSON.stringify(look) !==
         JSON.stringify(characterAppearance(identity.character)));
-  const close = async () => {
-    if (saving) return;
-    if (
-      dirty &&
-      !(await confirm({
-        title: "Discard changes?",
-        body: "Your unsaved name, style and character will be lost.",
-        action: "Discard",
-        danger: true,
-      }))
-    )
-      return;
-    onClose();
+  const locked = saving || confirming;
+  const leave = async (reload = false) => {
+    if (!owned() || pending.current) return;
+    pending.current = true;
+    setConfirming(true);
+    try {
+      if (
+        dirty &&
+        !(await confirm({
+          title: reload ? "Reload this agent?" : "Discard changes?",
+          body: "Your unsaved name, style and character will be lost.",
+          action: reload ? "Reload" : "Discard",
+          danger: true,
+        }))
+      )
+        return;
+      if (!owned()) return;
+      if (reload) setAttempt((n) => n + 1);
+      else onClose();
+    } finally {
+      pending.current = false;
+      if (owned()) setConfirming(false);
+    }
   };
   const save = async () => {
-    if (!identity || !dirty || !name.trim() || saving) return;
+    if (!owned() || !identity || !dirty || !name.trim() || pending.current)
+      return;
+    pending.current = true;
     setSaving(true);
     setError("");
     try {
@@ -98,11 +118,15 @@ export function IdentityDialog({
       });
       if (!owned()) return;
       adopt(value);
-      onClose();
+      onSaved?.();
+      if (owned()) onClose();
     } catch (failure) {
       if (owned())
-        setError(messageOf(failure, "Couldn't save this agent. Try again."));
+        setError(
+          messageOf(failure, "Couldn't save this agent. Your draft is kept."),
+        );
     } finally {
+      pending.current = false;
       if (owned()) setSaving(false);
     }
   };
@@ -111,21 +135,21 @@ export function IdentityDialog({
     <Dialog
       title={`${LANE_NAME[lane]} agent`}
       wide
-      onClose={() => void close()}
+      onClose={() => void leave()}
       actions={
         identity && (
           <>
             <Button
               variant="ghost"
-              disabled={saving}
-              onClick={() => void close()}
+              disabled={locked}
+              onClick={() => void leave()}
             >
               Cancel
             </Button>
             <Button
               variant="primary"
               busy={saving}
-              disabled={!dirty || !name.trim()}
+              disabled={confirming || !dirty || !name.trim()}
               onClick={() => void save()}
             >
               {saving ? "Saving…" : "Save"}
@@ -137,19 +161,26 @@ export function IdentityDialog({
       {loadFailed && (
         <ErrorNotice
           message="Couldn't load this agent."
-          onRetry={() => setAttempt((n) => n + 1)}
+          onRetry={() => void leave(true)}
         />
       )}
       {!identity && !loadFailed && <Loading label="Loading agent" />}
       {identity && (
         <>
-          {error && <ErrorNotice message={error} />}
+          {error && (
+            <>
+              <ErrorNotice message={error} />
+              <Button disabled={locked} onClick={() => void leave(true)}>
+                Reload latest agent
+              </Button>
+            </>
+          )}
           <Field label="Name">
             <Input
               required
               maxLength={40}
               value={name}
-              disabled={saving}
+              disabled={locked}
               dir="auto"
               onChange={(event) => setName(event.target.value)}
             />
@@ -159,7 +190,7 @@ export function IdentityDialog({
               rows={2}
               maxLength={1000}
               value={persona}
-              disabled={saving}
+              disabled={locked}
               dir="auto"
               placeholder="Warm, direct, and concise"
               onChange={(event) => setPersona(event.target.value)}
@@ -170,7 +201,7 @@ export function IdentityDialog({
               <button
                 key={preset.label}
                 type="button"
-                disabled={saving}
+                disabled={locked}
                 onClick={() => setPersona(preset.persona)}
               >
                 {preset.label}
@@ -181,7 +212,7 @@ export function IdentityDialog({
             <Character appearance={look} name={name} size={44} preview />
             <Button
               aria-expanded={editing}
-              disabled={saving}
+              disabled={locked}
               onClick={() => setEditing(!editing)}
             >
               {editing ? "Close character editor" : "Customize character"}
@@ -192,7 +223,7 @@ export function IdentityDialog({
               value={look}
               onChange={setLook}
               name={name}
-              disabled={saving}
+              disabled={locked}
             />
           )}
         </>

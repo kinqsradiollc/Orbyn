@@ -1,4 +1,5 @@
 import {
+  HttpError,
   routineQuietPolicy,
   type FindHit,
   type RoutineQuietCheck,
@@ -17,22 +18,26 @@ import {
   IconButton,
   Input,
   Segmented,
+  useConfirm,
 } from "../../../ui/kit";
-import { useOwned } from "../hooks";
+import { useOwned, useOwner } from "../hooks";
 import { Check } from "../parts";
 import { unavailable, uuid } from "../words";
 
 const keyOf = (source: RoutineQuietSource) => `${source.kind}:${source.id}`;
 
 /** Which specific sources let a verified unchanged result stay quiet. */
-export function QuietPolicyEditor({
+function QuietPolicyEditorBody({
   routineId,
   disabled,
+  onDirty,
 }: {
   routineId: string;
   disabled: boolean;
+  onDirty?: (dirty: boolean) => void;
 }) {
   const owned = useOwned();
+  const confirm = useConfirm();
   const ticket = useRef(0);
   const searches = useRef(0);
   const lock = useRef(false);
@@ -44,6 +49,13 @@ export function QuietPolicyEditor({
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [uncertain, setUncertain] = useState(false);
+  const uncertainRef = useRef(false);
+  const [confirming, setConfirming] = useState(false);
+  const currentPage = useRef(page);
+  currentPage.current = page;
+  const currentDraft = useRef(draft);
+  currentDraft.current = draft;
   const [saved, setSaved] = useState(false);
   const [stale, setStale] = useState(false);
   const [query, setQuery] = useState("");
@@ -68,6 +80,8 @@ export function QuietPolicyEditor({
     clearSearch();
   };
   const adopt = (value: RoutineQuietPolicyPage, replace: boolean) => {
+    if (value.routine_id !== routineId)
+      throw new Error("These settings belong to another routine.");
     setPage(value);
     if (value.visibility !== "available") {
       setDraft(null);
@@ -82,7 +96,7 @@ export function QuietPolicyEditor({
     setLabels((old) => (replace ? named : { ...old, ...named }));
   };
   const load = async () => {
-    if (!owned() || lock.current) return;
+    if (!owned() || lock.current || uncertain) return;
     lock.current = true;
     const mine = ++ticket.current;
     setBusy(true);
@@ -118,6 +132,9 @@ export function QuietPolicyEditor({
     !!draft &&
     page?.visibility === "available" &&
     JSON.stringify(draft) !== JSON.stringify(page.policy);
+  useEffect(() => {
+    if (owned()) onDirty?.(dirty || uncertain);
+  }, [dirty, uncertain, owned, onDirty]);
   const save = async (clearRestricted = false) => {
     if (!owned() || blocked.current || lock.current || stale || !page) return;
     if (clearRestricted ? page.visibility !== "restricted" : !dirty) return;
@@ -145,13 +162,30 @@ export function QuietPolicyEditor({
       });
       if (!owned() || mine !== ticket.current) return;
       adopt(value, true);
+      uncertainRef.current = false;
+      setUncertain(false);
       if (value.visibility === "available") setSaved(true);
     } catch (failure) {
       if (owned() && mine === ticket.current) {
         if (unavailable(failure)) erase();
-        if ((failure as { statusCode?: number }).statusCode === 409)
-          setStale(true);
-        setError(messageOf(failure, "Couldn't save quiet checks."));
+        const status = failure instanceof HttpError ? failure.statusCode : 0;
+        const unknown =
+          uncertain ||
+          !status ||
+          status >= 500 ||
+          status === 408 ||
+          status === 429;
+        uncertainRef.current = unknown;
+        setUncertain(unknown);
+        if (!unknown) setStale(true);
+        setError(
+          unknown
+            ? "Save status is unknown. Check and retry this same save; its reviewed sources are kept."
+            : messageOf(
+                failure,
+                "Couldn't save quiet checks. Refresh its saved revision before trying again.",
+              ),
+        );
       }
     } finally {
       if (mine === ticket.current) {
@@ -160,11 +194,60 @@ export function QuietPolicyEditor({
       }
     }
   };
+  const discard = async () => {
+    if (
+      !owned() ||
+      blocked.current ||
+      lock.current ||
+      busy ||
+      uncertainRef.current ||
+      !dirty ||
+      page?.visibility !== "available"
+    )
+      return;
+    const baseline = page,
+      buffer = draft,
+      mine = ticket.current;
+    lock.current = true;
+    setConfirming(true);
+    try {
+      if (
+        !(await confirm({
+          title: "Discard quiet-check changes?",
+          body: "Reset your unsaved quiet-check settings to the last confirmed version.",
+          action: "Discard changes",
+          danger: true,
+        }))
+      )
+        return;
+      if (
+        !owned() ||
+        blocked.current ||
+        uncertainRef.current ||
+        mine !== ticket.current ||
+        currentPage.current !== baseline ||
+        currentDraft.current !== buffer ||
+        baseline.routine_id !== routineId
+      )
+        return;
+      adopt(baseline, true);
+      clearSearch();
+      setSaved(false);
+      if (!stale) setError("");
+    } finally {
+      lock.current = false;
+      if (owned()) setConfirming(false);
+    }
+  };
   const search = async () => {
     if (
       !owned() ||
       blocked.current ||
+      lock.current ||
       busy ||
+      uncertain ||
+      stale ||
+      searching ||
       !query.trim() ||
       page?.visibility !== "available"
     )
@@ -190,11 +273,19 @@ export function QuietPolicyEditor({
     }
   };
   const edit = (value: RoutineQuietPolicy) => {
-    if (!owned() || blocked.current || busy) return;
+    if (
+      !owned() ||
+      blocked.current ||
+      lock.current ||
+      busy ||
+      uncertainRef.current ||
+      stale
+    )
+      return;
     setDraft(value);
     setSaved(false);
   };
-  const locked = busy || disabled || stale;
+  const locked = busy || confirming || disabled || stale || uncertain;
   return (
     <section className="agents-policy" aria-label="Quiet checks">
       <h3>Quiet checks</h3>
@@ -216,7 +307,10 @@ export function QuietPolicyEditor({
       {error && <ErrorNotice message={error} />}
       {(!page || stale) && (
         <div className="agents-buttons">
-          <Button disabled={busy} onClick={() => void load()}>
+          <Button
+            disabled={busy || confirming || uncertain}
+            onClick={() => void load()}
+          >
             {busy ? "Loading…" : "Reload quiet-check settings"}
           </Button>
         </div>
@@ -229,8 +323,13 @@ export function QuietPolicyEditor({
             You can turn off this check and choose accessible sources again.
           </p>
           <div className="agents-buttons">
-            <Button disabled={locked} onClick={() => void save(true)}>
-              Turn off and clear sources
+            <Button
+              disabled={busy || confirming || disabled || stale}
+              onClick={() => void save(true)}
+            >
+              {uncertain
+                ? "Check and retry same save"
+                : "Turn off and clear sources"}
             </Button>
           </div>
         </>
@@ -292,6 +391,7 @@ export function QuietPolicyEditor({
                 { value: "doc", label: "Pages" },
               ]}
               onChange={(value) => {
+                if (!owned() || locked) return;
                 setKind(value);
                 clearSearch(true);
               }}
@@ -327,7 +427,10 @@ export function QuietPolicyEditor({
           {hits.length > 0 && (
             <div className="agents-chips">
               {hits.map((hit) => {
-                const source = { kind: hit.type as "task" | "doc", id: hit.id };
+                const source: RoutineQuietSource = {
+                  kind: hit.type === "doc" ? "doc" : "task",
+                  id: hit.id,
+                };
                 const selected = draft.sources.some(
                   (one) => keyOf(one) === keyOf(source),
                 );
@@ -338,6 +441,13 @@ export function QuietPolicyEditor({
                     disabled={locked || selected || draft.sources.length >= 20}
                     dir="auto"
                     onClick={() => {
+                      if (
+                        !owned() ||
+                        locked ||
+                        draft.sources.length >= 20 ||
+                        selected
+                      )
+                        return;
                       setLabels((old) => ({
                         ...old,
                         [keyOf(source)]: hit.title,
@@ -352,8 +462,28 @@ export function QuietPolicyEditor({
             </div>
           )}
           <div className="agents-buttons">
-            <Button disabled={locked || !dirty} onClick={() => void save()}>
-              {busy ? "Saving…" : "Save quiet-check settings"}
+            <Button
+              disabled={
+                busy ||
+                confirming ||
+                disabled ||
+                stale ||
+                (!dirty && !uncertain)
+              }
+              onClick={() => void save()}
+            >
+              {busy
+                ? "Saving…"
+                : uncertain
+                  ? "Check and retry same save"
+                  : "Save quiet-check settings"}
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy || confirming || disabled || uncertain || !dirty}
+              onClick={() => void discard()}
+            >
+              Discard changes
             </Button>
             {saved && (
               <span className="agents-done small" role="status">
@@ -377,7 +507,7 @@ const STATUS: Record<RoutineQuietCheck["status"], string> = {
 };
 
 /** What one occurrence actually observed about its sources. */
-export function OccurrenceQuietChecks({
+function OccurrenceQuietChecksBody({
   routineId,
   occurrenceId,
   disabled,
@@ -406,6 +536,11 @@ export function OccurrenceQuietChecks({
     setFresh(false);
     try {
       const value = await client.routineQuietChecks(routineId, occurrenceId);
+      if (
+        value.routine_id !== routineId ||
+        value.occurrence_id !== occurrenceId
+      )
+        throw new Error("This evidence belongs to another occurrence.");
       if (owned() && mine === ticket.current) {
         setPage(value);
         setFresh(true);
@@ -508,5 +643,29 @@ export function OccurrenceQuietChecks({
         </div>
       ))}
     </div>
+  );
+}
+
+export function QuietPolicyEditor(
+  props: Parameters<typeof QuietPolicyEditorBody>[0],
+) {
+  const owner = useOwner();
+  return (
+    <QuietPolicyEditorBody
+      key={`${owner}:${props.routineId}:${"occurrenceId" in props ? props.occurrenceId : ""}`}
+      {...props}
+    />
+  );
+}
+
+export function OccurrenceQuietChecks(
+  props: Parameters<typeof OccurrenceQuietChecksBody>[0],
+) {
+  const owner = useOwner();
+  return (
+    <OccurrenceQuietChecksBody
+      key={`${owner}:${props.routineId}:${"occurrenceId" in props ? props.occurrenceId : ""}`}
+      {...props}
+    />
   );
 }

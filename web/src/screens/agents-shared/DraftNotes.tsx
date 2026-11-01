@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { messageOf } from "../../lib/resource";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, Pill } from "../../ui/kit";
-import { useOwned } from "./hooks";
+import { useOwned, useOwner } from "./hooks";
 import { More } from "./parts";
 
 const keyOf = (note: DraftNote, at: number) =>
@@ -17,12 +17,12 @@ const keyOf = (note: DraftNote, at: number) =>
   ]);
 
 /** Notes drafted by the assistant. Nothing is written until Keep note. */
-export function DraftNotes({
+function DraftNotesBody({
   notes,
   onKept,
 }: {
   notes: DraftNote[];
-  onKept?: (docId: string) => void;
+  onKept?: (docId: string) => void | Promise<void>;
 }) {
   const owned = useOwned();
   const running = useRef(false);
@@ -43,6 +43,7 @@ export function DraftNotes({
   } | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    if (!owned()) return;
     let live = true;
     if (!teamIds.length) {
       setTeams({ key: teamKey, names: {}, error: "" });
@@ -104,7 +105,15 @@ export function DraftNotes({
       );
       if (!owned()) return;
       setKept((all) => ({ ...all, [key]: doc.id }));
-      onKept?.(doc.id);
+      try {
+        await onKept?.(doc.id);
+      } catch (failure) {
+        if (owned())
+          setErrors((all) => ({
+            ...all,
+            [key]: messageOf(failure, "Note kept, but it couldn't be opened."),
+          }));
+      }
     } catch (failure) {
       if (owned())
         setErrors((all) => ({
@@ -157,7 +166,23 @@ export function DraftNotes({
                 <Button
                   variant="ghost"
                   disabled={busy}
-                  onClick={() => onKept(kept[key])}
+                  onClick={() => {
+                    if (owned())
+                      void Promise.resolve()
+                        .then(() => {
+                          if (owned()) return onKept(kept[key]);
+                        })
+                        .catch((failure) => {
+                          if (owned())
+                            setErrors((all) => ({
+                              ...all,
+                              [key]: messageOf(
+                                failure,
+                                "Couldn't open the kept note.",
+                              ),
+                            }));
+                        });
+                  }}
                 >
                   Open note
                 </Button>
@@ -179,4 +204,9 @@ export function DraftNotes({
       })}
     </div>
   );
+}
+
+export function DraftNotes(props: Parameters<typeof DraftNotesBody>[0]) {
+  const owner = useOwner();
+  return <DraftNotesBody key={owner} {...props} />;
 }
