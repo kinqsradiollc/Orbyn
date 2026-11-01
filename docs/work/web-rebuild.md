@@ -26,7 +26,8 @@ All seven required checkpoint source/build gates passed. This group is committed
 locally as `abc3cdd7`. Settings scoped qualification is complete, as recorded below.
 
 Not built, and showing "This screen hasn't been rebuilt yet": Teams, Booking,
-Admin, Developers, OAuth consent and public booking pages. Settings now has its
+OAuth consent and public booking pages. Admin and Developers are integrated locally
+with scoped Stage 4 qualification recorded below. Settings now has its
 modal and all six category implementations, including ChatGPT and legacy aliases.
 This stage has completed its scoped interaction checks and required checkpoint gates.
 External delivery/provider limits and the final whole-client checks remain open.
@@ -799,8 +800,136 @@ security/import happy paths are identified separately above.
 
 All seven frozen-candidate checkpoint gates passed: repository formatting,
 workspace types, code organization, project docs, GitHub helper tests, web build
-and all 11 week-scene tests. A second final-document receipt qualifies this
-record before the local Settings commit. Staged Admin/Developers/Teams/Booking/OAuth drafts remain private
+and all 11 week-scene tests. The final-document candidate passed the same seven
+gates and was committed locally as `f3830ad1`. Staged Admin/Developers/Teams/Booking/OAuth drafts remain private
 preparation, with integration and runtime qualification still outstanding. Shell
 parity and the final guarded backend suite remain open. No push, PR, merge,
 deployment or packaged-client cutover has occurred.
+
+## Stage 4 — Admin and Developers integration
+
+Entry checkpoint: `f3830ad1`, with a clean working tree before integration.
+Developers is now integrated and passes a web-only no-emit typecheck plus 114/114
+scoped browser checks. Real anonymous public catalog reads supplied all published
+metadata, nonlegacy tools and all six core setup variants. Synthetic fixtures
+covered first-load and refresh failures, filters, direct tool hashes, clipboard
+lifetimes, retained newer choices and disabled/empty states. No auth, provider,
+MCP execution or mutation was forwarded. Desktop/light, phone/dark and synthetic
+long-content screenshots were inspected; full-client visual qualification remains
+separate. The fixture records all nine catalog reads and unchanged source hashes.
+
+Admin has been integrated from its separate draft for compilation and review.
+The first web-only typecheck found two callback-narrowing errors and an omitted
+publishing draft ID binding. Those were corrected; the combined candidate now
+passes web-only no-emit checking. Review also found stale
+reconciliation proofs shared across unrelated profile/reset-link and
+save/suggestion operations. The corrected draft binds recovery to the specific
+admitted action and clears successful proofs. Targeted failing-before and corrected browser receipts are recorded below;
+neither source review nor the Developers receipt qualifies the remaining Admin
+flows. System/provider/publishing effects will remain fenced
+synthetic fixtures. No production/configuration/provider action is authorized.
+
+Stage 4 is a local implementation checkpoint. Teams/Booking/OAuth, shell parity,
+remaining cross-screen flows and the final guarded backend suite remain open. No push, PR,
+merge, deployment or packaged-client cutover occurred.
+
+### Admin qualification — reads, operation ownership and recovery
+
+The read-only batch passes 36/36: actual overview/accounts/teams/audit/usage/request
+and database-table metadata, mobile selector navigation, light/dark layouts and
+all 13 direct Admin routes denied for the real demo member without an Admin read.
+Only explicitly allowlisted database reads were forwarded. Earlier runs stopped
+in private helpers: transformed module discovery used the bounded Performance
+buffer, then restoring Admin while still on the denied Legal route triggered a
+correctly refused out-of-scope read. Both were corrected without broadening the
+read allowlist. Desktop Accounts and phone Accounts/Requests captures were inspected.
+
+Two targeted regressions failed before correction at their intended assertions:
+profile-then-reset 12/13, and save-then-suggestion 14/15. Neither sent a second
+operation. The combined corrected batch passes 24/24. The original Publisher also
+adopted its older Editor snapshot after a successful save; the identity-before
+fixture separately repaired that and its missing ID binding to reach the second
+bug. Distinct original, compile-only and monotonic-before source manifests are
+preserved privately, rather than claiming these are the same baseline.
+
+Publisher now validates exact draft ID, next revision, submitted content and
+requested outcome. Its immediate publish receipt is correctly scheduled, as the
+backend transaction specifies. JSON object key order is immaterial while array
+order remains significant. Newer authoritative snapshots wait for pending work;
+older snapshots cannot replace a confirmed save, and dirty/unknown buffers stay
+owned. The current candidate passes another web-only no-emit check. Broader
+publishing/action/image cases remain to be exercised.
+
+The main synthetic management batch passes 91/91: profile save/refusal/unknown
+reconciliation, role/session guards, one-time reset acknowledgment and clipboard
+failure, malformed receipts, changed-field runtime/SMTP forms, nested discard and
+pending confirmation races, stale model-control revisions and account-generation
+isolation. A held response from A→signed-out→A cannot repopulate an old selection.
+All mutations and effectful GETs were intercepted; this is not real SMTP/provider
+or management-effect qualification. The first combined run completed 39 checks
+before a native number-input helper stopped before dispatch; its synthetic
+post-acknowledgment overview reads also needed explicit fixtures. Corrected native
+selection replacement and those exact synthetic responses produced the clean run;
+no guard or body assertion was weakened.
+
+The remaining publishing/image/action, legal/retention/storage, team-management
+and table-detail batches have now passed, as recorded below. Stage 4 still needs
+all seven checkpoint gates and its local group commit. Stage 5 source drafts and Stage 6 shell
+foundation remain private preparation. The final whole-client audit/backend suite
+and all previously recorded parity gaps remain open. No publication or deployment.
+
+The scoped one-time receipt follow-up passes 23/23 after adding explicit Copied
+feedback. An explicit retry clears the prior clipboard error, successful copy
+retains the receipt, and acknowledgment remains disabled while copying. Feedback
+is bound to the current value/mounted account owner; dispatch rechecks that owner
+before touching the clipboard. The clipboard responses are synthetic, not an OS
+clipboard permission qualification. Web-only typecheck 6 passed on the formatted source including the dispatch-owner
+check; the final seven-check gate remains pending for this group.
+
+### Admin qualification — publishing, infrastructure and teams
+
+The complete publishing fixture passes 174/174: content saves, explicit suggestion
+adoption, scheduling/cancellation, release/unrelease, deletion/reset, stale
+revisions, exact receipt identity/content, unknown outcomes and newer readback
+races. A failing-before image check exposed an enabled release action while a
+crop was unapplied; release now stays disabled until that crop is applied or
+cancelled. The focused native image follow-up passes 37/37 with local PNG input,
+canvas crop/zoom/pan/rotation, download, invalid-file handling and accurate phone
+captures. Dark crop controls, dark image controls and the light image preview
+were inspected directly. These fixtures never publish or contact a provider.
+
+A failing-before operator test found that a second save resent a field already
+saved because its comparison baseline never advanced. Legal receipts now update
+the canonical read and each clean form baseline, while dirty, pending and unknown
+buffers stay owned. The focused corrected operator batch passes 13/13; the full
+operator/documents/retention/storage batch passes 56/56. It covers changed-only
+writes, refusal/retry, uncertain receipts without replay, full legal-source
+review, save versus explicit version publication, restoring shipped text,
+retention zero/changed/fixed policies, cancelled and confirmed sweeps, stored-file
+search and exact removal/readback. All management effects are intercepted.
+
+Team/database qualification passes 65/65: rename, refused changes, existing-account
+member addition, roles, last-owner refusal, removal, dirty navigation cancellation,
+exact team deletion, unknown outcomes and account-generation isolation. Database
+rows now use a dedicated renderer: every schema column remains identifiable,
+server masks stay visible, unexpected credential/object values remain masked,
+null differs from missing and record labels include the page offset. The separate
+database follow-up passes 24/24, including failed-page retry, backward paging and
+management links. No database row is edited by this screen.
+
+Earlier helper failures are retained privately: email SelectAll ran before a
+closed dialog released focus; a legal checkbox clicked beneath the sticky Search
+header; numeric and effective-disabled checks also needed native control handling.
+The corrected helpers verify current focus, exact resulting values and hit targets
+before dispatch, without weakening request/body/effect guards. Legal, Storage and
+expanded masked-row phone captures were inspected after proving their intended
+content is visible and contained at 375px. The earlier cropped/unrelated captures
+are not used as acceptance evidence. All seven frozen-candidate checkpoint checks passed: repository formatting,
+workspace types, code organization, project docs, GitHub helper tests, the web
+build and all 11 week-scene tests. This is a local checkpoint; the final whole-client
+qualification remains separate.
+
+Stage 5 full Teams/Booking/OAuth source and qualification tools remain private
+preparation. Stage 6 shell and Stage 7 parity work, all-route/theme/phone audit and
+the guarded full backend suite remain open. No source has been pushed, merged,
+deployed or cut over from desktop.

@@ -1,0 +1,311 @@
+.developers-main {
+  width: min(100%, 1040px);
+  margin-inline: auto;
+  padding: 32px 24px 56px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-wrap: anywhere;
+}
+.developers-main section {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-block: 12px 24px;
+  border-bottom: 1px solid var(--line-soft);
+  scroll-margin-top: 24px;
+}
+.developers-main h1 {
+  font-size: 24px;
+  line-height: 1.16;
+  letter-spacing: -0.025em;
+}
+.developers-main h2 {
+  font-size: 24px;
+  line-height: 1.3;
+}
+.developers-main h3 {
+  font-size: 18px;
+  line-height: 1.4;
+}
+.developers-main p,
+.developers-main li,
+.developers-main dd {
+  line-height: 1.6;
+}
+.developers-main a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.developers-main .btn {
+  white-space: normal;
+  text-align: start;
+  flex-shrink: 0;
+}
+.developers-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  max-width: 760px;
+}
+.developers-jump,
+.developers-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+.developers-jump a,
+.developers-links a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.developers-catalog-state,
+.developers-availability,
+.developers-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.developers-catalog-state {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.developers-availability {
+  justify-content: flex-start;
+}
+.developers-availability > span:last-child {
+  flex: 1 1 260px;
+}
+.developers-endpoint {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: 16px;
+  background: var(--sunken);
+  border-radius: var(--r-md);
+}
+.developers-endpoint > code {
+  min-width: 0;
+  flex: 1 1 300px;
+  align-self: center;
+}
+.developers-copy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  min-width: 0;
+}
+.developers-copy [role="status"] {
+  max-width: 32ch;
+  color: var(--text-soft);
+}
+.developers-code {
+  margin: 0;
+  padding: 16px;
+  max-width: 100%;
+  min-width: 0;
+  background: var(--sunken);
+  border-radius: var(--r-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.6;
+  user-select: text;
+}
+.developers-main code {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.developers-main summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding-block: 10px;
+  line-height: 1.6;
+  font-weight: 500;
+}
+.developers-main details > :not(summary) {
+  margin-block-start: 12px;
+}
+.developers-main details:focus-within {
+  border-radius: var(--r-sm);
+}
+.developers-main summary:focus-visible,
+.developers-main a:focus-visible,
+.developers-code:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--r-sm);
+}
+.developers-verbatim {
+  white-space: pre-wrap;
+}
+.developers-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(2, minmax(160px, 1fr));
+  gap: 14px;
+}
+.developers-toolset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-block: 12px;
+  min-width: 0;
+}
+.developers-tool {
+  border-top: 1px solid var(--line-soft);
+  scroll-margin-top: 24px;
+}
+.developers-tool > summary {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-block: 14px;
+}
+.developers-tool > summary::before {
+  content: "+";
+  font-weight: 500;
+  color: var(--text-muted);
+  width: 16px;
+  flex: none;
+}
+.developers-tool[open] > summary::before {
+  content: "−";
+}
+.developers-tool-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+}
+.developers-tool-name > span {
+  font-size: 13px;
+  color: var(--text-soft);
+  font-weight: 400;
+}
+.developers-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+}
+.developers-tags .pill {
+  white-space: normal;
+  text-align: start;
+}
+.developers-tool-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 0 16px 28px;
+}
+.developers-tool-body > a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+}
+.developers-definitions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.developers-definitions > div {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(0, 3fr);
+  gap: 12px;
+}
+.developers-definitions dt {
+  font-weight: 500;
+}
+.developers-definitions dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-soft);
+}
+.developers-limits {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.developers-limits > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.developers-limits dt {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.developers-limits dd {
+  margin: 0;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.developers-reference-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.developers-reference-list > li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.developers-change {
+  margin-block: 16px;
+}
+.developers-main ul:not(.developers-reference-list) {
+  padding-inline-start: 20px;
+}
+@media (max-width: 700px) {
+  .developers-main {
+    padding: 24px 16px 40px;
+    gap: 20px;
+  }
+  .developers-main h1 {
+    font-size: 24px;
+  }
+  .developers-main h2 {
+    font-size: 18px;
+  }
+  .developers-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .developers-tool > summary {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .developers-tool-name {
+    flex-basis: calc(100% - 24px);
+  }
+  .developers-tags {
+    padding-inline-start: 24px;
+    justify-content: flex-start;
+  }
+  .developers-limits {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .developers-definitions > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
