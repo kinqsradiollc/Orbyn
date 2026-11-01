@@ -12,10 +12,10 @@ import {
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, Input, useToast } from "../../ui/kit";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 import { FieldsPanel } from "../views/Fields";
 import { Milestones } from "./Milestones";
 import { LinkedHere_, Related } from "./Related";
@@ -136,6 +136,8 @@ export function Home({
   uploadBusy: boolean;
   linkDraft: { current: boolean };
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const toast = useToast();
   const [addingLink, setAddingLink] = useState(false);
   const [url, setUrl] = useState("");

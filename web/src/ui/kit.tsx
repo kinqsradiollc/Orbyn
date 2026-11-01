@@ -1,3 +1,10 @@
+import {
+  useRouteScope,
+  useRouteActivity,
+  RouteScopeProvider,
+  type RouteScope,
+} from "../lib/route-scope";
+import { onToken } from "../lib/session";
 import { X } from "lucide-react";
 import {
   createContext,
@@ -11,6 +18,7 @@ import {
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
+  type RefObject,
   type Ref,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
@@ -140,6 +148,8 @@ export function Pill({
   );
 }
 
+export type DialogPortalLease = { retire(): void; restore(): void };
+
 export function Dialog({
   title,
   onClose,
@@ -147,6 +157,8 @@ export function Dialog({
   actions,
   children,
   returnFocusTo,
+  portalManaged = false,
+  portalLease,
 }: {
   title: string;
   onClose: () => void;
@@ -154,12 +166,32 @@ export function Dialog({
   actions?: ReactNode;
   children: ReactNode;
   returnFocusTo?: HTMLElement | null;
+  /** The single confirmation owner releases its lease synchronously at a decision. */
+  portalManaged?: boolean;
+  /** Domain owner may retire only after a confirmed result authorizes close-and-navigate. */
+  portalLease?: RefObject<DialogPortalLease | null>;
 }) {
+  const scope = useRouteScope();
+  const activity = useRouteActivity();
+  const allowed = () =>
+    !scope || (scope.getSnapshot().visible && scope.getSnapshot().focused);
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useLayoutEffect(() => {
     const dialog = ref.current;
-    if (!dialog) return;
+    if (!dialog || !allowed()) return;
+    let release = portalManaged ? undefined : scope?.registerPortal?.(),
+      live = true;
+    const handle: DialogPortalLease = {
+      retire: () => {
+        release?.();
+        release = undefined;
+      },
+      restore: () => {
+        if (live && allowed() && !release) release = scope?.registerPortal?.();
+      },
+    };
+    if (portalLease) portalLease.current = handle;
     const opener = returnFocusTo ?? document.activeElement;
     const openedAt = location.href;
     if (!dialog.open) dialog.showModal();
@@ -168,7 +200,12 @@ export function Dialog({
         dialog.contains(document.activeElement) ||
         document.activeElement === document.body;
       if (dialog.open) dialog.close();
+      live = false;
+      handle.retire();
+      if (portalLease && portalLease.current === handle)
+        portalLease.current = null;
       if (
+        allowed() &&
         ownedFocus &&
         opener instanceof HTMLElement &&
         opener.isConnected &&
@@ -179,6 +216,7 @@ export function Dialog({
         if (document.activeElement !== opener)
           requestAnimationFrame(() => {
             if (
+              allowed() &&
               location.href === openedAt &&
               opener.isConnected &&
               !opener.matches(":disabled") &&
@@ -190,7 +228,7 @@ export function Dialog({
           });
       }
     };
-  }, []);
+  }, [scope, activity.visible, activity.focused, portalManaged, portalLease]);
   return (
     <dialog
       ref={ref}
@@ -199,7 +237,7 @@ export function Dialog({
       onCancel={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        if (allowed()) onClose();
       }}
     >
       <div className="dialog-body">
@@ -226,19 +264,35 @@ export function Menu({
   trigger: (open: () => void, expanded: boolean) => ReactNode;
   children: ReactNode | ((close: () => void) => ReactNode);
 }) {
+  const scope = useRouteScope();
+  const activity = useRouteActivity();
+  const allowed = () =>
+    !scope || (scope.getSnapshot().visible && scope.getSnapshot().focused);
   const [opener, setOpener] = useState<HTMLElement | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  const portal = useRef<(() => void) | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!opener || !allowed()) return;
+    const release = scope?.registerPortal?.();
+    portal.current = release;
+    return () => {
+      release?.();
+      if (portal.current === release) portal.current = undefined;
+    };
+  }, [scope, opener, activity.visible, activity.focused]);
   const close = useCallback(() => {
-    opener?.focus();
+    portal.current?.();
+    portal.current = undefined;
+    if (allowed() && !opener?.closest("[inert]")) opener?.focus();
     setOpener(null);
-  }, [opener]);
+  }, [opener, activity.visible, activity.focused]);
   const open = useCallback(() => {
-    setOpener(document.activeElement as HTMLElement);
-  }, []);
+    if (allowed()) setOpener(document.activeElement as HTMLElement);
+  }, [scope]);
 
   useLayoutEffect(() => {
     const menu = box.current;
-    if (!menu || !opener) return;
+    if (!menu || !opener || !allowed()) return;
     const at = opener.getBoundingClientRect();
     const size = menu.getBoundingClientRect();
     const left = Math.max(8, Math.min(at.left, innerWidth - size.width - 8));
@@ -249,11 +303,21 @@ export function Menu({
   }, [opener]);
 
   useEffect(() => {
-    if (!opener) return;
+    if (!opener || !allowed()) return;
     const outside = (event: PointerEvent) => {
       if (!box.current?.contains(event.target as Node)) setOpener(null);
     };
     const key = (event: KeyboardEvent) => {
+      const activeDialog =
+        document.activeElement instanceof Element
+          ? document.activeElement.closest("dialog[open]")
+          : null;
+      if (
+        !box.current?.contains(document.activeElement) ||
+        !allowed() ||
+        (activeDialog && !activeDialog.contains(box.current))
+      )
+        return;
       if (event.key === "Escape") close();
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
       const items = [...(box.current?.querySelectorAll("button") ?? [])];
@@ -268,12 +332,14 @@ export function Menu({
       document.removeEventListener("pointerdown", outside);
       document.removeEventListener("keydown", key);
     };
-  }, [opener, close]);
+  }, [opener, close, activity.visible, activity.focused]);
 
   return (
     <>
       {trigger(open, !!opener)}
       {opener &&
+        activity.visible &&
+        activity.focused &&
         createPortal(
           <div ref={box} className="menu" role="menu" aria-label={label}>
             {typeof children === "function" ? children(close) : children}
@@ -384,56 +450,90 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 type Ask = { title: string; body?: string; action: string; danger?: boolean };
-const ConfirmContext = createContext<(ask: Ask) => Promise<boolean>>(
+type ScopedAsk = Ask & { owner?: RouteScope | null };
+const ConfirmContext = createContext<(ask: ScopedAsk) => Promise<boolean>>(
   async () => false,
 );
-export const useConfirm = () => useContext(ConfirmContext);
+export function useConfirm() {
+  const ask = useContext(ConfirmContext),
+    scope = useRouteScope();
+  return useCallback(
+    (next: Ask) =>
+      scope && (!scope.getSnapshot().visible || !scope.getSnapshot().focused)
+        ? Promise.resolve(false)
+        : ask({ ...next, owner: scope }),
+    [ask, scope],
+  );
+}
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [ask, setAsk] = useState<
-    (Ask & { done: (ok: boolean) => void; opener: HTMLElement | null }) | null
+    | (ScopedAsk & { done: (ok: boolean) => void; opener: HTMLElement | null })
+    | null
   >(null);
+  const active = useRef<typeof ask>(null);
   const confirm = useCallback(
-    (next: Ask) =>
-      new Promise<boolean>((resolve) =>
-        setAsk({
+    (next: ScopedAsk) =>
+      new Promise<boolean>((resolve) => {
+        if (active.current) {
+          resolve(false);
+          return;
+        }
+        const release = next.owner?.registerPortal?.();
+        const entry = {
           ...next,
           opener:
             document.activeElement instanceof HTMLElement
               ? document.activeElement
               : null,
-          done: (ok) => {
+          done: (ok: boolean) => {
+            if (active.current !== entry) return;
+            active.current = null;
+            release?.();
             setAsk(null);
             resolve(ok);
           },
-        }),
-      ),
+        };
+        active.current = entry;
+        setAsk(entry);
+      }),
     [],
   );
+  useEffect(() => onToken(() => active.current?.done(false)), []);
+  useEffect(
+    () => () => {
+      active.current?.done(false);
+    },
+    [],
+  );
+
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
       {ask && (
-        <Dialog
-          title={ask.title}
-          returnFocusTo={ask.opener}
-          onClose={() => ask.done(false)}
-          actions={
-            <>
-              <Button variant="ghost" onClick={() => ask.done(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant={ask.danger ? "danger" : "primary"}
-                onClick={() => ask.done(true)}
-              >
-                {ask.action}
-              </Button>
-            </>
-          }
-        >
-          {ask.body && <p className="muted">{ask.body}</p>}
-        </Dialog>
+        <RouteScopeProvider value={ask.owner ?? null}>
+          <Dialog
+            portalManaged
+            title={ask.title}
+            returnFocusTo={ask.opener}
+            onClose={() => ask.done(false)}
+            actions={
+              <>
+                <Button variant="ghost" onClick={() => ask.done(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant={ask.danger ? "danger" : "primary"}
+                  onClick={() => ask.done(true)}
+                >
+                  {ask.action}
+                </Button>
+              </>
+            }
+          >
+            {ask.body && <p className="muted">{ask.body}</p>}
+          </Dialog>
+        </RouteScopeProvider>
       )}
     </ConfirmContext.Provider>
   );

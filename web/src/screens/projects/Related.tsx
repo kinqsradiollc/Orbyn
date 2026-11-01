@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { messageOf, useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import {
   Button,
@@ -33,7 +33,7 @@ import {
   SelectBox,
   useToast,
 } from "../../ui/kit";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 
 const KIND_WORDS: Record<ConnectionNode["kind"], string> = {
   doc: "Page",
@@ -47,7 +47,12 @@ const KIND_WORDS: Record<ConnectionNode["kind"], string> = {
 const openable = (node: ConnectionNode) =>
   node.depth > 0 && node.kind !== "person" && node.kind !== "date";
 
-const openNode = (node: ConnectionNode, beside = false) => {
+const openNode = (
+  navigate: ReturnType<typeof useNavigate>,
+  tasks: ReturnType<typeof useTasks>,
+  node: ConnectionNode,
+  beside = false,
+) => {
   if (!openable(node)) return;
   const kind =
     node.kind === "doc" ? "doc" : node.kind === "project" ? "project" : "task";
@@ -57,6 +62,8 @@ const openNode = (node: ConnectionNode, beside = false) => {
 
 /** One project's neighbours in space: drag or arrow keys orbit, no idle spin. */
 function Space({ map, wide }: { map: ConnectionMap; wide?: boolean }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const [view, setView] = useState<SpaceView>(INITIAL_SPACE_VIEW);
   const [selected, setSelected] = useState(
     map.nodes.find((n) => n.depth === 0)?.key ?? map.nodes[0]?.key ?? "",
@@ -189,13 +196,13 @@ function Space({ map, wide }: { map: ConnectionMap; wide?: boolean }) {
               aria-label={`${KIND_WORDS[n.kind]}: ${n.title}`}
               onClick={(e) => {
                 if (moved.current) return;
-                if (e.metaKey || e.ctrlKey) openNode(n);
+                if (e.metaKey || e.ctrlKey) openNode(navigate, tasks, n);
                 else setSelected(n.key);
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  openNode(n);
+                  openNode(navigate, tasks, n);
                 }
                 if (e.key === " ") {
                   e.preventDefault();
@@ -237,8 +244,10 @@ function Space({ map, wide }: { map: ConnectionMap; wide?: boolean }) {
           </div>
           {openable(node) && (
             <div className="pj-row-wrap">
-              <Button onClick={() => openNode(node, true)}>Preview</Button>
-              <Button onClick={() => openNode(node)}>
+              <Button onClick={() => openNode(navigate, tasks, node, true)}>
+                Preview
+              </Button>
+              <Button onClick={() => openNode(navigate, tasks, node)}>
                 Open <ArrowUpRight aria-hidden="true" />
               </Button>
             </div>
@@ -251,6 +260,8 @@ function Space({ map, wide }: { map: ConnectionMap; wide?: boolean }) {
 
 /** What this project is linked to, as a list or a map. Unreadable things are never on it. */
 export function Related({ id, revision }: { id: string; revision: string }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const [depth, setDepth] = useState<1 | 2>(1);
   const [map, setMap] = useState(false);
   const [big, setBig] = useState(false);
@@ -306,7 +317,10 @@ export function Related({ id, revision }: { id: string; revision: string }) {
         <ul className="pj-related">
           {nodes.slice(0, 12).map((node) => (
             <li key={node.key}>
-              <button disabled={!openable(node)} onClick={() => openNode(node)}>
+              <button
+                disabled={!openable(node)}
+                onClick={() => openNode(navigate, tasks, node)}
+              >
                 <small>{KIND_WORDS[node.kind]}</small>
                 <span dir="auto">{node.title}</span>
               </button>
@@ -324,35 +338,40 @@ export function Related({ id, revision }: { id: string; revision: string }) {
   );
 }
 
-const LinkRow = ({ entry }: { entry: LinkedHere }) => (
-  <button
-    onClick={() =>
-      entry.kind === "doc"
-        ? navigate(
-            `/app/doc/${entry.id}${entry.block_id ? `#${encodeURIComponent(entry.block_id)}` : ""}`,
-          )
-        : tasks.open(entry.id)
-    }
-  >
-    <FileText aria-hidden="true" />
-    <span className="pj-grow">
-      <span dir="auto">{entry.title}</span>
-      {entry.hint && <small dir="auto">{entry.hint}</small>}
-      {(entry.context.before ||
-        entry.context.linked ||
-        entry.context.after) && (
-        <small dir="auto">
-          {entry.context.before}
-          {entry.context.linked && <b>{entry.context.linked}</b>}
-          {entry.context.after}
-        </small>
-      )}
-    </span>
-  </button>
-);
+function LinkRow({ entry }: { entry: LinkedHere }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
+  return (
+    <button
+      onClick={() =>
+        entry.kind === "doc"
+          ? navigate(
+              `/app/doc/${entry.id}${entry.block_id ? `#${encodeURIComponent(entry.block_id)}` : ""}`,
+            )
+          : tasks.open(entry.id)
+      }
+    >
+      <FileText aria-hidden="true" />
+      <span className="pj-grow">
+        <span dir="auto">{entry.title}</span>
+        {entry.hint && <small dir="auto">{entry.hint}</small>}
+        {(entry.context.before ||
+          entry.context.linked ||
+          entry.context.after) && (
+          <small dir="auto">
+            {entry.context.before}
+            {entry.context.linked && <b>{entry.context.linked}</b>}
+            {entry.context.after}
+          </small>
+        )}
+      </span>
+    </button>
+  );
+}
 
 /** Pages and tasks that link here, and unlinked mentions you can turn into links. */
 export function LinkedHere_({ id }: { id: string }) {
+  const navigate = useNavigate();
   const toast = useToast();
   const [round, setRound] = useState(0);
   const [open, setOpen] = useState(false);

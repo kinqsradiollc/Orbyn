@@ -1,4 +1,6 @@
 .today {
+  container-name: today-pane;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -1080,6 +1082,50 @@
     padding: 16px 16px 96px;
     gap: 20px;
   }
+  .today-top {
+    align-items: flex-start;
+  }
+  .today-stats dd {
+    font-size: 18px;
+    line-height: 24px;
+  }
+  .today-plan-row {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+  }
+  .today-plan-time {
+    grid-column: 1 / -1;
+    padding: 0;
+  }
+  .today-plan-time:empty {
+    display: none;
+  }
+  .today-agents button {
+    grid-template-columns: 20px minmax(0, 1fr) 16px;
+  }
+  .today-agent-brief {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .today-week button {
+    min-height: 44px;
+  }
+  .today-hub-edit li {
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+  }
+  .today-hub-edit .input {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+/* The workspace can be narrow inside a wide browser. Keep the task column
+   usable after tabs, navigation and the other pane consume their space. */
+@container today-pane (max-width: 1000px) {
+  .today-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container today-pane (max-width: 800px) {
   .today-top {
     align-items: flex-start;
   }

@@ -8,7 +8,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, Pill } from "../../ui/kit";
-import { tasks } from "../shared-task/host-store";
+import { useTasks } from "../shared-task/host-store";
 import { ReadState, readTeam, useOwned, useRead } from "./state";
 const level = [
   "No free time",
@@ -27,6 +27,7 @@ export function Capacity({
   to: Date;
   canWrite: boolean;
 }) {
+  const tasks = useTasks();
   const owned = useOwned(),
     lock = useRef(false),
     [pending, setPending] = useState(false),

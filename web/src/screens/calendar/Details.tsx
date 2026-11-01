@@ -1,3 +1,4 @@
+import { useRouteInput, useRouteActivity } from "../../lib/route-scope";
 import {
   dateLabel,
   deadlineLine,
@@ -476,6 +477,8 @@ export function Popover({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const inputAllowed = useRouteInput(),
+    activity = useRouteActivity();
   const box = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(
     document.activeElement as HTMLElement,
@@ -484,6 +487,7 @@ export function Popover({
   latest.current = onClose;
 
   useLayoutEffect(() => {
+    if (!inputAllowed()) return;
     const node = box.current;
     if (!node) return;
     const size = node.getBoundingClientRect();
@@ -501,14 +505,17 @@ export function Popover({
     node.style.left = `${left}px`;
     node.style.top = `${top}px`;
     node.querySelector<HTMLElement>("button, a")?.focus();
-  }, [anchor]);
+  }, [anchor, activity.visible, activity.focused, inputAllowed]);
 
   useEffect(() => {
+    if (!inputAllowed()) return;
     const previous = opener.current;
+    const root = box.current;
     const outside = (event: PointerEvent) => {
       if (!box.current?.contains(event.target as Node)) latest.current();
     };
     const key = (event: KeyboardEvent) => {
+      if (!inputAllowed()) return;
       if (event.key === "Escape") {
         event.stopPropagation();
         latest.current();
@@ -519,10 +526,22 @@ export function Popover({
     return () => {
       document.removeEventListener("pointerdown", outside);
       document.removeEventListener("keydown", key, true);
-      if (previous?.isConnected) previous.focus({ preventScroll: true });
+      const ownsFocus =
+        !!root?.contains(document.activeElement) ||
+        document.activeElement === document.body;
+      if (
+        inputAllowed() &&
+        ownsFocus &&
+        previous?.isConnected &&
+        !previous.closest("[inert]") &&
+        !previous.matches(":disabled") &&
+        !document.querySelector("dialog[open]")
+      )
+        previous.focus({ preventScroll: true });
     };
-  }, []);
+  }, [inputAllowed, activity.visible, activity.focused]);
 
+  if (!activity.visible || !activity.focused) return null;
   return createPortal(
     <div
       ref={box}

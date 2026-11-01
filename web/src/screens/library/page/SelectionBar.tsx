@@ -1,3 +1,4 @@
+import { useRouteActivity, useRouteInput } from "../../../lib/route-scope";
 import {
   createDocSelectionSettler,
   DOC_AI_ACTIONS,
@@ -145,6 +146,9 @@ export function SelectionBar({
   onTask: (picked: Picked) => void;
   onAskPage: (selection: DocSelection) => void;
 }) {
+  const inputAllowed = useRouteInput();
+  const activity = useRouteActivity(),
+    active = activity.visible && activity.focused;
   const toast = useToast();
   const [picked, setPicked] = useState<Picked | null>(null);
   const [linking, setLinking] = useState(false);
@@ -155,6 +159,7 @@ export function SelectionBar({
   const latest = useRef(setPicked);
   latest.current = setPicked;
   useEffect(() => {
+    if (!active) return;
     const controller = createDocSelectionSettler(
       () => (root.current ? readSelection(root.current) : null),
       (value) => latest.current(value),
@@ -164,6 +169,7 @@ export function SelectionBar({
       },
     );
     const owns = (event: Event) =>
+      inputAllowed() &&
       event.target instanceof Node &&
       !!root.current?.contains(event.target) &&
       !(
@@ -173,9 +179,15 @@ export function SelectionBar({
     const start = (event: Event) => {
       if (owns(event)) controller.start();
     };
-    const end = () => controller.finish();
+    const end = () => {
+      if (inputAllowed()) controller.finish();
+      else controller.cancel();
+    };
     const cancel = () => controller.cancel();
-    const change = () => controller.change();
+    const change = () => {
+      if (inputAllowed()) controller.change();
+      else controller.cancel();
+    };
     const keydown = (event: KeyboardEvent) => {
       if (
         owns(event) &&
@@ -211,7 +223,7 @@ export function SelectionBar({
       pane?.removeEventListener("scroll", cancel, true);
       window.removeEventListener("blur", cancel);
     };
-  }, [root]);
+  }, [root, active]);
   useEffect(() => {
     setLinking(false);
     setAsking(false);
@@ -220,7 +232,7 @@ export function SelectionBar({
   }, [picked?.blockId, picked?.start, picked?.end]);
   useLayoutEffect(() => {
     const element = bar.current;
-    if (!element || !picked) return;
+    if (!active || !element || !picked) return;
     const size = element.getBoundingClientRect();
     const left = Math.max(
       8,
@@ -232,9 +244,9 @@ export function SelectionBar({
     const above = picked.at.top - size.height - 8;
     element.style.left = `${left}px`;
     element.style.top = `${above > 56 ? above : Math.min(picked.at.bottom + 8, innerHeight - size.height - 8)}px`;
-  }, [picked, linking, asking]);
+  }, [picked, linking, asking, active]);
 
-  if (!picked) return null;
+  if (!active || !picked) return null;
   const done = () => {
     setPicked(null);
     window.getSelection()?.removeAllRanges();

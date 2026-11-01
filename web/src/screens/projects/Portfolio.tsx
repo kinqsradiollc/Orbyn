@@ -1,3 +1,5 @@
+import { useRouteCommands } from "../../app/controls/page-commands";
+import { useRouteInput } from "../../lib/route-scope";
 import {
   dateLabel,
   isClosed,
@@ -11,17 +13,15 @@ import { LayoutTemplate, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "../../app/account";
 import { useResource } from "../../lib/resource";
-import { navigate, useSearch, useTitle } from "../../lib/router";
-import { client } from "../../lib/session";
+import { useNavigate, useSearch, useTitle } from "../../lib/router";
+import { client, getSessionVersion } from "../../lib/session";
 import { Button, Empty, ErrorNotice, Loading } from "../../ui/kit";
 import { onNews } from "../calendar/useWorkspace";
-import { tasks, useItems, usePlanning } from "../shared-task";
+import { useTasks, useItems, usePlanning } from "../shared-task";
 import { NewProject } from "./NewProject";
 import { Promises } from "./Promises";
 import { shortDate } from "./shared";
 import { Templates } from "./Templates";
-
-const open = (id: string) => navigate(`/app/project/${id}`);
 
 function PortfolioRow({
   project: p,
@@ -32,6 +32,9 @@ function PortfolioRow({
   items: Item[];
   teamName: string;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
+  const open = (id: string) => navigate(`/app/project/${id}`);
   const percent = projectProgress(p);
   const work = items.filter(
     (i) => i.project_id === p.id && i.kind === "task" && !isClosed(i.status),
@@ -132,6 +135,19 @@ function PortfolioRow({
 
 /** Every project, aligned for comparison, leading with what to do next. */
 export function Portfolio() {
+  const [openingGeneration] = useState(getSessionVersion),
+    mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const owned = () =>
+    mounted.current && openingGeneration === getSessionVersion();
+  const tasks = useTasks();
+  const navigate = useNavigate();
+  const open = (id: string) => navigate(`/app/project/${id}`);
   useTitle("Projects");
   const { user } = useAccount();
   const items = useItems();
@@ -144,15 +160,26 @@ export function Portfolio() {
     null,
   );
   const asked = useRef("");
+  const seed = useRef<object | null>(null),
+    inputAllowed = useRouteInput();
   useEffect(() => {
     if (asked.current === search) return;
+    const params = new URLSearchParams(search),
+      template = params.get("template"),
+      create = params.has("new");
+    if (!template && !create) return;
     asked.current = search;
-    const params = new URLSearchParams(search);
-    const template = params.get("template");
-    if (template) setTemplates({ id: template });
-    if (params.has("new")) setCreating(true);
-    if (template || params.has("new")) navigate("/app/projects", true);
-  }, [search]);
+    const attempt = {};
+    seed.current = attempt;
+    void navigate("/app/projects", true).then((result) => {
+      if (seed.current !== attempt || !owned() || !inputAllowed()) return;
+      seed.current = null;
+      asked.current = "";
+      if (result.kind !== "committed") return;
+      if (template) setTemplates({ id: template });
+      else setCreating(true);
+    });
+  }, [search, navigate, inputAllowed]);
   const reload = useRef(projects.reload);
   reload.current = projects.reload;
   useEffect(() => {
@@ -174,6 +201,19 @@ export function Portfolio() {
   }, []);
   const list = useMemo(() => projects.data ?? [], [projects.data]);
   const visible = searchProjects(list, query);
+  useRouteCommands(
+    useMemo(
+      () => ({
+        "new.project": {
+          available: !creating && !templates && !!projects.data,
+          run: () => {
+            if (owned() && inputAllowed()) setCreating(true);
+          },
+        },
+      }),
+      [creating, templates, projects.data, inputAllowed],
+    ),
+  );
   const teamName = (p: Project) =>
     p.team_name ||
     (p.team_id
@@ -263,12 +303,13 @@ export function Portfolio() {
             setCreating(false);
             setTemplates({ id: id ?? null });
           }}
-          onCreated={(project) => {
+          onCreated={async (project) => {
+            if (!owned()) return;
             void projects.reload();
-            if (project) {
-              setCreating(false);
-              open(project.id);
-            }
+            if (!project) return;
+            const result = await open(project.id);
+            if (owned() && result.kind === "committed") setCreating(false);
+            return result;
           }}
         />
       )}

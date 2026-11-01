@@ -227,3 +227,73 @@ test("unreadable saved tabs start again at one tab", () => {
   assert.equal(trimmed.active, "t1");
   assert.equal(trimmed.tabs[0].at, 0);
 });
+
+test("optional href preserves query and section history without changing legacy identity", () => {
+  const first: TabPlace = {
+    ...at("AI assistant"),
+    href: "/app/assistant?chat=c1",
+  };
+  const second: TabPlace = {
+    ...at("AI assistant"),
+    href: "/app/assistant?chat=c2",
+  };
+  let s = run(initialTabs(first), { type: "go", place: second });
+  assert.equal(activeTab(s).history.length, 2);
+  assert.equal(placeOf(activeTab(run(s, { type: "back" }))).href, first.href);
+  assert.equal(run(s, { type: "go", place: second }), s);
+  s = run(s, {
+    type: "go",
+    place: { ...second, href: second.href + "#entry" },
+  });
+  assert.equal(activeTab(s).history.length, 3);
+  assert.deepEqual(restoreTabs(saveTabs(s)).tabs, s.tabs);
+  const legacy = initialTabs(at("Docs"));
+  assert.equal(run(legacy, { type: "go", place: at("Docs") }), legacy);
+  assert.equal(
+    activeTab(run(legacy, { type: "go", place: at("Docs", "d1") })).history
+      .length,
+    1,
+  );
+});
+
+test("href survives pin reorder retitle and reopen without leaking into legacy records", () => {
+  let s = run(initialTabs(), {
+    type: "open",
+    place: { ...at("Docs", "d1"), href: "/app/doc/d1#part" },
+  });
+  s = run(
+    s,
+    { type: "pin", key: "t2", pinned: true },
+    { type: "retitle", view: "Docs", id: "d1", title: "New title" },
+  );
+  const kept = restoreTabs(saveTabs(s));
+  assert.equal(placeOf(kept.tabs[0]).href, "/app/doc/d1#part");
+  assert.equal("href" in placeOf(kept.tabs[1]), false);
+  s = run(s, { type: "close", key: "t2" }, { type: "reopen" });
+  assert.equal(placeOf(activeTab(s)).href, "/app/doc/d1#part");
+});
+
+test("restore rejects malformed present href rather than silently changing its identity", () => {
+  for (const href of [null, 3, "", "x".repeat(64 * 1024 + 1)]) {
+    const restored = restoreTabs(
+      JSON.stringify({
+        tabs: [
+          {
+            key: "t1",
+            history: [{ ...at("Docs", "unsafe"), href }],
+            at: 0,
+            opened: 1,
+          },
+        ],
+      }),
+    );
+    assert.deepEqual(restored, initialTabs());
+  }
+  const href = "/" + "x".repeat(64 * 1024 - 1);
+  assert.equal(
+    placeOf(
+      activeTab(restoreTabs(saveTabs(initialTabs({ ...at("Docs"), href })))),
+    ).href,
+    href,
+  );
+});

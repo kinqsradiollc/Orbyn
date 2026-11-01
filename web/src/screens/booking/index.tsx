@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Booking, BookingPage, BookingView } from "@orbyn/core";
 import type { ScreenProps } from "../../app/routes";
 import { client, getSessionVersion } from "../../lib/session";
-import { navigate, useSearch, useTitle } from "../../lib/router";
+import { useNavigate, useSearch, useTitle } from "../../lib/router";
 import { messageOf } from "../../lib/resource";
 import { Button, ErrorNotice, Field, Input, SelectBox } from "../../ui/kit";
 import {
@@ -30,6 +30,7 @@ export default function BookingScreen(_props: ScreenProps) {
   );
 }
 function Workspace() {
+  const navigate = useNavigate();
   useTitle("Bookings");
   const own = useOwner(),
     leave = useLeave(),

@@ -21,12 +21,18 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { navigate } from "../../lib/router";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useNavigate, useBeforeNavigate } from "../../lib/router";
 import { messageOf } from "../../lib/resource";
 import { client, getSessionVersion } from "../../lib/session";
 import { Button, ErrorNotice, Pill } from "../../ui/kit";
-import { refreshPlanner, tasks } from "../shared-task";
+import { refreshPlanner, useTasks } from "../shared-task";
 import { alertLabel } from "../shared-task/format";
 import { DraftNotes } from "./DraftNotes";
 import { useOwner, useOwned } from "./hooks";
@@ -253,10 +259,24 @@ function Reply({
   onKeptNote,
   hideSourceDetails = false,
 }: ProposalReviewProps) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const owned = useOwned();
   const lock = useRef(false);
   const [acting, setActing] = useState(false);
   const [uncertain, setUncertain] = useState(false);
+  const exitState = useRef({ busy, uncertain, state });
+  exitState.current = { busy, uncertain, state };
+  const prepareLeave = useCallback(
+    () =>
+      !lock.current &&
+      !exitState.current.busy &&
+      (!exitState.current.uncertain ||
+        exitState.current.state === "applied" ||
+        exitState.current.state === "discarded"),
+    [],
+  );
+  useBeforeNavigate(prepareLeave);
   const [error, setError] = useState("");
   const act = async (perform: () => void | Promise<void>) => {
     if (!owned() || lock.current || busy || uncertain) return;
@@ -467,27 +487,39 @@ function Reply({
 }
 
 /** Where a proposal's links go, for a screen that has no reason to differ. */
-export const proposalLinks = {
-  onApplyPlan: async (plan: Plan, moves: string[]) => {
-    const owner = getSessionVersion();
-    const result = await client.applyPlan(plan.id, { moves });
-    if (getSessionVersion() !== owner) return "";
-    await refreshPlanner(true).catch(() => undefined);
-    return planOutcome(result, plan.at_risk);
-  },
-  onOpenPlan: (plan: Plan) =>
-    navigate(`/app/calendar?plan_id=${encodeURIComponent(plan.id)}`),
-  onShowOnCalendar: (at: string) =>
-    navigate(`/app/calendar?date=${encodeURIComponent(at.slice(0, 10))}`),
-  onOpenSource: (source: AssistantSource) => {
-    if ("doc_id" in source)
-      navigate(
-        `/app/doc/${encodeURIComponent(source.doc_id)}${source.block_id ? `#${encodeURIComponent(source.block_id)}` : ""}`,
+export function useProposalLinks() {
+  const navigate = useNavigate(),
+    tasks = useTasks();
+  const open = async (to: string): Promise<void> => {
+    const result = await navigate(to);
+    if (result.kind === "refused") throw new Error(result.reason);
+    if (result.kind === "superseded")
+      throw new Error(
+        "This view changed before the link could open. Try the link again from its current view.",
       );
-    else if (source.kind === "task") tasks.open(source.id);
-    else if (source.project_id)
-      navigate(`/app/project/${encodeURIComponent(source.project_id)}`);
-  },
-  onKeptNote: (docId: string) =>
-    navigate(`/app/doc/${encodeURIComponent(docId)}`),
-};
+  };
+  return {
+    onApplyPlan: async (plan: Plan, moves: string[]) => {
+      const owner = getSessionVersion();
+      const result = await client.applyPlan(plan.id, { moves });
+      if (getSessionVersion() !== owner) return "";
+      await refreshPlanner(true).catch(() => undefined);
+      return planOutcome(result, plan.at_risk);
+    },
+    onOpenPlan: (plan: Plan) =>
+      open(`/app/calendar?plan_id=${encodeURIComponent(plan.id)}`),
+    onShowOnCalendar: (at: string) =>
+      open(`/app/calendar?date=${encodeURIComponent(at.slice(0, 10))}`),
+    onOpenSource: (source: AssistantSource) => {
+      if ("doc_id" in source)
+        return open(
+          `/app/doc/${encodeURIComponent(source.doc_id)}${source.block_id ? `#${encodeURIComponent(source.block_id)}` : ""}`,
+        );
+      else if (source.kind === "task") tasks.open(source.id);
+      else if (source.project_id)
+        return open(`/app/project/${encodeURIComponent(source.project_id)}`);
+    },
+    onKeptNote: (docId: string) =>
+      open(`/app/doc/${encodeURIComponent(docId)}`),
+  };
+}

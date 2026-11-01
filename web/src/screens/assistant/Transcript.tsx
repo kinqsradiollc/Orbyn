@@ -1,3 +1,4 @@
+import { useRouteInput, useRouteActivity } from "../../lib/route-scope";
 import {
   assistantDateLabel,
   assistantExcerptMatches,
@@ -7,7 +8,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button, ErrorNotice } from "../../ui/kit";
 import { useOwned } from "../agents-shared/hooks";
 import { Evidence, More } from "../agents-shared/parts";
-import { ProposalReview, proposalLinks } from "../agents-shared/ProposalReview";
+import {
+  ProposalReview,
+  useProposalLinks,
+} from "../agents-shared/ProposalReview";
 import { ReplyText } from "../agents-shared/ReplyText";
 import { replyWords, traceWords, updateWords } from "../agents-shared/words";
 import { MessageDetails } from "./History";
@@ -27,6 +31,9 @@ export function Transcript({
   onOpenChat: (id: string) => void;
   covered: boolean;
 }) {
+  const inputAllowed = useRouteInput(),
+    activity = useRouteActivity();
+  const links = useProposalLinks();
   const owned = useOwned(),
     node = useRef<HTMLDivElement>(null),
     follow = useRef(true),
@@ -48,13 +55,13 @@ export function Transcript({
   }, [assistant.chat?.id]);
   useLayoutEffect(() => {
     const el = node.current;
-    if (!el) return;
+    if (!activity.visible || !el) return;
     if (prepend.current && !assistant.conversation.loading) {
       el.scrollTop =
         prepend.current.top + el.scrollHeight - prepend.current.height;
       prepend.current = null;
     } else if (follow.current) el.scrollTop = el.scrollHeight;
-  }, [assistant.display, assistant.progress]);
+  }, [assistant.display, assistant.progress, activity.visible]);
   useEffect(() => {
     const el = node.current;
     if (
@@ -66,7 +73,16 @@ export function Transcript({
     )
       return;
     const observe = () => {
-      if (!owned() || document.hidden || !document.hasFocus()) return;
+      if (
+        document.querySelector("dialog[open],.menu") ||
+        (document.activeElement instanceof Element &&
+          !!document.activeElement.closest(".st-panel")) ||
+        !inputAllowed() ||
+        !owned() ||
+        document.hidden ||
+        !document.hasFocus()
+      )
+        return;
       const box = el.getBoundingClientRect();
       let through = "0";
       for (const message of el.querySelectorAll<HTMLElement>(
@@ -111,7 +127,7 @@ export function Transcript({
     assistant.store,
   ]);
   useEffect(() => {
-    if (!assistant.focused) return;
+    if (!inputAllowed() || !assistant.focused) return;
     const el = node.current?.querySelector<HTMLElement>(
       `[data-entry="${CSS.escape(assistant.focused)}"]`,
     );
@@ -121,7 +137,13 @@ export function Transcript({
       el.focus({ preventScroll: true });
       setReading(true);
     }
-  }, [assistant.focused, entries]);
+  }, [
+    assistant.focused,
+    entries,
+    inputAllowed,
+    activity.visible,
+    activity.focused,
+  ]);
   const earlier = async () => {
     const el = node.current;
     if (!owned() || !el) return;
@@ -166,7 +188,7 @@ export function Transcript({
     const settle = () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        if (owned()) selected();
+        if (inputAllowed() && owned()) selected();
       }, 120);
     };
     document.addEventListener("selectionchange", settle);
@@ -299,7 +321,7 @@ export function Transcript({
                         ? (text) => assistant.send(text)
                         : undefined
                     }
-                    {...proposalLinks}
+                    {...links}
                   />
                 ) : (
                   <ReplyText text={text} />

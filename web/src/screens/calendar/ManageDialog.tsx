@@ -14,7 +14,7 @@ import {
 } from "react";
 import { messageOf, useResource } from "../../lib/resource";
 import { client, getSessionVersion, getToken } from "../../lib/session";
-import { onBeforeNavigate } from "../../lib/router";
+import { useBeforeNavigate } from "../../lib/router";
 import {
   Button,
   Dialog,
@@ -123,7 +123,7 @@ export function ManageDialog({
       checking.current = false;
     }
   }, [owned, confirm, toast]);
-  useLayoutEffect(() => onBeforeNavigate(canLeave), [canLeave]);
+  useBeforeNavigate(canLeave);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       const state = editor.current;

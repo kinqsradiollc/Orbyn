@@ -1,0 +1,139 @@
+.workspace-controls,
+.workspace-control-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 8px;
+}
+.workspace-tab-controls {
+  min-width: 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.workspace-tab-controls > input {
+  width: min(100% - 16px, 260px);
+  margin: 8px;
+}
+.workspace-control-tab {
+  display: flex;
+  align-items: center;
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+}
+.workspace-control-tab > button[role="tab"] {
+  font: inherit;
+  font-size: 13px;
+  min-height: 36px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+}
+.workspace-control-tab > button[aria-selected="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.workspace-tab-actions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 8px;
+  width: min(260px, calc(100vw - 40px));
+  background: var(--surface);
+  box-shadow: var(--float);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+}
+.workspace-control-error {
+  font-size: 13px;
+  margin: 8px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .workspace-control-tab > button[role="tab"],
+  .workspace-controls button,
+  .workspace-tab-actions button {
+    min-height: 44px;
+  }
+  .workspace-tab-controls > input {
+    font-size: 16px;
+  }
+  .workspace-tab-actions {
+    position: static;
+    width: auto;
+    flex-basis: 100%;
+  }
+  .workspace-control-tab:has(.workspace-tab-actions) {
+    flex-wrap: wrap;
+  }
+}
+
+/* One toolbar composition, measured by its actual content container rather than the window. */
+.workspace-tools-container {
+  min-width: 0;
+  container-type: inline-size;
+  container-name: workspace-tools;
+}
+.workspace-controls.workspace-tools-row {
+  flex-wrap: nowrap;
+}
+.workspace-tools-row > .btn {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+.workspace-tools-row > .btn-icon {
+  width: 44px;
+}
+.workspace-tools-more {
+  margin-inline-start: auto;
+}
+.menu[aria-label="Workspace actions"] {
+  max-width: calc(100vw - 24px);
+  max-height: min(60dvh, 420px);
+  overflow: auto;
+}
+.menu[aria-label="Workspace actions"] > button {
+  min-height: 44px;
+  font-size: 13px;
+}
+@container workspace-tools (max-width:520px) {
+  .workspace-tools-more-label {
+    display: none;
+  }
+  .workspace-tools-more {
+    width: 44px;
+    padding-inline: 0;
+    justify-content: center;
+  }
+}
+@container workspace-tools (max-width:280px) {
+  .workspace-tools-new-label {
+    display: none;
+  }
+  .workspace-tools-row > button[aria-label="New tab"] {
+    width: 44px;
+    padding-inline: 0;
+    justify-content: center;
+  }
+}
+
+.menu[aria-label="Workspace actions"] .workspace-tools-unavailable {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}

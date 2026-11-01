@@ -34,12 +34,18 @@ import {
   Wand2,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useAccount } from "../../app/account";
 import type { ScreenProps } from "../../app/routes";
 import { messageOf, useResource } from "../../lib/resource";
-import { navigate, useTitle } from "../../lib/router";
-import { client } from "../../lib/session";
+import { useNavigate, useTitle } from "../../lib/router";
+import { client, getSessionVersion, onToken } from "../../lib/session";
 import {
   Button,
   Empty,
@@ -50,7 +56,7 @@ import {
 } from "../../ui/kit";
 import { onNews } from "../calendar/useWorkspace";
 import { AskCard } from "../shared-task/sections";
-import { refreshPlanner, tasks, useItems } from "../shared-task";
+import { refreshPlanner, useTasks, useItems } from "../shared-task";
 import "./notifications.css";
 
 const POLL_MS = 30_000;
@@ -77,31 +83,72 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
 
 const pinKey = (user: string) => `orbyn-notifications-pinned:${user}`;
 
-/** Whether this account keeps notifications open on this device. */
+// Account-generation ownership keeps stale pane callbacks from changing the next
+// account's device preference. The shared snapshot also covers same-tab hooks.
+const pinValues = new Map<string, boolean>();
+const pinListeners = new Set<() => void>();
+const publishPin = () => pinListeners.forEach((listener) => listener());
+const subscribePin = (listener: () => void) => {
+  pinListeners.add(listener);
+  return () => {
+    pinListeners.delete(listener);
+  };
+};
+onToken(() => {
+  pinValues.clear();
+  publishPin();
+});
+if (typeof window !== "undefined")
+  window.addEventListener("storage", (event) => {
+    try {
+      if (event.storageArea !== localStorage) return;
+    } catch {
+      return;
+    }
+    if (event.key === null) pinValues.clear();
+    else if (event.key.startsWith("orbyn-notifications-pinned:"))
+      pinValues.delete(event.key);
+    else return;
+    publishPin();
+  });
+function readPin(id: string, generation: number) {
+  if (!id || generation !== getSessionVersion()) return false;
+  const key = pinKey(id);
+  if (!pinValues.has(key)) {
+    let value = false;
+    try {
+      value = localStorage.getItem(key) === "1";
+    } catch {
+      /* Visit state remains available. */
+    }
+    pinValues.set(key, value);
+  }
+  return pinValues.get(key) ?? false;
+}
+/** One device preference shared by all mounted views of the current account. */
 export function useNotificationPin() {
   const { user } = useAccount();
-  const id = user?.id ?? "";
-  const [state, setState] = useState({ id: "", pinned: false });
-  useEffect(() => {
-    if (!id) return;
-    let pinned = false;
-    try {
-      pinned = localStorage.getItem(pinKey(id)) === "1";
-    } catch {
-      // Without storage it stays off.
-    }
-    setState({ id, pinned });
-  }, [id]);
-  const set = (pinned: boolean) => {
-    setState({ id, pinned });
-    try {
-      if (pinned) localStorage.setItem(pinKey(id), "1");
-      else localStorage.removeItem(pinKey(id));
-    } catch {
-      // Kept for this visit.
-    }
-  };
-  return { pinned: state.id === id && state.pinned, set };
+  const id = user?.id ?? "",
+    generation = getSessionVersion();
+  const pinned = useSyncExternalStore(subscribePin, () =>
+    readPin(id, generation),
+  );
+  const set = useCallback(
+    (next: boolean) => {
+      if (!id || generation !== getSessionVersion()) return;
+      const key = pinKey(id);
+      pinValues.set(key, next);
+      try {
+        if (next) localStorage.setItem(key, "1");
+        else localStorage.removeItem(key);
+      } catch {
+        /* Preserve the in-memory preference for this visit. */
+      }
+      publishPin();
+    },
+    [id, generation],
+  );
+  return { pinned, set };
 }
 
 /** Follows the server: polled, and at once when news arrives. */
@@ -137,6 +184,8 @@ function NoticeRow({
   pending: string | null;
   run: (notice: Notice, fn: () => Promise<void>) => Promise<string>;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const items = useItems();
   const [error, setError] = useState("");
   const Icon = ICONS[n.kind ?? "reminder"] ?? Bell;
@@ -498,6 +547,7 @@ function AgentQuestions() {
 }
 
 function Asks() {
+  const tasks = useTasks();
   const read = useResource(() => client.listAsks(), []);
   const reload = useRef(read.reload);
   reload.current = read.reload;
@@ -549,6 +599,7 @@ function Asks() {
 }
 
 function Mentions() {
+  const navigate = useNavigate();
   const read = useResource<PageMention[]>(() => client.mentions(20), []);
   const [all, setAll] = useState(false);
   const list = read.data ?? [];
@@ -600,6 +651,7 @@ function Mentions() {
 
 /** Pinned notifications, kept open on Today between visits. */
 export function NotificationsPanel() {
+  const navigate = useNavigate();
   const read = useNotices();
   const list = read.data ?? [];
   const unread = list.filter((n) => !n.read);
@@ -643,9 +695,7 @@ export default function NotificationsScreen(_: ScreenProps) {
           {unread > 0 && <span className="nt-unread">{unread} unread</span>}
         </h1>
         <IconButton
-          label={
-            pin.pinned ? "Unpin notifications" : "Keep notifications on Today"
-          }
+          label={pin.pinned ? "Unpin notifications" : "Keep notifications open"}
           aria-pressed={pin.pinned}
           onClick={() => pin.set(!pin.pinned)}
         >

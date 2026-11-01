@@ -13,21 +13,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "../../app/account";
 import type { ScreenProps } from "../../app/routes";
 import { useResource } from "../../lib/resource";
-import { navigate, usePath, useSearch, useTitle } from "../../lib/router";
+import { useNavigate, usePath, useSearch, useTitle } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, Empty, ErrorNotice, IconButton, Loading } from "../../ui/kit";
-import { NotificationsPanel, useNotificationPin } from "../notifications";
 import {
   progressOf,
   refreshPlanner,
-  tasks,
+  useTasks,
   useItems,
   usePlanning,
 } from "../shared-task";
 import { Changes } from "./Changes";
 import { Companions } from "./Companions";
 import { Customize } from "./Customize";
-import { FirstRun } from "./FirstRun";
 import { Hubs } from "./Hubs";
 import { Goals, Reflection, Routines } from "./Panels";
 import { Plan } from "./Plan";
@@ -36,10 +34,11 @@ import { SinceAway, WelcomeBack } from "./Review";
 import { SearchDialog } from "./SearchDialog";
 import { ComingUp, Ideas, TaskSection, UpNext } from "./Sections";
 import { Week } from "./Week";
-import { markReleaseSeen, useWhatsNewOnce, WhatsNew } from "./WhatsNew";
+import { requestWhatsNew } from "../../app/GlobalOverlays";
 import "./today.css";
 
 function Heading({ onCustomize }: { onCustomize: () => void }) {
+  const tasks = useTasks();
   const { user } = useAccount();
   const { prefs } = usePrefs();
   const zone = usePlanning().prefs?.timezone;
@@ -98,6 +97,7 @@ function Heading({ onCustomize }: { onCustomize: () => void }) {
 }
 
 function Shortcuts() {
+  const navigate = useNavigate();
   const { prefs } = usePrefs();
   const presets = workspacePresets(prefs.views.workspace);
   const engineer = presets.includes("engineer");
@@ -141,6 +141,8 @@ const Stat = ({
 );
 
 function HomeSections({ teamsAny }: { teamsAny: boolean }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const userId = useAccount().user?.id;
   const prefs = usePrefs();
   const layout = homeOf(prefs.prefs);
@@ -219,18 +221,17 @@ function HomeSections({ teamsAny }: { teamsAny: boolean }) {
 }
 
 export default function TodayScreen(_: ScreenProps) {
+  const navigate = useNavigate(),
+    tasks = useTasks();
   useTitle("Today");
   const path = usePath();
   const search = useSearch();
-  const { user, refresh } = useAccount();
+  const { user } = useAccount();
   const items = useItems();
   const planning = usePlanning();
-  const pin = useNotificationPin();
   const stamp = items.reduce((sum, item) => sum + item.version, items.length);
   const today = useResource(() => client.today(), [stamp, user?.id]);
   const [customizing, setCustomizing] = useState(false);
-  const firstRun = user?.first_run_done === false;
-  const [newsOpen, setNewsOpen] = useWhatsNewOnce(!!user && !firstRun);
   const now = new Date();
   const current =
     today.data && todayIsCurrent(today.data, now) ? today.data : null;
@@ -351,7 +352,6 @@ export default function TodayScreen(_: ScreenProps) {
               />
             </div>
             <aside className="today-aside" aria-label="Looking ahead">
-              {pin.pinned && <NotificationsPanel />}
               <SinceAway />
               <Ideas />
               <ComingUp items={upcoming} />
@@ -399,26 +399,13 @@ export default function TodayScreen(_: ScreenProps) {
       )}
       <HomeSections teamsAny={planning.teams.length > 0} />
       <footer className="today-foot">
-        <button onClick={() => setNewsOpen(true)}>What's new</button>
+        <button onClick={requestWhatsNew}>What's new</button>
       </footer>
       {customizing && <Customize onClose={() => setCustomizing(false)} />}
-      {newsOpen && <WhatsNew onClose={() => setNewsOpen(false)} />}
       {searching && (
         <SearchDialog
           key={search}
           query={new URLSearchParams(search).get("q") ?? ""}
-        />
-      )}
-      {firstRun && user && (
-        <FirstRun
-          user={user}
-          onDone={(made) => {
-            markReleaseSeen();
-            void reloadPrefs();
-            void refresh();
-            reload();
-            if (made?.brief_id) navigate(`/app/doc/${made.brief_id}`);
-          }}
         />
       )}
     </div>

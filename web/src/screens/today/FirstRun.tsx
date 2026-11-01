@@ -13,7 +13,8 @@ import {
 } from "@orbyn/core";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { messageOf } from "../../lib/resource";
-import { client, getToken } from "../../lib/session";
+import { client, getToken, getSessionVersion } from "../../lib/session";
+import { useRoutePortal } from "../../lib/route-scope";
 import { Button, ErrorNotice, Field, Input } from "../../ui/kit";
 
 /**
@@ -41,14 +42,31 @@ export function FirstRun({
     useState<WorkspacePresetChoice | null>(null);
   const box = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const account = useRef(getToken()).current;
+  const account = useRef({
+    token: getToken(),
+    generation: getSessionVersion(),
+  }).current;
+  const mounted = useRef(true);
+  const releasePortal = useRoutePortal(true);
+  const completed = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      box.current?.close();
+    };
+  }, []);
   const pending = useRef(false);
   const connected = useRef("");
   useEffect(() => {
     if (box.current && !box.current.open) box.current.showModal();
   }, []);
   useEffect(() => heading.current?.focus(), [step]);
-  const current = () => getToken() === account;
+  const current = () =>
+    mounted.current &&
+    !completed.current &&
+    getToken() === account.token &&
+    getSessionVersion() === account.generation;
   const run = async (fn: () => Promise<void>) => {
     if (pending.current || !current()) return;
     pending.current = true;
@@ -67,7 +85,12 @@ export function FirstRun({
   const skip = () =>
     run(async () => {
       await client.skipFirstRun();
-      if (current()) onDone(null);
+      if (current()) {
+        completed.current = true;
+        releasePortal();
+        box.current?.close();
+        onDone(null);
+      }
     });
   const loadPresets = () =>
     run(async () => {
@@ -104,7 +127,12 @@ export function FirstRun({
           ? { team_name: teamName.trim() }
           : {}),
       });
-      if (current()) onDone(made);
+      if (current()) {
+        completed.current = true;
+        releasePortal();
+        box.current?.close();
+        onDone(made);
+      }
     });
   const moveChoice = (event: KeyboardEvent<HTMLDivElement>) => {
     if (

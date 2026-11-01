@@ -1,3 +1,4 @@
+import { useBeforeNavigate } from "../../lib/router";
 import {
   atRiskLine,
   dueDateOf,
@@ -6,11 +7,11 @@ import {
   type Plan,
 } from "@orbyn/core";
 import { AlertTriangle, CalendarRange, Clock } from "lucide-react";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { HttpError } from "@orbyn/core";
 import { client } from "../../lib/session";
 import { messageOf } from "../../lib/resource";
-import { Button } from "../../ui/kit";
+import { Button, useConfirm } from "../../ui/kit";
 import { deviceTimeZone, minutesLabel, plural } from "../shared-task";
 import { useOwned, useOwner } from "./hooks";
 import { More } from "./parts";
@@ -61,6 +62,44 @@ function PlanPreviewBody({
   } | null>(null);
   const applied = plan.applied || confirmedApplied || !!outcome?.ok;
   const moves = plan.moves ?? [];
+  const confirm = useConfirm(),
+    checkingLeave = useRef(false);
+  const exitState = useRef({ uncertain, applied, ticks, moves });
+  exitState.current = { uncertain, applied, ticks, moves };
+  const prepareLeave = useCallback(async () => {
+    const current = exitState.current;
+    if (
+      running.current ||
+      checkingLeave.current ||
+      (current.uncertain && !current.applied)
+    )
+      return false;
+    const dirty =
+      !current.applied &&
+      current.moves.some(
+        (move) =>
+          Boolean(current.ticks[move.block_id] ?? move.selected) !==
+          Boolean(move.selected),
+      );
+    if (!dirty) return true;
+    checkingLeave.current = true;
+    try {
+      return (
+        (await confirm({
+          title: "Discard these plan choices?",
+          body: "The saved plan stays as it is.",
+          action: "Discard choices",
+          danger: true,
+        })) &&
+        !running.current &&
+        !(exitState.current.uncertain && !exitState.current.applied)
+      );
+    } finally {
+      checkingLeave.current = false;
+    }
+  }, [confirm, plan.id]);
+  useBeforeNavigate(prepareLeave);
+
   const chosen = moves
     .filter((move) => ticks[move.block_id] ?? move.selected)
     .map((move) => move.block_id);

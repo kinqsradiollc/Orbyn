@@ -33,9 +33,8 @@ import {
   refreshPlanner,
   Swatches,
   SWATCHES,
-  TaskHost,
   TaskRow,
-  tasks,
+  useTasks,
   useItems,
   usePlanning,
 } from "../shared-task";
@@ -48,13 +47,13 @@ export default function ListsScreen(_: ScreenProps) {
   const { token } = useAccount();
   return (
     <>
-      <TaskHost />
       <ListsBody key={token} />
     </>
   );
 }
 
 function ListsBody() {
+  const tasks = useTasks();
   const items = useItems();
   const { lists, teams, phase, error, canWrite, canWriteIn, retry } =
     usePlanning();

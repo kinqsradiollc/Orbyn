@@ -7,10 +7,10 @@ import {
 import { ChevronDown, ChevronRight, Play } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, Pill } from "../../ui/kit";
-import { progressOf, tasks, TaskRow, usePlanning } from "../shared-task";
+import { progressOf, useTasks, TaskRow, usePlanning } from "../shared-task";
 import { minutesText } from "./dates";
 
 const REFRESH_MS = 5 * 60_000;
@@ -37,6 +37,7 @@ export function UpNext({
   items: Item[];
   excludeIds: Set<string>;
 }) {
+  const tasks = useTasks();
   const [next, setNext] = useState<UpNextData | null>(null);
   const [failed, setFailed] = useState(false);
   const [why, setWhy] = useState(false);
@@ -192,6 +193,8 @@ export function TaskSection({
 }
 
 export function ComingUp({ items }: { items: Item[] }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   return (
     <section className="today-section" aria-labelledby="today-coming">
       <header className="today-section-head">
@@ -255,6 +258,7 @@ export function ComingUp({ items }: { items: Item[] }) {
 
 /** Ready-to-review ideas, beside the plan. Quiet when there are none. */
 export function Ideas() {
+  const navigate = useNavigate();
   const shown = useResource(async () => {
     const [ideas, settings] = await Promise.all([
       client.assistantIdeas(),

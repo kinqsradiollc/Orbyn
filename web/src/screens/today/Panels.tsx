@@ -1,7 +1,7 @@
 import type { HomeSummary } from "@orbyn/core";
 import { useRef, useState, type ReactNode } from "react";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, Input, useToast } from "../../ui/kit";
 
@@ -35,9 +35,10 @@ function Panel({
 }
 
 /** Goals and routines live with the assistant's upcoming work. */
-const upcoming = () => navigate("/app/assistant?panel=upcoming");
 
 export function Goals({ data }: { data: HomeSummary }) {
+  const navigate = useNavigate();
+  const upcoming = () => navigate("/app/assistant?panel=upcoming");
   return (
     <Panel
       id="today-goals"
@@ -81,6 +82,8 @@ export function Goals({ data }: { data: HomeSummary }) {
 }
 
 export function Routines({ data }: { data: HomeSummary }) {
+  const navigate = useNavigate();
+  const upcoming = () => navigate("/app/assistant?panel=upcoming");
   return (
     <Panel
       id="today-routines"
@@ -125,6 +128,7 @@ export function Reflection({
   data: HomeSummary;
   onAdded: (lines: string[], docId: string) => void;
 }) {
+  const navigate = useNavigate();
   const toast = useToast();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);

@@ -1,39 +1,11 @@
-import type { DocNews, LiveNews } from "@orbyn/api-client";
+import type { DocNews } from "@orbyn/api-client";
 import { client, getSessionVersion } from "../../lib/session";
 
 /**
  * Browsers allow few open connections per host, and each stream holds one.
  * Everything on a page shares one account stream and one stream per document.
  */
-type News = (news: LiveNews) => void;
-const accountListeners = new Set<News>();
-let stopAccount: (() => void) | null = null;
-let accountGeneration = getSessionVersion();
-
-export function watchAccount(listener: News) {
-  const generation = getSessionVersion();
-  const owned = (news: LiveNews) => {
-    if (generation === getSessionVersion()) listener(news);
-  };
-  accountListeners.add(owned);
-  if (accountGeneration !== generation) {
-    stopAccount?.();
-    stopAccount = null;
-    accountGeneration = generation;
-  }
-  stopAccount ??= client.watchEvents((news) => {
-    if (generation !== getSessionVersion()) return;
-    if (news.kind === "changed") client.noteExternalMutation();
-    accountListeners.forEach((one) => one(news));
-  });
-  return () => {
-    accountListeners.delete(owned);
-    if (!accountListeners.size) {
-      stopAccount?.();
-      stopAccount = null;
-    }
-  };
-}
+export { watchAccount } from "../../lib/account-events";
 
 type Change = (version: number, news: DocNews) => void;
 const docs = new Map<string, { listeners: Set<Change>; stop: () => void }>();

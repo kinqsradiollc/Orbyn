@@ -1,3 +1,4 @@
+import { useLibraryView } from "./view";
 import {
   IMPORT_ACCEPT,
   IMPORT_ACTIVE,
@@ -20,7 +21,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { messageOf } from "../../lib/resource";
 import { client } from "../../lib/session";
 import {
@@ -30,7 +31,7 @@ import {
   Loading,
   useToast,
 } from "../../ui/kit";
-import { goTo, loadLibrary } from "./store";
+import { loadLibrary } from "./store";
 import { useLibraryOwner } from "./lifetime";
 
 type Uploads = {
@@ -229,6 +230,8 @@ export function ImportButton({
   variant?: "primary" | "secondary" | "ghost";
   label?: string;
 }) {
+  const navigate = useNavigate();
+  const { goTo } = useLibraryView();
   const uploads = useUploads();
   const current = useLibraryOwner();
   const input = useRef<HTMLInputElement>(null);

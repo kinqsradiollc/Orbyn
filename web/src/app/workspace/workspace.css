@@ -1,0 +1,143 @@
+.app:has(.workspace-surface) {
+  height: 100dvh;
+  overflow: hidden;
+}
+.app:has(.workspace-surface) > .workspace {
+  min-height: 0;
+}
+.app:has(.workspace-surface) .shell-content > main {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-surface {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+.workspace-working {
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+.workspace-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.workspace-pane > [data-workspace-frame] {
+  flex: 1;
+  min-height: 0;
+}
+.workspace-pane > [data-workspace-frame]:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+}
+.workspace-frame-content {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  outline-offset: -3px;
+}
+.workspace-tools,
+.workspace-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 8px;
+}
+.workspace-tab {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+.workspace-tab button[role="tab"] {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-tab button[aria-selected="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.workspace-layout {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  container-type: inline-size;
+  container-name: workspace-layout;
+}
+.workspace-dock {
+  flex: 0 0 clamp(320px, 36%, 520px);
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-inline-start: 1px solid var(--line);
+  overflow: auto;
+}
+.workspace-dock > [data-workspace-frame]:not([hidden]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.workspace-surface[data-presentation="primary"] [data-pane="secondary"],
+.workspace-surface[data-presentation="secondary"] [data-pane="primary"] {
+  display: none;
+}
+@container workspace-layout (max-width: 900px) {
+  .workspace-dock {
+    flex-basis: 320px;
+  }
+}
+@media (max-width: 760px) {
+  .workspace-layout {
+    flex-direction: column;
+  }
+  .workspace-working {
+    flex: 1;
+  }
+  .workspace-dock {
+    flex: 0 1 45%;
+    width: 100%;
+    max-height: 45%;
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--line);
+  }
+}
+@media (max-width: 600px) {
+  .workspace-tab button,
+  .workspace-tools button {
+    min-height: 44px;
+  }
+  .workspace-tab button[role="tab"] {
+    max-width: 220px;
+  }
+}
+
+.workspace-dock-page {
+  min-width: 0;
+}
+.workspace-dock-page[data-wide] .page-frame {
+  max-width: none;
+}
+
+.workspace-dock[hidden] {
+  display: none;
+}

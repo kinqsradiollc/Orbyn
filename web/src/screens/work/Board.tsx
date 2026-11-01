@@ -28,7 +28,7 @@ import {
   ItemMenu,
   progressOf,
   shortDue,
-  tasks,
+  useTasks,
 } from "../shared-task";
 
 const CARD = "application/x-orbyn-card";
@@ -282,6 +282,7 @@ function Card({
   onMove: (item: Item, from: string, to: string) => void;
   onDrag: (on: boolean) => void;
 }) {
+  const tasks = useTasks();
   const progress = progressOf(item);
   const showProgress =
     !isClosed(item.status) &&

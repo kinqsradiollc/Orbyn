@@ -10,7 +10,7 @@ import {
 } from "react";
 import { HttpError } from "@orbyn/core";
 import { client, getSessionVersion, getToken } from "../../lib/session";
-import { onBeforeNavigate } from "../../lib/router";
+import { useBeforeNavigate } from "../../lib/router";
 import { messageOf } from "../../lib/resource";
 import { Button, ErrorNotice, useConfirm } from "../../ui/kit";
 export const validId = (id: unknown): id is string =>
@@ -209,7 +209,7 @@ export function Guard({ children }: { children: ReactNode }) {
       lock.current = false;
     }
   }, [confirm, owned]);
-  useEffect(() => onBeforeNavigate(() => leave()), [leave]);
+  useBeforeNavigate(leave);
   useEffect(() => {
     const before = (event: BeforeUnloadEvent) => {
       if (

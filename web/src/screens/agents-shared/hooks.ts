@@ -1,3 +1,4 @@
+import { watchAccount } from "../../lib/account-events";
 import "./agents-shared.css";
 import {
   AssistantControlsStore,
@@ -69,10 +70,9 @@ const startStream = () => {
   const owner = getSessionVersion();
   const deliver = (news: LiveNews) => {
     if (owner !== getSessionVersion() || !getToken()) return;
-    if (news.kind === "changed") client.noteExternalMutation();
     for (const one of listeners) if (one.owner === owner) one.run(news);
   };
-  stopStream = client.watchEvents(deliver, () => deliver({ kind: "changed" }));
+  stopStream = watchAccount(deliver, () => deliver({ kind: "changed" }));
 };
 const stopStreamNow = () => {
   stopStream?.();

@@ -14,9 +14,15 @@ import {
   type TaskList,
   type Team,
 } from "@orbyn/core";
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { messageOf } from "../../lib/resource";
-import { client, getToken, onToken, setToken } from "../../lib/session";
+import {
+  client,
+  getToken,
+  getSessionVersion,
+  onToken,
+  setToken,
+} from "../../lib/session";
 import { useToast } from "../../ui/kit";
 
 export type EditOptions = { scope?: EditScope; occurrence?: string };
@@ -87,10 +93,14 @@ let refreshRun = 0;
  * Only the newest run for the current account may publish.
  */
 export async function refreshPlanner(force = false) {
+  return refreshPlannerOwned(force);
+}
+
+async function refreshPlannerOwned(force = false, admitted = () => true) {
   const token = getToken();
-  if (!token) return;
+  if (!token || !admitted()) return;
   const run = ++refreshRun;
-  const owned = () => run === refreshRun && getToken() === token;
+  const owned = () => admitted() && run === refreshRun && getToken() === token;
   const [teams] = await Promise.allSettled([client.listTeams()]);
   if (!owned()) return;
   const teamIds =
@@ -99,14 +109,13 @@ export async function refreshPlanner(force = false) {
     teams.status === "fulfilled" ? JSON.stringify([...teamIds!].sort()) : null;
   const { from, to } = dayBounds(new Date());
   const [read, lists, tags, prefs, feed] = await Promise.allSettled([
-    items.refresh(scope, force, teamIds),
+    items.refresh(scope, force, teamIds, admitted),
     client.listLists(),
     client.listTags(),
     client.getPlannerPrefs(),
     client.planned({ from: from.toISOString(), to: to.toISOString() }),
   ]);
-  if (getToken() !== token) return;
-  if (run !== refreshRun) return;
+  if (!owned()) return;
   if (
     [teams, read, lists, tags, prefs].some(
       (r) => r.status === "rejected" && statusOf(r.reason) === 401,
@@ -150,9 +159,58 @@ export async function refreshPlanner(force = false) {
   if (read.status === "rejected") throw read.reason;
 }
 
-const quiet = (force = false) => refreshPlanner(force).catch(() => undefined);
+const quiet = (force = false, admitted?: () => boolean) =>
+  refreshPlannerOwned(force, admitted).catch(() => undefined);
+
+// Automatic reads belong to admitted mounted consumers, not merely to a token.
+// A new account must mount its own consumer after its email/Terms gates.
+const plannerLeases = new Map<number, Set<object>>();
+type AutomaticPlanner = {
+  generation: number;
+  timer?: ReturnType<typeof setInterval>;
+  onVisible: () => void;
+};
+let automaticPlanner: AutomaticPlanner | null = null;
+
+function stopAutomaticPlanner(owner = automaticPlanner) {
+  if (!owner || automaticPlanner !== owner) return;
+  automaticPlanner = null;
+  clearInterval(owner.timer);
+  document.removeEventListener("visibilitychange", owner.onVisible);
+}
+
+function startAutomaticPlanner(generation: number) {
+  if (
+    !getToken() ||
+    generation !== getSessionVersion() ||
+    !plannerLeases.get(generation)?.size ||
+    automaticPlanner
+  )
+    return;
+  const current = () =>
+    automaticPlanner === owner &&
+    generation === getSessionVersion() &&
+    !!getToken() &&
+    !!plannerLeases.get(generation)?.size;
+  const owner: AutomaticPlanner = {
+    generation,
+    onVisible: () => {
+      if (current() && document.visibilityState === "visible")
+        void quiet(false, current);
+    },
+  };
+  automaticPlanner = owner;
+  owner.timer = setInterval(owner.onVisible, POLL_MS);
+  document.addEventListener("visibilitychange", owner.onVisible);
+  // Acquire resources before dispatch: a synchronous token transition can retire this owner.
+  void quiet(planning.phase !== "ready", current);
+}
 
 onToken(() => {
+  // Stop old timers before publication can make React mount another owner.
+  // Old cleanup holds its own Set, so it cannot decrement or stop a new lease.
+  stopAutomaticPlanner();
+  plannerLeases.clear();
   refreshRun++;
   for (const pending of deletes.values()) clearTimeout(pending.timer);
   deletes.clear();
@@ -161,32 +219,27 @@ onToken(() => {
   items.reset();
   planning = EMPTY;
   recompute();
-  if (getToken() && live > 0) void quiet(true);
 });
 
-let live = 0;
-let timer: ReturnType<typeof setInterval> | undefined;
-const onVisible = () => {
-  if (document.visibilityState === "visible") void quiet();
-};
-
-/** Keeps the planner fresh while something on screen shows it. */
+/** Keeps the planner fresh only for this mount's admitted session generation. */
 function useLivePlanner() {
+  const generation = useRef(getSessionVersion()).current;
   useEffect(() => {
-    if (live++ === 0) {
-      void quiet(planning.phase !== "ready");
-      timer = setInterval(() => {
-        if (document.visibilityState === "visible") void quiet();
-      }, POLL_MS);
-      document.addEventListener("visibilitychange", onVisible);
-    }
+    if (!getToken() || generation !== getSessionVersion()) return;
+    const lease = {};
+    const leases = plannerLeases.get(generation) ?? new Set<object>();
+    leases.add(lease);
+    plannerLeases.set(generation, leases);
+    startAutomaticPlanner(generation);
     return () => {
-      if (--live === 0) {
-        clearInterval(timer);
-        document.removeEventListener("visibilitychange", onVisible);
-      }
+      if (!leases.delete(lease) || plannerLeases.get(generation) !== leases)
+        return;
+      if (leases.size) return;
+      plannerLeases.delete(generation);
+      if (automaticPlanner?.generation === generation)
+        stopAutomaticPlanner(automaticPlanner);
     };
-  }, []);
+  }, [generation]);
 }
 
 /** Every item this person can see, kept fresh, with local changes applied. */

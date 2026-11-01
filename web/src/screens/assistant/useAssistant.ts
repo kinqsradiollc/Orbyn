@@ -1,3 +1,4 @@
+import { useConfirm } from "../../ui/kit";
 import {
   AssistantConversationStore,
   AssistantWaitingReplyLifecycle,
@@ -30,7 +31,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { client, getSessionVersion, getToken } from "../../lib/session";
-import { navigate } from "../../lib/router";
+import { useNavigate, useBeforeNavigate } from "../../lib/router";
 import { useItems, refreshPlanner } from "../shared-task";
 import { messageOf } from "../../lib/resource";
 import { onForeground, onLive, useOwned } from "../agents-shared/hooks";
@@ -89,6 +90,22 @@ function restoredTurns(value: AiChat, retained: Turn[]): Turn[] {
 
 /** Canonical retained history stays in the shared store; this hook owns only the active view and transient drafts. */
 export function useAssistant(query: string) {
+  const navigate = useNavigate();
+  const confirm = useConfirm(),
+    normalizing = useRef<string | null>(null);
+  const normalizeChat = async (id: string) => {
+    const href = `/app/assistant?chat=${encodeURIComponent(id)}`;
+    if (normalizing.current === href) return;
+    normalizing.current = href;
+    try {
+      const result = await navigate(href, true);
+      if (result.kind === "refused" && owned()) setError(result.reason);
+    } finally {
+      if (normalizing.current === href) normalizing.current = null;
+    }
+  };
+  const routeQuery = useRef(query);
+  routeQuery.current = query;
   const owned = useOwned();
   const items = useItems();
   const itemsRef = useRef(items);
@@ -782,12 +799,10 @@ export function useAssistant(query: string) {
               setProgress(p.state === "done" ? null : p);
               if (
                 p.state !== "done" &&
-                new URLSearchParams(location.search).get("chat") !== ids.chatId
+                new URLSearchParams(routeQuery.current).get("chat") !==
+                  ids.chatId
               )
-                navigate(
-                  `/app/assistant?chat=${encodeURIComponent(ids.chatId)}`,
-                  true,
-                );
+                void normalizeChat(ids.chatId);
             }
           },
           controller.signal,
@@ -798,12 +813,9 @@ export function useAssistant(query: string) {
       durable.current = null;
       if (!projectDraft) {
         if (
-          new URLSearchParams(location.search).get("chat") !== result.chat_id
+          new URLSearchParams(routeQuery.current).get("chat") !== result.chat_id
         ) {
-          navigate(
-            `/app/assistant?chat=${encodeURIComponent(result.chat_id)}`,
-            true,
-          );
+          await normalizeChat(result.chat_id);
           return;
         }
         if (canonical.current) {
@@ -939,6 +951,55 @@ export function useAssistant(query: string) {
     if (!owned() || mine !== generation.current) return;
     if (canonical.current) await store.refresh();
   };
+  const exitState = useRef({ sending, projectUncertain, failedAnswers });
+  exitState.current = { sending, projectUncertain, failedAnswers };
+  const checkingLeave = useRef(false);
+  const prepareLeave = useCallback(
+    async (to: string) => {
+      if (!owned()) return false;
+      if (normalizing.current === to) return true;
+      const state = exitState.current;
+      if (
+        lock.current ||
+        actionLock.current ||
+        state.sending ||
+        state.projectUncertain ||
+        checkingLeave.current
+      )
+        return false;
+      // Same mounted Assistant keeps its per-chat draft/failed-answer owners when selecting history.
+      if (to.split(/[?#]/)[0] === "/app/assistant") return true;
+      if (state.failedAnswers.length) return false;
+      const hasDraft = () =>
+        !!current.current.message.trim() ||
+        !!current.current.reply ||
+        [...drafts.current.values()].some(
+          (draft) => draft.message.trim() || draft.replyId,
+        );
+      if (!hasDraft()) return true;
+      checkingLeave.current = true;
+      try {
+        return (
+          (await confirm({
+            title: "Discard unsent Assistant drafts?",
+            body: "Saved conversations and their outcomes stay available.",
+            action: "Discard drafts",
+            danger: true,
+          })) &&
+          owned() &&
+          !lock.current &&
+          !actionLock.current &&
+          !exitState.current.sending &&
+          !exitState.current.projectUncertain &&
+          !exitState.current.failedAnswers.length
+        );
+      } finally {
+        checkingLeave.current = false;
+      }
+    },
+    [owned, confirm],
+  );
+  useBeforeNavigate(prepareLeave);
   return {
     chat,
     scope,

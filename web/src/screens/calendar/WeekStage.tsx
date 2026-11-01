@@ -1,3 +1,4 @@
+import { useRouteInput, useRouteScope } from "../../lib/route-scope";
 import {
   hoursLabel,
   type BusyInterval,
@@ -300,6 +301,26 @@ export function WeekStage({
   onDropTaskOnDay,
   onPole,
 }: Props) {
+  const inputAllowed = useRouteInput(),
+    inputScope = useRouteScope();
+  const cancelGesture = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const cancelIfHidden = () => {
+      if (!inputAllowed()) {
+        cancelGesture.current?.();
+        clearTimeout(keyTimer.current);
+        if (keyPart.current) {
+          keyPart.current = null;
+          onCancel();
+        }
+      }
+    };
+    const stop = inputScope?.subscribe(cancelIfHidden);
+    return () => {
+      stop?.();
+      cancelGesture.current?.();
+    };
+  }, [inputScope, inputAllowed]);
   const box = useRef<HTMLDivElement>(null);
   const camera = useRef<HTMLDivElement>(null);
   const pose = useRef({ ...CAMERA });
@@ -384,7 +405,7 @@ export function WeekStage({
 
   const startDrag = useCallback(
     (event: ReactPointerEvent, part: WeekPart, resize: boolean) => {
-      if (event.button !== 0) return;
+      if (!inputAllowed() || event.button !== 0) return;
       event.stopPropagation();
       event.preventDefault();
       const movable = canMove(part);
@@ -404,8 +425,17 @@ export function WeekStage({
         window.removeEventListener("pointercancel", cancel);
         window.removeEventListener("keydown", escape, true);
         gesturing.current = false;
+        cancelGesture.current = null;
+      };
+      cancelGesture.current = () => {
+        stop();
+        if (moved) onCancel();
       };
       const move = (e: PointerEvent) => {
+        if (!inputAllowed()) {
+          cancelGesture.current?.();
+          return;
+        }
         if (e.pointerId !== pointer || !movable) return;
         alt = e.altKey;
         if (
@@ -437,6 +467,10 @@ export function WeekStage({
         });
       };
       const finish = (e: PointerEvent) => {
+        if (!inputAllowed()) {
+          cancelGesture.current?.();
+          return;
+        }
         if (e.pointerId !== pointer) return;
         stop();
         if (moved) onCommit(part, alt && !resize, resize);
@@ -448,6 +482,10 @@ export function WeekStage({
         if (moved) onCancel();
       };
       const escape = (e: globalThis.KeyboardEvent) => {
+        if (!inputAllowed()) {
+          cancelGesture.current?.();
+          return;
+        }
         if (e.key !== "Escape") return;
         e.stopPropagation();
         stop();
@@ -458,12 +496,21 @@ export function WeekStage({
       window.addEventListener("pointercancel", cancel);
       window.addEventListener("keydown", escape, true);
     },
-    [canMove, floorEnd, floorStart, onCancel, onCommit, onPick, onPreview],
+    [
+      canMove,
+      floorEnd,
+      floorStart,
+      onCancel,
+      onCommit,
+      onPick,
+      onPreview,
+      inputAllowed,
+    ],
   );
 
   const keys = useCallback(
     (event: KeyboardEvent, part: WeekPart) => {
-      if (event.target !== event.currentTarget) return;
+      if (!inputAllowed() || event.target !== event.currentTarget) return;
       if (event.key === "Escape") {
         if (keyPart.current) {
           clearTimeout(keyTimer.current);
@@ -516,6 +563,10 @@ export function WeekStage({
       keyTimer.current = window.setTimeout(() => {
         const pending = keyPart.current;
         keyPart.current = null;
+        if (!inputAllowed()) {
+          if (pending) onCancel();
+          return;
+        }
         if (pending) onCommit(pending.part, false, pending.resized);
       }, 500);
     },
@@ -528,6 +579,7 @@ export function WeekStage({
       onPick,
       onPreview,
       scene.days.length,
+      inputAllowed,
     ],
   );
 

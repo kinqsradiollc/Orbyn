@@ -5,7 +5,7 @@ import {
   type AgentInstructions,
 } from "@orbyn/core";
 import { useEffect, useRef, useState } from "react";
-import { navigate } from "../../../lib/router";
+import { useNavigate } from "../../../lib/router";
 import { messageOf } from "../../../lib/resource";
 import { client } from "../../../lib/session";
 import {
@@ -45,6 +45,7 @@ const matchesContext = (
     : validProfile(saved?.profile) &&
       (!attempt.docId || saved.profile?.doc_id === attempt.docId);
 export function AutomationContext() {
+  const navigate = useNavigate();
   const owned = useSettingsOwner(),
     confirm = useConfirm(),
     read = useSettingsRead(() => client.agentContext());

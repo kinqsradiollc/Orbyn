@@ -2,7 +2,7 @@ import type { Item, Project, ProjectStage } from "@orbyn/core";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type DragEvent } from "react";
 import { Button, IconButton, SelectBox } from "../../ui/kit";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 
 const MIME = "application/x-orbyn-stage-card";
 const REMOVE = "__remove";
@@ -43,6 +43,7 @@ function TaskLine({
   onMove: (item: Item, stage: string | null) => void;
   onUnfile: (item: Item) => void;
 }) {
+  const tasks = useTasks();
   return (
     <li>
       <button
@@ -196,6 +197,7 @@ export function StageBoard({
   busy: boolean;
   onMove: (item: Item, stage: string | null) => void;
 }) {
+  const tasks = useTasks();
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null | undefined>(undefined);
   const columns = [

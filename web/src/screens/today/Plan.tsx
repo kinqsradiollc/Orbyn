@@ -25,10 +25,10 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { messageOf, useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, Loading, Pill, useToast } from "../../ui/kit";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 import { dayName } from "./dates";
 
 const LATE_SHOWN = 5;
@@ -47,9 +47,6 @@ const readDismissed = (): string[] => {
     return [];
   }
 };
-
-const planUntil = (id: string) =>
-  navigate(`/app/calendar?plan=${encodeURIComponent(id)}`);
 
 const toneOf = (tone: string) =>
   tone === "warn"
@@ -92,6 +89,10 @@ function PlanRow({
   zone: string;
   onFocus: (id: string) => void;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
+  const planUntil = (id: string) =>
+    navigate(`/app/calendar?plan=${encodeURIComponent(id)}`);
   const [open, setOpen] = useState(false);
   const words = todayRowWords(row, now, zone);
   const sessions = sessionsOf(row, source);
@@ -244,6 +245,10 @@ function CheckIns({
   rows: SessionCheckIn[];
   onChanged: () => void;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
+  const planUntil = (id: string) =>
+    navigate(`/app/calendar?plan=${encodeURIComponent(id)}`);
   const [asking, setAsking] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -400,6 +405,8 @@ export function Plan({
   onRetry: () => void;
   onChanged: () => void;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const toast = useToast();
   const [allLate, setAllLate] = useState(false);
   const [dismissed, setDismissed] = useState(readDismissed);

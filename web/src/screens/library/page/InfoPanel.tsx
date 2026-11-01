@@ -12,7 +12,7 @@ import {
 import { Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { messageOf } from "../../../lib/resource";
-import { navigate } from "../../../lib/router";
+import { useNavigate } from "../../../lib/router";
 import { client, getSessionVersion, onToken } from "../../../lib/session";
 import {
   Button,
@@ -37,6 +37,7 @@ export function InfoPanel(props: Props) {
 }
 
 function InfoPanelBody({ page, doc, canWrite, onClose }: Props) {
+  const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
   const [info, setInfo] = useState<DocInfo | null>(null);

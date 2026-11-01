@@ -1,3 +1,8 @@
+import {
+  useRouteActivity,
+  useRouteInput,
+  useRoutePortal,
+} from "../../../lib/route-scope";
 import { listLayout, pageSlides, slideStep, type DocBlock } from "@orbyn/core";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -15,12 +20,19 @@ export function Presenter({
   blocks: DocBlock[];
   onClose: () => void;
 }) {
+  const inputAllowed = useRouteInput();
+  const activity = useRouteActivity(),
+    active = activity.visible && activity.focused;
+  useRoutePortal(active);
   const slides = pageSlides(title, blocks);
   const [at, setAt] = useState(0);
   const root = useRef<HTMLDialogElement>(null);
+  const mayFocus = useRef(active);
+  mayFocus.current = active;
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
+    if (!active) return;
     const element = root.current;
     const opener = document.activeElement as HTMLElement | null;
     element?.showModal();
@@ -30,11 +42,15 @@ export function Presenter({
       if (document.fullscreenElement === element)
         void document.exitFullscreen?.().catch(() => {});
       element?.close();
-      opener?.focus?.();
+      if (mayFocus.current && opener?.isConnected && !opener.closest("[inert]"))
+        opener.focus();
     };
-  }, []);
+  }, [active]);
   useEffect(() => {
+    if (!active) return;
     const key = (event: KeyboardEvent) => {
+      if (!inputAllowed() || !root.current?.contains(document.activeElement))
+        return;
       if (
         event.key === " " &&
         (event.target as HTMLElement)?.closest("button, a")
@@ -52,9 +68,10 @@ export function Presenter({
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [at, slides.length]);
+  }, [at, slides.length, active]);
   const slide = slides[Math.min(at, slides.length - 1)];
   const layout = listLayout(slide.blocks);
+  if (!active) return null;
   return createPortal(
     <dialog
       ref={root}

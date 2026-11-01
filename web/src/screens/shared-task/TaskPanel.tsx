@@ -1,3 +1,6 @@
+import { useRouteScope } from "../../lib/route-scope";
+import { registerTaskPreparation } from "./host-store";
+import { useBeforeNavigate } from "../../lib/router";
 import {
   appUrl,
   dateLabel,
@@ -38,8 +41,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
-import { client } from "../../lib/session";
+import { useNavigate } from "../../lib/router";
+import { client, getSessionVersion } from "../../lib/session";
 import {
   Button,
   ErrorNotice,
@@ -52,7 +55,7 @@ import {
 } from "../../ui/kit";
 import { buildInput, draftFrom, type Draft, type OccurrenceRef } from "./draft";
 import { minutesLabel } from "./format";
-import { tasks } from "./host-store";
+import { useTasks } from "./host-store";
 import { ItemFields } from "./ItemFields";
 import type { Pending } from "./pickers";
 import { ScopeDialog } from "./ScopeDialog";
@@ -113,6 +116,9 @@ export function TaskPanel({
   occurrence?: OccurrenceRef | null;
   onClose: () => void;
 }) {
+  const tasks = useTasks();
+  const scope = useRouteScope();
+  const navigate = useNavigate();
   const items = useItems();
   const planning = usePlanning();
   const fromList = items.find((item) => item.id === id) ?? listed;
@@ -166,12 +172,28 @@ export function TaskPanel({
 
   // Focus moves in and goes back to what opened the panel.
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    panel.current?.focus({ preventScroll: true });
+    const opener = document.activeElement as HTMLElement | null,
+      root = panel.current,
+      generation = getSessionVersion();
+    const allowed = () =>
+      generation === getSessionVersion() &&
+      (!scope || (scope.getSnapshot().visible && scope.getSnapshot().focused));
+    if (allowed()) root?.focus({ preventScroll: true });
     return () => {
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
+      const ownedFocus =
+        !!root?.contains(document.activeElement) ||
+        document.activeElement === document.body;
+      if (
+        allowed() &&
+        ownedFocus &&
+        opener?.isConnected &&
+        !opener.closest("[inert]") &&
+        !opener.matches(":disabled") &&
+        !document.querySelector("dialog[open]")
+      )
+        opener.focus({ preventScroll: true });
     };
-  }, []);
+  }, [scope]);
 
   // Beside the list on wide screens; over it, and the only thing in reach,
   // where the scrim shows.
@@ -218,9 +240,33 @@ export function TaskPanel({
     onClose();
   }, [dirty, confirm, onClose]);
 
+  const latestDraft = useRef(draft);
+  latestDraft.current = draft;
+  const prepareClose = useCallback(async () => {
+    if (writing.current) return false;
+    const captured = latestDraft.current;
+    if (
+      dirty &&
+      !(await confirm({
+        title: "Discard changes?",
+        body: "Your edits haven't been saved.",
+        action: "Discard changes",
+        danger: true,
+      }))
+    )
+      return false;
+    return !writing.current && captured === latestDraft.current;
+  }, [dirty, draft, confirm]);
+  useEffect(() => registerTaskPreparation(prepareClose), [prepareClose]);
+  useBeforeNavigate(prepareClose);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (
+        !panel.current?.contains(document.activeElement) ||
+        event.key !== "Escape" ||
+        event.defaultPrevented
+      )
+        return;
       if (document.querySelector("dialog[open], .menu")) return;
       event.preventDefault();
       void requestClose();
@@ -871,6 +917,8 @@ function MeetingNotes({
   occurrence: OccurrenceRef | null;
   onError: (text: string) => void;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const [series, setSeries] = useState<EventNoteRef | null>(null);
   useEffect(() => {
     if (!item.rrule || !occurrence) return;

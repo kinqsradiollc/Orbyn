@@ -6,7 +6,7 @@ import {
 } from "@orbyn/core";
 import { Check, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
-import { navigate } from "../../lib/router";
+import { useCapturedNavigate } from "../../lib/router";
 import { messageOf, useResource } from "../../lib/resource";
 import { client } from "../../lib/session";
 import {
@@ -176,6 +176,7 @@ export function SaveViewDialog({
   layout: Layout;
   onClose: () => void;
 }) {
+  const navigate = useCapturedNavigate();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

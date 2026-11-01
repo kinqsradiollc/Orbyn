@@ -10,7 +10,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../lib/session";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import {
   Button,
   Dialog,
@@ -24,7 +24,7 @@ import {
 } from "../../ui/kit";
 import { useOwned, onForeground, onLive } from "../agents-shared/hooks";
 import { Check, Evidence, More } from "../agents-shared/parts";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 
 export function GoalWork({
   goal,
@@ -35,6 +35,8 @@ export function GoalWork({
   onClose: () => void;
   onOpenChat: (id: string) => void;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const owned = useOwned(),
     confirm = useConfirm(),
     lock = useRef(false),

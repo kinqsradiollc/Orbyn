@@ -1,3 +1,5 @@
+import "./Templates.css";
+import { useLibraryOwner } from "./lifetime";
 import {
   addDays,
   localDateKey,
@@ -6,15 +8,17 @@ import {
   type EventNoteRef,
   type PageTemplate,
   type Project,
+  HttpError,
 } from "@orbyn/core";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import {
   Button,
   Dialog,
+  type DialogPortalLease,
   ErrorNotice,
   Field,
   IconButton,
@@ -35,6 +39,9 @@ export function TemplatesDialog({
   onClose: () => void;
   folderId: string | null;
 }) {
+  const navigate = useNavigate();
+  const owned = useLibraryOwner(),
+    portalLease = useRef<DialogPortalLease | null>(null);
   const toast = useToast();
   const confirm = useConfirm();
   const { folders, teams } = useLibraryState();
@@ -53,6 +60,78 @@ export function TemplatesDialog({
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const running = useRef(false);
+  const attemptDetails = useRef<{
+    templateId: string;
+    input: Parameters<typeof client.usePageTemplate>[1];
+  } | null>(null);
+  const [createdId, setCreatedId] = useState<string | null>(null),
+    [unknown, setUnknown] = useState(false);
+  const confirming = useRef(false);
+  const close = async () => {
+    if (
+      !owned() ||
+      running.current ||
+      confirming.current ||
+      openingSaved.current
+    )
+      return;
+    if (unknown) {
+      setError(
+        "The template result is unconfirmed. Keep its original details here; no repeat request will be sent.",
+      );
+      return;
+    }
+    confirming.current = true;
+    try {
+      if (
+        !createdId &&
+        (title.trim() ||
+          projectId ||
+          eventId ||
+          makeTasks ||
+          space ||
+          folder !== (folderId ?? "")) &&
+        !(await confirm({
+          title: "Discard this page setup?",
+          body: "No additional page will be created.",
+          action: "Discard setup",
+          danger: true,
+        }))
+      )
+        return;
+      if (owned() && !running.current) onClose();
+    } finally {
+      confirming.current = false;
+    }
+  };
+  const openingSaved = useRef(false);
+  const openSaved = async (id: string) => {
+    if (!owned() || openingSaved.current) return;
+    openingSaved.current = true;
+    setBusy(true);
+    try {
+      portalLease.current?.retire();
+      const result = await navigate(`/app/doc/${id}`);
+      if (!owned()) return;
+      if (result.kind !== "committed") {
+        portalLease.current?.restore();
+        setError(
+          result.kind === "refused"
+            ? `Page saved, but ${result.reason}`
+            : "Page saved. Opening it was interrupted; try Open saved page.",
+        );
+      } else onClose();
+    } catch (failure) {
+      if (owned()) {
+        portalLease.current?.restore();
+        setError(messageOf(failure, "Page saved, but it couldn't be opened."));
+      }
+    } finally {
+      openingSaved.current = false;
+      if (owned()) setBusy(running.current);
+    }
+  };
+
   useEffect(() => {
     let live = true;
     setError("");
@@ -67,13 +146,14 @@ export function TemplatesDialog({
             new Date(`${addDays(today, 15)}T00:00:00`).toISOString(),
           ),
         ]);
+        if (!live || !owned()) return;
         const listed = view.entries
           .filter((entry) => entry.kind === "event")
           .sort((a, b) => a.start_at.localeCompare(b.start_at));
         const refs = listed.length
           ? await client.eventNotes(listed.map((entry) => entry.item_id))
           : [];
-        if (!live) return;
+        if (!live || !owned()) return;
         setTemplates(list);
         setProjects(
           projectRows.filter((project) => project.status === "active"),
@@ -81,7 +161,8 @@ export function TemplatesDialog({
         setEvents(listed);
         setNotes(refs);
       } catch (failure) {
-        if (live) setError(messageOf(failure, "Couldn't load templates."));
+        if (live && owned())
+          setError(messageOf(failure, "Couldn't load templates."));
       }
     })();
     return () => {
@@ -90,13 +171,13 @@ export function TemplatesDialog({
   }, [attempt]);
   const existing = notes.find((note) => note.item_id === eventId);
   const create = async () => {
-    if (!picked || running.current) return;
+    if (!owned() || !picked || running.current || unknown || createdId) return;
     running.current = true;
     setBusy(true);
     setError("");
     try {
       const event = events.find((one) => one.item_id === eventId);
-      const result = await client.usePageTemplate(picked.id, {
+      const input = {
         title: title.trim() || undefined,
         team_id: space || null,
         project_id: projectId || null,
@@ -105,10 +186,14 @@ export function TemplatesDialog({
         ...(event?.occurrence ? { occurrence: event.occurrence } : {}),
         folder_id: folder || null,
         make_tasks: makeTasks,
-      });
+      };
+      attemptDetails.current = { templateId: picked.id, input };
+      const result = await client.usePageTemplate(picked.id, input);
+      if (!owned()) return;
+      setCreatedId(result.doc.id);
       void loadLibrary();
-      onClose();
-      navigate(`/app/doc/${result.doc.id}`);
+      await openSaved(result.doc.id);
+      if (!owned()) return;
       toast({
         text: result.existing
           ? "That event already has a note. It's open now."
@@ -117,41 +202,83 @@ export function TemplatesDialog({
             : "Page created.",
       });
     } catch (failure) {
-      setError(messageOf(failure, "Couldn't create the page."));
+      if (!owned()) return;
+      const status = failure instanceof HttpError ? failure.statusCode : 0;
+      const uncertain =
+        !status || status >= 500 || status === 408 || status === 429;
+      setUnknown(uncertain);
+      setError(
+        uncertain
+          ? "The result of this template request is unconfirmed. Its setup is retained; no repeat request will be sent."
+          : messageOf(failure, "Couldn't create the page."),
+      );
     } finally {
       running.current = false;
-      setBusy(false);
+      if (owned()) setBusy(false);
     }
   };
   const remove = async (template: PageTemplate) => {
-    const ok = await confirm({
-      title: `Delete “${template.name}”?`,
-      body: "Pages made from it stay as they are.",
-      action: "Delete",
-      danger: true,
-    });
-    if (!ok) return;
+    if (!owned() || running.current || confirming.current || unknown) return;
+    confirming.current = true;
     try {
+      const ok = await confirm({
+        title: `Delete “${template.name}”?`,
+        body: "Pages made from it stay as they are.",
+        action: "Delete",
+        danger: true,
+      });
+      if (!ok || !owned()) return;
+      running.current = true;
+      setBusy(true);
       await client.deletePageTemplate(template.id);
+      if (!owned()) return;
       setTemplates(
         (all) => all?.filter((one) => one.id !== template.id) ?? all,
       );
     } catch (failure) {
-      setError(messageOf(failure, "Couldn't delete this template."));
+      if (owned())
+        setError(
+          messageOf(
+            failure,
+            "Couldn't delete this template. Refresh the template list before trying again.",
+          ),
+        );
+    } finally {
+      confirming.current = false;
+      running.current = false;
+      if (owned()) setBusy(false);
     }
   };
+
   const writable = teams.filter((team) => canWriteDoc(teams, team.id));
   return (
     <Dialog
       title={picked ? picked.name : "New page from a template"}
+      portalLease={portalLease}
       wide
-      onClose={onClose}
+      onClose={() => void close()}
     >
       {error && (
         <ErrorNotice
           message={error}
           onRetry={templates ? undefined : () => setAttempt((n) => n + 1)}
         />
+      )}
+      {createdId && (
+        <p role="status">
+          This page is saved.{" "}
+          <Button disabled={busy} onClick={() => void openSaved(createdId)}>
+            Open saved page
+          </Button>
+        </p>
+      )}
+      {unknown && attemptDetails.current && (
+        <details>
+          <summary>Original request details</summary>
+          <pre className="small">
+            {JSON.stringify(attemptDetails.current, null, 2)}
+          </pre>
+        </details>
       )}
       {!templates && !error && <Loading label="Loading templates" />}
       {templates && !picked && (
@@ -193,7 +320,10 @@ export function TemplatesDialog({
         </div>
       )}
       {picked && (
-        <div className="lib-form">
+        <fieldset
+          className="lib-form lib-template-fields"
+          disabled={busy || unknown || createdId !== null}
+        >
           <Button variant="ghost" onClick={() => setPicked(null)}>
             <ArrowLeft /> All templates
           </Button>
@@ -291,14 +421,14 @@ export function TemplatesDialog({
             </p>
           )}
           <div className="dialog-actions">
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={() => void close()}>
               Cancel
             </Button>
             <Button variant="primary" busy={busy} onClick={() => void create()}>
               Create page
             </Button>
           </div>
-        </div>
+        </fieldset>
       )}
     </Dialog>
   );

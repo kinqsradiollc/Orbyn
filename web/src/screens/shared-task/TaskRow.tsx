@@ -34,7 +34,7 @@ import {
   timeAgo,
   timeFact,
 } from "./format";
-import { tasks } from "./host-store";
+import { useTasks } from "./host-store";
 import { useTaskActions, usePlanning } from "./store";
 
 const dayAt = (days: number) => {
@@ -46,6 +46,7 @@ const dayAt = (days: number) => {
 
 /** The one menu of quick changes for a task, on rows and board cards. */
 export function ItemMenu({ item, label }: { item: Item; label?: string }) {
+  const tasks = useTasks();
   const { setStatus, change, remove } = useTaskActions();
   const confirm = useConfirm();
   const status = (next: Status, close: () => void) => {
@@ -181,6 +182,7 @@ export const TaskRow = memo(function TaskRow({
   cursor,
   onOpen,
 }: TaskRowProps) {
+  const tasks = useTasks();
   const { toggle } = useTaskActions();
   const { listById, tagById, plannedById } = usePlanning();
   const done = item.status === "done";

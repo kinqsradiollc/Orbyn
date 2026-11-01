@@ -1,4 +1,10 @@
 import {
+  usePageCommands,
+  type PageCommands,
+} from "../../../app/controls/page-commands";
+import { useRouteActivity, useRouteInput } from "../../../lib/route-scope";
+import { useLibraryView } from "../view";
+import {
   docContainerBlocks,
   docFoldsForTarget,
   docFragmentIndex,
@@ -49,7 +55,13 @@ import {
 } from "react";
 import { useAccount } from "../../../app/account";
 import { messageOf } from "../../../lib/resource";
-import { navigate, useTitle } from "../../../lib/router";
+import {
+  useNavigate,
+  useCapturedNavigate,
+  useTitle,
+  useHash,
+  useRouteActivation,
+} from "../../../lib/router";
 import { client, getToken, getSessionVersion } from "../../../lib/session";
 import {
   Button,
@@ -65,11 +77,10 @@ import {
   useToast,
 } from "../../../ui/kit";
 import { MakeCards } from "../../study/MakeCards";
-import { tasks } from "../../shared-task";
+import { useTasks } from "../../shared-task";
 import { SaveTemplateDialog } from "../Templates";
 import {
   canWriteDoc,
-  goTo,
   loadLibrary,
   useLibraryState,
   starDoc,
@@ -204,6 +215,13 @@ export function PageScreen({
   /** Owning screens settle the editor before changing its date or context. */
   onSettle?: (settle: (() => Promise<boolean>) | null) => void;
 }) {
+  const tasks = useTasks();
+  const activity = useRouteActivity();
+  const inputAllowed = useRouteInput();
+  const navigate = useNavigate();
+  const routeHash = useHash();
+  const routeActivation = useRouteActivation();
+  const { goTo } = useLibraryView();
   const current = useLibraryOwner();
   const { user } = useAccount();
   const { teams, stars } = useLibraryState();
@@ -374,21 +392,23 @@ export function PageScreen({
   });
 
   /** Everything typed is saved, or the action doesn't go ahead. */
+  const flushPage = page.flush;
+  const pendingSource = page.sourceDrafts.pending;
   const settled = useCallback(async () => {
     if (!current()) return false;
-    if (splitStuck || page.sourceDrafts.pending) {
+    if (splitStuck || pendingSource) {
       setNavError(
         "Resolve or discard the source draft before leaving this view. You can save a source copy first.",
       );
       return false;
     }
     writer.current?.settle();
-    const ok = await page.flush();
+    const ok = await flushPage();
     if (!current()) return false;
     if (!ok) setNavError("Save or resolve your draft first.");
     else setNavError("");
     return ok;
-  }, [page, splitStuck, current]);
+  }, [flushPage, pendingSource, splitStuck, current]);
   useEffect(() => {
     onSettle?.(settled);
     return () => onSettle?.(null);
@@ -443,20 +463,28 @@ export function PageScreen({
     [page.leaves, folds, saveFolds],
   );
 
-  // #blockId deep links, on opening and when the hash changes.
+  // Hash and same-destination activation belong to this frame, not window listeners.
   const hashDone = useRef("");
   useEffect(() => {
-    const go = () => {
-      const fragment = decodeURIComponent(location.hash.slice(1));
-      if (!fragment || !page.leaves.length || hashDone.current === fragment)
-        return;
-      hashDone.current = fragment;
-      goToFragment(fragment);
-    };
-    go();
-    window.addEventListener("hashchange", go);
-    return () => window.removeEventListener("hashchange", go);
-  }, [page.leaves.length, goToFragment]);
+    if (activity && (!activity.visible || !activity.focused)) return;
+    let fragment = "";
+    try {
+      fragment = decodeURIComponent(routeHash.slice(1));
+    } catch {
+      return;
+    }
+    const key = routeActivation + ":" + fragment;
+    if (!fragment || !page.leaves.length || hashDone.current === key) return;
+    hashDone.current = key;
+    goToFragment(fragment);
+  }, [
+    routeHash,
+    routeActivation,
+    page.leaves.length,
+    goToFragment,
+    activity?.visible,
+    activity?.focused,
+  ]);
 
   const openLink = useCallback(
     (url: string) => {
@@ -995,6 +1023,14 @@ export function PageScreen({
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (
+        !inputAllowed() ||
+        (event.target instanceof Element &&
+          !!event.target.closest(".st-panel")) ||
+        event.defaultPrevented ||
+        document.querySelector("dialog[open],.menu")
+      )
+        return;
+      if (
         (event.metaKey || event.ctrlKey) &&
         event.shiftKey &&
         event.key.toLowerCase() === "r"
@@ -1006,6 +1042,118 @@ export function PageScreen({
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const commandActions = useRef<PageCommands>({});
+  const commandReady =
+    !!doc && !!page.session && !!page.document && !page.gone && !dialog;
+  commandActions.current = {
+    "page.link": {
+      run: async () => {
+        try {
+          await navigator.clipboard.writeText(
+            `${location.origin}/app/doc/${encodeURIComponent(id)}`,
+          );
+          if (current()) toast({ text: "Link copied" });
+        } catch (failure) {
+          report(failure, "Couldn't copy the link.");
+        }
+      },
+    },
+    "page.markdown": { run: () => copyPage(false) },
+    "page.download-md": { run: () => exportAs("md") },
+    "page.download-pdf": { run: () => exportAs("pdf") },
+    "page.read": {
+      run: async () => {
+        if (await settled()) setMode(reading ? "edit" : "read");
+      },
+      available: canWrite,
+    },
+    "page.history": { run: () => setPanel("history") },
+    "page.template": {
+      available: doc?.kind !== "memory",
+      run: async () => {
+        if (await settled()) setDialog("template");
+      },
+    },
+    "page.ask": {
+      run: () => {
+        setAskSeed(null);
+        setPanel("ask");
+      },
+    },
+    "page.present": { run: () => setDialog("present") },
+    "page.window": {
+      run: () => {
+        window.open(
+          `/app/doc/${encodeURIComponent(id)}`,
+          "_blank",
+          "noopener,noreferrer",
+        );
+      },
+    },
+    "page.star": {
+      run: async () => {
+        try {
+          await starDoc(id, !isStarred(stars, id));
+        } catch (failure) {
+          report(failure, "Couldn't change favorites.");
+        }
+      },
+    },
+    "page.show-in-library": {
+      run: async () => {
+        if (!doc || !(await settled()) || !current()) return;
+        goTo(
+          doc.archived
+            ? { at: "archived" }
+            : doc.folder_id
+              ? { at: "folder", id: doc.folder_id }
+              : { at: "unfiled" },
+        );
+        return navigate(
+          doc.kind === "memory"
+            ? "/app/memory"
+            : doc.kind === "agent"
+              ? "/app/agent-notes"
+              : "/app/docs",
+        );
+      },
+    },
+    "page.archive": {
+      available: canWrite && doc?.kind !== "agenda" && doc?.kind !== "memory",
+      run: toggleArchive,
+    },
+    "page.record": {
+      available: canWrite && !reading && !suggesting,
+      run: () => setDialog("record"),
+    },
+  };
+  usePageCommands(
+    useMemo(() => {
+      if (!commandReady) return {};
+      return Object.fromEntries(
+        Object.entries(commandActions.current).map(([key, action]) => [
+          key,
+          {
+            available: action.available,
+            run: () => {
+              if (current() && inputAllowed() && !pageMutation.current)
+                return commandActions.current[key]?.run();
+            },
+          },
+        ]),
+      );
+    }, [
+      id,
+      commandReady,
+      canWrite,
+      doc?.kind,
+      reading,
+      suggesting,
+      current,
+      inputAllowed,
+    ]),
+  );
 
   if (page.gone)
     return (
@@ -2242,6 +2390,7 @@ function ConflictBanner({
   const confirm = useConfirm();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const windowNavigate = useCapturedNavigate();
   const lock = useRef(false);
   const owner = useRef({
     token: getToken(),
@@ -2292,7 +2441,10 @@ function ConflictBanner({
       void loadLibrary();
       toast({
         text: "Your draft is saved as a new page.",
-        action: { label: "Open", run: () => navigate(`/app/doc/${made.id}`) },
+        action: {
+          label: "Open",
+          run: () => windowNavigate(`/app/doc/${made.id}`),
+        },
       });
     } catch (failure) {
       if (!current()) return;

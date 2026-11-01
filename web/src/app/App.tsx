@@ -1,3 +1,4 @@
+import { AuthenticatedWorkspace } from "./workspace/AuthenticatedWorkspace";
 import type { LegalSummary } from "@orbyn/core";
 import { Suspense, useEffect, useState } from "react";
 import { client } from "../lib/session";
@@ -99,15 +100,22 @@ function Routed() {
     if (inApp) {
       const hit = find(APP_ROUTES, path);
       return (
-        <Shell key={version}>
-          <Suspense fallback={<Loading />}>
-            {hit ? (
-              <hit.route.screen key={hit.route.path} params={hit.params} />
-            ) : (
-              <Empty title="This page doesn't exist" />
-            )}
-          </Suspense>
-        </Shell>
+        <AuthenticatedWorkspace
+          key={version}
+          userId={user.id}
+          generation={version}
+          fallback={
+            <Shell key={version}>
+              <Suspense fallback={<Loading />}>
+                {hit ? (
+                  <hit.route.screen key={hit.route.path} params={hit.params} />
+                ) : (
+                  <Empty title="This page doesn't exist" />
+                )}
+              </Suspense>
+            </Shell>
+          }
+        />
       );
     }
   }

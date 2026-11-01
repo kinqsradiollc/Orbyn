@@ -92,13 +92,16 @@ export class PlannerItemStore {
     scope: string | null,
     force = false,
     visibleTeamIds?: readonly string[],
+    admitted: () => boolean = () => true,
   ): Promise<Item[]> {
+    if (!admitted()) return this.items;
     if (this.binding !== this.session()) this.reset();
     if (visibleTeamIds) this.restrictTeams(visibleTeamIds);
     const generation = this.generation,
       binding = this.binding,
       request = ++this.request;
     const valid = () =>
+      admitted() &&
       generation === this.generation &&
       binding === this.session() &&
       request === this.request;
@@ -110,6 +113,7 @@ export class PlannerItemStore {
       !this.after ||
       this.nextReconcileIn() === 0;
     const reconcile = async () => {
+      if (!valid()) return;
       const started = this.now();
       let items: Item[],
         after: string | undefined,

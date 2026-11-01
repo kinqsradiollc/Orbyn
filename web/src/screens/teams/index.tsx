@@ -1,7 +1,8 @@
+import { watchAccount } from "../../lib/account-events";
 import { useEffect, useRef, useState } from "react";
 import { teamInput, type Team } from "@orbyn/core";
 import { useAccount } from "../../app/account";
-import { navigate, useSearch, useTitle } from "../../lib/router";
+import { useNavigate, useSearch, useTitle } from "../../lib/router";
 import { client } from "../../lib/session";
 import {
   Button,
@@ -34,6 +35,7 @@ export default function TeamsScreen() {
   );
 }
 function TeamsHome() {
+  const navigate = useNavigate();
   const owned = useOwned(),
     search = useSearch(),
     query = new URLSearchParams(search),
@@ -50,12 +52,11 @@ function TeamsHome() {
     [revision, setRevision] = useState(0);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const stop = client.watchEvents(
+    const stop = watchAccount(
       (news) => {
         if (news.kind !== "changed" || !owned()) return;
         if (news.area && !["items", "projects", "organize"].includes(news.area))
           return;
-        client.noteExternalMutation();
         if (timer) return;
         timer = setTimeout(() => {
           timer = undefined;

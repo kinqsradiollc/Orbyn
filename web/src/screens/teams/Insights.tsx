@@ -7,7 +7,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/session";
 import { Button, Field, Input, Pill } from "../../ui/kit";
-import { tasks } from "../shared-task/host-store";
+import { useTasks } from "../shared-task/host-store";
 import {
   ActionState,
   ReadState,
@@ -31,6 +31,7 @@ export function Insights({
   canManage: boolean;
   check: PermissionCheck;
 }) {
+  const tasks = useTasks();
   const workload = useRead(
       () => client.teamWorkload(team.id, from, to),
       [team.id, from, to],

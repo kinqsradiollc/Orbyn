@@ -2,7 +2,7 @@ import { AssistantSavedHistoryStore } from "@orbyn/api-client";
 import type { AssistantConversationEntry } from "@orbyn/core";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { client, getSessionVersion } from "../../lib/session";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { Button, Dialog, ErrorNotice, Loading } from "../../ui/kit";
 import { onForeground, useOwned } from "../agents-shared/hooks";
 import { Evidence, More } from "../agents-shared/parts";
@@ -12,7 +12,7 @@ import {
   nightRunWords,
   updateWords,
 } from "../agents-shared/words";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 import { useRead } from "./state";
 
 export function MessageDetails({
@@ -26,6 +26,8 @@ export function MessageDetails({
   onClose: () => void;
   onOpenChat: (id: string) => void;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const owned = useOwned(),
     lock = useRef(false),
     [pending, setPending] = useState(false),

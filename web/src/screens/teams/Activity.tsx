@@ -7,9 +7,10 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice } from "../../ui/kit";
-import { tasks } from "../shared-task/host-store";
+import { useTasks } from "../shared-task/host-store";
 import { ReadState, useOwned, useRead } from "./state";
 export function Activity({ teamId }: { teamId: string }) {
+  const tasks = useTasks();
   const [hideMine, setHideMine] = useState(true),
     [extra, setExtra] = useState<TeamChangesPage[]>([]),
     [pending, setPending] = useState(false),

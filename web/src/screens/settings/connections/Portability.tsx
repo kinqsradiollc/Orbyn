@@ -18,8 +18,7 @@ import {
 } from "../../../ui/kit";
 import { SettingsSection, useSettingsExit, useSettingsOwner } from "../shared";
 import { download } from "./common";
-import { goTo } from "../../library/store";
-import { navigate } from "../../../lib/router";
+import { useNavigate } from "../../../lib/router";
 
 type Payload =
   | { kind: "tasks"; format: TaskImportFormat; data: string }
@@ -32,6 +31,7 @@ type Payload =
 type Receipt = ImportSummary | PagesImportSummary;
 type Attempt = { payload: Payload; key: string; started: number };
 export function Portability() {
+  const navigate = useNavigate();
   const owned = useSettingsOwner(),
     lock = useRef(false),
     attempt = useRef<Attempt | null>(null),
@@ -349,13 +349,14 @@ export function Portability() {
           <Summary receipt={receipt} />
           {"folder_id" in receipt && receipt.folder_id && (
             <a
-              href="/app/docs"
+              href={`/app/docs?folder=${encodeURIComponent(receipt.folder_id)}`}
               onClick={(event) => {
                 event.preventDefault();
                 if (!owned() || !("folder_id" in receipt) || !receipt.folder_id)
                   return;
-                goTo({ at: "folder", id: receipt.folder_id });
-                navigate("/app/docs");
+                navigate(
+                  `/app/docs?folder=${encodeURIComponent(receipt.folder_id)}`,
+                );
               }}
             >
               Open imported folder

@@ -18,7 +18,14 @@ export const CLOSED_TABS_KEPT = 10;
  * the screen itself. `title` is the thing's name as last seen ("" for the
  * screen's own name).
  */
-export type TabPlace = { view: string; id: string | null; title: string };
+export const TAB_HREF_LIMIT = 64 * 1024;
+export type TabPlace = {
+  view: string;
+  id: string | null;
+  title: string;
+  /** Optional client destination. Absent in legacy clients. */
+  href?: string;
+};
 
 export type WorkspaceTab = {
   key: string;
@@ -68,7 +75,9 @@ export type TabAction =
   | { type: "drop"; keys: string[] };
 
 const samePlace = (a: TabPlace, b: TabPlace) =>
-  a.view === b.view && a.id === b.id;
+  a.view === b.view &&
+  a.id === b.id &&
+  ((a.href === undefined && b.href === undefined) || a.href === b.href);
 
 /** Where a tab is now. */
 export const placeOf = (tab: WorkspaceTab): TabPlace =>
@@ -181,7 +190,11 @@ export function tabsReducer(state: TabsState, action: TabAction): TabsState {
           : state;
       // A screen that has just opened one of its things (the library, then
       // a page) is one step, not two.
-      if (here.view === action.place.view && here.id === null)
+      if (
+        here.view === action.place.view &&
+        here.id === null &&
+        action.place.id !== null
+      )
         return tabsReducer(state, { type: "replace", place: action.place });
       const history = [
         ...front.history.slice(0, front.at + 1),
@@ -336,7 +349,11 @@ const isPlace = (p: unknown): p is TabPlace =>
   typeof p === "object" &&
   typeof (p as TabPlace).view === "string" &&
   ((p as TabPlace).id === null || typeof (p as TabPlace).id === "string") &&
-  typeof (p as TabPlace).title === "string";
+  typeof (p as TabPlace).title === "string" &&
+  (!("href" in p) ||
+    (typeof (p as TabPlace).href === "string" &&
+      (p as TabPlace).href!.length > 0 &&
+      (p as TabPlace).href!.length <= TAB_HREF_LIMIT));
 
 /** What a device keeps of its tabs (closed ones are forgotten). */
 export function saveTabs(state: TabsState): string {
@@ -381,7 +398,12 @@ export function restoreTabs(
       .filter(isPlace)
       .filter((p) => known(p.view))
       .slice(-TAB_HISTORY_LIMIT)
-      .map((p) => ({ view: p.view, id: p.id, title: p.title }));
+      .map((p) => ({
+        view: p.view,
+        id: p.id,
+        title: p.title,
+        ...(p.href === undefined ? {} : { href: p.href }),
+      }));
     if (!history.length) continue;
     const at =
       typeof tab.at === "number" && Number.isInteger(tab.at)

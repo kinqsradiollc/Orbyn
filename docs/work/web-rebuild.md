@@ -31,8 +31,9 @@ below. Real local Booking evidence covers queued mail and the confirmation,
 approval and cancellation lifecycle, with no SMTP delivery. Admin/Developers and
 Settings have their scoped qualification and local checkpoint commits. Settings
 includes its modal and all six categories, ChatGPT and legacy aliases. Stage 6
-shell integration, Stage 7 parity closure, external delivery/provider limits and
-the final whole-client checks remain open.
+retained shell integration has completed its scoped qualification and checkpoint
+checks. Stage 7 parity closure, external delivery/provider limits and the final
+whole-client checks remain open.
 
 ## How to run
 
@@ -1257,3 +1258,326 @@ No Docker build, CI, publication, deployment or full backend-suite result is cla
 This closes the scoped Stage 5 checkpoint. It does not close the full rebuild:
 Stage 6 shell work and Stage 7 remaining parity, font delivery, final all-route
 light/dark/phone qualification and the guarded full backend suite remain required.
+
+### Stage 6 — destination and controller qualification started
+
+The shared tab model now has an optional bounded destination that preserves
+query-string and anchor history. Legacy records without it retain their existing
+identity; malformed present destinations are refused during restore. Three new
+regressions fail against the old model (12/15 pass) and all 15 pass after the
+additive correction and core build. These two source/test files are not yet part
+of a Stage 6 checkpoint commit.
+
+The private shell controller remains unapplied. Root source review reproduced a
+separate title-persistence defect: normal title changes updated mounted frames but
+not tab history or durable restore. Its new regression fails before correction;
+the corrected private candidate passes six focused pure-controller tests, including
+query-history/pane/dock title isolation and the existing asynchronous departure
+races. This is private state-model evidence, not integrated tab/pane or browser
+qualification. Full shell integration and its remaining owners are still required.
+
+The routing/context/controller foundation is now applied with App and Shell
+retention still unchanged. Web no-emit passes. The actual-target tab/controller
+suite passes 29/29, including missing/refusing owners, modal parking, account
+changes during preparation, hidden/retired callbacks, same-object query guards,
+orphaned dock origins, all-owner reload preparation and storage failure. An isolated
+browser-history fixture passes 12/12 against the target router: guarded Back
+restoration/refusal, accepted Back/Forward and hash changes, failed replay commit,
+retired navigation owners, Settings return preservation and throwing guards. It
+uses no account/API and does not qualify an actual retained editor.
+
+Font delivery is now local: the existing DM Sans and Manrope families use eight
+unmodified WOFF2 subsets with complete original OFL notices and source hashes in
+`web/public/fonts`. The runtime Google stylesheet is removed; Latin faces preload
+and other script subsets load on demand. The four-case browser check passes 39/39
+on actual anonymous sign-in/member Teams, desktop light and phone dark: all eight
+local subsets load, native rendered-glyph inspection identifies both custom fonts,
+and there are no external requests, overflow, browser exceptions or unexpected
+writes. All four captures were inspected. Earlier helpers stopped on an absent
+paragraph selector and variable fonts' internal instance names; those receipts
+remain separate. No application behavior was changed to satisfy those assumptions.
+Final all-route visual qualification must now use these real fonts.
+
+Shell integration remains in progress. Review of the private candidate found
+dock hiding unmounted retained editors, tab Close hid the whole dock, and task
+replacement could retain its lock or publish a late rejection after account
+retirement. Corrections are being prepared before applying that candidate. Calendar
+also has a competing Focus consumer that must move to the single global owner
+before retention is enabled. These findings are not claims of corrected or
+qualified integrated behavior.
+
+The corrected private shell overlay now passes web no-emit after its navigation
+helper and Writer binding corrections. Controlled-dependency tests of the actual
+task-layer source reproduce four failures in the earlier candidate; the corrected
+source passes 7/7, including detach during preparation, late account rejection,
+hidden input ownership and stale Focus close. The private controller's five
+global-exit tests pass, including a resource mutation while another frame settles
+and a permit becoming stale immediately before teardown. The consolidated Focus
+candidate also passes private web no-emit; its native UI/API behavior is not yet
+qualified. Settings overlay, generic feature preparation and full shell controls
+remain unfinished, so retention is still not enabled.
+
+The separate private Stage 7 saved-view candidate passes its core/API-client
+builds, backend no-emit and 24 pure filter/draft-store contracts. Four extended
+filter regressions fail against the old core while its 12 existing cases pass.
+The agent adapter now obtains real tag ownership metadata for grouping instead
+of inventing ownership from the task's team. These shared changes are not applied
+to the target; SQL admission, permissions, shared-result identity and real UI
+qualification remain required. The target web build succeeds with all eight exact
+font files and the local stylesheet present in its output.
+
+The reviewed shell candidate is now applied to the local worktree, with retention
+admission still disabled. Its exact frozen source chain and previous file bytes
+are retained privately. Actual-target web no-emit passes; the subsequent web
+production build also passes after the input-owner and Focus corrections. The
+actual-target tab/controller suite now passes 34/34, including five global-exit
+regressions for refusal, mutation during another frame's preparation, revocable
+permits, account retirement and save-induced title changes.
+
+Further source review found that an accepted new-task-to-Focus transition left
+the prepared create dialog mounted. Controlled-dependency checks of the actual
+frozen host owner reproduce that failure (7/8 pass before, 8/8 after). Cancellation
+preserves the exact create presentation, and the remaining cases cover hidden
+engines, replacement reasons, missing timer owners, exit revocation and account
+retirement. These are state-owner checks, not native dialog or timer API proof.
+Focus switching now uses the host's single preparation path rather than finishing
+the same session twice. Hidden Assistant panes also refuse focused-entry scrolling
+and focus until their input owner becomes active. Settings return coordination,
+generic retained-frame preparation, full shell controls and native qualification
+remain in progress; no Stage 6 checkpoint commit or full-parity claim is made.
+
+Scoped native Focus qualification now passes 82 checks across five serialized
+browser parts. The fixture imports the actual TaskHost, Focus, timer, Calendar,
+account and kit components, with synthetic identity/server responses and controlled
+clock/audio/notification effects. It covers Start/Pause/Resume, a hidden running
+engine, phase logging, same-engine return, explicit End, a single switch flush,
+unknown PUT readback without blind replay, account ABA/late finish refusal,
+revocable global-exit permits and two Calendar callers sharing one timer. Every
+API request is intercepted; this is not real persistence, actual Shell/tab UI or
+physical notification/audio delivery evidence. All terminal runs report no
+unexpected browser errors, authority violations or application-source drift.
+Earlier fixture failures are retained: an unlisted favicon, independent Vite
+timestamped module instances and an omitted Calendar check-ins read. These were
+fixture repairs, not application changes made to satisfy the checks.
+
+The Settings coordinator and scoped portal ownership are now applied locally,
+with retention still disabled. Settings captures the opening working pane, keeps
+its own guard/input epoch, and uses one prepared browser/topology commit when a
+link changes a secondary destination. Dialogs and menus register their actual
+origin rather than globally blocking unrelated panes. A regression reproduces an
+old coordinator publishing Settings after its dock's working origin closed
+(9/10 pass before); the corrected coordinator passes 10/10. Three additional portal
+contracts bring the private source-owner checks to 13/13. They cover late own
+portals blocking changed/removed/parked candidates, unrelated-pane independence
+and stale/idempotent cleanup. Private and actual-target web no-emit pass; the
+actual-target tab/controller suite remains 34/34. These state/fixture checks do
+not qualify native Settings focus or the remaining full-route/control work.
+
+Stage 7 shared-view qualification has now reached the marked disposable database.
+The private candidate passes the 13 existing/extended saved-view tests after a
+test-only correction from zero to NULL estimates; the database constraint was
+retained. Two additional SQL contracts pass 252 comparisons against the core
+filter across source/viewer zones, DST, all-day dates, explicit spans and timestamp
+precision, plus bounded metadata/space narrowing. The MCP suite initially exposed
+a priority-group contract regression and a stale test expecting custom fields to
+be ignored. The corrected adapter preserves raw priority/status groups, and the
+stronger fixture uses real custom-field values with exact app/query IDs and
+fetch/CSV membership/order checks. All 11 MCP tests pass with outbound network
+trapped. These backend/core/client changes remain private and unapplied.
+
+The QuickLine recovery slice is applied locally and passes web no-emit. It retains
+one task ID/body/key across an unknown create, protects newer input, and clears a
+manual handoff only after task-host admission. Team-member discovery now starts
+on first mention input instead of every ordinary Work arrival; this is a source
+change, not a measured route-performance claim. A guarded API-inject check using
+the actual helper confirms real create receipts, exact keyed replay, one row and
+refusal to resurrect a deleted result, bringing the private saved-view/API suite
+to 16/16. Native QuickLine input/recovery and its final theme/phone checks remain
+unperformed.
+
+A shared legacy departure helper now checks the global task owner and all route
+guards with the same forced-disposal signal as the retained controller. Captured
+input, guard, account, navigation and global-resource changes revoke its permit.
+An isolated browser run passes the existing 12 router/history checks plus eight
+departure-permit cases. Shell sign-out now calls this helper and captures authored
+input; the final permission check still runs immediately before sign-out. Reload
+caller integration remains with the controls slice. The fixture alone does not
+qualify either complete UI action.
+Source review confirms the existing tabs preference keeps its state owner mounted,
+so the rebuilt controls will hide/inactivate tab chrome without destroying drafts.
+
+A further MCP regression reproduced overdue saved-view pagination rejecting its
+own next cursor because the trusted binding included a moving request clock
+(11/12 pass before). The private correction binds the semantic overdue constraint,
+while retaining version/day/zone fields; all 12 MCP tests now pass. Results remain
+live between pages, not a cross-request database snapshot. Additional changed-view
+and timezone cursor qualification remains open. The actual web build succeeds
+with the QuickLine and legacy sign-out changes; all Stage 6 controls and final
+whole-client qualification are still required before its checkpoint commit.
+
+### Stage 6 combined shell integration — 2 November 2026
+
+Applied the reviewed generic route lifecycle, corrected authoring handoffs, full
+shell controls, per-tab Library state, singleton overlays/pinned notifications,
+page commands and admitted Library creation handoff to the actual worktree.
+Exact pre-apply source hashes and prior bytes are retained privately. The newer
+QuickLine, router and local fonts were preserved. Workspace retention admission
+remains disabled in source pending complete integrated qualification.
+
+Corrections retain an unknown Project request body/key, guard Study's local Back,
+serialize known-saved dialog navigation, use the Calendar account time zone for
+date commands/search results, restore the original sidebar width on cancellation,
+and require an observable input revision before a Library launch. Preference
+reconciliation now uses a fresh primary read; shortcut assignment includes hidden
+catalog conflicts and Reset; command feedback handles synchronous refusals; tab
+filters stay reachable after the tab count falls.
+
+Actual target production web build, scoped formatting and source-organization
+check passed. Focused pure workspace/tab/shell contracts pass 48/48. Separately,
+controlled coordinator contracts pass 13/13 (12/13 before the input-revision fix),
+and actual SidebarSize callbacks pass 4/4 (2/4 before the cancellation fix). These
+controlled tests do not establish native mounting, geometry or API behavior.
+
+The integrated Chrome smoke test uses the actual local member and real demo API
+reads, with a browser-only retention-flag override. Seven scoped checks pass:
+Work render, global Import admission into the actual Library dialog without an
+upload, new tab, split admission, native resize cancellation, command search, and
+single-pane phone presentation without document overflow. It reports zero script
+errors, unexpected writes or source drift. The app's automatic timezone POST was
+deliberately blocked; login was the only permitted write. Chrome's first Escape
+clears a nonempty search field and the second closes the command dialog.
+
+Visual review found Today still applies viewport breakpoints inside a narrow
+split pane, squeezing its task column; the phone workspace toolbar also consumes
+too much vertical space. Both require correction and a native recheck. Full-page
+captures also contain blank offscreen task areas; content-visibility capture
+behavior must be distinguished from an actual scrolling defect before changing
+that optimization. The earlier failed smoke and subsequent successful receipts
+are retained. These checks do not close Stage 6: retained editor/tab/account,
+dock, Settings, preference uncertainty and complete shortcut flows, all seven
+checkpoint gates and the local commit remain outstanding. Stage 7 and final
+whole-client acceptance are still required. No push, PR, merge or deployment.
+
+#### Integrated shell visual follow-up
+
+Applied and checked Today container breakpoints, task-list-width wrapping and a
+compact workspace toolbar. In the native split view, both content grids measure
+536px with a single column; task title space measures at least 426px. The shared
+narrow-row rules follow the existing task-list container while TaskPanel viewport
+rules and content-visibility optimization remain unchanged. The toolbar retains
+Back, Forward and New tab, with secondary actions in the existing scoped menu.
+On the phone it measures 60px high and 375px wide without outer overflow.
+
+The extended actual Chrome smoke passes 11 scoped checks, including global Import
+handoff without an upload, four-to-three-tab filtering and clearing without
+changing selection, actual-width task/title layout, and keyboard menu traversal,
+Escape dismissal and focus return. The last run has no script errors, unexpected
+writes or source drift. Retention is still enabled only by a browser-test override.
+Actual scrolling verifies all 17 task rows visible (maximum height 125px); the
+Continue work viewport capture shows the rows. Blank offscreen full-page captures
+do not justify removing the rendering optimization. Both themes and representative
+phone/desktop images were inspected. The final source web build and full repository
+format check passed after these changes. Existing large-chunk and static/dynamic
+Notifications import build warnings remain.
+
+These are scoped shell checks, not completion of retained draft, dock, account,
+preference failure/reconciliation or whole-client acceptance. No Stage 6 checkpoint
+commit has been made; all seven checkpoint gates and remaining interaction
+qualification are still required before that commit.
+
+#### Integrated retained workspace and admission follow-up
+
+Retention is now enabled in the actual source. The earlier statements about a
+browser-only flag override describe historical runs, not the current candidate.
+The input controller advances authority revisions synchronously but defers its
+subscriber notification until after the complete native input event. This fixes
+React restoring the old controlled value between capture and bubble. Its owned
+notification is coalesced and cancelled on destruction. Page settlement now uses
+stable flush/pending dependencies, so a saved editor can authorize sign-out
+without an unrelated render changing the registered settlement identity. Account
+menu teardown occurs before global sign-out preparation.
+
+The real local demo API retained-editor run passes 10/10 checks with zero flag
+overrides: paragraph save/readback, failed-save parking, refused tab close and
+sign-out, same mounted page/writer and exact pending text on return, explicit
+retry with the original request body, dock hide/show and successful sign-out.
+The one owned page was deleted and its subsequent read returned 404. Paragraph
+blur intentionally closes its line editor; this evidence does not claim textarea
+selection survives that operation. Synthetic save failures were never forwarded.
+Presence/recents writes were suppressed and the automatic timezone write blocked.
+
+Planner polling now belongs to generation-labelled mounted consumers. Token
+changes retire timers/listeners without starting reads for an unadmitted account;
+resources are installed before dispatch so reentrant retirement also cleans them.
+Preferences similarly wait for a current-generation admitted consumer. Controlled
+planner contracts pass 8/8. Actual App email/Terms gates make no planner or
+Preferences reads; restoring the accepted local member restarts normal freshness.
+The synthetic gated identities do not accept terms or modify real accounts.
+
+Actual Preferences and transport with synthetic API/session responses pass 21/21:
+unknown-save reconciliation requires an explicit fresh primary no-store read,
+older matching receipts cannot resolve it, checking never replays a PUT, retired
+owners cannot publish, and shortcut collision/Cancel/confirmed Reset preserve
+unrelated overrides. These are component/transport checks, not backend CAS or
+replica qualification. Pure workspace/tab/shell contracts pass 54/54.
+
+The default sidebar now composes Today, Work, Calendar, Library and Agents with
+role-filtered More utilities. Nonempty custom order/hidden choices preserve the
+expanded arrangement; Reset adopts the new defaults. Starred and Pinned are real
+ordered slots. Pane content owns bounded independent scrolling and restores the
+same retained tab's offset. The phone drawer is immediately hidden from pointer
+and keyboard interaction while closed; this fixes a reproduced viewport-change
+race where its closing transform intercepted the menu button.
+
+The latest actual Chrome shell run passes 17/17 with source retention enabled,
+zero flag overrides, script errors, unexpected writes or source drift. It covers
+Settings over a preserved Work draft, cancelled cross-route creation, actual
+Library import dialog admission without upload, tab/filter/split actions,
+independent scrolling, pane-width layout, resize cancellation, command search,
+grouped phone navigation, keyboard workspace actions and account gates. The long
+frame measures 815px inside a 1000px viewport with 4707px scrollable content.
+Desktop light and phone light/dark captures were inspected. Full-page offscreen
+capture blanks remain distinct from the verified visible scrolling behavior.
+
+All seven final checkpoint gates and the Stage 6 local commit remain pending.
+Stage 7 shared/UI candidates are private preparation, requiring integration over
+these newer ownership fixes, native interaction/API qualification, the final
+all-route/theme/phone audit and guarded full backend suite. No push, PR, merge,
+provider configuration, deployment or desktop cutover has occurred.
+
+#### Final automatic-read continuation correction
+
+Final source review found a same-generation retirement gap despite all seven
+initial checkpoint gates passing: a held automatic team read could dispatch its
+next batch after the last admitted consumer unmounted. Controlled regressions
+reproduced both that follow-on dispatch and stale planner metadata publication.
+An internal automatic-owner predicate now fences each continuation; public
+explicit refresh remains independent. The shared PlannerItemStore accepts the
+same optional predicate (default true for existing callers), checking it before
+network dispatch, fallback, subsequent delta pages and snapshot publication.
+This is needed because its own asynchronous continuations outlive the outer
+refresh await. Desktop/mobile calling conventions remain valid.
+
+The automatic-admission controlled module checks pass 11/11 (9/11 before), and
+actual shared item-store tests pass 15/15 (13/15 before), including held snapshot,
+legacy fallback, next delta page and newer explicit refresh preservation. Earlier
+source-only review does not cover this newer root package correction. The final
+checkpoint gates must be refreshed for this candidate before its local commit.
+
+### Stage 6 checkpoint
+
+The corrected retained shell candidate passed all seven required checkpoint
+checks: repository formatting, full workspace types, source organization,
+project-document checks, GitHub helper tests, production web build and all
+week-scene tests. Source hashes were unchanged throughout that run. The final
+actual Chrome shell run then passed 17/17 again with zero source drift, errors,
+unexpected writes or retention overrides. The documentation-only checkpoint
+receipt was checked separately after those source/build checks.
+
+This closes the scoped Stage 6 implementation group for a local commit. It does
+not close Stage 7 or whole-client acceptance. Remaining work includes the prepared
+native task-transfer and rich Peek changes, exact shared saved-view filters and
+recovery across all consumers, the other recorded unexercised feature flows,
+all-route light/dark/phone coverage and the guarded full backend suite. No push,
+PR, merge, provider configuration, deployment or desktop cutover is part of this
+checkpoint.

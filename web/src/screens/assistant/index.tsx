@@ -2,7 +2,7 @@ import { newId } from "@orbyn/core";
 import { CalendarDays, History, Plus, Settings2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { client } from "../../lib/session";
-import { navigate, useSearch, useTitle } from "../../lib/router";
+import { useNavigate, useSearch, useTitle } from "../../lib/router";
 import {
   Button,
   ErrorNotice,
@@ -15,7 +15,7 @@ import {
 import { Character } from "../agents-shared/Character";
 import { useOwner, useOwned, useControls } from "../agents-shared/hooks";
 import { More } from "../agents-shared/parts";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 import { ChatList } from "./ChatList";
 import { SavedHistory } from "./History";
 import { PersonalIdentity } from "./PersonalIdentity";
@@ -32,6 +32,8 @@ export default function AssistantScreen() {
   return <AssistantWorkspace key={owner} />;
 }
 function AssistantWorkspace() {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const owned = useOwned(),
     query = useSearch(),
     assistant = useAssistant(query),

@@ -5,12 +5,13 @@ import {
   formatChatgptTokens,
 } from "@orbyn/core";
 import { useState } from "react";
-import { navigate } from "../../../lib/router";
+import { useNavigate } from "../../../lib/router";
 import { client } from "../../../lib/session";
 import { Button, ErrorNotice, Loading } from "../../../ui/kit";
 import { SettingsSection, useSettingsRead } from "../shared";
 
 export function AutomationOverview() {
+  const navigate = useNavigate();
   const capabilities = useSettingsRead(() => client.aiCapabilities()),
     route = useSettingsRead(() => client.aiProviderChoice()),
     profiles = useSettingsRead(() => client.assistantProfiles()),

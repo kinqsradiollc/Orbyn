@@ -287,3 +287,70 @@ test("empty deltas preserve authoritative sub-millisecond creation order", async
     ["z", "a"],
   );
 });
+
+test("a retired caller cannot publish a held snapshot or start its legacy fallback", async () => {
+  for (const fallback of [false, true]) {
+    const f = fixture();
+    const held = deferred<{ items: Item[]; updated_after: string }>();
+    f.api.reconcileItems = async () => {
+      const result = await held.promise;
+      if (fallback)
+        throw Object.assign(new Error("older server"), { status: 404 });
+      return result;
+    };
+    let admitted = true;
+    const pending = f.store.refresh("scope", true, undefined, () => admitted);
+    admitted = false;
+    held.resolve({ items: [item("retired")], updated_after: at });
+    await pending;
+    assert.deepEqual(f.store.getSnapshot(), []);
+    assert.equal(f.calls.filter((call) => call.kind === "legacy").length, 0);
+  }
+});
+
+test("a retired caller cannot continue a held delta into another page", async () => {
+  const f = fixture();
+  await f.store.refresh("scope");
+  const held = deferred<any>();
+  let calls = 0;
+  f.api.syncItems = async () => {
+    calls++;
+    return calls === 1
+      ? held.promise
+      : { items: [], deleted: [], next_cursor: "done", has_more: false };
+  };
+  let admitted = true;
+  const pending = f.store.refresh("scope", false, undefined, () => admitted);
+  admitted = false;
+  held.resolve({
+    items: [item("retired")],
+    deleted: [],
+    next_cursor: "next",
+    has_more: true,
+  });
+  await pending;
+  assert.equal(calls, 1);
+  assert.deepEqual(
+    f.store.getSnapshot().map((row) => row.id),
+    ["a"],
+  );
+});
+
+test("a revoked automatic caller cannot cancel a newer explicit snapshot", async () => {
+  const f = fixture();
+  const held = deferred<{ items: Item[]; updated_after: string }>();
+  const original = f.api.reconcileItems;
+  f.api.reconcileItems = () => held.promise;
+  let admitted = true;
+  const automatic = f.store.refresh("scope", true, undefined, () => admitted);
+  f.api.reconcileItems = original;
+  f.setFull([item("explicit")]);
+  await f.store.refresh("scope", true);
+  admitted = false;
+  held.resolve({ items: [item("retired")], updated_after: at });
+  await automatic;
+  assert.deepEqual(
+    f.store.getSnapshot().map((row) => row.id),
+    ["explicit"],
+  );
+});

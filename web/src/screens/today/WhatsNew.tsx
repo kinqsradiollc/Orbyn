@@ -10,7 +10,7 @@ import {
   type ChangelogRelease,
 } from "@orbyn/core";
 import { useEffect, useState } from "react";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, Dialog } from "../../ui/kit";
 
@@ -74,6 +74,7 @@ function Release({
 
 /** The releases since this browser last looked, newest open. */
 export function WhatsNew({ onClose }: { onClose: () => void }) {
+  const navigate = useNavigate();
   const [releases, setReleases] = useState(() => releasesSince(seenRelease()));
   useEffect(() => {
     let live = true;

@@ -1,3 +1,4 @@
+import { useRouteScope } from "../../lib/route-scope";
 import {
   addDays,
   dayTime,
@@ -11,17 +12,10 @@ import {
   type PlannerPrefs,
   type TimeBlock,
 } from "@orbyn/core";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "../../app/account";
-import { navigate, useSearch, useTitle } from "../../lib/router";
-import { client } from "../../lib/session";
+import { useNavigate, useSearch, useTitle } from "../../lib/router";
+import { client, getSessionVersion } from "../../lib/session";
 import {
   Button,
   ErrorNotice,
@@ -30,8 +24,7 @@ import {
   useToast,
 } from "../../ui/kit";
 import { X } from "lucide-react";
-import { ScopeDialog, tasks } from "../shared-task";
-import { useTaskLayer } from "../shared-task/host-store";
+import { ScopeDialog, useTasks } from "../shared-task";
 import {
   DeadlineChoice,
   Details,
@@ -39,7 +32,6 @@ import {
   TimeDialog,
   type DetailActions,
 } from "./Details";
-import { FocusBanner, FocusMode } from "./Focus";
 import { monthName, rangeTitle } from "./format";
 import { ManageDialog, type ManageTab } from "./ManageDialog";
 import {
@@ -145,6 +137,10 @@ function Calendar({
   prefs: PlannerPrefs;
   workspace: Workspace;
 }) {
+  const tasks = useTasks();
+  const inputScope = useRouteScope();
+  const [openingGeneration] = useState(getSessionVersion);
+  const navigate = useNavigate();
   const tz = prefs.timezone;
   const toast = useToast();
   const search = useSearch();
@@ -157,7 +153,7 @@ function Calendar({
 
   const setNav = useCallback(
     (next: { mode?: Mode; date?: string }, replace = true) => {
-      const params = new URLSearchParams(location.search);
+      const params = new URLSearchParams(search);
       if (next.mode) {
         if (next.mode === "stage") params.delete("mode");
         else params.set("mode", next.mode);
@@ -166,7 +162,7 @@ function Calendar({
       const text = params.toString();
       navigate(`/app/calendar${text ? `?${text}` : ""}`, replace);
     },
-    [],
+    [search, navigate],
   );
   const setDate = useCallback((day: string) => setNav({ date: day }), [setNav]);
   const setMode = useCallback(
@@ -257,7 +253,6 @@ function Calendar({
   });
   const plan = usePlan(workspace.items, view);
   const [revision, setRevision] = useState(0);
-  const [focusVersion, setFocusVersion] = useState(0);
   const refreshAll = useCallback(() => {
     actions.reloadIdle();
     void data.reloadFields();
@@ -271,7 +266,7 @@ function Calendar({
     setRevision((n) => n + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actions.reloadIdle]);
-  useLive(refreshView, () => setFocusVersion((n) => n + 1));
+  useLive(refreshView);
 
   const mates = useTeammates(
     workspace.teams,
@@ -287,21 +282,12 @@ function Calendar({
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const [dialog, setDialog] = useState<Dialogs>(null);
   const [slot, setSlot] = useState<string | null>(null);
-  const [focusItem, setFocusItem] = useState<Item | null>(null);
   const [sideOpen, setSideOpen] = useState(
     () => remembered(SIDE_KEY) !== "closed",
   );
   const [timeBusy, setTimeBusy] = useState(false);
   const [timeError, setTimeError] = useState("");
   const [request, setRequest] = useState<PlanRequest | null>(null);
-
-  // The task panel's Focus button lands here, so one focus mode runs.
-  const { focus: askedFocus } = useTaskLayer();
-  useLayoutEffect(() => {
-    if (!askedFocus) return;
-    tasks.closeFocus();
-    setFocusItem(askedFocus);
-  }, [askedFocus]);
 
   // A record the view no longer holds closes its details.
   const picked = useMemo<Picked | null>(() => {
@@ -340,7 +326,7 @@ function Calendar({
     async (itemId: string) => {
       const known = workspace.itemById.get(itemId);
       try {
-        setFocusItem(known ?? (await client.getItem(itemId)));
+        tasks.focus(known ?? (await client.getItem(itemId)));
       } catch (failure) {
         toast({
           error: true,
@@ -351,7 +337,7 @@ function Calendar({
         });
       }
     },
-    [toast, workspace.itemById],
+    [toast, workspace.itemById, tasks],
   );
 
   // Other screens reach Calendar by link: focus, a plan, or an existing plan.
@@ -592,7 +578,7 @@ function Calendar({
   }, [data, plan, setDate, toast, tz, workspace]);
 
   // ---- shortcuts ----
-  const blocked = !!dialog || !!anchor || !!focusItem || !!actions.ask;
+  const blocked = !!dialog || !!anchor || !!actions.ask;
   const latest = useRef({
     step,
     setDate,
@@ -622,7 +608,14 @@ function Calendar({
   useEffect(() => {
     if (blocked) return;
     const onKey = (e: KeyboardEvent) => {
+      const input = inputScope?.getSnapshot();
       if (
+        openingGeneration !== getSessionVersion() ||
+        (input && (!input.visible || !input.focused))
+      )
+        return;
+      if (
+        (e.target instanceof Element && !!e.target.closest(".st-panel")) ||
         e.defaultPrevented ||
         isTyping(e) ||
         e.metaKey ||
@@ -656,7 +649,7 @@ function Calendar({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [blocked]);
+  }, [blocked, inputScope, openingGeneration]);
 
   const title =
     mode === "month"
@@ -733,12 +726,6 @@ function Calendar({
               // Remembered for this visit.
             }
           }}
-        />
-        <FocusBanner
-          items={workspace.items}
-          hidden={!!focusItem}
-          version={focusVersion}
-          onOpen={setFocusItem}
         />
         {actions.note && (
           <div className="calendar-note is-warn" role="alert">
@@ -1062,21 +1049,6 @@ function Calendar({
           onPlan={() => void actions.answerDeadline("plan")}
           onMove={() => void actions.answerDeadline("move")}
           onCancel={() => actions.setAsk(null)}
-        />
-      )}
-      {focusItem && (
-        <FocusMode
-          key={focusItem.id}
-          item={focusItem}
-          items={workspace.items}
-          canWrite={workspace.canWrite(focusItem)}
-          breakLevel={prefs.break_level}
-          onClose={() => {
-            setFocusItem(null);
-            setFocusVersion((n) => n + 1);
-          }}
-          onSwitch={setFocusItem}
-          onChanged={refreshAll}
         />
       )}
     </div>

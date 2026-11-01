@@ -6,7 +6,7 @@ import {
   type HomeLayout,
   type ViewChoice,
 } from "@orbyn/core";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { messageOf } from "../../lib/resource";
 import {
   client,
@@ -59,7 +59,6 @@ onToken(() => {
   queue = Promise.resolve();
   state = EMPTY;
   listeners.forEach((listener) => listener());
-  if (listeners.size) void reloadPrefs();
 });
 
 const subscribe = (listener: () => void) => {
@@ -69,9 +68,13 @@ const subscribe = (listener: () => void) => {
 
 /** The account's layout choices, kept for the whole session. */
 export function usePrefs() {
+  const owner = useRef(getSessionVersion()).current;
   useEffect(() => {
-    if (!started) void reloadPrefs();
-  }, []);
+    // An old consumer can still be subscribed while the new account's gates mount.
+    // Only a newly admitted consumer may start that lifetime's automatic read.
+    if (owner === getSessionVersion() && getToken() && !started)
+      void reloadPrefs();
+  }, [owner]);
   return useSyncExternalStore(subscribe, () => state);
 }
 

@@ -7,10 +7,10 @@ import {
 } from "@orbyn/core";
 import { useState } from "react";
 import { useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { ErrorNotice, Loading } from "../../ui/kit";
-import { deviceTimeZone, tasks } from "../shared-task";
+import { deviceTimeZone, useTasks } from "../shared-task";
 
 const HIDE_KEY = "orbyn-changes-hide-mine";
 const hideAtFirst = () => {
@@ -23,6 +23,8 @@ const hideAtFirst = () => {
 
 /** What changed in your teams, others' changes first. */
 export function Changes() {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const [hideMine, setHideMine] = useState(hideAtFirst);
   const read = useResource(
     () => client.listChanges({ hide_mine: hideMine, limit: 12 }),

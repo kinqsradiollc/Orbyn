@@ -2,7 +2,7 @@ import { HttpError, sectionKey } from "@orbyn/core";
 import { useRef, useState } from "react";
 import { useAccount } from "../../../app/account";
 import { client } from "../../../lib/session";
-import { navigate } from "../../../lib/router";
+import { useNavigate } from "../../../lib/router";
 import { messageOf } from "../../../lib/resource";
 import { Button, ErrorNotice } from "../../../ui/kit";
 import { SettingsSection, useSettingsExit, useSettingsOwner } from "../shared";
@@ -14,6 +14,7 @@ import { Preferences } from "./Preferences";
 import "./account.css";
 
 export function AccountSettings() {
+  const navigate = useNavigate();
   const account = useAccount(),
     owner = useSettingsOwner(),
     lock = useRef(false);

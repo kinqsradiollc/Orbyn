@@ -10,7 +10,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, Field, Input } from "../../ui/kit";
-import { tasks } from "../shared-task/host-store";
+import { useTasks } from "../shared-task/host-store";
 import { span } from "./Availability";
 import { readTeam, useOwned } from "./state";
 export function FindMeetings({
@@ -22,6 +22,7 @@ export function FindMeetings({
   canWrite: boolean;
   zone: string;
 }) {
+  const tasks = useTasks();
   const today = localDateKey(new Date(), zone),
     [from, setFrom] = useState(today),
     [to, setTo] = useState(addDays(today, 7)),

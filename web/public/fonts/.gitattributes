@@ -1,0 +1,3 @@
+# Preserve the exact upstream licence bytes recorded in sources.json.
+dm-sans-OFL.txt -text whitespace=-blank-at-eol
+manrope-OFL.txt -text whitespace=-blank-at-eol

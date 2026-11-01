@@ -1,7 +1,7 @@
 import type { DocSummary } from "@orbyn/core";
 import { Plus } from "lucide-react";
 import { useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, Loading } from "../../ui/kit";
 import { shortDate } from "./shared";
@@ -20,6 +20,7 @@ export function Pages({
   revision: unknown;
   onNew: () => void;
 }) {
+  const navigate = useNavigate();
   const notes = useResource<DocSummary[]>(
     () => client.listDocs({ project: projectId }),
     [projectId, revision],

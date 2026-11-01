@@ -1,3 +1,4 @@
+import { useRouteInput } from "../../lib/route-scope";
 import {
   aiFeatureProviderLabel,
   RATINGS,
@@ -8,10 +9,11 @@ import {
 import { ArrowLeft, Check, FileText, Lightbulb, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate, useBeforeNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import {
   Button,
+  useConfirm,
   Empty,
   ErrorNotice,
   Loading,
@@ -55,6 +57,8 @@ export function Review({
   session: Session;
   onDone: (reviewed: number) => void;
 }) {
+  const inputAllowed = useRouteInput();
+  const navigate = useNavigate();
   const [cards, setCards] = useState<StudyCard[] | null>(null);
   const [error, setError] = useState("");
   const [shown, setShown] = useState(false);
@@ -69,6 +73,47 @@ export function Review({
   const root = useRef<HTMLDivElement>(null);
   const answerBox = useRef<HTMLTextAreaElement>(null);
   const current = useStudyOwner();
+  const confirm = useConfirm(),
+    checkingLeave = useRef(false),
+    exitAnswer = useRef(answer);
+  exitAnswer.current = answer;
+  const prepareLeave = useCallback(async () => {
+    if (!current() || lock.current || checkingLeave.current) return false;
+    const opening = exitAnswer.current;
+    if (!opening.trim()) return true;
+    checkingLeave.current = true;
+    try {
+      return (
+        (await confirm({
+          title: "Discard this quiz answer?",
+          body: "Your saved review progress stays as it is.",
+          action: "Discard answer",
+          danger: true,
+        })) &&
+        current() &&
+        !lock.current &&
+        exitAnswer.current === opening
+      );
+    } finally {
+      checkingLeave.current = false;
+    }
+  }, [current, confirm]);
+  useBeforeNavigate(prepareLeave);
+  const leaveReview = async () => {
+    const openingAnswer = exitAnswer.current,
+      read = generation.current;
+    const allowed = await prepareLeave();
+    if (
+      allowed &&
+      current() &&
+      !lock.current &&
+      !checkingLeave.current &&
+      generation.current === read &&
+      exitAnswer.current === openingAnswer
+    )
+      onDone(reviewed);
+  };
+
   useEffect(() => {
     const read = ++generation.current;
     setCards(null);
@@ -173,6 +218,7 @@ export function Review({
   };
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
+      if (!inputAllowed()) return;
       const active = document.activeElement;
       if (
         !card ||
@@ -207,12 +253,17 @@ export function Review({
     return () => window.removeEventListener("keydown", key);
   }, [shown, rate, card, current, session.quiz]);
   useEffect(() => {
-    if (session.quiz && card && !shown) answerBox.current?.focus();
+    if (inputAllowed() && session.quiz && card && !shown)
+      answerBox.current?.focus();
   }, [card, session.quiz, shown]);
 
   const head = (
     <div className="study-review-head">
-      <Button variant="ghost" disabled={busy} onClick={() => onDone(reviewed)}>
+      <Button
+        variant="ghost"
+        disabled={busy}
+        onClick={() => void leaveReview()}
+      >
         <ArrowLeft /> Back
       </Button>
       <span className="row-main small muted" dir="auto">
@@ -250,7 +301,7 @@ export function Review({
               : "Nothing to review"
           }
         >
-          <Button variant="primary" onClick={() => onDone(reviewed)}>
+          <Button variant="primary" onClick={() => void leaveReview()}>
             <Check /> Done
           </Button>
         </Empty>

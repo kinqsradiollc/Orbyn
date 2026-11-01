@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import {
   Button,
   Dialog,
@@ -94,13 +94,6 @@ const candidates = (kind: HubLinkKind, s: Sources) => {
   return s.docs
     .filter((d) => d.kind !== "agenda")
     .map((d) => ({ id: d.id, label: d.title || "Untitled" }));
-};
-
-const go = (link: HubLink) => {
-  if (link.kind === "project") navigate(`/app/project/${link.id}`);
-  else if (link.kind === "deck") navigate("/app/study");
-  else if (link.kind === "view") navigate(`/app/view/${link.id}`);
-  else navigate(`/app/doc/${link.id}`);
 };
 
 function EditHub({
@@ -329,6 +322,13 @@ export function Hubs({
   layout: HomeLayout;
   sources: Sources;
 }) {
+  const navigate = useNavigate();
+  const go = (link: HubLink) => {
+    if (link.kind === "project") navigate(`/app/project/${link.id}`);
+    else if (link.kind === "deck") navigate("/app/study");
+    else if (link.kind === "view") navigate(`/app/view/${link.id}`);
+    else navigate(`/app/doc/${link.id}`);
+  };
   const confirm = useConfirm();
   const toast = useToast();
   const hubs = layout.hubs;

@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { messageOf } from "../../lib/resource";
-import { useTitle } from "../../lib/router";
+import { useTitle, useBeforeNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import {
   Button,
@@ -87,6 +87,39 @@ export default function BriefScreen() {
       live = false;
     };
   }, [current]);
+  const latestNote = useRef(note);
+  latestNote.current = note;
+  const leaving = useRef(false);
+  const prepareLeave = useCallback(async () => {
+    if (!current() || mutation.current || leaving.current) return false;
+    leaving.current = true;
+    const openingNote = note,
+      openingDoc = selectedDoc.current;
+    try {
+      if (settle.current && !(await settle.current())) return false;
+      if (!current() || mutation.current || selectedDoc.current !== openingDoc)
+        return false;
+      if (
+        openingNote.trim() &&
+        !(await confirm({
+          title: "Discard this brief feedback?",
+          body: "Your saved page stays as it is.",
+          action: "Discard feedback",
+          danger: true,
+        }))
+      )
+        return false;
+      return (
+        current() &&
+        !mutation.current &&
+        selectedDoc.current === openingDoc &&
+        latestNote.current === openingNote
+      );
+    } finally {
+      leaving.current = false;
+    }
+  }, [current, note, confirm]);
+  useBeforeNavigate(prepareLeave);
   const load = useCallback(
     async (day?: string) => {
       if (mutation.current || !current()) return;

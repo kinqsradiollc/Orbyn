@@ -1,19 +1,14 @@
+import { useRouteScope } from "../../lib/route-scope";
 import {
   searchSettings,
   sectionKey,
   settingById,
   type SettingEntry,
 } from "@orbyn/core";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import {
-  navigate,
-  onBeforeNavigate,
+  useNavigate,
+  useBeforeNavigate,
   usePath,
   useSearch,
   useTitle,
@@ -66,6 +61,8 @@ function destination(path: string, query: string) {
 }
 
 export default function SettingsScreen() {
+  const navigate = useNavigate();
+  const routeScope = useRouteScope();
   useTitle("Settings");
   const path = usePath();
   const search = useSearch();
@@ -134,7 +131,7 @@ export default function SettingsScreen() {
       checking.current = false;
     }
   }, [confirm, owned, toast]);
-  useLayoutEffect(() => onBeforeNavigate(canLeave), [canLeave]);
+  useBeforeNavigate(canLeave);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (
@@ -201,8 +198,20 @@ export default function SettingsScreen() {
     void choose(entry.tab, entry.section);
   return (
     <SettingsExitContext.Provider value={register}>
-      <div className="settings-backdrop">
-        <Dialog title="Settings" wide onClose={() => navigate(returnTo)}>
+      <div
+        className="settings-backdrop"
+        onInputCapture={() => routeScope?.noteInput?.()}
+        onClickCapture={() => routeScope?.noteInput?.()}
+        onKeyDownCapture={() => routeScope?.noteInput?.()}
+      >
+        <Dialog
+          title="Settings"
+          wide
+          onClose={() => {
+            if (routeScope?.closeOverlay) void routeScope.closeOverlay();
+            else void navigate(returnTo);
+          }}
+        >
           <div className="settings-workspace">
             <nav
               className="settings-navigation"

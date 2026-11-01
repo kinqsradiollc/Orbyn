@@ -2,7 +2,7 @@ import { groupAssistantChats, type AiChatSummary } from "@orbyn/core";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../lib/session";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import {
   Button,
   Dialog,
@@ -28,6 +28,7 @@ export function ChatList({
   onOpen: (id: string) => void;
   onClose: () => void;
 }) {
+  const navigate = useNavigate();
   const owned = useOwned(),
     confirm = useConfirm(),
     lock = useRef(false);

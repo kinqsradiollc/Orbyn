@@ -1,3 +1,4 @@
+import { watchAccount } from "../../lib/account-events";
 import {
   addDays,
   dayTime,
@@ -234,21 +235,9 @@ export function useTeammates(
 
 export type Teammates = ReturnType<typeof useTeammates>;
 
-const newsListeners = new Set<(news: LiveNews) => void>();
-let stopNews: (() => void) | null = null;
-
-/** One news stream however many things listen: the gateway limits them. */
+/** Domains subscribe to the one account owner; reconnect catches up through current reads. */
 export function onNews(listener: (news: LiveNews) => void) {
-  newsListeners.add(listener);
-  stopNews ??= client.watchEvents((news) =>
-    newsListeners.forEach((each) => each(news)),
-  );
-  return () => {
-    newsListeners.delete(listener);
-    if (newsListeners.size) return;
-    stopNews?.();
-    stopNews = null;
-  };
+  return watchAccount(listener);
 }
 
 const LIVE_GAP_MS = 5_000;

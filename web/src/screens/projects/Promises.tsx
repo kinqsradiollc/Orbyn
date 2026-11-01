@@ -2,12 +2,13 @@ import { hasTeamPermission, type Team } from "@orbyn/core";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useRef, useState } from "react";
 import { messageOf, useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, useToast } from "../../ui/kit";
 
 /** Open commitments across projects, including those awaiting a response. */
 export function Promises({ userId, teams }: { userId: string; teams: Team[] }) {
+  const navigate = useNavigate();
   const toast = useToast();
   const rows = useResource(
     () => client.listWorkRecords({ kind: "promise", limit: 200 }),

@@ -17,11 +17,11 @@ import {
   useSyncExternalStore,
 } from "react";
 import { messageOf, useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client, getToken } from "../../lib/session";
 import { useAccount } from "../../app/account";
 import { Button, ErrorNotice, Loading, Pill } from "../../ui/kit";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 
 const KINDS = {
   goal: "Goal",
@@ -128,6 +128,7 @@ function Group({
  * accepted result. On failure or sign-out the names go, not just the rows.
  */
 export function SinceAway() {
+  const navigate = useNavigate();
   const { user } = useAccount();
   const store = useMemo(
     () => new AssistantProfileStore(client, getToken),
@@ -236,6 +237,8 @@ const SECTIONS: { key: keyof ReentryBrief; label: string }[] = [
 
 /** Back after days away: what happened, most pressing first. Shows once. */
 export function WelcomeBack() {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const brief = useResource(() => client.reentry(), []);
   const [gone, setGone] = useState(false);
   const [expanded, setExpanded] = useState(false);

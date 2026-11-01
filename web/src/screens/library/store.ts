@@ -7,7 +7,7 @@ import {
   type Folder,
   type Team,
 } from "@orbyn/core";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { messageOf } from "../../lib/resource";
 import {
   client,
@@ -21,39 +21,18 @@ import { watchAccount } from "./streams";
 /**
  * The library's reads outlive any one route. `/app/docs` and `/app/doc/:id`
  * are separate routes, so this module keeps what they share: the rows and the
- * rail's place. One account owns it; a sign-in change clears everything.
+ * account data. View selection/filters live in the Library frame provider.
+ * One account owns the data and feed; a sign-in change clears both.
  */
-export type Place =
-  | { at: "all" }
-  | { at: "kind"; kind: "doc" | "note" | "meeting" }
-  | { at: "favorites" }
-  | { at: "uploads" }
-  | { at: "fading" }
-  | { at: "agenda"; month: string | null }
-  | { at: "folder"; id: string }
-  | { at: "unfiled" }
-  | { at: "archived" }
-  | { at: "trash" };
-
-export type Filters = {
-  query: string;
-  sort: string;
-  tag: string;
-  project: string;
-  scope: string;
-  source: string;
-  kind: string;
-};
-
-export const NO_FILTERS: Filters = {
-  query: "",
-  sort: "recent",
-  tag: "",
-  project: "",
-  scope: "",
-  source: "",
-  kind: "",
-};
+export {
+  NO_FILTERS,
+  goTo,
+  setFilters,
+  resetFilters,
+  setRailOpen,
+} from "./view";
+export type { Place, Filters } from "./view";
+import { legacyLibraryView, useLibraryView } from "./view";
 
 type State = {
   docs: DocSummary[] | null;
@@ -68,9 +47,6 @@ type State = {
   failed: string;
   /** Something beside the pages couldn't be read. */
   partial: string;
-  place: Place;
-  filters: Filters;
-  railOpen: boolean;
 };
 
 const blank = (): State => ({
@@ -84,9 +60,6 @@ const blank = (): State => ({
   loading: true,
   failed: "",
   partial: "",
-  place: { at: "all" },
-  filters: NO_FILTERS,
-  railOpen: true,
 });
 
 let state = blank();
@@ -136,6 +109,7 @@ onToken(() => {
   previous.deadline = null;
   previous.waiting.splice(0).forEach((resolve) => resolve(false));
   state = blank();
+  restartFeed();
   listeners.forEach((listener) => listener());
 });
 
@@ -144,22 +118,13 @@ const subscribe = (listener: () => void) => {
   return () => void listeners.delete(listener);
 };
 
-export const useLibraryState = () =>
-  useSyncExternalStore(subscribe, () => state);
-
-export const libraryState = () => state;
-
-export function goTo(place: Place) {
-  publish({ place, filters: { ...NO_FILTERS, sort: state.filters.sort } });
+export function useLibraryState() {
+  const data = useSyncExternalStore(subscribe, () => state);
+  const view = useLibraryView();
+  return useMemo(() => ({ ...data, ...view.state }), [data, view.state]);
 }
-
-export const setFilters = (change: Partial<Filters>) =>
-  publish({ filters: { ...state.filters, ...change } });
-
-export const resetFilters = () =>
-  publish({ filters: { ...NO_FILTERS, sort: state.filters.sort } });
-
-export const setRailOpen = (railOpen: boolean) => publish({ railOpen });
+/** Synchronous account data plus legacy unframed view. Retained readers use useLibraryState. */
+export const libraryState = () => ({ ...state, ...legacyLibraryView() });
 
 /** Read everything; a partial failure keeps what is showing and says so. */
 async function readLibrary(account: ReadOwner, epoch: number) {
@@ -286,28 +251,61 @@ function invalidateLibrary(account: ReadOwner) {
 }
 
 /** Keeps the library current while a screen is showing it. */
-export function useLibraryFeed() {
-  useEffect(() => {
-    const account = owner;
-    void loadLibrary();
-    const stop = watchAccount((news) => {
-      if (
-        news.kind !== "changed" ||
-        (news.area && news.area !== "docs" && news.area !== "organize")
-      )
-        return;
+const feedLeases = new Set<{ generation: number }>();
+let feedGeneration: number | null = null;
+let stopFeed: (() => void) | null = null;
+function restartFeed() {
+  const account = owner;
+  if (stopFeed && feedGeneration === account.generation) return;
+  stopFeed?.();
+  stopFeed = null;
+  feedGeneration = null;
+  if (
+    !owns(account) ||
+    !account.token ||
+    ![...feedLeases].some((lease) => lease.generation === account.generation)
+  )
+    return;
+  feedGeneration = account.generation;
+  void loadLibrary();
+  const stop = watchAccount((news) => {
+    if (
+      news.kind !== "changed" ||
+      (news.area && news.area !== "docs" && news.area !== "organize")
+    )
+      return;
+    invalidateLibrary(account);
+  });
+  const visible = () => {
+    if (document.visibilityState === "visible" && owns(account)) {
+      client.noteExternalMutation();
       invalidateLibrary(account);
-    });
-    const visible = () => {
-      if (document.visibilityState === "visible") {
-        client.noteExternalMutation();
-        invalidateLibrary(account);
-      }
-    };
-    document.addEventListener("visibilitychange", visible);
+    }
+  };
+  document.addEventListener("visibilitychange", visible);
+  stopFeed = () => {
+    stop();
+    document.removeEventListener("visibilitychange", visible);
+  };
+}
+/** One account-owned feed and visibility invalidation regardless of retained Library count. */
+export function useLibraryFeed() {
+  const openingGeneration = getSessionVersion();
+  useEffect(() => {
+    if (openingGeneration !== getSessionVersion()) return;
+    const lease = { generation: openingGeneration };
+    feedLeases.add(lease);
+    restartFeed();
     return () => {
-      stop();
-      document.removeEventListener("visibilitychange", visible);
+      feedLeases.delete(lease);
+      if (
+        feedGeneration === lease.generation &&
+        ![...feedLeases].some((one) => one.generation === lease.generation)
+      ) {
+        stopFeed?.();
+        stopFeed = null;
+        feedGeneration = null;
+      }
     };
   }, []);
 }

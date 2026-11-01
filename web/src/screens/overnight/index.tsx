@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ScreenProps } from "../../app/routes";
-import { navigate, useTitle } from "../../lib/router";
+import { useNavigate, useTitle } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, Empty, ErrorNotice, Loading } from "../../ui/kit";
 import { LaneHead } from "../agents-shared/LaneHead";
@@ -19,6 +19,7 @@ import "./overnight.css";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export default function OvernightScreen({ params }: ScreenProps) {
+  const navigate = useNavigate();
   const owner = useOwner();
   useTitle("Overnight");
   let id = params.id;
@@ -44,6 +45,7 @@ export default function OvernightScreen({ params }: ScreenProps) {
   return <Overnight key={`${owner}:${id ?? "latest"}`} nightId={id} />;
 }
 function Overnight({ nightId }: { nightId?: string }) {
+  const navigate = useNavigate();
   const owned = useOwned(),
     profiles = useProfiles(),
     state = useNight(nightId);
@@ -268,15 +270,13 @@ function Overnight({ nightId }: { nightId?: string }) {
             Check saved state
           </Button>
           {state.unknownDestination && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                if (owned() && state.unknownDestination)
-                  navigate(state.unknownDestination);
-              }}
+            <a
+              href={state.unknownDestination}
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              Open reviewed work
-            </Button>
+              Open saved work in another tab
+            </a>
           )}
         </div>
       )}

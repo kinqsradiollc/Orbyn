@@ -1,3 +1,4 @@
+import { useRouteInput, useRouteScope } from "../../lib/route-scope";
 import {
   boardColumns,
   boardFilterCounts,
@@ -51,6 +52,8 @@ import {
 } from "lucide-react";
 import {
   Fragment,
+  useCallback,
+  useLayoutEffect,
   useEffect,
   useMemo,
   useRef,
@@ -58,9 +61,15 @@ import {
   type ReactNode,
 } from "react";
 import type { ScreenProps } from "../../app/routes";
-import { navigate, usePath, useSearch, useTitle } from "../../lib/router";
+import {
+  useNavigate,
+  useBeforeNavigate,
+  usePath,
+  useSearch,
+  useTitle,
+} from "../../lib/router";
 import { messageOf, useResource } from "../../lib/resource";
-import { client } from "../../lib/session";
+import { client, getSessionVersion } from "../../lib/session";
 import { useAccount } from "../../app/account";
 import {
   Button,
@@ -71,6 +80,7 @@ import {
   Loading,
   Menu,
   SelectBox,
+  useConfirm,
   useToast,
 } from "../../ui/kit";
 import {
@@ -80,15 +90,14 @@ import {
   saveColumn,
   sizeOf,
   statusCounts,
-  TaskHost,
   TaskRow,
-  tasks,
+  useTasks,
   useItems,
   usePlanning,
   type DueFilter,
 } from "../shared-task";
 import { withQuickAdd } from "../shared-task/draft";
-import { createItem, moveItem } from "../shared-task/store";
+import { moveItem } from "../shared-task/store";
 import { Board } from "./Board";
 import { BulkBar } from "./BulkBar";
 import { DoneDialog, SaveViewDialog } from "./dialogs";
@@ -102,7 +111,17 @@ import {
   type Filters,
   type StatusFilter,
 } from "./view-state";
+import { useTaskLayer } from "../shared-task/host-store";
+import { useQuickPeople } from "./quick-people";
+import {
+  captureQuickCreate,
+  matchesQuickReceipt,
+  ownsQuickReceipt,
+  quickReplayAllowed,
+  type QuickCreateAttempt,
+} from "./quick-create";
 import "./work.css";
+import "./quick-create.css";
 
 const AGENT_POLL_MS = 20_000;
 const DUE_OPTIONS: { id: DueFilter; label: string }[] = [
@@ -120,6 +139,8 @@ const GROUP_NAMES: Record<TaskGroupBy, string> = {
 };
 
 export default function WorkScreen({ params }: ScreenProps) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const path = usePath();
   const search = useSearch();
   useTitle("Work");
@@ -144,13 +165,15 @@ export default function WorkScreen({ params }: ScreenProps) {
 
   return (
     <>
-      <TaskHost />
       <WorkBody />
     </>
   );
 }
 
 function WorkBody() {
+  const inputAllowed = useRouteInput();
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const items = useItems();
   const planning = usePlanning();
   const { lists, tags, teams, feed, phase, error, canWrite } = planning;
@@ -439,6 +462,7 @@ function WorkBody() {
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
+      if (!inputAllowed()) return;
       const target = event.target as HTMLElement;
       if (
         event.metaKey ||
@@ -1156,16 +1180,305 @@ const contextPrefill = (
   return list ? { list_id: list.id, team_id: list.team_id } : undefined;
 };
 
-/** Type and press Enter: the fastest way to add one. */
+/** Type and press Enter; a submitted line keeps one immutable create identity. */
 function QuickLine({ filters }: { filters: Filters }) {
-  const { lists, tags } = usePlanning();
+  const tasks = useTasks();
+  const scope = useRouteScope();
+  const inputCurrent = useRouteInput();
+  const layer = useTaskLayer();
+  const [openingGeneration] = useState(getSessionVersion);
+  const mounted = useRef(true);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const owned = () =>
+    mounted.current &&
+    openingGeneration === getSessionVersion() &&
+    (!scope || !!scope.getSnapshot().pathname);
+  const { lists, tags, teams, phase, retry: retryPlanning } = usePlanning();
   const { user } = useAccount();
-  const toast = useToast();
+  const account = useRef(user?.id);
+  account.current = user?.id;
+  const toast = useToast(),
+    confirm = useConfirm();
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [wantsPeople, setWantsPeople] = useState(false);
+  const people = useQuickPeople(teams, phase === "ready" && wantsPeople);
+  const [busy, setBusy] = useState(false),
+    [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState(""),
+    [peopleError, setPeopleError] = useState("");
+  const [attempt, setAttempt] = useState<QuickCreateAttempt | null>(null);
+  const [observed, setObserved] = useState<Item | null>(null);
+  const request = useRef<QuickCreateAttempt | null>(null),
+    observation = useRef<Item | null>(null);
+  const pending = useRef(false),
+    leaving = useRef(false),
+    latestText = useRef(text),
+    edit = useRef(0);
+  latestText.current = text;
+  type ManualHandoff = { text: string; edit: number; onClose: () => void };
+  const handoff = useRef<ManualHandoff | null>(null);
+  // tasks.create is a void request. Clear only when its exact callback proves
+  // the global host actually admitted this draft, never on refused replacement.
+  useEffect(() => {
+    const sent = handoff.current;
+    if (!owned() || !sent || layer.create?.onClose !== sent.onClose) return;
+    if (edit.current === sent.edit && latestText.current === sent.text) {
+      latestText.current = "";
+      edit.current++;
+      setText("");
+    }
+    handoff.current = null;
+  }, [layer.create]);
+  const owns = (sent: QuickCreateAttempt) =>
+    owned() &&
+    request.current === sent &&
+    account.current === sent.owner &&
+    sent.generation === openingGeneration;
+  const resetObservation = () => {
+    observation.current = null;
+    setObserved(null);
+  };
+  const prepareLeave = useCallback(async () => {
+    if (!owned() || pending.current || leaving.current || request.current)
+      return false;
+    const opening = latestText.current,
+      revision = edit.current;
+    if (!opening.trim()) return true;
+    leaving.current = true;
+    setConfirming(true);
+    try {
+      return (
+        (await confirm({
+          title: "Discard this task draft?",
+          body: "This line hasn't been added yet.",
+          action: "Discard draft",
+          danger: true,
+        })) &&
+        owned() &&
+        !pending.current &&
+        !request.current &&
+        edit.current === revision &&
+        latestText.current === opening
+      );
+    } finally {
+      leaving.current = false;
+      if (owned()) setConfirming(false);
+    }
+  }, [confirm]);
+  useBeforeNavigate(prepareLeave);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (
+        owned() &&
+        (pending.current || request.current || latestText.current.trim())
+      ) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []);
+  const saved = (made: Item, sent: QuickCreateAttempt) => {
+    if (!owns(sent)) return;
+    request.current = null;
+    setAttempt(null);
+    resetObservation();
+    setError("");
+    if (edit.current === sent.edit && latestText.current === sent.text) {
+      latestText.current = "";
+      edit.current++;
+      setText("");
+    }
+    toast({
+      text: `Task saved: “${made.title.slice(0, 40)}”`,
+      action: { label: "Open", run: () => void tasks.openFromAction(made) },
+    });
+    // A refresh failure never changes a confirmed create into another create.
+    if (owned())
+      void refreshPlanner(true).catch((failure) => {
+        if (owned())
+          toast({
+            text: messageOf(
+              failure,
+              "Task saved, but the list could not refresh.",
+            ),
+            error: true,
+          });
+      });
+  };
+  const send = async (sent: QuickCreateAttempt) => {
+    if (!owns(sent) || !inputCurrent() || pending.current || leaving.current)
+      return;
+    if (!quickReplayAllowed(sent)) {
+      setError(
+        "This request can no longer be replayed safely. Check its saved task; do not add the line with a new request.",
+      );
+      return;
+    }
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    resetObservation();
+    const first = !sent.sent;
+    sent.sent = true;
+    try {
+      // The supported wire key is explicit in headers, deliberately not the
+      // client's retry-enabling idempotencyKey option: one transport send.
+      // Thus a first 4xx response is not an automatic replay of a possibly committed POST.
+      const made = await client.request<unknown>("/items", {
+        method: "POST",
+        body: sent.body,
+        headers: { "Idempotency-Key": sent.key },
+      });
+      if (!owns(sent)) return;
+      if (!matchesQuickReceipt(made, sent))
+        throw new Error(
+          "The create receipt did not match this task. Check its saved details before continuing.",
+        );
+      saved(made, sent);
+    } catch (failure) {
+      if (!owns(sent)) return;
+      const status =
+        (failure as { status?: number; statusCode?: number })?.statusCode ??
+        (failure as { status?: number })?.status;
+      if (first && [400, 401, 403, 404, 422].includes(status ?? 0)) {
+        request.current = null;
+        setAttempt(null);
+      } else sent.uncertain = true;
+      setError(
+        messageOf(
+          failure,
+          "Couldn't confirm this task. Your line and its exact request are retained.",
+        ),
+      );
+    } finally {
+      pending.current = false;
+      if (owned()) setBusy(false);
+    }
+  };
+  const check = async () => {
+    const sent = request.current;
+    if (
+      !sent ||
+      !owns(sent) ||
+      !inputCurrent() ||
+      pending.current ||
+      leaving.current
+    )
+      return;
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    resetObservation();
+    try {
+      const made = await client.request<unknown>(
+        `/items/${encodeURIComponent(sent.body.id)}`,
+        { fresh: true, headers: { "X-Orbyn-Consistency": "primary" } },
+      );
+      if (!owns(sent)) return;
+      if (matchesQuickReceipt(made, sent)) {
+        saved(made, sent);
+        return;
+      }
+      if (!ownsQuickReceipt(made, sent))
+        throw new Error(
+          "The saved task did not match this request's identity. The outcome remains unresolved.",
+        );
+      observation.current = made;
+      setObserved(made);
+      setError(
+        "A task with this request ID has different details. Review it before choosing to keep that saved task.",
+      );
+    } catch (failure) {
+      if (owns(sent))
+        setError(
+          messageOf(
+            failure,
+            "The task is not confirmed yet. A missing or refused read does not prove it was never created.",
+          ),
+        );
+    } finally {
+      pending.current = false;
+      if (owned()) setBusy(false);
+    }
+  };
+  const keepObserved = async () => {
+    const sent = request.current,
+      seen = observation.current,
+      revision = edit.current;
+    if (
+      !sent ||
+      !seen ||
+      !owns(sent) ||
+      !inputCurrent() ||
+      pending.current ||
+      leaving.current
+    )
+      return;
+    leaving.current = true;
+    setConfirming(true);
+    try {
+      if (
+        !(await confirm({
+          title: "Keep the saved task instead?",
+          body: "Its current details differ from the submitted line. No task will be created or changed.",
+          action: "Keep saved task",
+        }))
+      )
+        return;
+      if (
+        !owns(sent) ||
+        !inputCurrent() ||
+        observation.current !== seen ||
+        edit.current !== revision ||
+        !ownsQuickReceipt(seen, sent)
+      )
+        return;
+      saved(seen, sent);
+    } finally {
+      leaving.current = false;
+      if (owned()) setConfirming(false);
+    }
+  };
   const add = async () => {
-    const words = text.trim();
-    if (!words || busy) return;
+    const raw = latestText.current,
+      words = raw.trim();
+    if (
+      !owned() ||
+      !inputCurrent() ||
+      !words ||
+      pending.current ||
+      leaving.current
+    )
+      return;
+    if (request.current) {
+      setError(
+        "Resolve the earlier task first. Check its saved task or retry only the retained request.",
+      );
+      return;
+    }
+    if (!account.current) {
+      setError("Wait for your account to finish loading before adding a task.");
+      return;
+    }
+    if (/(^|\s)@/.test(words) && (people.loading || people.error)) {
+      setPeopleError(
+        phase === "error"
+          ? "The workspace could not be loaded. Retry before assigning teammates."
+          : people.loading
+            ? "Loading teammates. Try again shortly."
+            : people.error,
+      );
+      return;
+    }
+    setPeopleError("");
+    setError("");
     let parsed;
     try {
       parsed = parseQuickAdd(words, {
@@ -1176,60 +1489,129 @@ function QuickLine({ filters }: { filters: Filters }) {
           team_id: l.team_id,
         })),
         tags: tags.map((t) => ({ id: t.id, name: t.name, team_id: t.team_id })),
-        selfId: user?.id,
+        members: people.members,
+        selfId: account.current,
       });
     } catch {
       parsed = null;
     }
-    // Habits and invitations are worth a second look before they're made.
+    // Habits/invites and ambiguous syntax remain explicit manual review.
     if (!parsed || parsed.habit || parsed.input.attendees?.length) {
-      tasks.create({ text: words, prefill: contextPrefill(filters, lists) });
-      setText("");
+      const sent: ManualHandoff = {
+        text: raw,
+        edit: edit.current,
+        onClose: () => {
+          if (handoff.current === sent) handoff.current = null;
+        },
+      };
+      handoff.current = sent;
+      tasks.create({
+        text: words,
+        prefill: contextPrefill(filters, lists),
+        onClose: sent.onClose,
+      });
       return;
     }
-    setBusy(true);
     try {
-      const made = await createItem({
-        ...withQuickAdd(
-          contextPrefill(filters, lists),
-          parsed.input,
-          parsed.chips,
-        ),
-        title: parsed.input.title,
-        id: crypto.randomUUID(),
-      });
-      setText("");
-      toast({
-        text: `Added “${made.title.slice(0, 40)}”`,
-        action: { label: "Open", run: () => tasks.open(made) },
-      });
-    } catch (e) {
-      toast({
-        text: messageOf(e, "Couldn't add this. Your text is still here."),
-        error: true,
-      });
-    } finally {
-      setBusy(false);
+      const sent = captureQuickCreate(
+        {
+          ...withQuickAdd(
+            contextPrefill(filters, lists),
+            parsed.input,
+            parsed.chips,
+          ),
+          title: parsed.input.title,
+        },
+        account.current,
+        openingGeneration,
+        raw,
+        edit.current,
+      );
+      request.current = sent;
+      setAttempt(sent);
+      await send(sent);
+    } catch (failure) {
+      if (owned())
+        setError(
+          messageOf(failure, "Check the task details. Your line is retained."),
+        );
     }
   };
   return (
-    <div className="work-quick">
-      <Plus aria-hidden="true" />
-      <input
-        aria-label="Add a task"
-        dir="auto"
-        maxLength={500}
-        placeholder="Add a task: Call Sam tomorrow 3pm #work !high"
-        value={text}
-        disabled={busy}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-            event.preventDefault();
-            void add();
-          }
-        }}
-      />
-    </div>
+    <>
+      <div className="work-quick" aria-busy={busy}>
+        <Plus aria-hidden="true" />
+        <input
+          aria-label="Add a task"
+          dir="auto"
+          maxLength={500}
+          placeholder="Add a task: Call Sam tomorrow 3pm #work !high"
+          value={text}
+          onChange={(event) => {
+            edit.current++;
+            latestText.current = event.target.value;
+            if (/(^|\s)@/.test(event.target.value)) setWantsPeople(true);
+            setText(event.target.value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              void add();
+            }
+          }}
+        />
+      </div>
+      {attempt && (
+        <div className="work-quick-recovery" role="status">
+          <p>
+            {busy
+              ? "Checking this task request…"
+              : "This task request is unresolved. New text stays here while you check it."}
+          </p>
+          <Button disabled={busy || confirming} onClick={() => void check()}>
+            Check saved task
+          </Button>
+          <Button
+            disabled={busy || confirming || !quickReplayAllowed(attempt)}
+            onClick={() => void send(attempt)}
+          >
+            Retry exact create
+          </Button>
+          {observed && (
+            <>
+              <Button
+                disabled={busy || confirming}
+                onClick={() => void tasks.openFromAction(observed)}
+              >
+                Review saved task
+              </Button>
+              <Button
+                disabled={busy || confirming}
+                onClick={() => void keepObserved()}
+              >
+                Keep saved task
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+      {error && <ErrorNotice message={error} />}
+      {peopleError && (
+        <ErrorNotice
+          message={peopleError}
+          onRetry={() => {
+            if (!owned() || pending.current || leaving.current) return;
+            void retryPlanning().catch((failure) => {
+              if (owned())
+                setPeopleError(
+                  messageOf(failure, "Couldn't refresh teammates."),
+                );
+            });
+            people.retry();
+            setPeopleError("");
+          }}
+        />
+      )}
+    </>
   );
 }

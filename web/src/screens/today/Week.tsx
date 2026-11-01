@@ -8,7 +8,7 @@ import {
 } from "@orbyn/core";
 import { useMemo } from "react";
 import { useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice } from "../../ui/kit";
 import { usePlanning } from "../shared-task";
@@ -18,6 +18,7 @@ import { usePlanning } from "../shared-task";
  * day's bar is its booked time against its working time.
  */
 export function Week({ stamp }: { stamp: unknown }) {
+  const navigate = useNavigate();
   const { prefs } = usePlanning();
   const zone = prefs?.timezone;
   const first = zone ? weekStartOf(localDateKey(new Date(), zone)) : "";

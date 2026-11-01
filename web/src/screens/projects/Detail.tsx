@@ -20,11 +20,23 @@ import {
   Sparkles,
   Star,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useAccount } from "../../app/account";
 import { messageOf, useResource } from "../../lib/resource";
-import { navigate, useSearch, useTitle } from "../../lib/router";
-import { client } from "../../lib/session";
+import {
+  useNavigate,
+  useBeforeNavigate,
+  useSearch,
+  useTitle,
+} from "../../lib/router";
+import { client, getSessionVersion } from "../../lib/session";
 import {
   Button,
   Dialog,
@@ -44,7 +56,7 @@ import {
 import {
   deviceTimeZone,
   refreshPlanner,
-  tasks,
+  useTasks,
   useItems,
   usePlanning,
 } from "../shared-task";
@@ -85,6 +97,8 @@ function Search({
   project: Project;
   onDecisions: () => void;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const items = useItems();
   const [query, setQuery] = useState("");
   const [asked, setAsked] = useState("");
@@ -227,6 +241,7 @@ function Ask({
 }
 
 export function Detail({ id }: { id: string }) {
+  const navigate = useNavigate();
   const { user } = useAccount();
   const userId = user?.id ?? "";
   const search = useSearch();
@@ -275,7 +290,7 @@ function Body({
   userId,
   initialMode,
   sourceId,
-  onChanged,
+  onChanged: receiveProject,
 }: {
   project: Project;
   userId: string;
@@ -283,10 +298,28 @@ function Body({
   sourceId: string | null;
   onChanged: (project: Project) => void;
 }) {
+  const [openingGeneration] = useState(getSessionVersion),
+    mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const owned = () =>
+    mounted.current && openingGeneration === getSessionVersion();
+  const onChanged = (value: Project) => {
+    if (owned()) receiveProject(value);
+  };
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const items = useItems();
   const { teams } = usePlanning();
   const confirm = useConfirm();
-  const toast = useToast();
+  const notify = useToast();
+  const toast = (message: Parameters<typeof notify>[0]) => {
+    if (owned()) notify(message);
+  };
   const canWrite = canWriteProject(project, teams);
   const canAi = canManageAi(project, teams, userId);
   const [mode, setMode] = useState<Mode>(
@@ -314,6 +347,57 @@ function Body({
   const [lookOpen, setLookOpen] = useState(false);
   const [chats, setChats] = useState(false);
   const [claiming, setClaiming] = useState<string[]>([]);
+  const handoff = useRef<string | null>(null),
+    checkingLeave = useRef(false),
+    importing = useRef(false);
+  const exitState = useRef({ busy, retry });
+  exitState.current = { busy, retry };
+  const prepareLeave = useCallback(
+    async (to: string) => {
+      if (!owned()) return false;
+      if (handoff.current === to) return true;
+      if (
+        lock.current ||
+        exitState.current.busy ||
+        exitState.current.retry ||
+        importing.current ||
+        checkingLeave.current
+      )
+        return false;
+      if (!linkDraft.current) return true;
+      checkingLeave.current = true;
+      try {
+        return (
+          (await confirm({
+            title: "Discard project changes?",
+            body: "Your unsaved project edits will be lost.",
+            action: "Discard changes",
+            danger: true,
+          })) &&
+          owned() &&
+          !lock.current &&
+          !exitState.current.busy &&
+          !exitState.current.retry &&
+          !importing.current
+        );
+      } finally {
+        checkingLeave.current = false;
+      }
+    },
+    [confirm],
+  );
+  useBeforeNavigate(prepareLeave);
+  const followReceipt = async (to: string) => {
+    if (!owned()) return;
+    handoff.current = to;
+    try {
+      const result = await navigate(to);
+      if (result.kind === "refused")
+        throw new Error(`Saved, but ${result.reason}`);
+    } finally {
+      if (handoff.current === to) handoff.current = null;
+    }
+  };
   const report = (failure: unknown, fallback: string) =>
     toast({ text: messageOf(failure, fallback), error: true });
 
@@ -381,6 +465,7 @@ function Body({
     project.id,
     project.team_id,
   );
+  importing.current = imports.busy;
   const grouped = useMemo(() => groupStages(items, project), [items, project]);
   const unassigned = items.filter(
     (i) =>
@@ -403,12 +488,13 @@ function Body({
     ? projectDeadlineParts(project.deadline, zone)
     : null;
   const itemsChanged = () => {
+    if (!owned()) return;
     void refreshPlanner(true).catch(() => undefined);
     void client.getProject(project.id).then(onChanged, () => undefined);
   };
 
   const guarded = async (fn: () => Promise<void>, fallback: string) => {
-    if (lock.current) return false;
+    if (!owned() || lock.current) return false;
     lock.current = true;
     setBusy(true);
     try {
@@ -427,17 +513,8 @@ function Body({
       onChanged(await client.updateProject(project.id, patch));
     }, "Couldn't save that.");
 
-  const back = async () => {
-    if (
-      linkDraft.current &&
-      !(await confirm({
-        title: "Discard project changes?",
-        body: "Your unsaved project edits will be lost.",
-        action: "Discard changes",
-      }))
-    )
-      return;
-    navigate("/app/projects");
+  const back = () => {
+    void navigate("/app/projects");
   };
 
   const newPage = (asBrief: boolean) =>
@@ -449,9 +526,10 @@ function Body({
         team_id: project.team_id,
         content: [{ type: "paragraph", text: "" }],
       });
+      if (!owned()) return;
       if (asBrief)
         onChanged(await client.updateProject(project.id, { doc_id: doc.id }));
-      navigate(`/app/doc/${doc.id}`);
+      await followReceipt(`/app/doc/${doc.id}`);
     }, "Couldn't create the page.");
 
   const addFiles = async (files: File[]) => {
@@ -464,7 +542,7 @@ function Body({
       }))
     )
       return;
-    await imports.importFiles(files);
+    if (owned()) await imports.importFiles(files);
   };
 
   const planProject = () =>
@@ -475,11 +553,13 @@ function Body({
       const plan = await client.planProject(project.id, zone, claimed);
       setClaiming([]);
       if (claimed.length) itemsChanged();
-      navigate(`/app/calendar?plan_id=${encodeURIComponent(plan.id)}`);
+      await followReceipt(
+        `/app/calendar?plan_id=${encodeURIComponent(plan.id)}`,
+      );
     }, "Couldn't plan this project.");
 
   const moveTo = async (item: Item, stageId: string | null) => {
-    if (lock.current || !canWrite) return false;
+    if (!owned() || lock.current || !canWrite) return false;
     lock.current = true;
     setBusy(true);
     try {
@@ -510,7 +590,7 @@ function Body({
     }
   };
   const unfile = async (item: Item) => {
-    if (lock.current || !canWrite) return;
+    if (!owned() || lock.current || !canWrite) return;
     lock.current = true;
     setBusy(true);
     try {
@@ -542,7 +622,7 @@ function Body({
     : undefined;
 
   const saveStage = async () => {
-    if (!stageDraft?.name.trim() || lock.current) return;
+    if (!owned() || !stageDraft?.name.trim() || lock.current) return;
     lock.current = true;
     setBusy(true);
     setStageError("");
@@ -581,7 +661,7 @@ function Body({
       });
   };
   const saveEdit = async () => {
-    if (!editing || lock.current) return;
+    if (!owned() || !editing || lock.current) return;
     const text = editing.text.trim();
     if (editing.kind === "rename" && !text) return;
     lock.current = true;
@@ -605,6 +685,7 @@ function Body({
     }
   };
   const saveLook = async (look: Look) => {
+    if (!owned()) return;
     const before: Look = {
       cover_file_id: project.cover_file_id ?? null,
       icon: project.icon ?? null,
@@ -647,7 +728,7 @@ function Body({
       return;
     await guarded(async () => {
       await client.deleteProject(project.id);
-      navigate("/app/projects");
+      await followReceipt("/app/projects");
       void refreshPlanner(true).catch(() => undefined);
     }, "Couldn't delete the project.");
   };

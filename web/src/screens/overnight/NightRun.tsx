@@ -5,7 +5,7 @@ import {
   type AgentActivityLink,
 } from "@orbyn/core";
 import { useEffect, useState } from "react";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, Field, Pill, TextArea } from "../../ui/kit";
 import { Handoff } from "../agents-shared/Handoff";
@@ -13,7 +13,7 @@ import { useOwned } from "../agents-shared/hooks";
 import { Check, Evidence, More } from "../agents-shared/parts";
 import { ReplyText } from "../agents-shared/ReplyText";
 import { runWords } from "../agents-shared/words";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 import type { NightAction } from "./useNight";
 
 export const hasChanges = (run: OvernightRun) =>
@@ -76,6 +76,8 @@ export function NightRun({
   locked: boolean;
   act: (action: NightAction) => Promise<boolean>;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const owned = useOwned();
   const act = (action: NightAction) =>
     commit({

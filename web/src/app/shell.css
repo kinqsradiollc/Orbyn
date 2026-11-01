@@ -180,10 +180,12 @@ main {
     width: 264px;
     background: var(--surface);
     box-shadow: var(--float);
+    visibility: hidden;
     transform: translateX(-105%);
     transition: transform var(--base) var(--ease);
   }
   .sidebar.is-open {
+    visibility: visible;
     transform: none;
   }
   .nav-scrim {
@@ -279,4 +281,315 @@ main {
 }
 .row.is-active {
   background: var(--hover);
+}
+
+/* Shell controls use the same account-owned layout on every working route. */
+.sidebar {
+  flex-basis: var(--shell-sidebar-width, 224px);
+  width: var(--shell-sidebar-width, 224px);
+  min-width: 0;
+}
+.brand {
+  font-size: 18px;
+}
+.nav-link {
+  font-size: 13px;
+  min-height: 36px;
+}
+.shell-nav-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shell-rail .sidebar {
+  padding-inline: 8px;
+}
+.shell-rail .sidebar .shell-nav-text,
+.shell-rail .sidebar .nav-label {
+  display: none;
+}
+.shell-rail .sidebar .nav-link,
+.shell-rail .sidebar .brand,
+.shell-rail .sidebar-foot > button {
+  justify-content: center;
+}
+.shell-rail .sidebar .nav-group {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+}
+.shell-sidebar-resizer {
+  position: sticky;
+  top: 0;
+  width: 8px;
+  flex: 0 0 8px;
+  height: 100dvh;
+  cursor: col-resize;
+  touch-action: none;
+  border-inline: 3px solid transparent;
+  background: transparent;
+  background-clip: content-box;
+}
+.shell-sidebar-resizer:hover,
+.shell-sidebar-resizer:focus-visible {
+  background-color: var(--accent);
+  outline-offset: -2px;
+}
+.shell-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.shell-content > main {
+  flex: 1;
+  min-width: 0;
+}
+.shell-notifications {
+  width: 280px;
+  flex: 0 0 280px;
+  padding: 12px;
+  overflow: auto;
+  border-left: 1px solid var(--line-soft);
+}
+.shell-update,
+.shell-search-options {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px;
+}
+.shell-update {
+  font-size: 13px;
+  background: var(--accent-soft);
+}
+.shell-search-options {
+  padding-inline: 0;
+  font-size: 13px;
+}
+.shell-search-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shell-preference-list {
+  display: grid;
+  gap: 8px;
+  margin-block: 12px;
+}
+.shell-preference-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
+  min-width: 0;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.shell-preference-row > span {
+  flex: 1;
+  min-width: 140px;
+  overflow-wrap: anywhere;
+}
+.shell-preference-row small,
+.shell-activity-row small {
+  display: block;
+}
+.shell-shortcut-recorder {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-block: 12px;
+}
+.shell-command-results {
+  min-width: 0;
+  max-height: 55dvh;
+  overflow: auto;
+}
+.shell-command-row {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.shell-command-row > button[role="option"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  min-height: 40px;
+  padding: 8px;
+  font-size: 13px;
+  border-radius: var(--r-md);
+}
+.shell-command-row > button[aria-selected="true"] {
+  background: var(--chip);
+}
+.shell-command-row small {
+  font-size: 11px;
+}
+.shell-command-row kbd {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.shell-activity-day h3 {
+  font-size: 13px;
+  margin-block: 16px 6px;
+}
+.shell-activity-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  width: 100%;
+  padding: 10px 0;
+  text-align: left;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.shell-activity-row > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.shell-activity-row time {
+  font-size: 11px;
+  white-space: nowrap;
+}
+@media (max-width: 1100px) {
+  .shell-content {
+    flex-direction: column;
+  }
+  .shell-notifications {
+    flex: auto;
+    width: 100%;
+    border-left: 0;
+    border-top: 1px solid var(--line-soft);
+    max-height: 35dvh;
+  }
+}
+@media (max-width: 800px) {
+  .shell-sidebar-resizer {
+    display: none;
+  }
+  .shell-rail .sidebar .shell-nav-text,
+  .shell-rail .sidebar .nav-label {
+    display: initial;
+  }
+  .sidebar {
+    flex-basis: 224px;
+    width: 224px;
+  }
+  .shell-rail .sidebar .nav-link,
+  .shell-rail .sidebar .brand {
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 600px) {
+  .shell-command-row > button[role="option"],
+  .shell-preference-row button,
+  .shell-shortcut-recorder button,
+  .shell-search-options label,
+  .shell-activity-row {
+    min-height: 44px;
+  }
+  .shell-command-row small {
+    max-width: 80px;
+    overflow-wrap: anywhere;
+  }
+  .shell-shortcut-recorder input {
+    font-size: 16px;
+  }
+  .shell-preference-row > span {
+    flex-basis: 100%;
+  }
+  .shell-activity-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* Default destination hierarchy; saved custom compositions keep their flat slots. */
+.nav-section {
+  min-width: 0;
+}
+.nav-section-head {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.nav-section-head > .nav-link {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.nav-section-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--control);
+  min-height: var(--control);
+  border-radius: var(--r-md);
+  color: var(--text-muted);
+}
+.nav-section-toggle:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.nav-section-toggle svg,
+.nav-more-chevron {
+  width: 14px;
+  height: 14px;
+}
+.nav-section-toggle[aria-expanded="true"] svg,
+.nav-more-toggle[aria-expanded="true"] .nav-more-chevron {
+  transform: rotate(180deg);
+}
+.nav-more-chevron {
+  margin-inline-start: auto;
+}
+.nav-section-body[hidden] {
+  display: none;
+}
+.shell-rail .nav-section-head {
+  display: block;
+}
+.shell-rail .nav-section-head > .nav-link {
+  width: 100%;
+}
+.shell-rail .nav-section-toggle,
+.shell-rail .nav-more-chevron {
+  display: none;
+}
+.shell-rail .nav-section .nav-children {
+  margin-inline-start: 0;
+}
+@media (max-width: 800px) {
+  .shell-rail .nav-section-head {
+    display: flex;
+  }
+  .shell-rail .nav-section-head > .nav-link {
+    width: auto;
+  }
+  .shell-rail .nav-section-toggle {
+    display: inline-flex;
+  }
+  .shell-rail .nav-more-chevron {
+    display: block;
+  }
+  .shell-rail .nav-section .nav-children {
+    margin-inline-start: 16px;
+  }
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .sidebar .nav-link,
+  .nav-section-toggle {
+    min-height: 44px;
+  }
+  .nav-section-toggle {
+    width: 44px;
+  }
 }

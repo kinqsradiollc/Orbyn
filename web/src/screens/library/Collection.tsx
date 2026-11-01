@@ -1,4 +1,8 @@
+import { useLibraryLaunchTarget } from "../../app/controls/library-launch";
+import { useRouteCommands } from "../../app/controls/page-commands";
+import { useLibraryView } from "./view";
 import {
+  HttpError,
   agendaGroups,
   savedAgo,
   trashLeft,
@@ -33,7 +37,11 @@ import {
   type ReactNode,
 } from "react";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import {
+  useNavigate,
+  useCapturedNavigate,
+  useBeforeNavigate,
+} from "../../lib/router";
 import { client, getSessionVersion } from "../../lib/session";
 import { useLibraryOwner } from "./lifetime";
 import {
@@ -61,11 +69,8 @@ import {
   canWriteDoc,
   createPage,
   dropDoc,
-  goTo,
   isStarred,
   loadLibrary,
-  resetFilters,
-  setFilters,
   setFolders,
   starDoc,
   teamName,
@@ -80,12 +85,31 @@ export function Collection({
   fixedKind?: FixedKind;
   railToggle: ReactNode;
 }) {
+  const navigate = useNavigate();
+  const { goTo, setFilters, resetFilters } = useLibraryView();
   const current = useLibraryOwner();
   const state = useLibraryState();
   const { place, filters, folders, stars, fading, teams, memory, agents } =
     state;
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const writing = useRef(false);
+  const creation = useRef<{ unknown: boolean; savedId: string | null }>({
+    unknown: false,
+    savedId: null,
+  });
+  const handoff = useRef<string | null>(null);
+  const [createError, setCreateError] = useState("");
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const [creationUnknown, setCreationUnknown] = useState(false);
+  useBeforeNavigate(
+    useCallback(
+      (to) =>
+        (!writing.current || to === handoff.current) &&
+        !creation.current.unknown,
+      [],
+    ),
+  );
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [lastPicked, setLastPicked] = useState<string | null>(null);
   const [moving, setMoving] = useState<{
@@ -94,6 +118,8 @@ export function Collection({
   } | null>(null);
   const [tagging, setTagging] = useState(false);
   const [templates, setTemplates] = useState(false);
+  const [personalTemplate, setPersonalTemplate] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [publishing, setPublishing] = useState<string | null>(null);
   const [cards, setCards] = useState<DocSummary | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -124,27 +150,74 @@ export function Collection({
   };
 
   const run = async (work: () => Promise<void>, fallback: string) => {
-    if (!current() || busy) return;
+    if (!current() || writing.current) return;
+    writing.current = true;
     setBusy(true);
     try {
       await work();
     } catch (failure) {
       report(failure, fallback);
     } finally {
+      writing.current = false;
       if (current()) setBusy(false);
     }
   };
 
-  const create = (kind: "doc" | "note" | FixedKind) =>
-    run(async () => {
+  const openCreated = async (id: string) => {
+    if (!current()) return;
+    const target = `/app/doc/${encodeURIComponent(id)}`;
+    handoff.current = target;
+    try {
+      const result = await navigate(target);
+      if (!current()) return;
+      if (result.kind !== "committed")
+        setCreateError(
+          result.kind === "refused"
+            ? result.reason
+            : "Page saved. Open it again when this view is ready.",
+        );
+    } finally {
+      if (handoff.current === target) handoff.current = null;
+    }
+  };
+  const create = async (kind: "doc" | "note" | FixedKind, personal = false) => {
+    if (!current() || writing.current || creation.current.unknown) return;
+    if (creation.current.savedId) return openCreated(creation.current.savedId);
+    writing.current = true;
+    setBusy(true);
+    setCreateError("");
+    try {
       const made = await createPage({
         kind,
-        folder_id: place.at === "folder" && !fixedKind ? place.id : null,
+        folder_id:
+          !personal && place.at === "folder" && !fixedKind ? place.id : null,
       });
       if (!current()) return;
+      creation.current.savedId = made.id;
+      setCreatedId(made.id);
       void loadLibrary();
-      navigate(`/app/doc/${made.id}`);
-    }, "Couldn't create the page.");
+      await openCreated(made.id);
+    } catch (failure) {
+      if (!current()) return;
+      // There is no authoritative lost-receipt lookup here. Never send a new
+      // create after an ambiguous result merely because a list refresh is empty.
+      const uncertain =
+        !(failure instanceof HttpError) ||
+        failure.statusCode >= 500 ||
+        failure.statusCode === 408 ||
+        failure.statusCode === 429;
+      creation.current.unknown = uncertain;
+      setCreationUnknown(uncertain);
+      setCreateError(
+        uncertain
+          ? "The page creation result is unconfirmed. Keep this view open; another create request will not be sent."
+          : messageOf(failure, "Couldn't create the page."),
+      );
+    } finally {
+      writing.current = false;
+      if (current()) setBusy(false);
+    }
+  };
 
   const moveDoc = async (doc: DocSummary, to: MoveTarget) => {
     if (!current()) return;
@@ -279,12 +352,87 @@ export function Collection({
     filters.kind
   );
   const canCreate = effective.at !== "archived" && effective.at !== "trash";
+  const launchState = useRef({
+    ready: false,
+    available: false,
+    create,
+    openTemplates: () => {
+      setPersonalTemplate(true);
+      setTemplates(true);
+    },
+    openImport: () => setImportOpen(true),
+  });
+  const launchReady = !state.loading && (source !== null || !!state.failed);
+  const launchAvailable =
+    source !== null &&
+    !state.failed &&
+    !fixedKind &&
+    !busy &&
+    !creationUnknown &&
+    !createdId &&
+    !templates &&
+    !importOpen &&
+    !moving &&
+    !tagging &&
+    !publishing &&
+    !cards &&
+    !filtersOpen;
+  launchState.current = {
+    ready: launchReady,
+    available: launchAvailable,
+    create,
+    openTemplates: () => {
+      setPersonalTemplate(true);
+      setTemplates(true);
+    },
+    openImport: () => setImportOpen(true),
+  };
+  const globalLaunch = useMemo(
+    () => ({
+      ready: () => launchState.current.ready,
+      available: () => current() && launchState.current.available,
+      launch: (kind: "new.page" | "new.from-template" | "new.import") => {
+        if (!current() || !launchState.current.available) return;
+        if (kind === "new.page") return launchState.current.create("doc", true);
+        if (kind === "new.from-template")
+          return launchState.current.openTemplates();
+        return launchState.current.openImport();
+      },
+    }),
+    [current, launchReady, launchAvailable],
+  );
+  useLibraryLaunchTarget(globalLaunch);
+  useRouteCommands(
+    useMemo(
+      () => ({
+        "new.page": {
+          available: launchReady && launchAvailable && canCreate,
+          run: () => create("doc"),
+        },
+        "new.from-template": {
+          available: launchReady && launchAvailable && canCreate,
+          run: () => setTemplates(true),
+        },
+        "new.import": {
+          available: launchReady && launchAvailable && canCreate,
+          run: () => setImportOpen(true),
+        },
+      }),
+      [launchReady, launchAvailable, canCreate, place, fixedKind],
+    ),
+  );
   const selectedProject = projects.find(
     (project) => project.id === filters.project,
   );
 
   return (
     <div className="lib-collection">
+      {createError && <ErrorNotice message={createError} />}
+      {createdId && (
+        <Button disabled={busy} onClick={() => void openCreated(createdId)}>
+          Open saved page
+        </Button>
+      )}
       <div className="lib-head">
         {railToggle}
         <h1 className="lib-title" dir="auto">
@@ -295,7 +443,7 @@ export function Collection({
           <div className="lib-primary">
             <Button
               variant="primary"
-              disabled={busy}
+              disabled={busy || creationUnknown || createdId !== null}
               aria-label={
                 fixedKind === "memory"
                   ? "New memory"
@@ -619,10 +767,25 @@ export function Collection({
       {tagging && (
         <TagPicked onClose={() => setTagging(false)} onPick={bulkTag} />
       )}
+      {importOpen && (
+        <Dialog title="Import pages" onClose={() => setImportOpen(false)}>
+          <p>
+            Choose files to add to your Library. Each file keeps its own import
+            status.
+          </p>
+          <ImportButton variant="primary" />
+          <UploadsPanel />
+        </Dialog>
+      )}
       {templates && (
         <TemplatesDialog
-          onClose={() => setTemplates(false)}
-          folderId={place.at === "folder" ? place.id : null}
+          onClose={() => {
+            setTemplates(false);
+            setPersonalTemplate(false);
+          }}
+          folderId={
+            !personalTemplate && place.at === "folder" ? place.id : null
+          }
         />
       )}
       {publishing && (
@@ -670,6 +833,7 @@ function Rows({
   onCards: (doc: DocSummary) => void;
   uploads: boolean;
 }) {
+  const navigate = useNavigate();
   const current = useLibraryOwner();
   const { folders, stars, teams, fading } = useLibraryState();
   const toast = useToast();
@@ -891,6 +1055,7 @@ function TagPicked({
 }
 
 function ArchivedList({ fixedKind }: { fixedKind?: FixedKind }) {
+  const navigate = useNavigate();
   const current = useLibraryOwner();
   const { folders } = useLibraryState();
   const toast = useToast();
@@ -1001,12 +1166,30 @@ function ArchivedList({ fixedKind }: { fixedKind?: FixedKind }) {
 }
 
 function TrashList() {
+  const windowNavigate = useCapturedNavigate();
   const current = useLibraryOwner();
   const toast = useToast();
   const confirm = useConfirm();
   const [rows, setRows] = useState<TrashedDoc[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const writing = useRef(false);
+  const creation = useRef<{ unknown: boolean; savedId: string | null }>({
+    unknown: false,
+    savedId: null,
+  });
+  const handoff = useRef<string | null>(null);
+  const [createError, setCreateError] = useState("");
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const [creationUnknown, setCreationUnknown] = useState(false);
+  useBeforeNavigate(
+    useCallback(
+      (to) =>
+        (!writing.current || to === handoff.current) &&
+        !creation.current.unknown,
+      [],
+    ),
+  );
   const read = useRef(0);
   const load = useCallback(async () => {
     if (!current()) return;
@@ -1022,7 +1205,8 @@ function TrashList() {
   }, [current]);
   useEffect(() => void load(), [load]);
   const restore = async (page: TrashedDoc) => {
-    if (!current() || busy) return;
+    if (!current() || writing.current) return;
+    writing.current = true;
     setBusy(true);
     try {
       const back = await client.restoreDoc(page.id);
@@ -1036,7 +1220,7 @@ function TrashList() {
           label: "Open",
           run: () => {
             if (actionGeneration === getSessionVersion())
-              navigate(`/app/doc/${back.id}`);
+              windowNavigate(`/app/doc/${back.id}`);
           },
         },
       });
@@ -1047,11 +1231,12 @@ function TrashList() {
         error: true,
       });
     } finally {
+      writing.current = false;
       if (current()) setBusy(false);
     }
   };
   const destroy = async (page: TrashedDoc) => {
-    if (!current() || busy) return;
+    if (!current() || writing.current) return;
     const ok = await confirm({
       title: "Delete page permanently?",
       body: `${page.title || "Untitled"} · Its history and comments are also deleted.`,
@@ -1059,6 +1244,7 @@ function TrashList() {
       danger: true,
     });
     if (!ok || !current()) return;
+    writing.current = true;
     setBusy(true);
     try {
       await client.deleteDocForever(page.id);
@@ -1073,6 +1259,7 @@ function TrashList() {
         error: true,
       });
     } finally {
+      writing.current = false;
       if (current()) setBusy(false);
     }
   };

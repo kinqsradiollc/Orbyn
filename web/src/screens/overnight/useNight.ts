@@ -1,3 +1,4 @@
+import { useBeforeNavigate } from "../../lib/router";
 import { HttpError, type OvernightNight } from "@orbyn/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { messageOf } from "../../lib/resource";
@@ -48,6 +49,11 @@ export function useNight(nightId?: string) {
     queued = useRef(false);
   const active = useRef<Promise<OvernightNight | null> | null>(null);
   const command = useRef<Command | null>(null);
+  const prepareLeave = useCallback(
+    () => !operation.current && !command.current?.unknown,
+    [],
+  );
+  useBeforeNavigate(prepareLeave);
   const lastReadAt = useRef(0);
   const hasRead = useRef(false);
   const read = useCallback(

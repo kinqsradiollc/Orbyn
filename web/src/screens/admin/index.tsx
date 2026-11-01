@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ScreenProps } from "../../app/routes";
 import { useAccount } from "../../app/account";
 import { getSessionVersion } from "../../lib/session";
-import { navigate, onBeforeNavigate, useTitle } from "../../lib/router";
+import { useNavigate, useBeforeNavigate, useTitle } from "../../lib/router";
 import { Button, SelectBox, useConfirm, useToast } from "../../ui/kit";
 import { AdminContext, type ExitState } from "./shared";
 import { People } from "./people";
@@ -31,6 +31,7 @@ export default function AdminScreen(props: ScreenProps) {
   return <AdminRoot key={getSessionVersion()} {...props} />;
 }
 function AdminRoot({ params }: ScreenProps) {
+  const navigate = useNavigate();
   useTitle("Administration");
   const account = useAccount(),
     identity = useRef({ role: account.user?.role, id: account.user?.id ?? "" });
@@ -102,7 +103,7 @@ function AdminRoot({ params }: ScreenProps) {
       AREAS.some((a) => a[0] === params.section) ? params.section : "overview",
     );
   }, [params.section]);
-  useLayoutEffect(() => onBeforeNavigate(canLeave), [canLeave]);
+  useBeforeNavigate(canLeave);
   useLayoutEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (

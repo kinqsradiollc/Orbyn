@@ -22,14 +22,23 @@ import {
   Timer,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../lib/session";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { client, getSessionVersion } from "../../lib/session";
 import "./calendar.css";
+import "./focus-owner.css";
 import { Button, ErrorNotice, IconButton, Input, Loading } from "../../ui/kit";
 import { minutesLabel } from "./format";
 import { messageOf } from "./model";
 import { nextUp } from "../shared-task/format";
 import { deviceId, useFocusTimer } from "./useFocusTimer";
+
+import type { FocusPreparation } from "./focus-lifecycle";
 
 const clockText = (seconds: number) => {
   const s = Math.max(0, Math.floor(seconds));
@@ -44,7 +53,9 @@ type Props = {
   items: Item[];
   canWrite: boolean;
   breakLevel?: BreakLevel;
-  onClose: () => void;
+  visible?: boolean;
+  onPrepare?: (prepare: FocusPreparation) => () => void;
+  onClose: (keepRunning: boolean) => void;
   onSwitch: (item: Item) => void;
   onChanged: () => Promise<void> | void;
 };
@@ -62,6 +73,8 @@ export function FocusMode({
   onClose,
   onSwitch,
   onChanged,
+  visible = true,
+  onPrepare,
 }: Props) {
   const box = useRef<HTMLDialogElement>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
@@ -74,6 +87,11 @@ export function FocusMode({
   const [error, setError] = useState("");
   const [pendingOp, setPendingOp] = useState(false);
   const alive = useRef(true);
+  const [openingGeneration] = useState(getSessionVersion);
+  const owned = useCallback(
+    () => alive.current && openingGeneration === getSessionVersion(),
+    [openingGeneration],
+  );
   const mutation = useRef(false);
   const flushing = useRef<Promise<boolean> | null>(null);
   const unsaved = useRef<Parameters<typeof client.saveFocusSession>[0] | null>(
@@ -84,21 +102,28 @@ export function FocusMode({
   const session = useRef(0);
   useEffect(() => {
     alive.current = true;
-    const node = box.current;
-    if (node && !node.open) node.showModal();
     return () => {
       alive.current = false;
     };
   }, []);
+  useLayoutEffect(() => {
+    const node = box.current;
+    if (node && visible && owned() && !node.open) node.showModal();
+    if (node && !visible && node.open) node.close();
+    return () => {
+      node?.close();
+    };
+  }, [visible, owned]);
 
   const changed = useCallback(async () => {
+    if (!owned()) return;
     try {
       await onChanged();
     } catch (failure) {
-      if (alive.current)
+      if (owned())
         setError(messageOf(failure, "Saved, but the calendar didn't refresh."));
     }
-  }, [onChanged]);
+  }, [onChanged, owned]);
 
   const focus = useFocusTimer({
     item,
@@ -119,11 +144,13 @@ export function FocusMode({
 
   useEffect(() => {
     let live = true;
+    if (!owned()) return;
     setReadError("");
     client.getItem(item.id).then(
-      (d) => live && setDetail(d),
+      (d) => live && owned() && setDetail(d),
       (failure) =>
         live &&
+        owned() &&
         setReadError(messageOf(failure, "Couldn't load the checklist.")),
     );
     return () => {
@@ -143,6 +170,7 @@ export function FocusMode({
 
   /** Stop the open timer and log whole minutes. */
   const flush = useCallback((): Promise<boolean> => {
+    if (!owned()) return Promise.resolve(false);
     if (flushing.current) return flushing.current;
     const run = runSeconds();
     banked.current += run;
@@ -151,6 +179,7 @@ export function FocusMode({
     setRunning(false);
     const work = async () => {
       for (;;) {
+        if (!owned()) return false;
         const minutes = Math.min(600, Math.floor(banked.current / 60));
         if (!unsaved.current && (minutes < 1 || !canWrite)) return true;
         if (!unsaved.current) {
@@ -169,13 +198,14 @@ export function FocusMode({
         const snapshot = unsaved.current;
         try {
           const saved = await client.saveFocusSession(snapshot);
+          if (!owned()) return false;
           banked.current = Math.max(0, banked.current - snapshot.minutes * 60);
           unsaved.current = null;
           if (saved.item) setDetail(saved.item);
           setLoggedNow((m) => m + snapshot.minutes);
           refreshToday();
         } catch (failure) {
-          if (alive.current)
+          if (owned())
             setError(messageOf(failure, "Focus time couldn't save."));
           return false;
         }
@@ -193,18 +223,17 @@ export function FocusMode({
   }, [canWrite, changed, item.id, refreshToday]);
 
   const act = useCallback(async (work: () => Promise<void>) => {
-    if (mutation.current) return;
+    if (!owned() || mutation.current) return;
     mutation.current = true;
     setPendingOp(true);
     setError("");
     try {
       await work();
     } catch (failure) {
-      if (alive.current)
-        setError(messageOf(failure, "That didn't save. Try again."));
+      if (owned()) setError(messageOf(failure, "That didn't save. Try again."));
     } finally {
       mutation.current = false;
-      if (alive.current) setPendingOp(false);
+      if (owned()) setPendingOp(false);
     }
   }, []);
 
@@ -214,42 +243,120 @@ export function FocusMode({
     void act(async () => {
       if (!(await flush())) return;
       if (!keepsRunning) await finish();
-      onClose();
+      if (owned()) onClose(keepsRunning);
     });
   }, [act, finish, flush, keepsRunning, onClose]);
+  const safeToExit = () =>
+    owned() &&
+    !mutation.current &&
+    !flushing.current &&
+    !unsaved.current &&
+    !startedAt.current &&
+    banked.current < 60 &&
+    focus.canExit();
+  const prepare: FocusPreparation = useCallback(
+    async (reason) => {
+      if (
+        !owned() ||
+        mutation.current ||
+        flushing.current ||
+        focus.saving ||
+        focus.saveFailed
+      )
+        return false;
+      mutation.current = true;
+      setPendingOp(true);
+      let kind: "running" | "settled" = "running";
+      try {
+        if (!(await flush()) || !owned()) return false;
+        if (reason === "replace" || !keepsRunning) {
+          await finish();
+          if (!owned()) return false;
+          kind = "settled";
+        }
+        const revision = focus.revision();
+        return {
+          kind,
+          current: () => safeToExit() && focus.revision() === revision,
+        };
+      } catch (failure) {
+        if (owned())
+          setError(
+            messageOf(
+              failure,
+              "Focus time couldn't save. The session remains open.",
+            ),
+          );
+        return false;
+      } finally {
+        mutation.current = false;
+        if (owned()) setPendingOp(false);
+      }
+    },
+    [
+      owned,
+      flush,
+      finish,
+      keepsRunning,
+      focus.saving,
+      focus.saveFailed,
+      focus.canExit,
+      focus.revision,
+    ],
+  );
+  useLayoutEffect(() => onPrepare?.(prepare), [onPrepare, prepare]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (owned() && !safeToExit()) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  });
   const endSession = () =>
     void act(async () => {
       if (!(await flush())) return;
       await finish();
-      onClose();
+      if (owned()) onClose(false);
     });
-  const switchTo = (next: Item) =>
-    void act(async () => {
-      if (!(await flush())) return;
-      await finish();
+  const switchTo = (next: Item) => {
+    if (
+      owned() &&
+      !mutation.current &&
+      !flushing.current &&
+      !focus.saving &&
+      !focus.saveFailed
+    )
       onSwitch(next);
-    });
+  };
   const markDone = () =>
     void act(async () => {
       if (!canWrite || !(await flush())) return;
       await finish();
-      setDetail(await client.postItemUpdate(item.id, { status: "done" }));
+      if (!owned()) return;
+      const saved = await client.postItemUpdate(item.id, { status: "done" });
+      if (!owned()) return;
+      setDetail(saved);
       setDone(true);
       await changed();
     });
   const toggleStep = (step: ItemStep) =>
     void act(async () => {
       if (!canWrite) return;
-      setDetail(
-        await client.updateStep(item.id, step.id, { done: !step.done }),
-      );
+      const saved = await client.updateStep(item.id, step.id, {
+        done: !step.done,
+      });
+      if (!owned()) return;
+      setDetail(saved);
       await changed();
     });
 
   // Log what's on the clock if the page is closed mid-session.
   useEffect(() => {
     const hide = () => {
-      if (document.visibilityState === "hidden" && startedAt.current)
+      if (owned() && document.visibilityState === "hidden" && startedAt.current)
         void flush();
     };
     document.addEventListener("visibilitychange", hide);
@@ -277,6 +384,8 @@ export function FocusMode({
   return (
     <dialog
       ref={box}
+      hidden={!visible}
+      inert={!visible}
       className="calendar-focus"
       aria-labelledby="calendar-focus-title"
       onCancel={(event) => {
@@ -450,7 +559,11 @@ export function FocusMode({
               </div>
               {focus.saveFailed && (
                 <ErrorNotice
-                  message="Focus time couldn't save."
+                  message={
+                    focus.shareFailed
+                      ? "The timer update is unconfirmed. Retry checks its saved state without sending it again."
+                      : "Focus time couldn't save."
+                  }
                   onRetry={focus.retrySave}
                 />
               )}
@@ -603,15 +716,17 @@ export function FocusBanner({
   version: unknown;
   onOpen: (item: Item) => void;
 }) {
+  const [openingGeneration] = useState(getSessionVersion);
+  const owns = () => openingGeneration === getSessionVersion();
   const request = useRef(0);
   const [current, setCurrent] = useState<FocusCurrent | null>(null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (hidden) return;
+    if (hidden || !owns()) return;
     const mine = ++request.current;
     client.currentFocus().then(
       (next) => {
-        if (mine === request.current) setCurrent(next);
+        if (owns() && mine === request.current) setCurrent(next);
       },
       () => undefined,
     );
@@ -622,7 +737,9 @@ export function FocusBanner({
   const running = !!current?.state.ends_at;
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => {
+      if (owns()) setNow(Date.now());
+    }, 1000);
     return () => clearInterval(id);
   }, [running]);
   if (!current || hidden) return null;

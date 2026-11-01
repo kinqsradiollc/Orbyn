@@ -63,7 +63,7 @@ import {
 import { useAccount } from "../../app/account";
 import type { ScreenProps } from "../../app/routes";
 import { messageOf, useResource } from "../../lib/resource";
-import { navigate, useTitle } from "../../lib/router";
+import { useNavigate, useTitle } from "../../lib/router";
 import { client } from "../../lib/session";
 import {
   Button,
@@ -83,7 +83,7 @@ import {
 import {
   saveFields,
   saveStatus,
-  tasks,
+  useTasks,
   useItems,
   usePlanning,
   useTaskActions,
@@ -118,7 +118,7 @@ const LAYOUT_ICONS: Record<ViewLayout, typeof Table2> = {
 
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
-const open = (id: string) => navigate(`/app/view/${id}`);
+
 const noon = () => undefined;
 /** The server refuses an assignee on a personal task, and some old tasks carry one. */
 const personal = (item: Item, fields: Partial<ItemInput>) =>
@@ -371,6 +371,9 @@ function Rename({
 }
 
 export default function ViewsScreen({ params }: ScreenProps) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
+  const open = (id: string) => navigate(`/app/view/${id}`);
   useTitle("Views");
   const { user } = useAccount();
   const userId = user?.id;

@@ -6,10 +6,10 @@ import {
   type TeamDetail,
 } from "@orbyn/core";
 import { client } from "../../lib/session";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { Button, Field, Input, SelectBox } from "../../ui/kit";
 import { TaskRow } from "../shared-task/TaskRow";
-import { tasks } from "../shared-task/host-store";
+import { useTasks } from "../shared-task/host-store";
 import { useItems } from "../shared-task/store";
 import { ReadState, useOwned, useRead } from "./state";
 export function Work({
@@ -19,6 +19,8 @@ export function Work({
   team: TeamDetail;
   revision?: number;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const owned = useOwned();
   const read = useRead(async () => {
       const rows: Item[] = [];

@@ -6,7 +6,7 @@ import {
 } from "@orbyn/core";
 import { ChevronRight, Clock, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client, getToken } from "../../lib/session";
 import { Button } from "../../ui/kit";
 
@@ -14,6 +14,7 @@ type Lane = "background" | "overnight";
 
 /** Your two agent lanes. Browsing characters never changes a setting. */
 export function Companions() {
+  const navigate = useNavigate();
   const [names, setNames] = useState<
     Partial<Record<Lane, AutomationAgentIdentity>>
   >({});

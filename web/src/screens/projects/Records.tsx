@@ -8,7 +8,7 @@ import type {
 } from "@orbyn/core";
 import { useRef, useState } from "react";
 import { messageOf, useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import {
   Button,
@@ -282,6 +282,7 @@ export function Records({
   userId: string;
   canWrite: boolean;
 }) {
+  const navigate = useNavigate();
   const toast = useToast();
   const data = useResource(async () => {
     const [records, notes, team] = await Promise.all([

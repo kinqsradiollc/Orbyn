@@ -1,5 +1,6 @@
-import { docPreview, newId, type DraftNote } from "@orbyn/core";
-import { useEffect, useRef, useState } from "react";
+import { useBeforeNavigate } from "../../lib/router";
+import { HttpError, docPreview, newId, type DraftNote } from "@orbyn/core";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { messageOf } from "../../lib/resource";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, Pill } from "../../ui/kit";
@@ -27,6 +28,14 @@ function DraftNotesBody({
   const owned = useOwned();
   const running = useRef(false);
   const requests = useRef(new Map<string, string>());
+  const unconfirmed = useRef(new Set<string>()),
+    handoff = useRef<string | null>(null);
+  const prepareLeave = useCallback(
+    (to: string) =>
+      handoff.current === to || (!running.current && !unconfirmed.current.size),
+    [],
+  );
+  useBeforeNavigate(prepareLeave);
   const [kept, setKept] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -92,6 +101,7 @@ function DraftNotesBody({
     setErrors((all) => ({ ...all, [key]: "" }));
     const request = requests.current.get(key) ?? newId();
     requests.current.set(key, request);
+    unconfirmed.current.add(key);
     try {
       const doc = await client.once(request, () =>
         client.createDoc({
@@ -104,8 +114,10 @@ function DraftNotesBody({
         }),
       );
       if (!owned()) return;
+      unconfirmed.current.delete(key);
       setKept((all) => ({ ...all, [key]: doc.id }));
       try {
+        handoff.current = `/app/doc/${encodeURIComponent(doc.id)}`;
         await onKept?.(doc.id);
       } catch (failure) {
         if (owned())
@@ -115,12 +127,16 @@ function DraftNotesBody({
           }));
       }
     } catch (failure) {
+      const status = failure instanceof HttpError ? failure.statusCode : 0;
+      if (status && status < 500 && status !== 408 && status !== 429)
+        unconfirmed.current.delete(key);
       if (owned())
         setErrors((all) => ({
           ...all,
           [key]: messageOf(failure, "Couldn't keep this note."),
         }));
     } finally {
+      handoff.current = null;
       running.current = false;
       if (owned()) setBusy(false);
     }

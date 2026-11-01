@@ -45,7 +45,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { messageOf, useResource } from "../../lib/resource";
 import { client } from "../../lib/session";
 import {
@@ -68,7 +68,7 @@ import {
   progressOf,
   timeAgo,
 } from "./format";
-import { tasks } from "./host-store";
+import { useTasks } from "./host-store";
 import { createItem, writeBody } from "./store";
 
 export function Section({
@@ -373,6 +373,7 @@ export function Subtasks({
   locked: boolean;
   onError: (text: string) => void;
 }) {
+  const tasks = useTasks();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const byId = new Map(items.map((i) => [i.id, i]));
@@ -641,6 +642,7 @@ export function Sessions({
   reloadKey: string;
   onChanged: () => void;
 }) {
+  const navigate = useNavigate();
   const sessions = useResource(
     () => client.itemSessions(item.id),
     [item.id, reloadKey],
@@ -1357,6 +1359,8 @@ export function Connections({
   locked: boolean;
   onSaved: () => void;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const data = useResource(async () => {
     const [context, catalog] = await Promise.all([
       client.itemContext(item.id),
@@ -1543,6 +1547,8 @@ export function Connections({
 
 /** The pages and tasks that link to this one. */
 export function LinkedHere({ item }: { item: Item }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const kind = item.kind === "event" ? "event" : "task";
   const links = useResource<LinkedHereList>(
     () => client.linksHere(kind, item.id),

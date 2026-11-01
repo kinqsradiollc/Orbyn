@@ -1,8 +1,8 @@
 import { HttpError, reviewPath, type ReviewItem } from "@orbyn/core";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { messageOf } from "../../lib/resource";
-import { navigate, useTitle } from "../../lib/router";
+import { useNavigate, useBeforeNavigate, useTitle } from "../../lib/router";
 import { client } from "../../lib/session";
 import {
   Button,
@@ -34,6 +34,7 @@ export default function ReviewScreen({
 }: {
   params: Record<string, string>;
 }) {
+  const navigate = useNavigate();
   const owner = useOwner();
   useTitle("Review");
   const id = params.id;
@@ -122,6 +123,7 @@ function Inbox() {
 }
 
 function ReviewRows({ items }: { items: ReviewItem[] }) {
+  const navigate = useNavigate();
   return (
     <ul className="review-list">
       {items.map((item) => (
@@ -155,6 +157,7 @@ function ReviewRows({ items }: { items: ReviewItem[] }) {
 }
 
 function Decision({ id }: { id: string }) {
+  const navigate = useNavigate();
   const owned = useOwned();
   const confirm = useConfirm();
   const lock = useRef(false);
@@ -167,6 +170,13 @@ function Decision({ id }: { id: string }) {
   const [error, setError] = useState("");
   const [uncertain, setUncertain] = useState(false);
   const [receipt, setReceipt] = useState<"approve" | "decline" | null>(null);
+  const exitState = useRef({ uncertain });
+  exitState.current = { uncertain };
+  const prepareLeave = useCallback(
+    () => !lock.current && !exitState.current.uncertain,
+    [],
+  );
+  useBeforeNavigate(prepareLeave);
   const [, tick] = useState(0);
   const item = read.data;
   const selected =

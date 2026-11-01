@@ -21,8 +21,8 @@ import {
 import { messageOf } from "../../../lib/resource";
 import { client } from "../../../lib/session";
 import { useLibraryOwner } from "../lifetime";
-import { navigate } from "../../../lib/router";
-import { tasks } from "../../shared-task";
+import { useNavigate } from "../../../lib/router";
+import { useTasks } from "../../shared-task";
 import { FootnoteContext, PageContext, pillKey } from "./context";
 import { cut, type Mark } from "./marks";
 import { LinkedObject } from "./LinkedObject";
@@ -149,6 +149,7 @@ function LinkPillView({
   start: number;
   hint?: string;
 }) {
+  const tasks = useTasks();
   const page = useContext(PageContext);
   const [details, setDetails] = useState(false);
   const [tickBusy, setTickBusy] = useState(false);
@@ -302,6 +303,7 @@ function LinkPillView({
 }
 
 export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
+  const navigate = useNavigate();
   const page = useContext(PageContext);
   const { references, numbers } = useContext(FootnoteContext);
   const runs = useMemo(
@@ -397,10 +399,12 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
                   } else if (destination.kind === "app") {
                     event.preventDefault();
                     if (page) page.onOpen(destination.url);
-                    else
-                      navigate(
-                        new URL(destination.url, location.origin).pathname,
+                    else {
+                      const target = new URL(destination.url, location.origin);
+                      void navigate(
+                        target.pathname + target.search + target.hash,
                       );
+                    }
                   }
                 }}
               >

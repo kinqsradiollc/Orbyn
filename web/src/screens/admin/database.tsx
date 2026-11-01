@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, Field, SelectBox } from "../../ui/kit";
 import { Facts, ReadState, Section, useRead } from "./shared";
 import { DatabaseRows } from "./database-rows";
 export function Database() {
+  const navigate = useNavigate();
   const tables = useRead(() => client.adminDatabaseTables()),
     [name, setName] = useState("");
   return (

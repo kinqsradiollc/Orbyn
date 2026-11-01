@@ -1,11 +1,13 @@
+import { registerTaskPreparation } from "./host-store";
+import { useBeforeNavigate } from "../../lib/router";
 import {
   parseQuickAdd,
   type ItemInput,
   type QuickAddChip,
   type QuickAddMember,
 } from "@orbyn/core";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { navigate } from "../../lib/router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCapturedNavigate } from "../../lib/router";
 import { messageOf } from "../../lib/resource";
 import { client } from "../../lib/session";
 import { useAccount } from "../../app/account";
@@ -27,7 +29,7 @@ import {
   type Draft,
 } from "./draft";
 import { deviceTimeZone } from "./format";
-import { tasks } from "./host-store";
+import { useTasks } from "./host-store";
 import { ItemFields } from "./ItemFields";
 import type { Pending } from "./pickers";
 import { createItem, refreshPlanner, usePlanning } from "./store";
@@ -62,6 +64,8 @@ export function NewItem({
   prefill?: Partial<ItemInput>;
   onClose: () => void;
 }) {
+  const tasks = useTasks();
+  const navigate = useCapturedNavigate();
   const { user } = useAccount();
   const { lists, tags, teams, canWriteIn } = usePlanning();
   const confirm = useConfirm();
@@ -206,6 +210,32 @@ export function NewItem({
       made(built.data.title);
     });
 
+  const closeState = useRef({ busy, form, line });
+  closeState.current = { busy, form, line };
+  const prepareClose = useCallback(async () => {
+    const opening = closeState.current;
+    if (opening.busy) return false;
+    const changed = opening.form
+      ? true
+      : opening.line.trim() !== (text || prefill?.title || "").trim();
+    if (
+      changed &&
+      !(await confirm({
+        title: "Discard this item?",
+        body: "It hasn't been added.",
+        action: "Discard",
+        danger: true,
+      }))
+    )
+      return false;
+    return (
+      opening.form === closeState.current.form &&
+      opening.line === closeState.current.line &&
+      !closeState.current.busy
+    );
+  }, [confirm, text, prefill]);
+  useEffect(() => registerTaskPreparation(prepareClose), [prepareClose]);
+  useBeforeNavigate(prepareClose);
   const close = async () => {
     if (busy) return;
     const changed = form

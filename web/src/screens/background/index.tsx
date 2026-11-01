@@ -1,4 +1,4 @@
-import { navigate, useTitle } from "../../lib/router";
+import { useNavigate, useTitle } from "../../lib/router";
 import { Button, ErrorNotice, Loading } from "../../ui/kit";
 import { LaneHead } from "../agents-shared/LaneHead";
 import { Band, Check, More } from "../agents-shared/parts";
@@ -23,6 +23,7 @@ export default function BackgroundScreen() {
 }
 
 function Background() {
+  const navigate = useNavigate();
   const owned = useOwned();
   const profiles = useProfiles();
   const controls = useControls(true);

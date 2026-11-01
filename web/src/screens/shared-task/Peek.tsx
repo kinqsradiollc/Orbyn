@@ -1,12 +1,13 @@
+import { useRouteScope, useRouteInput } from "../../lib/route-scope";
 import { plainText, type Doc, type Project } from "@orbyn/core";
 import { Boxes, FileText, Maximize2, Pin, PinOff, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
-import { client } from "../../lib/session";
+import { useNavigate } from "../../lib/router";
+import { client, getSessionVersion } from "../../lib/session";
 import { ErrorNotice, IconButton, Loading } from "../../ui/kit";
-import { tasks, type PeekTarget } from "./host-store";
+import { useTasks, type PeekTarget } from "./host-store";
 
 type Loaded = { doc: Doc } | { project: Project };
 
@@ -17,10 +18,16 @@ const textOf = (block: { text?: string }) =>
 export function Peek({
   target,
   pinned,
+  onClose,
 }: {
   target: PeekTarget;
   pinned: boolean;
+  onClose: () => void;
 }) {
+  const tasks = useTasks();
+  const scope = useRouteScope();
+  const inputAllowed = useRouteInput();
+  const navigate = useNavigate();
   const box = useRef<HTMLElement>(null);
   const shown = useResource<Loaded>(
     async () =>
@@ -30,21 +37,38 @@ export function Peek({
     [target.kind, target.id],
   );
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    box.current?.focus({ preventScroll: true });
+    const opener = document.activeElement as HTMLElement | null,
+      root = box.current,
+      generation = getSessionVersion();
+    const allowed = () =>
+      generation === getSessionVersion() &&
+      (!scope || (scope.getSnapshot().visible && scope.getSnapshot().focused));
+    if (allowed()) root?.focus({ preventScroll: true });
     return () => {
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
+      const ownedFocus =
+        !!root?.contains(document.activeElement) ||
+        document.activeElement === document.body;
+      if (
+        allowed() &&
+        ownedFocus &&
+        opener?.isConnected &&
+        !opener.closest("[inert]") &&
+        !opener.matches(":disabled") &&
+        !document.querySelector("dialog[open]")
+      )
+        opener.focus({ preventScroll: true });
     };
-  }, []);
+  }, [scope]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (!inputAllowed() || event.key !== "Escape" || event.defaultPrevented)
+        return;
       if (document.querySelector("dialog[open], .menu")) return;
-      tasks.closePeek();
+      onClose();
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, []);
+  }, [inputAllowed, onClose]);
   const data = shown.data;
   const title = !data
     ? ""
@@ -53,7 +77,7 @@ export function Peek({
       : data.project.name;
   const openFull = () => {
     navigate(`/app/${target.kind}/${target.id}`);
-    if (!pinned) tasks.closePeek();
+    if (!pinned) onClose();
   };
   return createPortal(
     <aside
@@ -87,7 +111,7 @@ export function Peek({
         <IconButton label="Open full" onClick={openFull}>
           <Maximize2 />
         </IconButton>
-        <IconButton label="Close" onClick={() => tasks.closePeek()}>
+        <IconButton label="Close" onClick={onClose}>
           <X />
         </IconButton>
       </header>

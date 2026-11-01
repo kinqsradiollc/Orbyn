@@ -6,7 +6,7 @@ import {
   type ProjectSession,
 } from "@orbyn/core";
 import { useMemo } from "react";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 import { shortDate } from "./shared";
 
 /**
@@ -23,6 +23,7 @@ export function Timeline({
   items: Item[];
   sessions: ProjectSession[];
 }) {
+  const tasks = useTasks();
   const mine = useMemo(
     () => items.filter((i) => i.project_id === project.id),
     [items, project.id],

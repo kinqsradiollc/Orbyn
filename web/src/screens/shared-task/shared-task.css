@@ -785,6 +785,7 @@ button.st-fold:hover {
   font-size: 13px;
 }
 .st-rows {
+  container-name: task-rows;
   container-type: inline-size;
 }
 .st-row-signals {
@@ -909,17 +910,8 @@ button.st-fold:hover {
   border-top: 1px solid var(--line-soft);
 }
 @media (min-width: 801px) {
-  @container (max-width: 980px) {
+  @container task-rows (max-width: 980px) {
     .st-col-time {
-      display: none;
-    }
-  }
-  @container (max-width: 760px) {
-    .st-col-where {
-      width: 22px;
-    }
-    .st-col-where .st-clip,
-    .st-col-where i + i {
       display: none;
     }
   }
@@ -1015,4 +1007,58 @@ button.st-fold:hover {
 .st-kicker > svg {
   width: 14px;
   height: 14px;
+}
+
+/* Shared list rows adapt to their actual task-list width, including retained
+   panes in a wide browser. Panel and property sheets keep viewport rules. */
+@container task-rows (max-width: 800px) {
+  .st-row {
+    align-items: flex-start;
+    padding: 6px 0;
+  }
+  .st-row .st-check,
+  .st-row .st-pick {
+    margin-top: 2px;
+    width: 22px;
+    height: 22px;
+  }
+  .st-row-main {
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    min-height: 44px;
+    align-items: baseline;
+  }
+  .st-row-title {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+  }
+  .st-row-name {
+    flex-basis: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .st-row-signals {
+    flex-wrap: wrap;
+  }
+  .st-col-time,
+  .st-col-priority:empty {
+    display: none;
+  }
+  .st-col-where {
+    width: auto;
+    max-width: 150px;
+  }
+  .st-col-who,
+  .st-col-priority {
+    width: auto;
+  }
+  .st-row-due {
+    width: auto;
+    text-align: left;
+  }
+  .st-row-more {
+    width: 44px;
+    min-height: 44px;
+  }
 }

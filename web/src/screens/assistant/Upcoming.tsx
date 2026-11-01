@@ -10,7 +10,7 @@ import {
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../lib/session";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import {
   Button,
   Dialog,
@@ -27,7 +27,7 @@ import { RetryPolicyEditor } from "../agents-shared/routines/Recovery";
 import { RunHistory } from "../agents-shared/routines/RunHistory";
 import { CHANGE_KINDS } from "../agents-shared/words";
 import { PauseLane } from "../agents-shared/work";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 import { GoalForm } from "./GoalForm";
 import { GoalWork } from "./GoalWork";
 import { RoutineForm } from "./RoutineForm";
@@ -40,6 +40,7 @@ export function Upcoming({
   onClose: () => void;
   onOpenChat: (id: string) => void;
 }) {
+  const navigate = useNavigate();
   const owned = useOwned(),
     confirm = useConfirm(),
     lock = useRef(false);
@@ -419,6 +420,7 @@ export function Upcoming({
   );
 }
 function GoalDetail({ goal, onClose }: { goal: Goal; onClose: () => void }) {
+  const tasks = useTasks();
   const owned = useOwned(),
     checkins = useRead(() => client.goalCheckins(goal.id)),
     work = useRead(() => client.goalWork(goal.id));

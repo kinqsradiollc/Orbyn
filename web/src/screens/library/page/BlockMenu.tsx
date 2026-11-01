@@ -1,3 +1,8 @@
+import {
+  useRouteActivity,
+  useRouteInput,
+  useRoutePortal,
+} from "../../../lib/route-scope";
 import type { BLOCK_KINDS } from "@orbyn/core";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -35,8 +40,13 @@ export function BlockMenu({
   onCopyLink: () => void;
   onFold?: () => void;
 }) {
+  const inputAllowed = useRouteInput();
+  const activity = useRouteActivity(),
+    active = activity.visible && activity.focused;
+  const retirePortal = useRoutePortal(active);
   const box = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
+    if (!active) return;
     const menu = box.current;
     if (!menu) return;
     const size = menu.getBoundingClientRect();
@@ -44,12 +54,20 @@ export function BlockMenu({
     const below = anchor.bottom + 4 + size.height <= innerHeight - 8;
     menu.style.top = `${below ? anchor.bottom + 4 : Math.max(8, anchor.top - size.height - 4)}px`;
     menu.querySelector("button")?.focus();
-  }, [anchor]);
+  }, [anchor, active]);
   useEffect(() => {
+    if (!active) return;
     const outside = (event: PointerEvent) => {
+      if (!inputAllowed()) return;
       if (!box.current?.contains(event.target as Node)) onClose();
     };
     const key = (event: KeyboardEvent) => {
+      if (
+        !box.current?.contains(document.activeElement) ||
+        !inputAllowed() ||
+        document.querySelector("dialog[open]")
+      )
+        return;
       if (event.key === "Escape") onClose();
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
       const items = [...(box.current?.querySelectorAll("button") ?? [])];
@@ -66,11 +84,13 @@ export function BlockMenu({
       document.removeEventListener("pointerdown", outside);
       document.removeEventListener("keydown", key);
     };
-  }, [onClose]);
+  }, [onClose, active]);
   const act = (run: () => void) => () => {
+    retirePortal();
     onClose();
     run();
   };
+  if (!active) return null;
   const text = isTextLeaf(leaf.block);
   return createPortal(
     <div

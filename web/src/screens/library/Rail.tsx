@@ -1,3 +1,4 @@
+import { useLibraryView } from "./view";
 import {
   agendaGroups,
   docTree,
@@ -32,7 +33,7 @@ import {
   type ReactNode,
 } from "react";
 import { messageOf } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate, usePath } from "../../lib/router";
 import { client } from "../../lib/session";
 import { useLibraryOwner } from "./lifetime";
 import {
@@ -50,7 +51,6 @@ import { DOC_MIME, dragDoc } from "./drag";
 import {
   canWriteDoc,
   createPage,
-  goTo,
   libraryState,
   loadLibrary,
   setFolders,
@@ -100,6 +100,9 @@ export function Rail({
   openId: string | null;
   onChose: () => void;
 }) {
+  const navigate = useNavigate();
+  const path = usePath();
+  const { goTo } = useLibraryView();
   const current = useLibraryOwner();
   const { docs, folders, place, memory, agents, fading, teams } =
     useLibraryState();
@@ -119,7 +122,7 @@ export function Rail({
     if (!current()) return;
     goTo(next);
     onChose();
-    if (location.pathname !== "/app/docs") navigate("/app/docs");
+    if (path !== "/app/docs") navigate("/app/docs");
   };
   const showFixed = (kind: FixedKind) => {
     if (!current()) return;

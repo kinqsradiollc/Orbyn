@@ -17,10 +17,10 @@ import {
   Repeat,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "../../app/account";
 import { messageOf, useResource } from "../../lib/resource";
-import { navigate, useTitle } from "../../lib/router";
+import { useBeforeNavigate, useNavigate, useTitle } from "../../lib/router";
 import { client } from "../../lib/session";
 import {
   Button,
@@ -54,6 +54,7 @@ export default function StudyScreen() {
 }
 
 function StudyBody() {
+  const navigate = useNavigate();
   useTitle("Study");
   const toast = useToast();
   const confirm = useConfirm();
@@ -74,6 +75,28 @@ function StudyBody() {
   const [sort, setSort] = useState("due");
   const { jobs, busy: uploading } = uploads;
   const fileInput = useRef<HTMLInputElement>(null);
+  const handoff = useRef<string | null>(null),
+    exitState = useRef({ busy, uploading });
+  exitState.current = { busy, uploading };
+  const prepareLeave = useCallback(
+    (to: string) =>
+      handoff.current === to ||
+      (!action.current &&
+        !exitState.current.busy &&
+        !exitState.current.uploading),
+    [],
+  );
+  useBeforeNavigate(prepareLeave);
+  const followReceipt = async (to: string) => {
+    handoff.current = to;
+    try {
+      const result = await navigate(to);
+      if (result.kind === "refused")
+        throw new Error(`Saved, but ${result.reason}`);
+    } finally {
+      if (handoff.current === to) handoff.current = null;
+    }
+  };
 
   const ready = useRef(new Set<string>());
   useEffect(() => {
@@ -114,7 +137,7 @@ function StudyBody() {
           { type: "bullet", text: EXAMPLE },
         ],
       });
-      if (current()) navigate(`/app/doc/${doc.id}`);
+      if (current()) await followReceipt(`/app/doc/${doc.id}`);
     }, "Couldn't create the page.");
   const makeHabit = () =>
     run(async () => {

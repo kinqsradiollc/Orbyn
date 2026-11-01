@@ -4,10 +4,12 @@ import { Button, ErrorNotice } from "../../ui/kit";
 import { useOwned } from "../agents-shared/hooks";
 import { changeWords, realChanges } from "../agents-shared/words";
 import { More } from "../agents-shared/parts";
-import { tasks, refreshPlanner } from "../shared-task";
-import { navigate } from "../../lib/router";
+import { useTasks, refreshPlanner } from "../shared-task";
+import { useNavigate } from "../../lib/router";
 import { useRead } from "./state";
 export function TurnChanges({ job }: { job: string }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const owned = useOwned(),
     lock = useRef(false),
     [busy, setBusy] = useState(false),

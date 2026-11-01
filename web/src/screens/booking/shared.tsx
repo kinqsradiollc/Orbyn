@@ -19,7 +19,7 @@ import {
   type ReactNode,
 } from "react";
 import { getSessionVersion, getToken } from "../../lib/session";
-import { onBeforeNavigate } from "../../lib/router";
+import { useBeforeNavigate } from "../../lib/router";
 import { messageOf } from "../../lib/resource";
 import {
   Button,
@@ -119,7 +119,7 @@ export function BookingDomain({
     }),
     [anonymous, leave],
   );
-  useLayoutEffect(() => onBeforeNavigate(leave), [leave]);
+  useBeforeNavigate(leave);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (

@@ -7,10 +7,10 @@ import {
 } from "@orbyn/core";
 import { useEffect, useRef, useState } from "react";
 import { useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, Loading, SelectBox } from "../../ui/kit";
-import { tasks } from "../shared-task";
+import { useTasks } from "../shared-task";
 
 const FIELDS: Record<string, string> = {
   name: "Name",
@@ -232,6 +232,8 @@ export function History({
   lastSeen: string | null;
   sourceId: string | null;
 }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
   const activity = useResource(
     () => client.projectActivity(projectId),
     [projectId],

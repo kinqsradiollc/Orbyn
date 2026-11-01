@@ -1,23 +1,24 @@
 import type { SearchHit } from "@orbyn/core";
 import { useEffect, useRef, useState } from "react";
 import { useResource } from "../../lib/resource";
-import { navigate } from "../../lib/router";
+import { useNavigate } from "../../lib/router";
 import { client } from "../../lib/session";
 import { Dialog, Empty, ErrorNotice, Input, Loading } from "../../ui/kit";
-import { tasks } from "../shared-task";
-
-const open = (hit: SearchHit) => {
-  if (hit.type === "doc") navigate(`/app/doc/${hit.id}`);
-  else if (hit.type === "project") navigate(`/app/project/${hit.id}`);
-  else if (hit.type === "task") tasks.open(hit.id);
-  else navigate("/app");
-};
+import { useTasks } from "../shared-task";
 
 /**
  * `/app/search?q=words`: the words already searched, over Today. The app's
  * shell has no way to hand a query to its command bar, so this stands in.
  */
 export function SearchDialog({ query }: { query: string }) {
+  const tasks = useTasks();
+  const navigate = useNavigate();
+  const open = (hit: SearchHit) => {
+    if (hit.type === "doc") navigate(`/app/doc/${hit.id}`);
+    else if (hit.type === "project") navigate(`/app/project/${hit.id}`);
+    else if (hit.type === "task") tasks.open(hit.id);
+    else navigate("/app");
+  };
   const [text, setText] = useState(query);
   const [asked, setAsked] = useState(query.trim());
   const input = useRef<HTMLInputElement>(null);

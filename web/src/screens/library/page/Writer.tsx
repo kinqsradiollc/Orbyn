@@ -1,3 +1,4 @@
+import { useRouteActivity, useRouteInput } from "../../../lib/route-scope";
 import {
   BLOCK_KINDS,
   blockDepth,
@@ -146,6 +147,9 @@ export function Writer({
   onOpenCode: (leaf: Leaf) => void;
   flashId: string | null;
 }) {
+  const inputAllowed = useRouteInput();
+  const activity = useRouteActivity(),
+    active = activity.visible && activity.focused;
   const toast = useToast();
   const document = page.document!;
   const blocks = page.leaves;
@@ -164,7 +168,9 @@ export function Writer({
   handle.current = { settle: () => settleRef.current() };
 
   useEffect(() => {
+    if (!active) return;
     const reopen = (event: Event) => {
+      if (!inputAllowed()) return;
       const { path, id } = (
         event as CustomEvent<{ path: number[]; id: string }>
       ).detail;
@@ -172,7 +178,7 @@ export function Writer({
     };
     window.addEventListener("orbyn:doc-open-line", reopen);
     return () => window.removeEventListener("orbyn:doc-open-line", reopen);
-  }, []);
+  }, [active]);
 
   const leaves = useMemo(() => leafList(document), [document]);
   const layout = useMemo(() => listLayout(blocks), [blocks]);
@@ -1214,6 +1220,10 @@ function LineEditor({
   onPropose: (leaf: Leaf, before: string, after: string) => void;
   report: (text: string) => void;
 }) {
+  const activity = useRouteActivity(),
+    routeInputActive = activity.visible && activity.focused;
+  const mayFocus = useRef(routeInputActive);
+  mayFocus.current = routeInputActive;
   const block = leaf.block;
   const code = isCodeLike(block);
   const initial = useRef(lineSource(block, number)).current;
@@ -1256,7 +1266,7 @@ function LineEditor({
     const element = area.current;
     if (!element) return;
     fit(element);
-    element.focus({ preventScroll: true });
+    if (mayFocus.current) element.focus({ preventScroll: true });
     const at = Math.min(editing.caret ?? value.length, value.length);
     element.setSelectionRange(at, at);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1516,7 +1526,7 @@ function LineEditor({
         ref,
         title,
       );
-      area.current?.focus({ preventScroll: true });
+      if (mayFocus.current) area.current?.focus({ preventScroll: true });
       typeInto({ text: made.text, start: made.caret, end: made.caret });
       setPicker(null);
     };

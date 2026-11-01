@@ -18,7 +18,7 @@ import {
   type ItemDetail,
 } from "@orbyn/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../lib/session";
+import { client, getSessionVersion } from "../../lib/session";
 import { onNews } from "./useWorkspace";
 
 const RHYTHM_KEY = "orbyn-focus-rhythm";
@@ -54,6 +54,31 @@ export function deviceId() {
 }
 
 const deviceLabel = () => "Web browser";
+const stateFields = [
+  "rhythm",
+  "phase",
+  "round",
+  "ends_at",
+  "remaining_ms",
+  "run_started_at",
+  "ran_ms",
+  "item_id",
+  "item_title",
+] as const;
+function confirmsCurrent(value: unknown, expected: FocusState) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("device_id" in value) ||
+    value.device_id !== deviceId() ||
+    !("state" in value) ||
+    !value.state ||
+    typeof value.state !== "object"
+  )
+    return false;
+  const state = value.state as Record<string, unknown>;
+  return stateFields.every((key) => state[key] === expected[key]);
+}
 
 function chime() {
   try {
@@ -114,6 +139,11 @@ export function useFocusTimer({
   onError: (error: unknown) => void;
 }) {
   const alive = useRef(true);
+  const [openingGeneration] = useState(getSessionVersion);
+  const owned = useCallback(
+    () => alive.current && openingGeneration === getSessionVersion(),
+    [openingGeneration],
+  );
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -121,11 +151,18 @@ export function useFocusTimer({
     };
   }, []);
   const recording = useRef<Promise<void> | null>(null);
+  const finishing = useRef<Promise<void> | null>(null);
+  const mutationRevision = useRef(0);
   const sharing = useRef<Promise<void>>(Promise.resolve());
   const records = useRef(
     new Map<string, { payload: SavePayload; saved: boolean }>(),
   );
   const failed = useRef(false);
+  const sharingPending = useRef(false),
+    reconciling = useRef(false);
+  const uncertainShare = useRef<FocusState | null>(null);
+  const [sharingBusy, setSharingBusy] = useState(false),
+    [shareFailed, setShareFailed] = useState(false);
   const retryAction = useRef<(() => void) | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -146,9 +183,10 @@ export function useFocusTimer({
   const running = state.ends_at !== null;
 
   const refreshToday = useCallback(() => {
+    if (!owned()) return;
     client.focusSummary(startOfToday(), new Date(Date.now() + 60_000)).then(
       (s) => {
-        if (alive.current) setToday(s.work_minutes);
+        if (owned()) setToday(s.work_minutes);
       },
       () => undefined,
     );
@@ -158,11 +196,13 @@ export function useFocusTimer({
   /** Keep a phase that ran; work minutes go to the task. */
   const record = useCallback(
     async (s: FocusState, completed: boolean, at: number) => {
+      if (!owned()) return;
       const { rhythm: r, item: task, canWrite: can } = latest.current;
       const ran = Math.min(focusRan(s, at), 12 * 3_600_000);
       // A stray start and stop isn't a session.
       if (ran < 60_000 || !can) return;
       if (recording.current) await recording.current;
+      if (!owned()) return;
       const key = JSON.stringify([
         s.phase,
         s.round,
@@ -189,11 +229,14 @@ export function useFocusTimer({
         records.current.set(key, entry);
       }
       const receipt = entry;
+      mutationRevision.current++;
       setSaving(true);
       recording.current = (async () => {
+        if (!owned()) return;
         const saved = await client.saveFocusSession(receipt.payload);
         receipt.saved = true;
-        if (!alive.current) return;
+        mutationRevision.current++;
+        if (!owned()) return;
         failed.current = false;
         setSaveFailed(false);
         if (saved.item) latest.current.onLogged(saved.item);
@@ -202,36 +245,60 @@ export function useFocusTimer({
       try {
         await recording.current;
       } catch (error) {
-        if (alive.current) {
+        if (owned()) {
           failed.current = true;
           setSaveFailed(true);
         }
         throw error;
       } finally {
         recording.current = null;
-        if (alive.current) setSaving(false);
+        if (owned()) setSaving(false);
       }
     },
     [refreshToday],
   );
 
-  const share = useCallback((s: FocusState) => {
-    const payload = {
-      ...s,
-      item_title: latest.current.item.title.slice(0, 200),
-    };
-    sharing.current = sharing.current.then(async () => {
-      try {
-        await client.setCurrentFocus(payload, deviceLabel(), deviceId());
-      } catch (error) {
-        if (alive.current) latest.current.onError(error);
-      }
-    });
-  }, []);
+  const share = useCallback(
+    (s: FocusState) => {
+      if (!owned() || sharingPending.current || uncertainShare.current) return;
+      const payload = {
+        ...s,
+        item_title: latest.current.item.title.slice(0, 200),
+      };
+      mutationRevision.current++;
+      sharingPending.current = true;
+      setSharingBusy(true);
+      sharing.current = (async () => {
+        if (!owned()) return;
+        try {
+          const receipt = await client.setCurrentFocus(
+            payload,
+            deviceLabel(),
+            deviceId(),
+          );
+          if (!confirmsCurrent(receipt, payload))
+            throw new Error(
+              "The saved timer receipt does not match this device and state.",
+            );
+        } catch (error) {
+          if (owned()) {
+            uncertainShare.current = payload;
+            setShareFailed(true);
+            latest.current.onError(error);
+          }
+        } finally {
+          sharingPending.current = false;
+          if (owned()) setSharingBusy(false);
+        }
+      })();
+    },
+    [owned],
+  );
 
   const update = useCallback(
     (next: FocusState) => {
-      if (!alive.current) return;
+      if (!owned() || sharingPending.current || uncertainShare.current) return;
+      mutationRevision.current++;
       latest.current.state = next;
       setState(next);
       share(next);
@@ -244,14 +311,21 @@ export function useFocusTimer({
   useEffect(() => {
     if (!running || !intervals) return;
     const tick = () => {
-      if (!alive.current || recording.current || failed.current) return;
+      if (
+        !owned() ||
+        recording.current ||
+        failed.current ||
+        sharingPending.current ||
+        uncertainShare.current
+      )
+        return;
       const at = Date.now();
       setNow(at);
       const s = latest.current.state;
       if (!s.ends_at || focusRemaining(s, at) > 0) return;
       void record(s, true, Date.parse(s.ends_at))
         .then(() => {
-          if (!alive.current || latest.current.state !== s) return;
+          if (!owned() || latest.current.state !== s) return;
           const next = advanceFocus(latest.current.rhythm, s, at);
           update(next);
           tell(
@@ -262,7 +336,7 @@ export function useFocusTimer({
           );
         })
         .catch((error) => {
-          if (alive.current) {
+          if (owned()) {
             retryAction.current = tick;
             latest.current.onError(error);
           }
@@ -287,7 +361,7 @@ export function useFocusTimer({
       (c) => {
         if (
           stale ||
-          !alive.current ||
+          !owned() ||
           latest.current.state !== initial ||
           !c ||
           c.state.item_id !== latest.current.item.id ||
@@ -299,6 +373,7 @@ export function useFocusTimer({
         if (!r || !r.work) return;
         setRhythm(r);
         if (c.device_id === deviceId()) {
+          mutationRevision.current++;
           latest.current.state = c.state;
           setState(c.state);
           return;
@@ -320,13 +395,20 @@ export function useFocusTimer({
   // Handing over: another device picked this up, so this one logs what it
   // ran and stops, rather than both counting the same time.
   const handOver = useCallback(() => {
-    if (!alive.current || recording.current || failed.current) return;
+    if (
+      !owned() ||
+      recording.current ||
+      failed.current ||
+      sharingPending.current ||
+      uncertainShare.current
+    )
+      return;
     const s = latest.current.state;
     if (!s.ends_at) return;
     void client.currentFocus().then(
       (c) => {
         if (
-          !alive.current ||
+          !owned() ||
           latest.current.state !== s ||
           !c ||
           c.state.item_id !== s.item_id ||
@@ -338,14 +420,15 @@ export function useFocusTimer({
         const keep = () => {
           void record(s, false, at)
             .then(() => {
-              if (!alive.current || latest.current.state !== s) return;
+              if (!owned() || latest.current.state !== s) return;
               const next = freshFocus(latest.current.rhythm, s.item_id);
+              mutationRevision.current++;
               latest.current.state = next;
               setState(next);
               setMovedTo(c.device ?? "another device");
             })
             .catch((error) => {
-              if (alive.current) {
+              if (owned()) {
                 retryAction.current = keep;
                 latest.current.onError(error);
               }
@@ -364,25 +447,47 @@ export function useFocusTimer({
   }, [handOver]);
 
   const start = () => {
-    if (recording.current || failed.current || !canWrite) return;
+    if (!owned()) return;
+    if (
+      recording.current ||
+      failed.current ||
+      sharingPending.current ||
+      uncertainShare.current ||
+      !canWrite
+    )
+      return;
     if ("Notification" in window && Notification.permission === "default")
       void Notification.requestPermission().catch(() => undefined);
     update(startFocus(state, Date.now()));
   };
   const pause = () => {
-    if (!recording.current && !failed.current)
+    if (!owned()) return;
+    if (
+      !recording.current &&
+      !finishing.current &&
+      !failed.current &&
+      !sharingPending.current &&
+      !uncertainShare.current
+    )
       update(pauseFocus(state, Date.now()));
   };
   const skip = () => {
-    if (recording.current || failed.current) return;
+    if (!owned()) return;
+    if (
+      recording.current ||
+      failed.current ||
+      sharingPending.current ||
+      uncertainShare.current
+    )
+      return;
     const at = Date.now();
     const keep = () => {
       void record(state, false, at)
         .then(() => {
-          if (alive.current) update(advanceFocus(rhythm, state, at));
+          if (owned()) update(advanceFocus(rhythm, state, at));
         })
         .catch((error) => {
-          if (alive.current) {
+          if (owned()) {
             retryAction.current = keep;
             latest.current.onError(error);
           }
@@ -391,7 +496,15 @@ export function useFocusTimer({
     keep();
   };
   const chooseRhythm = (next: FocusRhythm) => {
-    if (recording.current || failed.current || state.ends_at || state.ran_ms)
+    if (!owned()) return;
+    if (
+      recording.current ||
+      failed.current ||
+      sharingPending.current ||
+      uncertainShare.current ||
+      state.ends_at ||
+      state.ran_ms
+    )
       return;
     try {
       localStorage.setItem(RHYTHM_KEY, next.id);
@@ -400,19 +513,45 @@ export function useFocusTimer({
     }
     setRhythm(next);
     const nextState = freshFocus(next, item.id);
+    mutationRevision.current++;
     latest.current.state = nextState;
     setState(nextState);
   };
 
   /** Leaving: keep the work done so far, and stop sharing it. */
-  const finish = useCallback(async () => {
-    if (recording.current) await recording.current;
-    const s = latest.current.state;
-    if (latest.current.rhythm.work > 0) await record(s, false, Date.now());
-    await sharing.current;
-    const current = await client.currentFocus();
-    if (!current || !current.device_id || current.device_id === deviceId())
-      await client.clearCurrentFocus();
+  const finish = useCallback(() => {
+    if (finishing.current) return finishing.current;
+    const work = async () => {
+      if (!owned())
+        throw new Error("This focus session belongs to an expired account.");
+      if (uncertainShare.current || sharingPending.current)
+        throw new Error(
+          "Check the saved focus state before leaving this session.",
+        );
+      if (recording.current) await recording.current;
+      if (!owned())
+        throw new Error("This focus session belongs to an expired account.");
+      const s = latest.current.state;
+      if (latest.current.rhythm.work > 0) await record(s, false, Date.now());
+      await sharing.current;
+      if (!owned())
+        throw new Error("This focus session belongs to an expired account.");
+      const current = await client.currentFocus();
+      if (!owned())
+        throw new Error("This focus session belongs to an expired account.");
+      if (!current || !current.device_id || current.device_id === deviceId())
+        await client.clearCurrentFocus();
+      if (!owned())
+        throw new Error("This focus session belongs to an expired account.");
+      const settled = freshFocus(latest.current.rhythm, latest.current.item.id);
+      mutationRevision.current++;
+      latest.current.state = settled;
+      setState(settled);
+    };
+    finishing.current = work().finally(() => {
+      finishing.current = null;
+    });
+    return finishing.current;
   }, [record]);
 
   return {
@@ -427,10 +566,55 @@ export function useFocusTimer({
     then: intervals ? focusThen(rhythm, state) : "",
     today,
     movedTo,
-    saving,
-    saveFailed,
+    saving: saving || sharingBusy,
+    saveFailed: saveFailed || shareFailed,
+    shareFailed,
+    revision: () => mutationRevision.current,
+    canExit: () =>
+      owned() &&
+      !recording.current &&
+      !finishing.current &&
+      !failed.current &&
+      !sharingPending.current &&
+      !uncertainShare.current &&
+      !reconciling.current &&
+      (!latest.current.state.ends_at ||
+        focusRemaining(latest.current.state, Date.now()) > 0),
     retrySave: () => {
-      if (recording.current) return;
+      if (!owned()) return;
+      if (recording.current || reconciling.current || sharingPending.current)
+        return;
+      const unknown = uncertainShare.current;
+      if (unknown) {
+        reconciling.current = true;
+        setSharingBusy(true);
+        void client
+          .currentFocus()
+          .then(
+            (current) => {
+              if (!owned()) return;
+              if (confirmsCurrent(current, unknown)) {
+                mutationRevision.current++;
+                uncertainShare.current = null;
+                setShareFailed(false);
+                setRetryRevision((value) => value + 1);
+              } else
+                latest.current.onError(
+                  new Error(
+                    "The saved focus state doesn't confirm this change. The session remains read-only; no timer update was sent.",
+                  ),
+                );
+            },
+            (error) => {
+              if (owned()) latest.current.onError(error);
+            },
+          )
+          .finally(() => {
+            reconciling.current = false;
+            if (owned()) setSharingBusy(false);
+          });
+        return;
+      }
       failed.current = false;
       setSaveFailed(false);
       const retry = retryAction.current;
