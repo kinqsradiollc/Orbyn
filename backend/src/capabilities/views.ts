@@ -1,3 +1,4 @@
+import { readTransaction } from "../db/pool.js";
 import { z } from "zod";
 import {
   VIEW_LAYOUTS,
@@ -131,7 +132,11 @@ export const saveView = defineCapability({
   async run(ctx, a) {
     const db = dbOf(ctx);
     const actor = actorOf(ctx.principal);
-    if (a.export) return exportView(ctx, a.view);
+    if (a.export)
+      return readTransaction((db) => exportView({ ...ctx, db }, a.view), {
+        primary: true,
+        isolation: "repeatable read",
+      });
     const asked: Record<string, unknown> = {};
     for (const k of [
       "filters",

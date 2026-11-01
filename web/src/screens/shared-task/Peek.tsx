@@ -1,5 +1,5 @@
 import { useRouteScope, useRouteInput } from "../../lib/route-scope";
-import { plainText, type Doc, type Project } from "@orbyn/core";
+import { type Doc, type Project } from "@orbyn/core";
 import { Boxes, FileText, Maximize2, Pin, PinOff, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -7,12 +7,10 @@ import { useResource } from "../../lib/resource";
 import { useNavigate } from "../../lib/router";
 import { client, getSessionVersion } from "../../lib/session";
 import { ErrorNotice, IconButton, Loading } from "../../ui/kit";
+import { PagePreview } from "./PagePreview";
 import { useTasks, type PeekTarget } from "./host-store";
 
 type Loaded = { doc: Doc } | { project: Project };
-
-const textOf = (block: { text?: string }) =>
-  block.text ? plainText(block.text).trim() : "";
 
 /** A page or project read beside the screen you are on, without leaving it. */
 export function Peek({
@@ -125,20 +123,11 @@ export function Peek({
           <Loading label="Opening" />
         ) : (
           <>
-            <h2 dir="auto">{title}</h2>
+            <h2 className="st-peek-title" dir="auto">
+              {title}
+            </h2>
             {"doc" in data ? (
-              data.doc.content.length ? (
-                data.doc.content
-                  .map((block) => textOf(block as { text?: string }))
-                  .filter(Boolean)
-                  .map((line, index) => (
-                    <p key={index} className="st-notes" dir="auto">
-                      {line}
-                    </p>
-                  ))
-              ) : (
-                <p className="st-hint">This page is empty.</p>
-              )
+              <PagePreview doc={data.doc} />
             ) : (
               <>
                 {data.project.summary && (

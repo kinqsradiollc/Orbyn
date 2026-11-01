@@ -26,6 +26,12 @@ import { loadPrefs } from "../planner/calendar.js";
 import { PROJECT_COUNTS } from "../projects/counts.js";
 import { fieldValuesFor, visibleFields } from "./fields.js";
 import { linkPrivacy } from "../links/privacy.js";
+import { narrowViewExtra, type ViewExtraFilters } from "./extra-filters.js";
+import {
+  narrowTaskBucket,
+  narrowTaskScalars,
+  type TaskViewClock,
+} from "./task-filters.js";
 
 /**
  * Running a view: the rows it shows, for the person looking. Rows are read
@@ -98,26 +104,25 @@ async function taskRows(
   db: Queryable,
   userId: string,
   def: ViewDefinition,
-  spaces?: ViewSpaces,
+  spaces: ViewSpaces | undefined,
+  clock: TaskViewClock,
 ): Promise<ViewRow[]> {
   const n = narrow(def, "i", "i.project_id", spaces);
-  const add = (v: unknown) => {
-    n.values.push(v);
-    return `$${n.values.length + 1}`;
-  };
-  const f = def.filters;
-  const status = f.status ?? "open";
-  if (status === "open") n.where.push("i.status NOT IN ('done', 'cancelled')");
-  if (status === "done") n.where.push("i.status = 'done'");
-  if (f.list) n.where.push(`i.list_id = ${add(f.list)}`);
-  if (f.tag)
-    n.where.push(
-      `EXISTS (SELECT 1 FROM item_tags x WHERE x.item_id = i.id AND x.tag_id = ${add(f.tag)})`,
-    );
-  if (f.assignee)
-    n.where.push(
-      `i.assignee_id = ${f.assignee === "me" ? "$1" : add(f.assignee)}`,
-    );
+  narrowTaskScalars(n, def);
+  narrowViewExtra(n, "i", def.source, clock.extra);
+  const relation = `FROM ${ITEM_FROM}
+    LEFT JOIN team_members tm ON tm.team_id = i.team_id AND tm.user_id = $1
+    WHERE ((i.team_id IS NULL AND i.user_id = $1) OR tm.user_id IS NOT NULL)
+      AND i.kind = 'task' AND i.parent_id IS NULL ${n.where.map((w) => `AND ${w}`).join(" ")}`;
+  const planned = await narrowTaskBucket(
+    db,
+    userId,
+    def,
+    n,
+    clock,
+    relation,
+    CANDIDATES,
+  );
   const rows = (
     await db.query<
       Item & {
@@ -125,6 +130,7 @@ async function taskRows(
         list_name: string | null;
         tags: ViewRow["tags"];
         role: TeamRole | null;
+        planned_today: boolean;
       }
     >(
       `SELECT ${ITEM_COLUMNS}, pr.name AS project_name, l.name AS list_name,
@@ -133,7 +139,7 @@ async function taskRows(
                                         ORDER BY lower(tg.name))
                           FROM item_tags it JOIN tags tg ON tg.id = it.tag_id
                          WHERE it.item_id = i.id), '[]'::json) AS tags,
-              tm.role
+              tm.role, ${planned} AS planned_today
          FROM ${ITEM_FROM}
          LEFT JOIN projects pr ON pr.id = i.project_id
          LEFT JOIN lists l ON l.id = i.list_id
@@ -146,42 +152,58 @@ async function taskRows(
       [userId, ...n.values],
     )
   ).rows;
-  return rows.map(({ project_name, list_name, tags, role, ...item }) => ({
-    kind: "task" as const,
-    id: item.id,
-    title: item.title,
-    team_id: item.team_id ?? null,
-    team_name: item.team_name ?? null,
-    project_id: item.project_id ?? null,
-    project_name,
-    status: item.status,
-    due_at: iso(item.due_at),
-    end_at: iso(item.end_at),
-    all_day: !!item.all_day,
-    timezone: item.timezone ?? null,
-    priority: item.priority as Priority,
-    estimate_minutes: item.estimate_minutes ?? null,
-    spent_minutes: item.spent_minutes ?? 0,
-    list_id: item.list_id ?? null,
-    list_name,
-    tag_ids: item.tag_ids ?? [],
-    tags,
-    assignee_id: item.assignee_id ?? null,
-    assignee_name: item.assignee_name ?? null,
-    folder_id: null,
-    folder_name: null,
-    doc_kind: null,
-    preview: "",
-    cover: null,
-    task_count: null,
-    done_count: null,
-    created_at: iso(item.created_at) ?? "",
-    updated_at: iso(item.updated_at) ?? "",
-    fields: {},
-    item: item as Item,
-    version: item.version,
-    can_write: writable(item.team_id ?? null, item.user_id ?? "", role, userId),
-  }));
+  for (const row of rows)
+    if (row.planned_today) clock.plannedTodayIds.add(row.id);
+  return rows.map(
+    ({
+      project_name,
+      list_name,
+      tags,
+      role,
+      planned_today: _planned,
+      ...item
+    }) => ({
+      kind: "task" as const,
+      id: item.id,
+      title: item.title,
+      team_id: item.team_id ?? null,
+      team_name: item.team_name ?? null,
+      project_id: item.project_id ?? null,
+      project_name,
+      status: item.status,
+      due_at: iso(item.due_at),
+      end_at: iso(item.end_at),
+      all_day: !!item.all_day,
+      timezone: item.timezone ?? null,
+      priority: item.priority as Priority,
+      estimate_minutes: item.estimate_minutes ?? null,
+      spent_minutes: item.spent_minutes ?? 0,
+      list_id: item.list_id ?? null,
+      list_name,
+      tag_ids: item.tag_ids ?? [],
+      tags,
+      assignee_id: item.assignee_id ?? null,
+      assignee_name: item.assignee_name ?? null,
+      folder_id: null,
+      folder_name: null,
+      doc_kind: null,
+      preview: "",
+      cover: null,
+      task_count: null,
+      done_count: null,
+      created_at: iso(item.created_at) ?? "",
+      updated_at: iso(item.updated_at) ?? "",
+      fields: {},
+      item: item as Item,
+      version: item.version,
+      can_write: writable(
+        item.team_id ?? null,
+        item.user_id ?? "",
+        role,
+        userId,
+      ),
+    }),
+  );
 }
 
 type PageRow = {
@@ -207,9 +229,11 @@ async function pageRows(
   db: Queryable,
   userId: string,
   def: ViewDefinition,
-  spaces?: ViewSpaces,
+  spaces: ViewSpaces | undefined,
+  clock: TaskViewClock,
 ): Promise<ViewRow[]> {
   const n = narrow(def, "d", "d.project_id", spaces);
+  narrowViewExtra(n, "d", def.source, clock.extra);
   const add = (v: unknown) => {
     n.values.push(v);
     return `$${n.values.length + 1}`;
@@ -309,9 +333,11 @@ async function projectRows(
   db: Queryable,
   userId: string,
   def: ViewDefinition,
-  spaces?: ViewSpaces,
+  spaces: ViewSpaces | undefined,
+  clock: TaskViewClock,
 ): Promise<ViewRow[]> {
   const n = narrow(def, "p", "p.id", spaces);
+  narrowViewExtra(n, "p", def.source, clock.extra);
   const status = def.filters.status ?? "open";
   if (status === "open") n.where.push("p.status = 'active'");
   if (status === "done") n.where.push("p.status = 'done'");
@@ -374,7 +400,8 @@ const LOADERS: Record<
     db: Queryable,
     userId: string,
     def: ViewDefinition,
-    spaces?: ViewSpaces,
+    spaces: ViewSpaces | undefined,
+    clock: TaskViewClock,
   ) => Promise<ViewRow[]>
 > = { tasks: taskRows, pages: pageRows, projects: projectRows };
 
@@ -417,10 +444,18 @@ export async function runView(
     now?: Date;
     timeZone?: string;
     spaces?: ViewSpaces;
+    extra?: ViewExtraFilters;
   } = {},
 ): Promise<ViewResult> {
   const timeZone =
     options.timeZone ?? (await loadPrefs(db as unknown as Db, userId)).timezone;
+  const clock: TaskViewClock = {
+    userId,
+    now: options.now ?? new Date(),
+    timeZone,
+    plannedTodayIds: new Set(),
+    extra: options.extra,
+  };
   const fields =
     def.source === "tasks"
       ? []
@@ -430,12 +465,12 @@ export async function runView(
           def.source === "pages" ? "page" : "project",
         );
   const candidates = (
-    await LOADERS[def.source](db, userId, def, options.spaces)
+    await LOADERS[def.source](db, userId, def, options.spaces, clock)
   ).filter((r) => !options.spaces || inSpaces(options.spaces, r.team_id));
   const { rows, truncated } = applyView(
     candidates,
     def,
-    { userId, now: options.now ?? new Date(), timeZone },
+    clock,
     fields,
     Math.min(options.limit ?? VIEW_ROW_LIMIT, VIEW_ROW_LIMIT),
   );
@@ -485,7 +520,12 @@ export const canEditView = (
 /** A kept definition with today's defaults filled in. */
 const readDefinition = (raw: unknown): ViewDefinition => {
   const parsed = viewDefinition.safeParse(raw);
-  return parsed.success ? parsed.data : (raw as ViewDefinition);
+  if (!parsed.success)
+    fail(
+      422,
+      "This saved view has an unsupported definition. Its stored filters have been preserved.",
+    );
+  return parsed.data;
 };
 
 export const toSavedView = (row: ViewRowDb, userId: string): SavedView => ({
@@ -501,6 +541,7 @@ export const toSavedView = (row: ViewRowDb, userId: string): SavedView => ({
   can_edit: canEditView(row, userId),
   created_at: row.created_at.toISOString(),
   updated_at: row.updated_at.toISOString(),
+  version: row.updated_at.getTime(),
 });
 
 /** A saved view `userId` can see (404 otherwise, as for one that never existed). */

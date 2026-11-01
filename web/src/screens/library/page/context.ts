@@ -13,6 +13,9 @@ export type PageLinks = {
   projectId: string | null;
 };
 
+/** A read-only surface may render live content, but never submit its controls. */
+export const PageReadOnlyContext = createContext(false);
+
 export const PageContext = createContext<PageLinks | null>(null);
 
 export const FootnoteContext = createContext<{

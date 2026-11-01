@@ -1,3 +1,10 @@
+.lists-shell {
+  container: orbyn-lists / inline-size;
+  width: 100%;
+  max-width: 1200px;
+  min-width: 0;
+  margin: 0 auto;
+}
 .lists {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
@@ -25,6 +32,27 @@
 .lists-head h2 {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+.lists-detail-head {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.lists-detail-title {
+  display: flex;
+  align-items: baseline;
+  flex: 1 1 240px;
+  gap: 8px;
+  min-width: 0;
+}
+.lists-detail-title h2 {
+  flex: 1;
+}
+.lists-detail-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+  margin-left: auto;
 }
 .lists-gap {
   flex: 1;
@@ -143,7 +171,7 @@
     opacity: 1;
   }
 }
-@media (max-width: 900px) {
+@container orbyn-lists (max-width: 900px) {
   .lists {
     grid-template-columns: minmax(0, 1fr);
     padding: 14px 16px 48px;
@@ -154,6 +182,15 @@
   }
   .lists-back {
     display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .lists-head .btn,
+  .lists-head .btn-icon {
+    min-height: 44px;
+  }
+  .lists-detail-title {
+    min-height: 44px;
   }
   .lists-row > button {
     min-height: 44px;

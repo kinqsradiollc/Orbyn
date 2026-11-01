@@ -1,4 +1,8 @@
-import { useRouteActivity, useRouteInput } from "../../../lib/route-scope";
+import {
+  useRouteActivity,
+  useRouteInput,
+  useRouteScope,
+} from "../../../lib/route-scope";
 import {
   BLOCK_KINDS,
   blockDepth,
@@ -16,6 +20,7 @@ import {
   htmlToBlocks,
   indentBlocks,
   insertLink,
+  linkMarkdown,
   isListBlock,
   isUrl,
   linkQueryAt,
@@ -56,13 +61,16 @@ import {
   useRef,
   useState,
   type ClipboardEvent,
+  type DragEvent,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { messageOf } from "../../../lib/resource";
 import { client } from "../../../lib/session";
 import { useLibraryOwner } from "../lifetime";
-import { useToast } from "../../../ui/kit";
+import { ErrorNotice, useToast } from "../../../ui/kit";
+import { carriesItemLink, takeItemDrop } from "../../shared-task/drag";
+import "./task-drop.css";
 import { BlockView } from "./Blocks";
 import { BlockMenu } from "./BlockMenu";
 import { FootnoteContext } from "./context";
@@ -106,6 +114,9 @@ export type SlashChoice = {
 
 type SlashTarget = { leaf: Leaf; value: string; from: number; caret: number };
 
+const safeDropEpoch = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
 export function Writer({
   page,
   mode,
@@ -148,6 +159,7 @@ export function Writer({
   flashId: string | null;
 }) {
   const inputAllowed = useRouteInput();
+  const dropScope = useRouteScope();
   const activity = useRouteActivity(),
     active = activity.visible && activity.focused;
   const toast = useToast();
@@ -204,6 +216,153 @@ export function Writer({
     () => page.store.state.session?.document ?? null,
     [page.store],
   );
+
+  // Read authority is resolved on drop; DataTransfer is never permission to edit.
+  const ownsDrop = useLibraryOwner();
+  const dropLock = useRef(false);
+  const dropOwner = useRef({ page, writable });
+  dropOwner.current = { page, writable };
+  const [dropBusy, setDropBusy] = useState(false);
+  const [dropError, setDropError] = useState("");
+  const [dropLine, setDropLine] = useState<number | null>(null);
+  type LinkDrop = {
+    id: string;
+    anchorId?: string;
+    path: number[];
+    original: DocBlock;
+  };
+  const retryDrop = useRef<LinkDrop | null>(null);
+  const linkDroppedItem = async (job: LinkDrop) => {
+    const openingScope = dropScope?.getSnapshot();
+    if (!ownsDrop() || !dropOwner.current.writable || dropLock.current) return;
+    if (
+      dropScope &&
+      (!openingScope?.visible || !safeDropEpoch(openingScope.inputEpoch))
+    ) {
+      setDropError(
+        "This page's workspace is not ready for a task link. Try again from the visible page.",
+      );
+      return;
+    }
+    dropLock.current = true;
+    setDropBusy(true);
+    setDropError("");
+    retryDrop.current = job;
+    const openingPage = page.id,
+      openingStore = page.store;
+    try {
+      settleRef.current();
+      setEditing(null);
+      const document = currentDoc();
+      if (!document) throw Error("This page is unavailable.");
+      const anchor = leafList(document).find((leaf) =>
+        job.anchorId
+          ? leaf.block.id === job.anchorId
+          : pathKey(leaf.path) === pathKey(job.path) &&
+            leaf.block === job.original,
+      );
+      if (!anchor) {
+        retryDrop.current = null;
+        throw Error("The drop position changed. Drop the task again.");
+      }
+      const item = await client.getItem(job.id);
+      if (
+        !ownsDrop() ||
+        dropOwner.current.page.id !== openingPage ||
+        dropOwner.current.page.store !== openingStore
+      )
+        return;
+      const currentScope = dropScope?.getSnapshot();
+      if (
+        dropScope &&
+        (!openingScope ||
+          !currentScope?.visible ||
+          !safeDropEpoch(currentScope.inputEpoch) ||
+          currentScope.pathname !== openingScope.pathname ||
+          currentScope.activation !== openingScope.activation ||
+          currentScope.inputEpoch !== openingScope.inputEpoch)
+      )
+        throw Error(
+          "The drop target changed while the task loaded. Retry from this page to link it.",
+        );
+      if (!dropOwner.current.writable)
+        throw Error("This page is no longer editable.");
+      if (currentDoc() !== document)
+        throw Error(
+          "The page changed while the task loaded. Try again to link it without replacing your edits.",
+        );
+      if (item.id !== job.id || !["task", "event"].includes(item.kind))
+        throw Error("The returned task did not match this drop.");
+      const inserted = page.edit({
+        kind: "insert",
+        owner: anchor.path.slice(0, -1),
+        index: anchor.path[anchor.path.length - 1] + 1,
+        node: {
+          kind: "block",
+          block: {
+            type: "paragraph",
+            text: linkMarkdown(
+              { kind: item.kind === "event" ? "event" : "task", id: item.id },
+              item.title,
+            ),
+            id: newBlockId(),
+          },
+        },
+      });
+      if (!inserted)
+        throw Error(
+          "Resolve the page draft or conflict before linking this task.",
+        );
+      retryDrop.current = null;
+      setDropError("");
+    } catch (error) {
+      if (ownsDrop())
+        setDropError(messageOf(error, "Could not link this task."));
+    } finally {
+      dropLock.current = false;
+      if (ownsDrop()) setDropBusy(false);
+    }
+  };
+  const taskDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (
+      (dropScope && !dropScope.getSnapshot().visible) ||
+      !carriesItemLink(event.dataTransfer)
+    )
+      return;
+    const item = takeItemDrop(event.dataTransfer);
+    setDropLine(null);
+    if (!item) return;
+    dropScope?.noteInput?.();
+    event.preventDefault();
+    event.stopPropagation();
+    if (!writable) {
+      setDropError("Open this page in Edit mode to link a task.");
+      return;
+    }
+    if (dropLock.current) {
+      setDropError("Wait for the current task link to finish.");
+      return;
+    }
+    const element =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-leaf-index]")
+        : null;
+    const index = Number(element?.dataset.leafIndex);
+    const leaf =
+      Number.isInteger(index) && element
+        ? leaves[index]
+        : leaves[leaves.length - 1];
+    if (!leaf) {
+      setDropError("Add a block, then drop the task beside it.");
+      return;
+    }
+    void linkDroppedItem({
+      id: item.id,
+      anchorId: leaf.block.id,
+      path: leaf.path,
+      original: leaf.block,
+    });
+  };
 
   /** Swap a node for others; removal plus inserts are one synchronous edit. */
   const replaceNode = (path: number[], nodes: DocContainerNode[]) => {
@@ -874,7 +1033,7 @@ export function Writer({
     const heading = block.type === "heading" && block.id;
     return (
       <div
-        className="doc-line"
+        className={`doc-line${dropLine === leaf.index ? " is-task-drop" : ""}`}
         data-block-id={block.id ?? `index:${leaf.index}`}
         data-block-source={"text" in block ? block.text : undefined}
         data-leaf-index={leaf.index}
@@ -1098,7 +1257,41 @@ export function Writer({
 
   return (
     <FootnoteContext.Provider value={notes}>
-      <div className="doc-writer" data-mode={mode}>
+      <div
+        className="doc-writer"
+        data-mode={mode}
+        onDragOver={(event) => {
+          if (!carriesItemLink(event.dataTransfer)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          const node =
+            event.target instanceof Element
+              ? event.target.closest<HTMLElement>("[data-leaf-index]")
+              : null;
+          const index = node ? Number(node.dataset.leafIndex) : null;
+          setDropLine(index);
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+            setDropLine(null);
+        }}
+        onDrop={taskDrop}
+      >
+        {dropBusy && (
+          <p className="doc-task-drop-status" role="status">
+            Loading the task to link…
+          </p>
+        )}
+        {dropError && (
+          <ErrorNotice
+            message={dropError}
+            onRetry={
+              retryDrop.current
+                ? () => void linkDroppedItem(retryDrop.current!)
+                : undefined
+            }
+          />
+        )}
         {tree(rootsOf(document), [])}
         {writable && (
           <button type="button" className="doc-add" onClick={addAfterLast}>

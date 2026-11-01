@@ -26,6 +26,7 @@ import {
   durationText,
   groupTasks,
   TASK_GROUPS,
+  taskSize,
   type GroupNames,
 } from "../tasks/task-groups.js";
 import { allDayRange } from "../planner/planner.js";
@@ -126,10 +127,16 @@ export const viewFilters = z
     /** "personal" for your own things only, or a team's id. */
     team: z.union([z.literal("personal"), z.uuid()]).optional(),
     project: z.uuid().optional(),
-    list: z.uuid().optional(),
+    list: z.union([z.literal("none"), z.uuid()]).optional(),
     tag: z.uuid().optional(),
     /** "me" or a person's id (tasks). */
-    assignee: z.union([z.literal("me"), z.uuid()]).optional(),
+    assignee: z
+      .union([z.literal("me"), z.literal("none"), z.uuid()])
+      .optional(),
+    priority: z.enum(["high", "medium", "low"]).optional(),
+    size: z.enum(["quick", "short", "long", "none"]).optional(),
+    task_status: z.enum(STATUSES).optional(),
+    due_bucket: z.enum(["today", "tomorrow", "soon", "week"]).optional(),
     due_after: day.optional(),
     due_before: day.optional(),
     /** Due from today through this many days ahead. */
@@ -346,6 +353,42 @@ export const viewDefinition = z
   })
   .strict()
   .superRefine((v, ctx) => {
+    const f = v.filters;
+    const taskOnly = ["priority", "size", "task_status", "due_bucket"] as const;
+    for (const key of taskOnly)
+      if (v.source !== "tasks" && f[key] !== undefined)
+        ctx.addIssue({
+          code: "custom",
+          path: ["filters", key],
+          message: "This filter is only for tasks.",
+        });
+    if (v.source !== "tasks" && (f.list === "none" || f.assignee === "none"))
+      ctx.addIssue({
+        code: "custom",
+        path: ["filters"],
+        message: "Unlisted and unassigned filters are only for tasks.",
+      });
+    if (f.task_status && f.status && f.status !== "any")
+      ctx.addIssue({
+        code: "custom",
+        path: ["filters", "status"],
+        message: "Choose one exact status or a broad status.",
+      });
+    if (
+      f.due_bucket &&
+      [
+        f.due_after,
+        f.due_before,
+        f.due_within_days,
+        f.overdue || undefined,
+        f.no_due || undefined,
+      ].some((value) => value !== undefined)
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["filters", "due_bucket"],
+        message: "Choose one date filter family.",
+      });
     const group = v.group_by;
     if (fieldKeyId(group) === null && !VIEW_GROUPS[v.source].includes(group))
       ctx.addIssue({
@@ -376,6 +419,28 @@ export const viewDefinition = z
 export type ViewDefinition = z.output<typeof viewDefinition>;
 export type ViewDefinitionInput = z.input<typeof viewDefinition>;
 
+/** Additive acknowledgement protects definitions from older replacement writers. */
+export const VIEW_FEATURE = "task-filters-v1";
+export const VIEW_FEATURE_HEADER = "x-orbyn-view-features";
+export const viewCapabilities = z
+  .object({
+    features: z.array(z.string()),
+    definition_version: z.literal(true),
+  })
+  .strict();
+export type ViewCapabilities = z.output<typeof viewCapabilities>;
+export function viewFeatures(def: ViewDefinition): string[] {
+  const f = def.filters;
+  return f.priority !== undefined ||
+    f.size !== undefined ||
+    f.task_status !== undefined ||
+    f.due_bucket !== undefined ||
+    f.list === "none" ||
+    f.assignee === "none"
+    ? [VIEW_FEATURE]
+    : [];
+}
+
 export type SavedView = {
   id: string;
   user_id: string;
@@ -392,6 +457,8 @@ export type SavedView = {
   can_edit: boolean;
   created_at: string;
   updated_at: string;
+  /** Server millisecond revision; absent on older servers. */
+  version?: number;
 };
 
 /** Search the saved-view library without changing the selected view or its row filters. */
@@ -431,6 +498,7 @@ export const savedViewUpdate = z
     name: viewName.optional(),
     team_id: z.uuid().nullable().optional(),
     definition: viewDefinition.optional(),
+    expected_version: z.number().int().nonnegative().optional(),
   })
   .strict();
 export type SavedViewUpdate = z.input<typeof savedViewUpdate>;
@@ -531,6 +599,8 @@ export type ViewContext = {
   userId: string;
   now: Date;
   timeZone: string;
+  /** Required for Today: complete viewer-owned session membership. */
+  plannedTodayIds?: ReadonlySet<string>;
 };
 
 /**
@@ -643,7 +713,13 @@ export function matchesView(
   fields: CustomField[] = [],
 ): boolean {
   const f = def.filters;
-  const status = f.status ?? (def.source === "pages" ? "any" : "open");
+  const status = f.task_status
+    ? "any"
+    : (f.status ?? (def.source === "pages" ? "any" : "open"));
+  if (f.task_status && row.status !== f.task_status) return false;
+  if (f.priority && row.priority !== f.priority) return false;
+  if (f.size && taskSize({ estimate_minutes: row.estimate_minutes }) !== f.size)
+    return false;
   if (status === "open" && !isOpen(row)) return false;
   if (status === "done" && row.kind !== "page") {
     const done = row.status === "done";
@@ -660,15 +736,38 @@ export function matchesView(
     const project = row.kind === "project" ? row.id : row.project_id;
     if (project !== f.project) return false;
   }
-  if (f.list && row.list_id !== f.list) return false;
+  if (f.list === "none" ? !!row.list_id : f.list && row.list_id !== f.list)
+    return false;
   if (f.tag && !row.tag_ids.includes(f.tag)) return false;
   if (f.assignee) {
-    const who = f.assignee === "me" ? ctx.userId : f.assignee;
-    if (row.assignee_id !== who) return false;
+    if (f.assignee === "none") {
+      if (!row.team_id || row.assignee_id) return false;
+    } else {
+      const who = f.assignee === "me" ? ctx.userId : f.assignee;
+      if (row.assignee_id !== who) return false;
+    }
   }
   if (f.folder && row.folder_id !== f.folder) return false;
   if (f.kind && row.doc_kind !== f.kind) return false;
   const due = dueDay(row, ctx.timeZone);
+  if (f.due_bucket) {
+    const today = localDateKey(ctx.now, ctx.timeZone);
+    if (f.due_bucket === "today" && !ctx.plannedTodayIds)
+      throw new Error("Today requires complete planned-session membership.");
+    const end =
+      f.due_bucket === "week"
+        ? 6 - new Date(`${today}T12:00:00Z`).getUTCDay()
+        : 6;
+    const matches =
+      f.due_bucket === "today"
+        ? due === today || ctx.plannedTodayIds!.has(row.id)
+        : f.due_bucket === "tomorrow"
+          ? due === addDays(today, 1)
+          : !!due &&
+            due >= addDays(today, f.due_bucket === "soon" ? 2 : 0) &&
+            due <= addDays(today, end);
+    if (!matches) return false;
+  }
   if (f.no_due && due) return false;
   if (f.due_after && (!due || due < f.due_after)) return false;
   if (f.due_before && (!due || due > f.due_before)) return false;

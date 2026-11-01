@@ -44,25 +44,36 @@ whole-client checks remain open.
 
 ## Parity gaps
 
-Every capability of `desktop/` must exist in `web/` before cutover. The known gaps:
+Every capability of `desktop/` must exist in `web/` before cutover. This inventory
+includes implemented but unverified flows and historical items still awaiting
+receipt reconciliation; each remains open until its current evidence is recorded.
 
 From Work and Lists:
 
-- Row drag to calendar or a page was dropped. Needs an equivalent.
+- Task transfer is implemented. Native Work-to-page, Work/Lists-to-Calendar and
+  Work-to-3D timed/day drops pass with real API readback and cleanup. Board/manual
+  order, keyboard Schedule and adverse transfer variants remain to qualify.
 - Task completion uses the confirmation toast with Undo. The user explicitly
   approved this replacement for the celebration effect on 1 November 2026.
 - Focus: custom rhythms, sound and notifications, and picking up a session running on another device.
-- Peek for pages renders plain text, not blocks.
-- Saved views: priority, size, single status; Today loses planned sessions; Tomorrow and Due soon approximate.
-- Work quick line: `@name` needs team members loaded.
-- Not exercised: board drag, bulk actions, Focus timer, Peek, Save as view, team-only flows, repeat scopes "this" and "following".
+- Rich block Peek is implemented. Native heading/code/table/math/diagram/nested
+  rendering has been observed; complete read-only controls, files and recovery
+  qualification remain in progress.
+- Shared exact task filters and planned Today are implemented with SQL/API
+  coverage. Native blocked/high/no-estimate Save, View reload and CSV membership
+  are verified; the other dimensions, consumers and recovery cases remain open.
+- Quick line loads team members on first mention intent. Native ambiguity,
+  account changes and complete real-API retry coverage still need reconciliation.
+- Native board changes, bulk mutations, team-only flows and repeat scopes "this" and "following" remain to qualify. Focus, Peek and Save as view have bounded evidence below; their unexercised variants remain open.
 
 Cross-screen wiring:
 
 - Calendar reads ?plan=<itemId> and ?date=YYYY-MM-DD.
 - Assistant reads ?task=<id>.
 - Library honours #blockId on /app/doc/:id.
-- Cmd-click links and Cmd-K call tasks.peek. Command bar must search work, not only places.
+- Command-bar keyboard/modified-click Peek and full-text results pass native
+  draft/URL/tab/focus checks; explicit background-tab opening remains separate.
+  Object-link callers still need their final compatibility reconciliation.
 
 From Calendar, built but not exercised:
 
@@ -86,7 +97,7 @@ From Today, Projects, Views, Notifications:
 - Character art (Character, CharacterEditor) not in web; Browse shows names only.
 - Assistant proposals on projects: simplified, needs full ProposalReview diff. AssistantAgents dialog replaced by links.
 - Unsaved link draft warning only on the back button, not sidebar navigation.
-- View refinements (priority, size, status) in prefs only: not in CSV, shared viewers or server limit. Work SaveViewDialog must write them to view:<id>.
+- Shared view refinements now reach authoritative definitions, bounded filtering and CSV. Remaining dimensions, consumers, permissions and recovery need their final qualification; private pins must not be silently promoted.
 - First run: final step unverified on a fresh account; preset application unverified.
 - Mock-only: Notifications actions, 409 move retry, session check-ins. Not exercised: project assistant drafting, file import, cover upload, claiming, promises, asks, agent questions, welcome back, 3D relation map node open.
 - Shell: bell unread badge, pinned-views group, mount FirstRun, WhatsNew and pinned panel globally, Today search dialog pattern into command bar.
@@ -1581,3 +1592,331 @@ recovery across all consumers, the other recorded unexercised feature flows,
 all-route light/dark/phone coverage and the guarded full backend suite. No push,
 PR, merge, provider configuration, deployment or desktop cutover is part of this
 checkpoint.
+
+### Stage 6 local commits and Stage 7 integration started
+
+The retained shell group is committed locally as `ef12f98d`, followed by
+`ac2c909d` preserving the exact upstream font licence bytes. The first staging
+verification caught Git normalizing the DM Sans licence despite its recorded
+source hash; the commit command was mistakenly allowed to continue. The separate
+follow-up preserves history and corrects that sole licence. All committed font
+and licence bytes now match the provenance manifest. A font-local attributes
+file preserves those upstream notices and their intentional whitespace; product
+source still matches the passing checkpoint checks. The worktree was verified
+clean before Stage 7 integration. Nothing was pushed.
+
+The reviewed Stage 7 shared core/API/backend source and reconciled web UI are now
+applied, uncommitted. They add task-transfer formats and keyboard alternatives,
+read-only negotiated block Peek, exact shared task filters and bounded planned
+membership, shared saved-view readers and revision-aware save/recovery. The
+newer Stage 6 controller, page settlement, sidebar, automatic-owner permits and
+shared item-store validity guards were preserved. Each planned batch checks its
+captured owner before dispatch and after await; scoped Writer drops require an
+explicit safe nonnegative input epoch rather than treating a missing epoch as
+zero. Source/type checks do not qualify their complete interaction matrix.
+
+A new actual test-database regression reproduced a redundant saved-project
+status override returning different membership from the stored definition. The
+saved-view adapter now uses canonical active/done shared status semantics; the
+separately established ad-hoc capability query semantics remain unchanged. The
+same focused test passes after correction, and the complete MCP links/views
+suite passes 13/13. Actual target saved-view SQL/API tests pass 15/15, including
+bounded preselection, session ownership, CAS/old-writer protection and 252
+SQL/core comparisons over source/viewer zones and DST/date cases. The pure
+saved-view/draft/item-store group passes 39/39. Web and backend no-emit checks
+pass, and package builds pass. These are local guarded test-DB/API-inject checks,
+not live provider, production or whole-backend-suite evidence.
+
+Controlled actual planner-module checks pass 14/14 after integration: last-owner
+retirement stops held planned reads from launching later batches or publishing a
+partial feed; complete 401-item membership uses 200/200/1 explicit batches;
+explicit refresh requires no automatic consumer; failure clears completeness
+instead of presenting stale Today membership. Dependencies/session/timers are
+controlled, so this does not establish native request timing or server behavior.
+
+The first actual Chrome Work-to-Writer task drop passes using native mouse input
+and trusted dragstart/drop events in two retained panes. Exactly one page PUT
+inserts the typed task link after the original paragraph, with real API readback.
+The task matches its pre-drag detail snapshot; the page and task were deleted and
+both subsequent reads returned 404. Dark desktop capture was inspected. Earlier
+failed attempts remain recorded: the driver first expected a wide-only Note
+control instead of the narrow menu, then compared a create DTO against a richer
+GET DTO. Neither establishes a product defect. Both failed-run fixtures were
+removed only after matching their original journalled create-body hashes and
+verifying their exact owned content. The corrected run has no browser errors,
+unexpected writes or source drift. Ancillary presence/recents writes were
+suppressed; timezone writes refused; no provider or external request was allowed.
+
+Stage 7 remains unfinished and uncommitted. Native Calendar timed/day/3D and List
+transfers, Board/manual order, keyboard/touch/refused clipboard alternatives,
+late-target/permission/account failures, rich read-only Peek, real saved-view UI
+and all consumers/recovery cases still need qualification. Other recorded
+unexercised feature flows, the final all-route light/dark/phone audit and guarded
+full backend suite remain part of the original end state. No PR, merge,
+deployment, provider configuration or desktop cutover is claimed.
+
+#### Stage 7 native transfer, command Peek and pane sizing follow-up
+
+Native Work-to-Calendar timed placement and whole-day placement each passed using
+trusted mouse drag events, one exact session POST, primary `/planned` and `/blocks`
+readback, unchanged task/preferences and revision-conditional session-first
+cleanup. Visual review then reproduced a real pane-sizing problem: at a 1600px
+viewport the retained Calendar was 672px wide, but its main surface was only
+340px beside a 296px rail. The read-only layout probe failed that exact condition.
+
+Calendar now observes its own content width, retains its last valid measurement
+while hidden and disconnects its observer on retirement. Named container queries
+style descendants; measured root classes stack the side rail below narrow panes.
+Week remains Monday–Sunday at every width, replacing the previous adaptive one-
+or three-day Week range. Day and Agenda remain explicit alternatives. Narrow
+headers stack weekday/date with 44px height and view controls retain 44px targets;
+font roles and viewport-only portal/inspector/global Focus rules are preserved.
+The corrected native layout probe passes five checks across retained desktop,
+375px phone and a wide hide/return sequence, including same DOM, selected week,
+header bounds, theme controls and no horizontal document overflow. All ordinary
+columns fit this fixture; no positive horizontal-scroll travel is claimed where
+there was no overflow. Desktop dark and phone light captures were inspected.
+The combined timed/day transfer run then passed both cases again on the corrected
+source, deleting both owned sessions and tasks with verified absence/readback.
+
+Source inspection and a native failing-before run also found that modified Enter
+in the command palette did not open the requested Peek. Submit events do not carry
+keyboard modifier ownership; the correction handles Cmd/Ctrl+Enter on the input,
+attaches typed object targets to both ordinary and full-text results and separates
+Peek from the explicit background-tab action. Five native checks now pass:
+keyboard Peek, close/focus restoration, modified pointer Peek, full-text Peek and
+explicit background tab creation. The unsent Work input remains the same node
+with the same text, URL and working tab count when peeking. No domain writes,
+script errors or source drift occurred. Earlier fixture loading/focus assumptions
+remain recorded separately from the product defect. Web no-emit checks pass for
+both source corrections.
+
+The saved-view native flow used four fresh tasks: one blocked/high/no-estimate
+match and three exclusions. Native status, priority and size selection, one exact
+keyed create201, toast Open, View reload and primary run-by-ID preserve the exact
+shared definition and sole matching task. Native CSV downloading also succeeded;
+the driver then incorrectly expected a Title header rather than the core Name
+label. A separate root check verified the actual downloaded header and exact one
+row, excluded all three other tasks, repeated primary definition/membership reads
+and matched existing preferences/favourites/views to their initial fingerprints.
+The owned View and four tasks were then removed, with the View library restored
+and each task returning404. This is three checks in the original runner plus the
+separate recorded CSV/cleanup verification, not an uninterrupted four-check pass.
+
+The native select driver was corrected using a read-only actual input-event
+probe: on this headless Mac Chrome, Home/arrow input did not change the select,
+while native typeahead produced trusted input/change events and selected High.
+No application change was needed. Earlier failed-run tasks were removed only
+after original create-body hashes, unchanged version1 and canonical fields
+matched. The final reused cohort was similarly verified and removed; no QA tasks
+or Views from those saved-view attempts remain. Source/driver failures and all
+recovery receipts are retained.
+
+Rich Peek's first native attempt opened the exact format2 fixture from a preserved
+Work draft and visibly rendered its heading, emphasis, code, table, inline/display
+math, Mermaid, nested ordered/checklist content and task link. The run stopped
+before full acceptance because its read boundary incorrectly rejected ordinary
+empty search, Calendar search and the LiveList parser's default layout. No browser
+mutation was forwarded. Its exact owned task/page remain preserved for guarded
+reuse. The linked-object Details read-only correction is still a private candidate;
+its failing-before native proof and subsequent qualification remain outstanding.
+No Stage 7 checkpoint commit, final route audit or full backend-suite completion
+is claimed by these focused results.
+
+#### Stage 7 read-only Details and native List transfer
+
+The corrected rich Peek driver reused the exact previously preserved task/page,
+requiring the original create-body hashes, fixed member ownership, version1 and
+unchanged authored content. The native before run passed its first three checks
+and reproduced enabled Mark done and Change deadline in linked-task Details. No
+mutation was clicked or forwarded. LinkedObject now consumes the existing page
+read-only context, hides task editing, refuses its common write boundary and
+disables new meeting-note creation while preserving metadata and Open. Normal
+pages retain the default editable context; their follow-up regression is pending.
+The after run passes six checks with zero errors, boundary violations or source
+drift. Exact retained fixtures were removed with verified absence.
+
+Screenshot review found an unbroken page title clipping in the 375px preview.
+The Peek heading now wraps within its own width without altering the text role.
+A fresh six-check native run passes an additional title-width assertion in dark
+and light desktop and dark phone, with unchanged page/task data and verified
+cleanup. The phone capture was inspected. These runs do not cover every file,
+media, permission or recovery variant of Peek. Web no-emit checks pass.
+
+Native Lists-to-Calendar timed and whole-day transfers both pass on the current
+source. Trusted drag events from the selected List's own row produce exactly one
+expected session each; primary planned/blocks reads agree, task snapshots and
+planner preferences remain unchanged. Cleanup deletes both sessions using their
+revisions, then both version1 tasks, then only the new personal list after exact
+metadata and an all-kind/all-status empty-list read. No errors, unexpected writes
+or source drift occurred. The screenshot was inspected and exposed a separate
+layout issue: the List catalog occupies too much of a narrow retained pane. A
+pane-width correction is being prepared. 3D and adverse transfer variants remain
+open. These focused results do not close Stage 7 or authorize a commit yet.
+
+#### Stage 7 normal-page regression and Lists own-width layout
+
+Normal-page linked task Details retains editing after the read-only Peek fix. A
+fresh native run passes three checks: enabled completion/deadline controls, one
+exact completion POST with201 and primary readback showing done/100%, next
+version and exactly one owned timeline record, then explicit close with the page
+unchanged. No page save, errors, unexpected requests or source drift occurred.
+The completed-state capture was inspected. Deadline mutation and event-note
+variants remain separate. An earlier run passed these same functional assertions
+but refused ordinary document-presence/import GETs because the driver's read
+allowlist was incomplete. Its failure was retained; exact original factory hashes
+and the confirmed completed-task fingerprint were checked before separate
+cleanup. Neither completion was replayed. Both runs' pages/tasks are absent.
+
+The read-only Lists layout probe reproduced the fixed300px catalog squeezing a
+selected list inside a672px retained pane. Lists now has its own inline-size
+container: narrow panes show the selected detail at full width and All lists
+returns to catalog/search. Wide panes retain both columns. Initial automatic
+selection uses observed pane width; manual selection or All lists establishes
+explicit intent and resizing preserves it. The observer ignores hidden zero
+widths and disconnects on retirement. Full titles and actions wrap independently
+at existing text roles; narrow buttons retain44px targets.
+
+The after probe passes four checks: detail width/title/actions, All lists staying
+unselected, phone retained DOM/44px actions, and catalog search/selection surviving
+a wide return. Native theme control and dark desktop/light phone screenshots
+were inspected; source and existing list records remain unchanged. The probe
+uses an existing authorized team list, because all temporary personal lists had
+already been cleaned up. Its first attempt stopped before browser creation when
+no personal list existed; two earlier module-resolution errors had no runtime
+effects. Web no-emit checks pass.
+
+The timed/day native Lists-to-Calendar pair then passes again after the layout
+change, including exact session requests, planned/blocks readback, unchanged
+tasks/preferences and revision-aware session-first cleanup. Both tasks and the
+fresh empty personal list were also removed and their absence verified. Nine
+controlled tests of the actual shared drag module pass for board-format
+preservation, task/event references, malformed inputs, account/ABA fencing and
+single consumption across nested handlers. Their DataTransfer/session objects are
+synthetic; native touch and permission recovery are still unqualified. Stage7
+remains uncommitted and incomplete.
+
+#### Stage 7 native 3D Calendar task transfer
+
+Work-to-3D Calendar timed floor and upright day-sign drops pass using actual
+projected DOM geometry, browser hit-testing and trusted native mouse drag
+events. The selected narrow-pane Day chip reveals the intended lane without
+changing camera state through test hooks. Timed placement is exactly10:00; day
+placement follows the existing free-slot policy. Each creates exactly one manual
+30-minute session, agrees with primary planned/blocks readback and leaves the
+task and planner preferences unchanged. Both dark captures were inspected.
+The complete two-case run has zero errors, unexpected requests, unknown outcomes
+or source drift. Both revision-bound sessions and version-bound tasks were
+removed, with absence verified. This proves this local projected floor/sign
+interaction, not phone/touch, arbitrary camera poses or dense occlusion.
+
+The first timed attempt passed its functional assertion but stopped at the final
+request boundary because the driver's read allowlist omitted the ordinary
+authenticated `/events` stream. Its failure is preserved. A separate receipt-
+bound cleanup matched the original task factory/body hash, canonical task
+fingerprint, session identity/revision/times and primary feeds before deleting
+that exact pair; no gesture or uncertain mutation was replayed. The endpoint was
+verified in the realtime source, the read allowlist corrected and the fresh
+timed/day pair above then passed. No application source change was needed.
+
+#### Stage 7 Writer ownership and shared task mutation correction
+
+The actual Writer component passes23 controlled drop cases: six invalid entry
+epochs dispatch no item read/edit; valid zero/positive epochs insert one typed
+link; held reads followed by epoch, visibility, activation, path, account, page,
+store, permission or document changes cannot insert stale content. The actual
+React, route/session, client transport and core edit implementation run against
+synthetic Page/state/responses and scripted untrusted drop events. No API request
+is forwarded. This is lifecycle evidence; native drag and persistence remain
+separate. The first fixture lacked Vite's React preamble; adding that normal
+fixture setup allowed the complete run without changing application source.
+
+The Work audit identified an unguarded continuation between bulk batches and
+shared task mutation helpers that could resume under a replacement account.
+Controlled actual-store regressions reproduced new-account settlement reads, a
+handoff's second write, queued delete dispatch, old Undo, old delete failure
+publication and old optimistic failures clearing newer state. Shared helpers now
+capture the numeric session generation before effects, fence later dispatch and
+settlement, and bind each optimistic change to its own layer. Clearing an older
+layer preserves a newer pending edit. Queued delete/Undo and late delete receipts
+retain their opening generation. Ordinary completion and Undo still work in the
+controlled positive case. No backend contract was changed.
+
+The expanded matching harness passes only one of nine cases on the preserved
+before source and all nine on the correction. A further synchronous account
+change during optimistic publication reproduced one more pre-dispatch hole; the
+additional dispatch check closes it. The final actual-store controlled run passes
+10/10, and the separate planner admission/continuation suite still passes14/14.
+One intermediate timer fixture incorrectly retained a fired timer; its correction
+and failed attempt are retained. Web no-emit checks pass. Real native Work
+completion/Undo requalification and the separate BulkBar owner correction are
+still pending; these tests do not qualify the full batch UI or real-account UI.
+
+#### Stage 7 Copy fallback, Board transfer admission and bulk caller ownership
+
+The Copy task link fallback passes three checks on an existing owned task without
+forwarding domain writes: keyboard menu activation and exact selectable read-only
+URL,375px pointer equivalent, and a held clipboard rejection after same-member
+account-generation replacement. Draft, tab, URL, close-focus and primary task
+fingerprints are preserved. The phone capture was inspected. Clipboard denial
+and the held promise are synthetic; no physical touch or host clipboard write is
+claimed. On headless Mac, the modifier chord alone did not emit a copy event, so
+the driver invokes Chrome's native Copy editing command and observes a trusted
+copy event whose default is prevented. The initial failed chord check is retained.
+An earlier attempt stopped before browser creation because API/Vite had stopped;
+only the task's local servers were restarted as tracked processes.
+
+Board's custom card drop previously bypassed the shared transfer's account stamp
+and single-consumption check. Controlled actual Board-handler tests reproduced
+old-account/ABA admission, signed-out admission, duplicate dispatch and mismatched
+card/reference identities. Board now consumes the shared typed reference and
+requires its identity to match the card payload. The same seven-case harness
+passes2/7 before and7/7 after, retaining valid current and unstamped legacy
+references. The JSX/hooks and direct handler calls are controlled: this does not
+prove native Board column changes or the Work move owner's pending gate. Web
+no-emit checks pass.
+
+The actual BulkBar baseline then reproduced a fifth task dispatch under a
+replacement account generation and stale success/selection clearing. The guarded
+component captures one synchronous operation before awaits, revalidates its
+mounted account, visible scope/path/activation and selection before each dispatch
+and after each batch, and checks current permissions. Old results cannot release
+a newer busy operation or clear replacement selection. Admission requires focus;
+continuation deliberately survives focus moving to another visible pane. Undo
+has generation-only authority so it remains usable after legitimate route leave,
+but cannot use a replacement account or replay a second click.
+
+All22 controlled actual-component cases pass, including owner changes, selection
+ABA, partial failures, permission revocation, same-turn admission, field batches,
+confirmation Cancel and Undo. The actual React/kit/routes/session component is
+rendered against in-memory planning/write/delete services; zero API requests are
+forwarded, with no errors, unexpected requests or source drift. Web types pass.
+Real-API bulk and native completion/Undo checks remain separate. A status-only
+Undo follows the existing backend contract: it reopens status while preserving
+current progress; it is not a claim to restore every pre-completion field.
+
+#### Stage 7 Work move owner and native completion/Undo
+
+The actual Work/Board baseline reproduced two overlapping pending column writes
+for both status and priority. Work now shares one synchronous move owner between
+column changes and manual ordering. Its visible saving state disables move
+controls; account, mount, scope/path/activation and visibility fence late errors
+and unlocks. Focus is required at admission but moving focus to another visible
+pane does not cancel the admitted operation. A failed current move reports its
+error without automatic replay; a later explicit intent can retry. All18
+controlled actual Work/Board/TaskRow cases pass, including replacement ownership,
+permissions, same-turn duplicate input and Board/List shared locking. Web types
+pass. Services/account responses are controlled with zero API forwarding; native
+column moves and persisted sibling ordering still require their own checks.
+
+A fresh personal task then passed the real local native Work completion/Undo
+sequence: exact completion201 at version2, done/100% and one timeline entry,
+actual Done toast Undo201 at version3, original todo status and exactly two
+entries, then settled primary readback with no further writes. Existing backend
+status-only reopening preserves100% progress and increments reminder invalidation
+once; every other field was compared to its expected preceding receipt. The
+completion and Undo clicks were trusted native input. No errors, unexpected
+requests, unknown outcomes or source drift occurred. The dark capture was
+inspected, and only the confirmed version3 test task was deleted with204/404
+verification. This is the same-account successful task path, not bulk, recurrence,
+checklist, handoff or cross-account native qualification.

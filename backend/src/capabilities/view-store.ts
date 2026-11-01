@@ -1,5 +1,6 @@
 import {
   MAX_SAVED_VIEWS,
+  VIEW_FEATURE,
   fail,
   hasTeamPermission,
   viewDefinition,
@@ -16,6 +17,7 @@ import {
   visibleViews,
   type Spaces,
 } from "../lib/visibility.js";
+import { checkViewReplacement } from "../modules/views/write.js";
 import { announceTo } from "../modules/presence/live.js";
 
 /**
@@ -63,12 +65,13 @@ const COLUMNS = `v.id, v.user_id, v.team_id, t.name AS team_name, v.name, v.sour
 const JOINS = "LEFT JOIN teams t ON t.id = v.team_id";
 
 /** A kept definition with today's defaults filled in. */
-export function readDefinition(raw: unknown, source: ViewSource) {
+export function readDefinition(raw: unknown, _source: ViewSource) {
   const parsed = viewDefinition.safeParse(raw);
   if (parsed.success) return parsed.data;
-  // Something the app kept that this build doesn't know yet: its source
-  // with the defaults, rather than a view that can't be read.
-  return viewDefinition.parse({ source });
+  fail(
+    422,
+    "This saved view has an unsupported definition. Its stored filters have been preserved.",
+  );
 }
 
 const toView = (r: Row): StoredView => ({
@@ -202,6 +205,11 @@ export async function updateView(
   await mustEdit(db, u, view);
   if (view.version !== input.version)
     fail(409, "This view changed since it was opened. Open it again.");
+  checkViewReplacement(
+    view,
+    { definition: input.definition, expected_version: input.version },
+    [VIEW_FEATURE],
+  );
   if (input.definition && input.definition.source !== view.source)
     fail(400, "A view keeps showing what it was made for.");
   // Moves the version on even within the same millisecond.

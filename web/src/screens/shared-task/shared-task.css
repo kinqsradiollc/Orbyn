@@ -104,6 +104,10 @@
   padding: 0 16px 24px;
   overflow-y: auto;
 }
+.st-peek-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .st-foot {
   display: flex;
   justify-content: flex-end;

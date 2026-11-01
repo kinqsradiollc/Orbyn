@@ -17,7 +17,9 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { getSessionVersion } from "../../lib/session";
+import { useRouteActivity, useRouteScope } from "../../lib/route-scope";
 import { messageOf } from "../../lib/resource";
 import { Button, IconButton, Menu, useConfirm, useToast } from "../../ui/kit";
 import { deleteLater } from "../shared-task/store";
@@ -31,18 +33,28 @@ const dayAt = (days: number) => {
 };
 
 /** A few at a time, so a long selection doesn't flood the server. */
-async function inBatches<T>(rows: T[], work: (row: T) => Promise<void>) {
+async function inBatches<T>(
+  rows: T[],
+  work: (row: T) => Promise<void>,
+  current: () => boolean,
+) {
   let failed = 0;
   let reason: unknown;
   for (let at = 0; at < rows.length; at += 4) {
-    const results = await Promise.allSettled(rows.slice(at, at + 4).map(work));
+    if (!current()) return { failed, reason, stale: true };
+    const results = await Promise.allSettled(
+      rows.slice(at, at + 4).map(async (row) => {
+        if (current()) await work(row);
+      }),
+    );
+    if (!current()) return { failed, reason, stale: true };
     for (const result of results)
       if (result.status === "rejected") {
         failed++;
         reason = result.reason;
       }
   }
-  return { failed, reason };
+  return { failed, reason, stale: false };
 }
 
 /** What selected tasks can have done to them all at once. */
@@ -61,6 +73,90 @@ export function BulkBar({
   const toast = useToast();
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
+  const scope = useRouteScope();
+  useRouteActivity();
+  const generation = useRef(getSessionVersion()).current;
+  const mounted = useRef(true);
+  const selection = JSON.stringify(selected.map((item) => item.id).sort());
+  const latest = useRef({ scope, selection, canWrite });
+  latest.current = { scope, selection, canWrite };
+  type Operation = { current: () => boolean };
+  const operation = useRef<Operation | null>(null);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      operation.current = null;
+    };
+  }, []);
+  // Authority transitions retire their own UI lock; old receipts never do so.
+  useLayoutEffect(() => {
+    if (operation.current && !operation.current.current()) {
+      operation.current = null;
+      setBusy(false);
+    }
+  });
+  const mayBegin = () => {
+    const here = scope?.getSnapshot();
+    return (
+      mounted.current &&
+      generation === getSessionVersion() &&
+      !operation.current &&
+      (!scope || (!!here?.visible && !!here.focused))
+    );
+  };
+  const begin = (): Operation | null => {
+    if (!mayBegin()) return null;
+    const opening = scope?.getSnapshot();
+    const run: Operation = {
+      current: () => {
+        if (
+          !mounted.current ||
+          generation !== getSessionVersion() ||
+          operation.current !== run ||
+          latest.current.scope !== scope ||
+          latest.current.selection !== selection
+        )
+          return false;
+        const here = scope?.getSnapshot();
+        return (
+          !scope ||
+          (!!here?.visible &&
+            here.activation === opening?.activation &&
+            here.pathname === opening?.pathname)
+        );
+      },
+    };
+    operation.current = run;
+    setBusy(true);
+    return run;
+  };
+  const finish = (run: Operation) => {
+    if (!run.current()) return;
+    operation.current = null;
+    setBusy(false);
+  };
+  const requireWrite = (item: Item) => {
+    if (!latest.current.canWrite(item))
+      throw new Error("You no longer have permission to change this task.");
+  };
+  // Undo is a deliberate global toast action: leaving the pane is allowed,
+  // replacing the account is not. One click never replays an unknown result.
+  const undoChanges = <T,>(rows: T[], work: (row: T) => Promise<void>) => {
+    let used = false;
+    return () => {
+      if (used || generation !== getSessionVersion()) return;
+      used = true;
+      const current = () => generation === getSessionVersion();
+      void inBatches(rows, work, current).then(({ failed, reason, stale }) => {
+        if (!stale && current() && failed)
+          toast({
+            text: messageOf(reason, "Some changes couldn't be undone."),
+            error: true,
+          });
+      });
+    };
+  };
   const writable = selected.filter(canWrite);
   const skipped = selected.length - writable.length;
 
@@ -85,20 +181,33 @@ export function BulkBar({
   };
 
   const setStatus = async (status: Status) => {
-    setBusy(true);
+    const run = begin();
+    if (!run) return;
     const changes: { item: Item; next: Item; before: Status }[] = [];
     const rows = writable.filter((item) => item.status !== status);
-    const { failed, reason } = await inBatches(rows, async (item) => {
-      const next = await saveStatus(item, status);
-      changes.push({ item, next, before: item.status });
-    });
-    setBusy(false);
-    report(rows.length - failed, failed, reason, () => {
-      void inBatches(changes, async ({ item, next, before }) => {
-        await saveStatus({ ...item, ...next }, before);
-      });
-    });
-    if (!failed) onClear();
+    try {
+      const result = await inBatches(
+        rows,
+        async (item) => {
+          requireWrite(item);
+          const next = await saveStatus(item, status);
+          if (run.current()) changes.push({ item, next, before: item.status });
+        },
+        run.current,
+      );
+      if (result.stale || !run.current()) return;
+      report(
+        rows.length - result.failed,
+        result.failed,
+        result.reason,
+        undoChanges(changes, async ({ item, next, before }) => {
+          await saveStatus({ ...item, ...next }, before);
+        }),
+      );
+      if (!result.failed && run.current()) onClear();
+    } finally {
+      finish(run);
+    }
   };
 
   const setFields = async (
@@ -106,22 +215,36 @@ export function BulkBar({
     change: (item: Item) => Partial<ItemInput>,
     undoFields: (item: Item) => Partial<ItemInput>,
   ) => {
-    setBusy(true);
+    const run = begin();
+    if (!run) return;
     const changes: { next: Item; before: Partial<ItemInput> }[] = [];
-    const { failed, reason } = await inBatches(rows, async (item) => {
-      const next = await saveFields(item, change(item));
-      changes.push({ next, before: undoFields(item) });
-    });
-    setBusy(false);
-    report(rows.length - failed, failed, reason, () => {
-      void inBatches(changes, async ({ next, before }) => {
-        await saveFields(next, before);
-      });
-    });
-    if (!failed) onClear();
+    try {
+      const result = await inBatches(
+        rows,
+        async (item) => {
+          requireWrite(item);
+          const next = await saveFields(item, change(item));
+          if (run.current()) changes.push({ next, before: undoFields(item) });
+        },
+        run.current,
+      );
+      if (result.stale || !run.current()) return;
+      report(
+        rows.length - result.failed,
+        result.failed,
+        result.reason,
+        undoChanges(changes, async ({ next, before }) => {
+          await saveFields(next, before);
+        }),
+      );
+      if (!result.failed && run.current()) onClear();
+    } finally {
+      finish(run);
+    }
   };
 
   const setDue = (days: number | null) => {
+    if (!mayBegin()) return;
     const rows = writable.filter((item) => !item.rrule);
     if (rows.length < writable.length)
       toast({
@@ -148,26 +271,72 @@ export function BulkBar({
     team === undefined ? [] : rows.filter((row) => row.team_id === team);
 
   const remove = async () => {
-    const repeating = writable.filter((item) => item.rrule).length;
-    if (
-      !(await confirm({
-        title: `Delete ${plural(writable.length, "item")}?`,
-        body: repeating
-          ? `${plural(repeating, "repeating item")} will lose every time. You can undo this for a few seconds.`
-          : "You can undo this for a few seconds.",
-        action: "Delete",
-        danger: true,
-      }))
-    )
-      return;
-    const undo = writable.map((item) =>
-      deleteLater(item, (text) => toast({ text, error: true })),
-    );
-    toast({
-      text: `Deleted ${plural(writable.length, "item")}`,
-      action: { label: "Undo", run: () => undo.forEach((run) => run()) },
-    });
-    onClear();
+    const run = begin();
+    if (!run) return;
+    const undo: (() => void)[] = [];
+    const cancelQueued = () => {
+      for (const cancel of undo) {
+        if (generation !== getSessionVersion()) return;
+        cancel();
+      }
+    };
+    try {
+      const repeating = writable.filter((item) => item.rrule).length;
+      if (
+        !(await confirm({
+          title: `Delete ${plural(writable.length, "item")}?`,
+          body: repeating
+            ? `${plural(repeating, "repeating item")} will lose every time. You can undo this for a few seconds.`
+            : "You can undo this for a few seconds.",
+          action: "Delete",
+          danger: true,
+        })) ||
+        !run.current()
+      )
+        return;
+      for (const item of writable) {
+        if (!run.current()) {
+          cancelQueued();
+          return;
+        }
+        requireWrite(item);
+        undo.push(
+          deleteLater(item, (text) => {
+            if (generation === getSessionVersion())
+              toast({ text, error: true });
+          }),
+        );
+      }
+      if (!run.current()) {
+        cancelQueued();
+        return;
+      }
+      let undone = false;
+      toast({
+        text: `Deleted ${plural(writable.length, "item")}`,
+        action: {
+          label: "Undo",
+          run: () => {
+            if (undone || generation !== getSessionVersion()) return;
+            undone = true;
+            for (const cancel of undo) {
+              if (generation !== getSessionVersion()) return;
+              cancel();
+            }
+          },
+        },
+      });
+      if (run.current()) onClear();
+    } catch (error) {
+      cancelQueued();
+      if (run.current())
+        toast({
+          text: messageOf(error, "Couldn't delete selected tasks."),
+          error: true,
+        });
+    } finally {
+      finish(run);
+    }
   };
 
   const lock = busy || !writable.length;

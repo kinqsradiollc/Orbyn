@@ -9,10 +9,13 @@ import {
   viewPinInput,
   viewRunInput,
   viewTable,
+  VIEW_FEATURE,
+  VIEW_FEATURE_HEADER,
+  viewFeatures,
   type SavedView,
   type ViewResult,
 } from "@orbyn/core";
-import { pool, reader, transaction, type Db } from "../../db/pool.js";
+import { pool, reader, transaction, readTransaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { contentDisposition } from "../../lib/disposition.js";
 import { idParam } from "../../lib/params.js";
@@ -20,6 +23,7 @@ import { requireTeam } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { fieldRoutes } from "./fields.js";
 import { listViews, loadView, runView } from "./service.js";
+import { checkViewReplacement } from "./write.js";
 
 /**
  * Saved views (DATA-01): named filters, sorts, groupings and layouts over
@@ -30,6 +34,12 @@ import { listViews, loadView, runView } from "./service.js";
  */
 export async function viewRoutes(app: FastifyInstance) {
   await fieldRoutes(app);
+  app.get("/views/capabilities", async (r) => {
+    await authenticate(r);
+    return { features: [VIEW_FEATURE], definition_version: true };
+  });
+  const acknowledged = (value: string | string[] | undefined) =>
+    typeof value === "string" ? value.split(",").map((v) => v.trim()) : [];
 
   app.get("/views", async (r): Promise<SavedView[]> => {
     const u = await authenticate(r);
@@ -39,6 +49,14 @@ export async function viewRoutes(app: FastifyInstance) {
   app.post("/views", async (r, reply): Promise<SavedView> => {
     const u = await authenticate(r);
     const data = savedViewInput.parse(r.body ?? {});
+    if (
+      viewFeatures(data.definition).length &&
+      !acknowledged(r.headers[VIEW_FEATURE_HEADER]).includes(VIEW_FEATURE)
+    )
+      fail(
+        409,
+        "This client must acknowledge exact task filters before saving them.",
+      );
     if (data.team_id) await requireTeam(data.team_id, u, "items:write");
     const view = await transaction(async (db) => {
       await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
@@ -79,12 +97,20 @@ export async function viewRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const body = savedViewUpdate.parse(r.body ?? {});
     return transaction(async (db) => {
+      await db.query("SELECT id FROM saved_views WHERE id = $1 FOR UPDATE", [
+        id,
+      ]);
       const view = await loadView(db, u.id, id);
       if (!view.can_edit)
         fail(
           403,
           "Only whoever made this view, or the team's owners and admins, can change it.",
         );
+      checkViewReplacement(
+        { definition: view.definition, version: view.version! },
+        body,
+        acknowledged(r.headers[VIEW_FEATURE_HEADER]),
+      );
       if (body.team_id !== undefined && body.team_id !== view.team_id) {
         // Sharing with a team, or taking it back: only its maker.
         if (view.user_id !== u.id)
@@ -99,7 +125,7 @@ export async function viewRoutes(app: FastifyInstance) {
       await db.query(
         `UPDATE saved_views SET name = coalesce($2, name),
            team_id = CASE WHEN $3::boolean THEN $4::uuid ELSE team_id END,
-           definition = coalesce($5::jsonb, definition), updated_at = now()
+           definition = coalesce($5::jsonb, definition), updated_at = greatest(now(),updated_at + interval '1 millisecond')
          WHERE id = $1`,
         [
           id,
@@ -160,30 +186,47 @@ export async function viewRoutes(app: FastifyInstance) {
   app.post("/views/run", async (r): Promise<ViewResult> => {
     const u = await authenticate(r);
     const body = viewRunInput.parse(r.body ?? {});
-    const db = reader(r.headers);
-    if ("id" in body) {
-      const view = await loadView(db, u.id, body.id);
-      return {
-        ...(await runView(db, u.id, view.definition, { limit: body.limit })),
-        view,
-      };
-    }
-    return runView(db, u.id, body.definition, { limit: body.limit });
+    return readTransaction(
+      async (db) => {
+        const now = new Date();
+        if ("id" in body) {
+          const view = await loadView(db, u.id, body.id);
+          return {
+            ...(await runView(db, u.id, view.definition, {
+              limit: body.limit,
+              now,
+            })),
+            view,
+          };
+        }
+        return runView(db, u.id, body.definition, { limit: body.limit, now });
+      },
+      { primary: reader(r.headers) === pool, isolation: "repeatable read" },
+    );
   });
 
   /** A view as a CSV file, with the columns it shows. */
   app.get("/views/:id/export.csv", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    const db = reader(r.headers);
-    const view = await loadView(db, u.id, id);
-    const timeZone = (await loadPrefs(pool as unknown as Db, u.id)).timezone;
-    const result = await runView(db, u.id, view.definition, { timeZone });
-    const csv = viewTable(
-      result.rows,
-      viewColumns(view.definition),
-      { now: new Date(), timeZone },
-      { fields: result.fields, people: result.people },
+    const { view, csv } = await readTransaction(
+      async (db) => {
+        const view = await loadView(db, u.id, id);
+        const timeZone = (await loadPrefs(db, u.id)).timezone;
+        const now = new Date();
+        const result = await runView(db, u.id, view.definition, {
+          timeZone,
+          now,
+        });
+        const csv = viewTable(
+          result.rows,
+          viewColumns(view.definition),
+          { now, timeZone },
+          { fields: result.fields, people: result.people },
+        );
+        return { view, csv };
+      },
+      { primary: reader(r.headers) === pool, isolation: "repeatable read" },
     );
     const file = viewFileName(view.name);
     return reply

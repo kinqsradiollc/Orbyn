@@ -386,9 +386,10 @@ export function cursorCodec(
   p: Principal,
   tool: string,
   args: Record<string, unknown>,
+  trustedBinding?: unknown,
 ): CursorCodec {
   const { cursor: _ignored, ...rest } = args;
-  const bound = `${p.user.id}|${p.grant_id ?? "-"}|${tool}|${argsDigest(rest)}`;
+  const bound = `${p.user.id}|${p.grant_id ?? "-"}|${tool}|${argsDigest(rest)}${trustedBinding === undefined ? "" : "|" + argsDigest({ binding: trustedBinding })}`;
   const mac = async (offset: number) =>
     createHmac("sha256", await cursorKey())
       .update(`${bound}|${offset}`)

@@ -1,14 +1,17 @@
 import {
+  fullDefinition,
+  VIEW_FEATURE,
   type ItemSort,
   type ProgressReport,
   type SavedViewInput,
   type ViewFilters,
 } from "@orbyn/core";
 import { Check, Copy } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useCapturedNavigate } from "../../lib/router";
+import { useEffect, useRef, useState } from "react";
+import { useAccount } from "../../app/account";
+import { useCapturedNavigate, useBeforeNavigate } from "../../lib/router";
 import { messageOf, useResource } from "../../lib/resource";
-import { client } from "../../lib/session";
+import { client, getSessionVersion, getToken } from "../../lib/session";
 import {
   Button,
   Dialog,
@@ -19,6 +22,7 @@ import {
   Segmented,
   SelectBox,
   useToast,
+  useConfirm,
 } from "../../ui/kit";
 import { usePlanning } from "../shared-task";
 import type { Filters, Layout, StatusFilter } from "./view-state";
@@ -148,10 +152,10 @@ const SORT_FOR_VIEW: Record<
   ItemSort,
   NonNullable<SavedViewInput["definition"]["sort"]>
 > = {
-  newest: { by: "created", dir: "desc" },
-  created: { by: "created", dir: "asc" },
+  newest: { by: "created", dir: "asc" },
+  created: { by: "created", dir: "desc" },
   due: { by: "due", dir: "asc" },
-  priority: { by: "priority", dir: "desc" },
+  priority: { by: "priority", dir: "asc" },
   estimate: { by: "estimate", dir: "asc" },
   title: { by: "title", dir: "asc" },
   score: { by: "due", dir: "asc" },
@@ -177,76 +181,178 @@ export function SaveViewDialog({
   onClose: () => void;
 }) {
   const navigate = useCapturedNavigate();
+  const { user, version } = useAccount();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const toast = useToast();
-  const left =
-    (filters.priority !== "any" ? 1 : 0) +
-    (filters.size !== "any" ? 1 : 0) +
-    (filter !== "all" && filter !== "active" && filter !== "done" ? 1 : 0);
-  const save = async () => {
-    const definition: ViewFilters = {
-      ...(query.trim() ? { text: query.trim().slice(0, 200) } : {}),
-      status: filter === "active" ? "open" : filter === "done" ? "done" : "any",
-      ...(filters.list !== "any" && filters.list !== "none"
-        ? { list: filters.list }
-        : {}),
-      ...(filters.tag !== "any" ? { tag: filters.tag } : {}),
-      ...(filters.assignee === "me"
-        ? { assignee: "me" as const }
-        : filters.assignee !== "any" && filters.assignee !== "none"
-          ? { assignee: filters.assignee }
-          : {}),
-      ...(filters.due === "overdue" ? { overdue: true } : {}),
-      ...(filters.due === "none" ? { no_due: true } : {}),
-      ...(filters.due === "today" ? { due_within_days: 0 } : {}),
-      ...(filters.due === "tomorrow" ? { due_within_days: 1 } : {}),
-      ...(filters.due === "soon" || filters.due === "week"
-        ? { due_within_days: 7 }
-        : {}),
+  const [uncertain, setUncertain] = useState(false);
+  const toast = useToast(),
+    confirm = useConfirm();
+  const mounted = useRef(true),
+    lock = useRef(false);
+  const attempt = useRef<{
+    key: string;
+    at: number;
+    input: SavedViewInput;
+    before: Set<string>;
+  } | null>(null);
+  const live = () =>
+    mounted.current && !!getToken() && getSessionVersion() === version;
+  const caps = useResource(() => client.viewCapabilities(), [version]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
     };
+  }, []);
+  const mayLeave = async () => {
+    if (!live() || lock.current || attempt.current) {
+      if (live()) setError("Resolve the pending save before closing.");
+      return false;
+    }
+    if (!name.trim()) return true;
+    lock.current = true;
+    try {
+      const ok = await confirm({
+        title: "Discard view name?",
+        action: "Discard",
+        danger: true,
+      });
+      return live() && ok;
+    } finally {
+      lock.current = false;
+    }
+  };
+  useBeforeNavigate(() => mayLeave());
+  const leave = async () => {
+    if (await mayLeave()) onClose();
+  };
+  const save = async () => {
+    if (
+      !live() ||
+      lock.current ||
+      !name.trim() ||
+      !caps.data?.features.includes(VIEW_FEATURE)
+    )
+      return;
+    lock.current = true;
     setBusy(true);
     setError("");
     try {
-      const view = await client.createView({
-        name: name.trim(),
-        team_id: null,
-        definition: {
-          source: "tasks",
-          filters: definition,
-          sort: SORT_FOR_VIEW[sort],
-          group_by: group,
-          layout,
-        },
-      });
+      let request = attempt.current;
+      if (!request) {
+        const before = new Set(
+          (await client.listViews({ fresh: true })).map((v) => v.id),
+        );
+        if (!live()) return;
+        const exact =
+          filter !== "active" && filter !== "all" && filter !== "done"
+            ? filter
+            : undefined;
+        const definition: ViewFilters = {
+          ...(query.trim() ? { text: query.trim() } : {}),
+          status:
+            filter === "active" ? "open" : filter === "done" ? "done" : "any",
+          ...(exact ? { task_status: exact } : {}),
+          ...(filters.priority !== "any" ? { priority: filters.priority } : {}),
+          ...(filters.size !== "any" ? { size: filters.size } : {}),
+          ...(filters.list !== "any" ? { list: filters.list } : {}),
+          ...(filters.tag !== "any" ? { tag: filters.tag } : {}),
+          ...(filters.assignee !== "any" ? { assignee: filters.assignee } : {}),
+          ...(filters.due === "overdue" ? { overdue: true } : {}),
+          ...(filters.due === "none" ? { no_due: true } : {}),
+          ...(["today", "tomorrow", "soon", "week"].includes(filters.due)
+            ? {
+                due_bucket: filters.due as
+                  "today" | "tomorrow" | "soon" | "week",
+              }
+            : {}),
+        };
+        const input: SavedViewInput = {
+          name: name.trim(),
+          team_id: null,
+          definition: fullDefinition({
+            source: "tasks",
+            filters: definition,
+            sort: SORT_FOR_VIEW[sort],
+            group_by: group,
+            layout,
+          }),
+        };
+        request = { key: crypto.randomUUID(), at: Date.now(), input, before };
+        attempt.current = request;
+      }
+      const age = Date.now() - request.at;
+      if (!Number.isFinite(age) || age < 0 || age >= 23 * 60 * 60 * 1000)
+        throw new Error(
+          "This save can no longer be safely replayed. Keep this dialog open and inspect the saved-view library before starting another save.",
+        );
+      if (!live()) return;
+      const view = await client.once(request.key, () =>
+        client.createView(request.input),
+      );
+      if (!live() || attempt.current !== request) return;
+      if (
+        !view.id ||
+        request.before.has(view.id) ||
+        view.user_id !== user?.id ||
+        view.team_id !== null ||
+        view.name !== request.input.name ||
+        JSON.stringify(fullDefinition(view.definition)) !==
+          JSON.stringify(fullDefinition(request.input.definition))
+      )
+        throw new Error(
+          "The save receipt did not match this view. Its outcome is still unknown; retry only this exact request.",
+        );
+      attempt.current = null;
+      setUncertain(false);
       onClose();
       toast({
         text: `Saved “${view.name}”`,
-        action: { label: "Open", run: () => navigate(`/app/view/${view.id}`) },
+        action: {
+          label: "Open",
+          run: () =>
+            getToken() && getSessionVersion() === version
+              ? navigate(`/app/view/${view.id}`)
+              : undefined,
+        },
       });
-    } catch (e) {
-      setError(messageOf(e, "Couldn't save the view."));
+    } catch (failure) {
+      if (!live()) return;
+      const status = (failure as { status?: number })?.status;
+      if ([400, 401, 403, 404, 409, 422].includes(status ?? 0))
+        attempt.current = null;
+      setUncertain(!!attempt.current);
+      setError(messageOf(failure, "Couldn't save the view."));
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (live()) setBusy(false);
     }
   };
   return (
     <Dialog
       title="Save as view"
-      onClose={onClose}
+      onClose={() => void leave()}
       actions={
         <>
-          <Button variant="ghost" disabled={busy} onClick={onClose}>
+          <Button
+            variant="ghost"
+            disabled={busy || uncertain}
+            onClick={() => void leave()}
+          >
             Cancel
           </Button>
           <Button
             variant="primary"
             busy={busy}
-            disabled={!name.trim()}
+            disabled={
+              !name.trim() ||
+              !caps.data?.features.includes(VIEW_FEATURE) ||
+              query.trim().length > 200
+            }
             onClick={() => void save()}
           >
-            Save view
+            {uncertain ? "Retry exact save" : "Save view"}
           </Button>
         </>
       }
@@ -255,6 +361,7 @@ export function SaveViewDialog({
         <Input
           autoFocus
           maxLength={80}
+          disabled={busy || uncertain}
           value={name}
           onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => {
@@ -262,11 +369,29 @@ export function SaveViewDialog({
           }}
         />
       </Field>
-      {left > 0 && (
+      <p className="muted small">
+        Saved views list top-level tasks; events and subtasks stay in Work.
+      </p>
+      {query.trim().split(/\s+/).length > 1 && (
         <p className="muted small">
-          Saved views have no priority, size or single-status filter, so those
-          stay here. Add them in Views.
+          Saved views match each word; Work matches the full phrase.
         </p>
+      )}
+      {sort === "score" || sort === "position" ? (
+        <p className="muted small">
+          This view keeps the exact filters. Priority score and manual order
+          become deadline order.
+        </p>
+      ) : null}
+      {query.trim().length > 200 && (
+        <ErrorNotice message="Shorten the words filter to 200 characters before saving." />
+      )}
+      {caps.loading && <Loading label="Checking saved-view support" />}
+      {caps.error && (
+        <ErrorNotice message={caps.error} onRetry={() => void caps.reload()} />
+      )}
+      {caps.data && !caps.data.features.includes(VIEW_FEATURE) && (
+        <ErrorNotice message="This server cannot save these exact task filters yet." />
       )}
       {error && <ErrorNotice message={error} />}
     </Dialog>

@@ -31,7 +31,7 @@ export const isMode = (value: string | null): value is Mode =>
 export const AGENDA_DAYS = 14;
 export const SNAP = 15;
 export const DAY_MINUTES = 1440;
-export const TASK_MIME = "application/x-orbyn-task";
+export { TASK_MIME } from "../shared-task/drag";
 
 /** Where a date field's deadline comes from, kept in its entry's key. */
 const FIELD_SOURCE = "field:";

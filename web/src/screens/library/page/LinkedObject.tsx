@@ -6,7 +6,7 @@ import {
   type LinkCard,
   type ObjectRef,
 } from "@orbyn/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { messageOf } from "../../../lib/resource";
 import { client } from "../../../lib/session";
@@ -19,7 +19,7 @@ import {
   Loading,
   Pill,
 } from "../../../ui/kit";
-import type { PageLinks } from "./context";
+import { PageReadOnlyContext, type PageLinks } from "./context";
 import "./linked-object.css";
 
 type Target = ObjectRef & { kind: LinkCard["kind"] };
@@ -57,6 +57,7 @@ export function LinkedObject({
   links: PageLinks;
   onClose: () => void;
 }) {
+  const readOnly = useContext(PageReadOnlyContext);
   const linkCallbacks = useRef(links);
   linkCallbacks.current = links;
   const [card, setCard] = useState<LinkCard | null>(null);
@@ -101,6 +102,7 @@ export function LinkedObject({
   // before offering another mutation; never blindly replay an uncertain action.
   const run = async (work: () => Promise<void>, said: string) => {
     if (
+      readOnly ||
       mutation.current ||
       needsRead ||
       reading ||
@@ -134,13 +136,13 @@ export function LinkedObject({
   const zone =
     card?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const disabled = busy || reading || needsRead;
-  const editable = card?.state === "ok" && card.can_write;
+  const editable = !readOnly && card?.state === "ok" && card.can_write;
   const move = (value: string | null) => {
     if (!editable || card.kind !== "task") return;
     void run(
       async () => {
         const item = await client.getItem(card.id);
-        if (!current()) return;
+        if (!current() || readOnly) return;
         if (item.kind !== "task")
           throw new Error(
             "This item is now an event. Open it to change its dates.",
@@ -504,7 +506,10 @@ export function LinkedObject({
                 </form>
               )}
               {card.kind === "event" && (
-                <Button disabled={disabled} onClick={meetingNote}>
+                <Button
+                  disabled={disabled || (readOnly && !card.note_id)}
+                  onClick={meetingNote}
+                >
                   {card.note_id ? "Open meeting note" : "Create meeting note"}
                 </Button>
               )}

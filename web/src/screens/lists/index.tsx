@@ -64,20 +64,33 @@ function ListsBody() {
   const [query, setQuery] = useState("");
   const [refreshFailed, setRefreshFailed] = useState(false);
   const chosen = useRef(false);
+  const pane = useRef<HTMLDivElement>(null);
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const node = pane.current;
+    if (!node) return;
+    let mounted = true;
+    const read = () => {
+      if (mounted && node.isConnected && node.clientWidth > 0)
+        setWide(node.clientWidth > 900);
+    };
+    const observer = new ResizeObserver(read);
+    observer.observe(node);
+    read();
+    return () => {
+      mounted = false;
+      observer.disconnect();
+    };
+  }, []);
   const active = lists.find((list) => list.id === selected) ?? null;
 
   // On a wide page the first list with work in it opens straight away.
   useEffect(() => {
-    if (
-      selected === null &&
-      !chosen.current &&
-      lists.length &&
-      matchMedia("(min-width: 901px)").matches
-    ) {
+    if (selected === null && !chosen.current && lists.length && wide) {
       chosen.current = true;
       setSelected((lists.find((list) => list.item_count > 0) ?? lists[0]).id);
     }
-  }, [lists, selected]);
+  }, [lists, selected, wide]);
 
   const sections = useMemo(() => {
     const words = query.trim().toLocaleLowerCase();
@@ -185,154 +198,166 @@ function ListsBody() {
 
   const firstLoad = phase === "loading" && !lists.length;
   return (
-    <div className={`lists${active ? " has-active" : ""}`}>
-      <section className="lists-nav" aria-label="Lists">
-        <header className="lists-head">
-          <h1>Lists</h1>
-          <span className="lists-count">{lists.length}</span>
-          <span className="lists-gap" />
-          <Button variant="primary" onClick={() => setEditing("new")}>
-            <Plus aria-hidden="true" /> New list
-          </Button>
-        </header>
-        {lists.length > 4 && (
-          <label className="lists-search">
-            <Search aria-hidden="true" />
-            <input
-              type="search"
-              aria-label="Find a list"
-              placeholder="Find a list"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-        )}
-        {refreshFailed && (
-          <ErrorNotice
-            message="Couldn't refresh lists."
-            onRetry={() => void refresh()}
-          />
-        )}
-        {firstLoad ? (
-          <Loading label="Loading lists" />
-        ) : phase === "error" && !lists.length ? (
-          <ErrorNotice
-            message={error}
-            onRetry={() => void retry().catch(() => undefined)}
-          />
-        ) : sections.length ? (
-          sections.map((section) => (
-            <div key={section.key} className="lists-section">
-              <h2 dir="auto">{section.title}</h2>
-              {section.lists.map((list) => (
-                <div
-                  key={list.id}
-                  className={`lists-row${selected === list.id ? " is-active" : ""}`}
-                >
-                  <button
-                    type="button"
-                    aria-pressed={selected === list.id}
-                    onClick={() => setSelected(list.id)}
-                  >
-                    <i style={{ background: list.color }} aria-hidden="true" />
-                    <span className="lists-name" dir="auto">
-                      {list.name}
-                    </span>
-                    <span
-                      className="lists-count"
-                      title={plural(list.item_count, "open task")}
-                    >
-                      {list.item_count}
-                    </span>
-                  </button>
-                  {canWriteIn(list.team_id) && options(list)}
-                </div>
-              ))}
-            </div>
-          ))
-        ) : (
-          <Empty title={query ? "No matching lists" : "No lists yet"}>
-            {!query && <p>Lists keep related tasks together.</p>}
-          </Empty>
-        )}
-      </section>
-      <section
-        className="lists-detail"
-        aria-label={active ? active.name : "List"}
-      >
-        {active ? (
-          <>
-            <header className="lists-head">
-              <IconButton
-                className="lists-back"
-                label="All lists"
-                onClick={() => setSelected(null)}
-              >
-                <ArrowLeft />
-              </IconButton>
-              <i
-                className="lists-dot"
-                style={{ background: active.color }}
-                aria-hidden="true"
+    <div className="lists-shell" ref={pane}>
+      <div className={`lists${active ? " has-active" : ""}`}>
+        <section className="lists-nav" aria-label="Lists">
+          <header className="lists-head">
+            <h1>Lists</h1>
+            <span className="lists-count">{lists.length}</span>
+            <span className="lists-gap" />
+            <Button variant="primary" onClick={() => setEditing("new")}>
+              <Plus aria-hidden="true" /> New list
+            </Button>
+          </header>
+          {lists.length > 4 && (
+            <label className="lists-search">
+              <Search aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Find a list"
+                placeholder="Find a list"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
               />
-              <h2 dir="auto">{active.name}</h2>
-              <span className="lists-count">{inList.length}</span>
-              <span className="lists-gap" />
-              {canWriteIn(active.team_id) && (
-                <>
-                  <Button
-                    onClick={() =>
-                      tasks.create({
-                        prefill: {
-                          list_id: active.id,
-                          team_id: active.team_id,
-                        },
-                      })
-                    }
+            </label>
+          )}
+          {refreshFailed && (
+            <ErrorNotice
+              message="Couldn't refresh lists."
+              onRetry={() => void refresh()}
+            />
+          )}
+          {firstLoad ? (
+            <Loading label="Loading lists" />
+          ) : phase === "error" && !lists.length ? (
+            <ErrorNotice
+              message={error}
+              onRetry={() => void retry().catch(() => undefined)}
+            />
+          ) : sections.length ? (
+            sections.map((section) => (
+              <div key={section.key} className="lists-section">
+                <h2 dir="auto">{section.title}</h2>
+                {section.lists.map((list) => (
+                  <div
+                    key={list.id}
+                    className={`lists-row${selected === list.id ? " is-active" : ""}`}
                   >
-                    <Plus aria-hidden="true" /> New task
-                  </Button>
-                  {options(active)}
-                </>
-              )}
-            </header>
-            {inList.length ? (
-              <div className="lists-rows st-rows">
-                {inList.map((item) => (
-                  <TaskRow
-                    key={item.id}
-                    item={item}
-                    readOnly={!canWrite(item)}
-                  />
+                    <button
+                      type="button"
+                      aria-pressed={selected === list.id}
+                      onClick={() => {
+                        chosen.current = true;
+                        setSelected(list.id);
+                      }}
+                    >
+                      <i
+                        style={{ background: list.color }}
+                        aria-hidden="true"
+                      />
+                      <span className="lists-name" dir="auto">
+                        {list.name}
+                      </span>
+                      <span
+                        className="lists-count"
+                        title={plural(list.item_count, "open task")}
+                      >
+                        {list.item_count}
+                      </span>
+                    </button>
+                    {canWriteIn(list.team_id) && options(list)}
+                  </div>
                 ))}
               </div>
-            ) : (
-              <Empty title="No tasks yet">
-                <p>Add a task or move one into this list.</p>
-              </Empty>
-            )}
-          </>
-        ) : (
-          <Empty title="Choose a list">
-            <p>Open a list to see its tasks.</p>
-          </Empty>
+            ))
+          ) : (
+            <Empty title={query ? "No matching lists" : "No lists yet"}>
+              {!query && <p>Lists keep related tasks together.</p>}
+            </Empty>
+          )}
+        </section>
+        <section
+          className="lists-detail"
+          aria-label={active ? active.name : "List"}
+        >
+          {active ? (
+            <>
+              <header className="lists-head lists-detail-head">
+                <IconButton
+                  className="lists-back"
+                  label="All lists"
+                  onClick={() => {
+                    chosen.current = true;
+                    setSelected(null);
+                  }}
+                >
+                  <ArrowLeft />
+                </IconButton>
+                <div className="lists-detail-title">
+                  <i
+                    className="lists-dot"
+                    style={{ background: active.color }}
+                    aria-hidden="true"
+                  />
+                  <h2 dir="auto">{active.name}</h2>
+                  <span className="lists-count">{inList.length}</span>
+                </div>
+                {canWriteIn(active.team_id) && (
+                  <div className="lists-detail-actions">
+                    <Button
+                      onClick={() =>
+                        tasks.create({
+                          prefill: {
+                            list_id: active.id,
+                            team_id: active.team_id,
+                          },
+                        })
+                      }
+                    >
+                      <Plus aria-hidden="true" /> New task
+                    </Button>
+                    {options(active)}
+                  </div>
+                )}
+              </header>
+              {inList.length ? (
+                <div className="lists-rows st-rows">
+                  {inList.map((item) => (
+                    <TaskRow
+                      key={item.id}
+                      item={item}
+                      readOnly={!canWrite(item)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Empty title="No tasks yet">
+                  <p>Add a task or move one into this list.</p>
+                </Empty>
+              )}
+            </>
+          ) : (
+            <Empty title="Choose a list">
+              <p>Open a list to see its tasks.</p>
+            </Empty>
+          )}
+        </section>
+        {editing && (
+          <ListEditor
+            editing={editing}
+            onClose={() => setEditing(null)}
+            onSaved={(id) => {
+              setEditing(null);
+              if (id) setSelected(id);
+              void refresh().then((ok) =>
+                toast({
+                  text: ok ? "List saved" : "Saved. Couldn't refresh lists.",
+                }),
+              );
+            }}
+          />
         )}
-      </section>
-      {editing && (
-        <ListEditor
-          editing={editing}
-          onClose={() => setEditing(null)}
-          onSaved={(id) => {
-            setEditing(null);
-            if (id) setSelected(id);
-            void refresh().then((ok) =>
-              toast({
-                text: ok ? "List saved" : "Saved. Couldn't refresh lists.",
-              }),
-            );
-          }}
-        />
-      )}
+      </div>
     </div>
   );
 }

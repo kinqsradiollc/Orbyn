@@ -1,3 +1,4 @@
+import { startItemDrag } from "../shared-task/drag";
 import {
   checkInNote,
   dueDateOf,
@@ -19,7 +20,6 @@ import { messageOf, useResource } from "../../lib/resource";
 import { client } from "../../lib/session";
 import { Button, ErrorNotice, IconButton, Loading, Pill } from "../../ui/kit";
 import { minutesLabel, spanLabel, whenLabel } from "./format";
-import { TASK_MIME } from "./model";
 import type { Workspace } from "./useWorkspace";
 
 const SHOWN = 12;
@@ -96,9 +96,7 @@ export function TasksToPlace({
                 className="calendar-place"
                 draggable
                 onDragStart={(e) => {
-                  e.dataTransfer.setData(TASK_MIME, i.id);
-                  e.dataTransfer.setData("text/plain", i.title);
-                  e.dataTransfer.effectAllowed = "copy";
+                  startItemDrag(e, i);
                 }}
               >
                 <GripVertical aria-hidden="true" />

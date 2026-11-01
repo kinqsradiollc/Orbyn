@@ -18,7 +18,7 @@ import {
   Menu,
   useToast,
 } from "../../../ui/kit";
-import { PageContext } from "./context";
+import { PageContext, PageReadOnlyContext } from "./context";
 
 export function liveListChoices(projectId: string | null) {
   const out: { label: string; text: string }[] = [];
@@ -69,6 +69,7 @@ export function LiveList({
   onChange?: (text: string) => void;
 }) {
   const page = useContext(PageContext);
+  const readOnly = useContext(PageReadOnlyContext);
   const toast = useToast();
   const spec = parseLiveList(text);
   const key = JSON.stringify(spec);
@@ -117,6 +118,7 @@ export function LiveList({
       </div>
     );
   const toggle = async (row: ViewRow) => {
+    if (readOnly) return;
     try {
       await client.updateItem(row.id, {
         status: row.status === "done" ? "todo" : "done",
@@ -199,6 +201,7 @@ export function LiveList({
                   type="checkbox"
                   className="doc-check"
                   checked={row.status === "done"}
+                  disabled={readOnly}
                   aria-label={row.title}
                   onChange={() => void toggle(row)}
                 />

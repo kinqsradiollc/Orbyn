@@ -19,7 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "../lib/router";
 import { client, getSessionVersion } from "../lib/session";
 import { messageOf } from "../lib/resource";
-import { useTasks } from "../screens/shared-task";
+import { useTasks, type PeekTarget } from "../screens/shared-task";
 import {
   Dialog,
   ErrorNotice,
@@ -57,6 +57,7 @@ type Result = {
   href?: string;
   run?: CommandAction;
   command?: string;
+  peek?: PeekTarget | { kind: "task"; id: string };
 };
 type Names = { projects: Named[]; tags: Named[]; teams: Named[] };
 /** A typed name never silently chooses one of two equally named spaces. */
@@ -206,6 +207,7 @@ function CommandBarBody(props: Props) {
               const target = searchHitTarget(hit);
               if (!target) continue;
               rows.push({
+                peek: { kind: target.type, id: target.id },
                 key: `${hit.type}:${hit.id}:${hit.block_id ?? ""}`,
                 label: hit.title || "Untitled",
                 hint:
@@ -231,6 +233,10 @@ function CommandBarBody(props: Props) {
             });
             for (const hit of hits)
               rows.push({
+                peek: {
+                  kind: hit.type === "event" ? "task" : hit.type,
+                  id: hit.id,
+                },
                 key: `${hit.type}:${hit.id}`,
                 label: hit.title || "Untitled",
                 hint: `${hit.recent ? "Recent · " : ""}${hit.type === "event" ? "Event" : hit.type === "doc" ? "Page" : hit.type === "project" ? "Project" : "Task"}`,
@@ -297,7 +303,10 @@ function CommandBarBody(props: Props) {
       hint: "Review a new item",
       run: () => tasks.create({ text: query.trim() }),
     });
-  const open = (choice: Result | undefined, background = false) => {
+  const open = (
+    choice: Result | undefined,
+    mode: "foreground" | "background" | "peek" = "foreground",
+  ) => {
     if (!choice || !current() || lock.current || tooLong) return;
     lock.current = true;
     // Release the command dialog before the next owner asks for input or a leave decision.
@@ -306,10 +315,17 @@ function CommandBarBody(props: Props) {
     const activeScope = scope?.getSnapshot();
     if (activeScope && (!activeScope.visible || !activeScope.focused)) return;
     try {
+      if (mode === "peek" && choice.peek) {
+        tasks.peek(choice.peek);
+        return;
+      }
       if (choice.command) props.onRun?.(choice.command);
       if (choice.href) {
         if (props.openPath)
-          props.openPath(choice.href, background ? "background" : "foreground");
+          props.openPath(
+            choice.href,
+            mode === "background" ? "background" : "foreground",
+          );
         else navigate(choice.href);
       } else {
         if (choice.run)
@@ -331,11 +347,7 @@ function CommandBarBody(props: Props) {
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          open(
-            choices[active],
-            event.nativeEvent instanceof KeyboardEvent &&
-              (event.nativeEvent.metaKey || event.nativeEvent.ctrlKey),
-          );
+          open(choices[active]);
         }}
       >
         <Input
@@ -355,6 +367,15 @@ function CommandBarBody(props: Props) {
             setSelection({});
           }}
           onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              (event.metaKey || event.ctrlKey) &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
+              open(choices[active], "peek");
+              return;
+            }
             const step =
               event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
             if (!step || !choices.length) return;
@@ -470,7 +491,12 @@ function CommandBarBody(props: Props) {
               role="option"
               aria-selected={index === active}
               onMouseEnter={() => setActive(index)}
-              onClick={(event) => open(choice, event.metaKey || event.ctrlKey)}
+              onClick={(event) =>
+                open(
+                  choice,
+                  event.metaKey || event.ctrlKey ? "peek" : "foreground",
+                )
+              }
             >
               <span className="row-main row-title" dir="auto">
                 {choice.label}
@@ -498,7 +524,7 @@ function CommandBarBody(props: Props) {
             {choice.href && props.openPath && (
               <IconButton
                 label={`Open ${choice.label} in a background tab`}
-                onClick={() => open(choice, true)}
+                onClick={() => open(choice, "background")}
               >
                 ↗
               </IconButton>

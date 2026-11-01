@@ -4,14 +4,15 @@ import {
   type Status,
   type ViewChoice,
   type ViewRow,
+  type ViewDefinition,
+  type TaskSize,
 } from "@orbyn/core";
 import { sizeOf } from "../shared-task";
 
 /**
- * What a saved definition can't hold: one priority, one size, one exact
- * status. They are kept in the account's view choices beside the view, and
- * applied here to the rows the server returns, so they follow this person and
- * not the view's other viewers, and they don't reach the CSV export.
+ * Existing account pins remain a private overlay until explicit promotion.
+ * The shared runner evaluates them before its caps; CSV by saved ID continues
+ * to export the unchanged saved definition.
  */
 export type Refine = {
   priority: Priority | "";
@@ -27,9 +28,17 @@ export const readRefine = (choice?: ViewChoice): Refine => {
   const pick = (prefix: string) =>
     choice?.pins?.find((p) => p.startsWith(prefix))?.slice(prefix.length) ?? "";
   return {
-    priority: pick("p:") as Refine["priority"],
-    size: pick("z:"),
-    status: pick("s:") as Refine["status"],
+    priority: ["high", "medium", "low"].includes(pick("p:"))
+      ? (pick("p:") as Refine["priority"])
+      : "",
+    size: ["quick", "short", "long", "none"].includes(pick("z:"))
+      ? pick("z:")
+      : "",
+    status: ["todo", "in_progress", "blocked", "done", "cancelled"].includes(
+      pick("s:"),
+    )
+      ? (pick("s:") as Refine["status"])
+      : "",
   };
 };
 
@@ -59,3 +68,20 @@ export const refineRows = (rows: ViewRow[], refine: Refine) =>
         return true;
       })
     : rows;
+
+/** A private overlay is evaluated on the server before either row cap; never persisted implicitly. */
+export function refineDefinition(
+  def: ViewDefinition,
+  refine: Refine,
+): ViewDefinition {
+  if (def.source !== "tasks") return def;
+  return {
+    ...def,
+    filters: {
+      ...def.filters,
+      ...(refine.priority ? { priority: refine.priority } : {}),
+      ...(refine.size ? { size: refine.size as TaskSize } : {}),
+      ...(refine.status ? { status: "any", task_status: refine.status } : {}),
+    },
+  };
+}

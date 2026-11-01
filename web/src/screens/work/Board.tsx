@@ -1,3 +1,4 @@
+import { startItemDrag, takeItemDrop } from "../shared-task/drag";
 import {
   agentStateText,
   durationText,
@@ -75,7 +76,7 @@ export function Board({
   const [over, setOver] = useState<string | null>(null);
   const byId = new Map(columns.flatMap((c) => c.items.map((i) => [i.id, i])));
 
-  const drop = (to: string, raw: string) => {
+  const drop = (to: string, raw: string, sourceId: string) => {
     setOver(null);
     setDragging(null);
     try {
@@ -83,6 +84,7 @@ export function Board({
       const item = byId.get(id);
       if (
         !busy &&
+        id === sourceId &&
         item &&
         canWrite(item) &&
         from !== to &&
@@ -143,7 +145,8 @@ export function Board({
               const raw = event.dataTransfer.getData(CARD);
               if (!raw) return;
               event.preventDefault();
-              drop(column.key, raw);
+              const source = takeItemDrop(event.dataTransfer);
+              if (source) drop(column.key, raw, source.id);
             }}
           >
             <header className="work-column-head">
@@ -298,8 +301,7 @@ function Card({
           CARD,
           JSON.stringify({ id: item.id, from: column.key }),
         );
-        event.dataTransfer.setData("text/plain", item.title);
-        event.dataTransfer.effectAllowed = "move";
+        if (!startItemDrag(event, item)) return;
         onDrag(true);
       }}
       onDragEnd={() => onDrag(false)}

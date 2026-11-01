@@ -12,18 +12,39 @@ import {
   type TargetFields,
   type ViewDefinitionInput,
   type ViewResult,
+  VIEW_FEATURE,
+  VIEW_FEATURE_HEADER,
+  viewCapabilities,
 } from "@orbyn/core";
 import type { OrbynClient } from "../client.js";
 
 // Saved views (DATA-01) and your own fields (ORG-02)
 /** Every saved view you can see: yours and those shared with your teams. */
 
-export function callListViews(this: OrbynClient) {
-  return this.request<SavedView[]>("/views");
+export async function callViewCapabilities(this: OrbynClient) {
+  return viewCapabilities.parse(
+    await this.request<unknown>("/views/capabilities", { fresh: true }),
+  );
+}
+
+export function callListViews(
+  this: OrbynClient,
+  options: { fresh?: boolean } = {},
+) {
+  return this.request<SavedView[]>(
+    "/views",
+    options.fresh
+      ? { fresh: true, headers: { "X-Orbyn-Consistency": "primary" } }
+      : {},
+  );
 }
 
 export function callCreateView(this: OrbynClient, input: SavedViewInput) {
-  return this.request<SavedView>("/views", { method: "POST", body: input });
+  return this.request<SavedView>("/views", {
+    method: "POST",
+    body: input,
+    headers: { [VIEW_FEATURE_HEADER]: VIEW_FEATURE },
+  });
 }
 
 export function callUpdateView(
@@ -34,6 +55,7 @@ export function callUpdateView(
   return this.request<SavedView>(`/views/${id}`, {
     method: "PUT",
     body: input,
+    headers: { [VIEW_FEATURE_HEADER]: VIEW_FEATURE },
   });
 }
 

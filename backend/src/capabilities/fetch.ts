@@ -20,10 +20,10 @@ import {
   visibleTemplates,
   visibleViews,
 } from "../lib/visibility.js";
-import { describeSavedView, fromSavedView } from "./query-def.js";
+import { describeSavedView } from "./query-def.js";
 import { findView } from "./view-store.js";
 import { jobs } from "../modules/imports/service.js";
-import { runView } from "./query.js";
+import { runSavedViewPage } from "./saved-view-query.js";
 import { READ, minutesText, spaceName } from "./common.js";
 import {
   MAX_RESULT_CHARS,
@@ -776,20 +776,26 @@ async function fetchProposal(
 async function fetchView(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
   const view = await findView(ctx.db, ctx.spaces, ref.id);
   if (!view) throw notFound();
-  const { query, notes } = fromSavedView(view.definition);
-  const { rows, more } = await runView(ctx, query, 50, 0);
+  const grouped = view.definition.group_by !== "none";
+  const { rows, more, truncated } = await runSavedViewPage(
+    ctx,
+    view,
+    {},
+    50,
+    0,
+  );
   const r = refs({ type: "view", id: view.id });
   const name = cleanTitle(view.name) || "Untitled view";
   const cell = (t: string) => t.replace(/\|/g, "/").replace(/\n/g, " ");
   const text = [
     `# ${name}`,
     `${describeSavedView(view.definition)} · ${spaceName(view.team_id, ctx.principal.teams)}`,
-    ...(notes.length ? [`In the app, also: ${notes.join("; ")}.`] : []),
+
     "",
     ...(rows.length
       ? [
-          `| ${query.group_by ? "Group | " : ""}Title | Status | Due | Id |`,
-          `|${query.group_by ? " --- |" : ""} --- | --- | --- | --- |`,
+          `| ${grouped ? "Group | " : ""}Title | Status | Due | Id |`,
+          `|${grouped ? " --- |" : ""} --- | --- | --- | --- |`,
           ...rows.map(
             (row) =>
               `| ${row.group !== null ? `${cell(row.group)} | ` : ""}${cell(lineTitle(row.title, row.url, row.provenance, row.type))} | ${row.status ?? ""} | ${row.due?.local ?? ""} | ${row.id} |`,
@@ -797,6 +803,12 @@ async function fetchView(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
         ]
       : ["Nothing matches right now."]),
     ...(more ? ["", `More rows: query with view "${r.id}".`] : []),
+    ...(truncated
+      ? [
+          "",
+          "The saved-view scan or 500-row limit was reached. Narrow its filters for complete results.",
+        ]
+      : []),
   ].join("\n");
   return {
     id: r.id,
@@ -814,7 +826,7 @@ async function fetchView(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
       updated_at: view.updated_at,
       provenance:
         view.user_id === ctx.principal.user.id ? "you" : "teammate:a teammate",
-      truncated: more,
+      truncated: more || truncated,
       next_block: null,
     },
   };

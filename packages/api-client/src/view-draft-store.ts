@@ -1,4 +1,4 @@
-import type { ViewDefinition, ViewSource } from "@orbyn/core";
+import type { SavedView, ViewDefinition, ViewSource } from "@orbyn/core";
 
 export type ViewCreationDraft = {
   source: ViewSource;
@@ -18,9 +18,101 @@ export class ViewDraftStore {
   readonly drafts = new Map<string, ViewDefinition>();
   readonly saved = new Map<
     string,
-    { definition: ViewDefinition; version: number }
+    { definition: ViewDefinition; version: number; serverVersion?: number }
   >();
-  readonly states: Record<string, "saving" | "failed" | "saved"> = {};
+  readonly states: Record<string, "saving" | "failed" | "saved" | "uncertain"> =
+    {};
+  private serverVersions = new Map<string, number>();
+  private retryRequired = new Set<string>();
+  private attempts = new Map<
+    string,
+    { definition: ViewDefinition; base: number | undefined; unknown: boolean }
+  >();
+  private checking = new Map<string, object>();
+  canRetry(id: string) {
+    return !this.attempts.has(id) && !this.jobs.get(id)?.running;
+  }
+  definitionFor(view: SavedView) {
+    const draft = this.drafts.get(view.id),
+      saved = this.saved.get(view.id);
+    if (draft) return draft;
+    if (
+      saved &&
+      (view.version === undefined ||
+        (saved.serverVersion !== undefined &&
+          saved.serverVersion >= view.version))
+    )
+      return saved.definition;
+    return view.definition;
+  }
+  observe(view: SavedView) {
+    if (
+      this.stopped ||
+      !this.current() ||
+      this.drafts.has(view.id) ||
+      this.attempts.has(view.id)
+    )
+      return;
+    if (
+      view.version !== undefined &&
+      view.version >= (this.serverVersions.get(view.id) ?? 0)
+    )
+      this.serverVersions.set(view.id, view.version);
+  }
+  /** Read-only reconciliation. An equal base cannot prove a pending CAS finished. */
+  async check(id: string) {
+    if (!this.read || this.stopped || !this.current() || this.checking.has(id))
+      return;
+    const generation = this.generation,
+      attempt = this.attempts.get(id);
+    const readLease = {};
+    this.checking.set(id, readLease);
+    try {
+      const view = await this.read(id);
+      if (
+        this.stopped ||
+        !this.current() ||
+        generation !== this.generation ||
+        this.attempts.get(id) !== attempt
+      )
+        return;
+      if (
+        view.id !== id ||
+        view.version === undefined ||
+        !Number.isSafeInteger(view.version) ||
+        view.version < 0 ||
+        (attempt?.base !== undefined && view.version < attempt.base)
+      )
+        throw new Error("This server did not return a view revision.");
+      if (
+        attempt?.unknown &&
+        (attempt.base === undefined || view.version <= attempt.base)
+      )
+        throw new Error(
+          "The saved view still has the original revision. The pending save has not been resolved; check again.",
+        );
+      this.serverVersions.set(id, view.version);
+      const matches =
+        attempt &&
+        JSON.stringify(view.definition) === JSON.stringify(attempt.definition);
+      if (matches && this.drafts.get(id) === attempt.definition)
+        this.drafts.delete(id);
+      this.saved.set(id, {
+        definition: view.definition,
+        version: this.revision + 1,
+        serverVersion: view.version,
+      });
+      this.attempts.delete(id);
+      if (!matches && this.drafts.has(id)) this.retryRequired.add(id);
+      this.states[id] = this.drafts.has(id) ? "failed" : "saved";
+      this.publish();
+    } catch (error) {
+      if (!this.stopped && this.current() && generation === this.generation)
+        this.report(error);
+    } finally {
+      if (this.checking.get(id) === readLease) this.checking.delete(id);
+    }
+  }
   private jobs = new Map<
     string,
     {
@@ -40,9 +132,13 @@ export class ViewDraftStore {
     private write: (
       id: string,
       definition: ViewDefinition,
-    ) => Promise<ViewDefinition>,
+      expectedVersion?: number,
+    ) => Promise<
+      ViewDefinition | { definition: ViewDefinition; version: number }
+    >,
     private current: () => boolean,
     private report: (error: unknown) => void,
+    private read?: (id: string) => Promise<SavedView>,
   ) {}
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -63,10 +159,15 @@ export class ViewDraftStore {
   ) {
     if (this.stopped || !this.current()) return;
     this.drafts.set(id, definition);
-    if (!editable) {
+    if (
+      !editable ||
+      (this.retryRequired.has(id) && !immediate) ||
+      (this.attempts.has(id) && !this.jobs.get(id)?.running)
+    ) {
       this.publish();
       return;
     }
+    if (immediate) this.retryRequired.delete(id);
     const job = this.jobs.get(id) ?? { running: false, next: null };
     this.jobs.set(id, job);
     job.next = definition;
@@ -94,7 +195,25 @@ export class ViewDraftStore {
       ) {
         const next = job.next;
         job.next = null;
-        const definition = await this.write(id, next);
+        const attempt = {
+          definition: next,
+          base: this.serverVersions.get(id),
+          unknown: false,
+        };
+        this.attempts.set(id, attempt);
+        const receipt = await this.write(id, next, attempt.base);
+        const definition =
+          "definition" in receipt ? receipt.definition : receipt;
+        if ("definition" in receipt) {
+          if (
+            !Number.isSafeInteger(receipt.version) ||
+            (attempt.base !== undefined && receipt.version <= attempt.base) ||
+            JSON.stringify(definition) !== JSON.stringify(next)
+          )
+            throw new Error(
+              "The save receipt did not match the submitted view. Check the saved view before trying again.",
+            );
+        }
         if (
           this.stopped ||
           !this.current() ||
@@ -102,7 +221,16 @@ export class ViewDraftStore {
           this.jobs.get(id) !== job
         )
           return;
-        this.saved.set(id, { definition, version: this.revision + 1 });
+        if ("definition" in receipt)
+          this.serverVersions.set(id, receipt.version);
+        this.attempts.delete(id);
+        this.saved.set(id, {
+          definition,
+          version: this.revision + 1,
+          ...("definition" in receipt
+            ? { serverVersion: receipt.version }
+            : {}),
+        });
         if (this.drafts.get(id) === next) this.drafts.delete(id);
         this.states[id] = job.next ? "saving" : "saved";
         this.publish();
@@ -115,7 +243,13 @@ export class ViewDraftStore {
         generation === this.generation &&
         this.jobs.get(id) === job
       ) {
-        this.states[id] = "failed";
+        const status = (error as { status?: number })?.status;
+        const definitive = [400, 401, 403, 404, 409, 422].includes(status ?? 0);
+        const attempt = this.attempts.get(id);
+        if (attempt) attempt.unknown = !definitive;
+        if (!this.read) this.attempts.delete(id); // Legacy adapter has no CAS/readback contract.
+        // Even a definitive CAS conflict needs a fresh revision before retry.
+        this.states[id] = definitive || !this.read ? "failed" : "uncertain";
         this.publish();
         this.report(error);
       }
@@ -132,6 +266,9 @@ export class ViewDraftStore {
     this.jobs.delete(id);
     this.drafts.delete(id);
     this.saved.delete(id);
+    this.serverVersions.delete(id);
+    this.retryRequired.delete(id);
+    this.attempts.delete(id);
     delete this.states[id];
     this.publish();
   }
@@ -146,6 +283,10 @@ export class ViewDraftStore {
     this.drafts.clear();
     this.creation = null;
     this.saved.clear();
+    this.serverVersions.clear();
+    this.retryRequired.clear();
+    this.attempts.clear();
+    this.checking.clear();
     this.listeners.clear();
   }
 }

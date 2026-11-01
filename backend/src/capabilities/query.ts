@@ -40,7 +40,9 @@ import {
   CapabilityError,
   defineCapability,
   type CapabilityContext,
+  cursorCodec,
 } from "./registry.js";
+import { effectiveSavedView, runSavedViewPage } from "./saved-view-query.js";
 import { docEditorsSql, itemSourceSql } from "./sources.js";
 
 /**
@@ -529,7 +531,8 @@ export const query = defineCapability({
   mode: "read",
   tier: "R",
   async run(ctx, a) {
-    const offset = await ctx.cursor.open(a.cursor);
+    let codec = ctx.cursor;
+    let offset = 0;
     let saved: Awaited<ReturnType<typeof findView>> = null;
     if (a.view) {
       const ref = parseRef(a.view);
@@ -549,6 +552,22 @@ export const query = defineCapability({
     }
     const asked = definitionFrom(a);
     const base = saved ? fromSavedView(saved.definition) : null;
+    if (saved) {
+      const effective = effectiveSavedView(ctx, saved, asked);
+      codec = cursorCodec(ctx.principal, "query", a, {
+        version: saved.version,
+        definition: effective.definition,
+        // Bind the semantic "overdue now" constraint, not this request's moving
+        // clock. Rows remain live between pages; version/day/zone still fence reuse.
+        extra: {
+          ...effective.extra,
+          ...(effective.extra.overdueBefore ? { overdueBefore: "now" } : {}),
+        },
+        day: localDateKey(ctx.now, ctx.timezone),
+        timeZone: ctx.timezone,
+      });
+    }
+    offset = await codec.open(a.cursor);
     if (base && asked.over && asked.over !== base.query.over)
       throw new CapabilityError(
         "INVALID",
@@ -563,26 +582,32 @@ export const query = defineCapability({
     };
     // A sort given here reads the usual way round.
     if (asked.sort) delete d.desc;
-    const { rows, more } = await runView(ctx, d, a.limit, offset);
-    const next = more ? await ctx.cursor.seal(offset + a.limit) : null;
+    const output = saved
+      ? await runSavedViewPage(ctx, saved, asked, a.limit, offset)
+      : await runView(ctx, d, a.limit, offset);
+    const { rows, more } = output;
+    const truncated = "truncated" in output && output.truncated;
+    const next = more ? await codec.seal(offset + a.limit) : null;
     const what = d.over === "docs" ? "pages" : d.over;
     const head = saved
       ? `${saved.name} (${saved.definition.layout}): ${rows.length} ${what}`
       : `${rows.length} ${what}`;
-    const markdown = rows.length
+    const bodyMarkdown = rows.length
       ? [
           `${head}${next ? " (more with next_cursor)" : ""}:`,
           ...rows.map(
             (r) =>
               `- ${r.group ? `[${r.group}] ` : ""}${lineTitle(r.title, r.url, r.provenance, r.type)}${r.status ? ` (${r.status}${r.due ? `, due ${r.due.local}` : ""})` : ""} · ${r.team} · ${r.id}`,
           ),
-          ...(base?.notes.length
-            ? [`(In the app, also: ${base.notes.join("; ")}.)`]
-            : []),
         ].join("\n")
       : saved
         ? `${saved.name}: nothing matches right now.`
         : `No ${what} match.`;
+    const markdown =
+      bodyMarkdown +
+      (truncated
+        ? "\nThe saved-view scan or 500-row limit was reached; narrow its filters for complete results."
+        : "");
     const viewRef = saved ? refs({ type: "view", id: saved.id }) : null;
     return {
       structured: {
@@ -597,7 +622,7 @@ export const query = defineCapability({
                 layout: saved.definition.layout,
                 group_by: d.group_by ?? null,
                 columns: saved.definition.columns ?? [],
-                not_applied: base?.notes ?? [],
+                not_applied: [],
               }
             : null,
         rows,

@@ -1,5 +1,7 @@
 import {
   VIEW_COLUMNS,
+  VIEW_FEATURE,
+  viewFeatures,
   VIEW_GROUP_LABELS,
   VIEW_GROUPS,
   VIEW_LAYOUT_LABELS,
@@ -63,8 +65,8 @@ import {
 import { useAccount } from "../../app/account";
 import type { ScreenProps } from "../../app/routes";
 import { messageOf, useResource } from "../../lib/resource";
-import { useNavigate, useTitle } from "../../lib/router";
-import { client } from "../../lib/session";
+import { useNavigate, useTitle, useBeforeNavigate } from "../../lib/router";
+import { client, getSessionVersion, getToken } from "../../lib/session";
 import {
   Button,
   Dialog,
@@ -100,7 +102,7 @@ import {
   NO_REFINE,
   readRefine,
   refinePlace,
-  refineRows,
+  refineDefinition,
   writeRefine,
   type Refine,
 } from "./refine";
@@ -375,7 +377,17 @@ export default function ViewsScreen({ params }: ScreenProps) {
   const navigate = useNavigate();
   const open = (id: string) => navigate(`/app/view/${id}`);
   useTitle("Views");
-  const { user } = useAccount();
+  const { user, version } = useAccount();
+  const screenMounted = useRef(true);
+  useEffect(() => {
+    screenMounted.current = true;
+    return () => {
+      screenMounted.current = false;
+    };
+  }, []);
+  const owned = () =>
+    screenMounted.current && !!getToken() && getSessionVersion() === version;
+  const capabilities = useResource(() => client.viewCapabilities(), [version]);
   const userId = user?.id;
   const planning = usePlanning();
   const items = useItems();
@@ -453,14 +465,16 @@ export default function ViewsScreen({ params }: ScreenProps) {
   const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
   const editing = useRef(new Set<string>());
   const viewId = view?.id;
+  const active = useRef({ viewId, refine: NO_REFINE });
 
   const refine = useMemo(
     () =>
       viewId ? readRefine(prefs.prefs.views[refinePlace(viewId)]) : NO_REFINE,
     [viewId, prefs.prefs.views],
   );
+  active.current = { viewId, refine };
   const setRefine = (next: Refine) => {
-    if (!viewId) return;
+    if (!owned() || !viewId) return;
     saveViewChoice(refinePlace(viewId), writeRefine(next)).catch((e) =>
       toast({ text: messageOf(e, "Couldn't save that filter."), error: true }),
     );
@@ -468,12 +482,18 @@ export default function ViewsScreen({ params }: ScreenProps) {
 
   // The working copy follows the open view, and a draft saved in place follows it back.
   useEffect(() => {
-    setDef(view ? (store.drafts.get(view.id) ?? view.definition) : null);
+    if (view) store.observe(view);
+    setDef(view ? store.definitionFor(view) : null);
     setFolded(new Set());
     setResult(null);
     setRowsError("");
     setFiltersOpen(false);
-  }, [viewId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewId, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!view) return;
+    store.observe(view);
+    setDef(store.definitionFor(view));
+  }, [viewId, view?.version, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const running = useRef(0);
   const resultKey = useRef("");
@@ -482,32 +502,34 @@ export default function ViewsScreen({ params }: ScreenProps) {
     const id = ++running.current;
     setRowsLoading(true);
     setRowsError("");
-    const key = `${viewId}:${JSON.stringify(def)}:${refine.status}`;
+    const key = `${viewId}:${JSON.stringify(def)}:${JSON.stringify(refine)}`;
     if (resultKey.current !== key) setResult(null);
     const timer = setTimeout(() => {
-      const asking = refine.status
-        ? { ...def, filters: { ...def.filters, status: "any" as const } }
-        : def;
+      if (!owned()) return;
+      const asking = refineDefinition(def, refine);
       client.runDefinition(asking).then(
         (value) => {
-          if (id !== running.current) return;
+          if (id !== running.current || !owned()) return;
           resultKey.current = key;
           setResult(value);
           setRowsLoading(false);
         },
         (failure) => {
-          if (id !== running.current) return;
+          if (id !== running.current || !owned()) return;
           setRowsLoading(false);
           setRowsError(messageOf(failure, "Couldn't load results."));
         },
       );
     }, 180);
-    return () => clearTimeout(timer);
-  }, [def, stamp, viewId, items, refine.status]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      clearTimeout(timer);
+      running.current += 1;
+    };
+  }, [def, stamp, viewId, items, refine, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const change = (next: Partial<ViewDefinitionInput>) => {
     const current = definition.current;
-    if (!current || !view) return;
+    if (!owned() || !current || !view) return;
     if (cellBusy.current) {
       toast({ text: "Finish or cancel the cell edit first." });
       return;
@@ -517,7 +539,15 @@ export default function ViewsScreen({ params }: ScreenProps) {
       ...next,
     } as ViewDefinitionInput);
     definition.current = changed;
-    store.change(view.id, changed, view.can_edit);
+    const supported =
+      !viewFeatures(changed).length ||
+      !!capabilities.data?.features.includes(VIEW_FEATURE);
+    store.change(view.id, changed, view.can_edit && supported);
+    if (!supported)
+      toast({
+        text: "These filters are a temporary preview: the server has not confirmed exact-filter save support.",
+        error: true,
+      });
     setDef(changed);
   };
   const choose = (id: string) => {
@@ -601,20 +631,112 @@ export default function ViewsScreen({ params }: ScreenProps) {
       setBusy(false);
     }
   };
+  type CreationAttempt = {
+    generation: number;
+    key: string;
+    at: number;
+    before: Set<string>;
+    input: { name: string; definition: ViewDefinition; team_id: string | null };
+  };
+  const creationAttempt = useRef<CreationAttempt | null>(null);
+  const creationLock = useRef<{ generation: number } | null>(null);
+  const [creationStatus, setCreationStatus] = useState<{
+    generation: number;
+    unknown: boolean;
+  } | null>(null);
+  useBeforeNavigate(
+    () =>
+      !owned() ||
+      (creationLock.current?.generation !== version &&
+        creationAttempt.current?.generation !== version),
+  );
   const create = async (
     name: string,
     input: ViewDefinitionInput,
     teamId: string | null,
   ) => {
-    const made = await client.createView({
-      name,
-      definition: input,
+    if (!owned() || creationLock.current?.generation === version) return;
+    const payload = {
+      name: name.trim(),
+      definition: fullDefinition(input),
       team_id: teamId,
-    });
-    setViews((list) => [...list, made]);
-    store.keepCreation(null);
-    setCreating(false);
-    open(made.id);
+    };
+    const lease = { generation: version };
+    creationLock.current = lease;
+    let attempt =
+      creationAttempt.current?.generation === version
+        ? creationAttempt.current
+        : null;
+    try {
+      if (attempt && !same(attempt.input, payload))
+        throw new Error(
+          "Resolve the existing create request before saving different view details.",
+        );
+      if (!attempt) {
+        if (
+          viewFeatures(payload.definition).length &&
+          !capabilities.data?.features.includes(VIEW_FEATURE)
+        )
+          throw new Error(
+            "This server has not confirmed exact task-filter support.",
+          );
+        const before = new Set(
+          (await client.listViews({ fresh: true })).map((v) => v.id),
+        );
+        if (!owned() || creationLock.current !== lease) return;
+        attempt = {
+          generation: version,
+          key: crypto.randomUUID(),
+          at: Date.now(),
+          before,
+          input: payload,
+        };
+        creationAttempt.current = attempt;
+      }
+      const age = Date.now() - attempt.at;
+      if (!Number.isFinite(age) || age < 0 || age >= 23 * 60 * 60 * 1000)
+        throw new Error(
+          "This request is too old to safely replay. Inspect the saved-view library before starting another create.",
+        );
+      if (!owned()) return;
+      const made = await client.once(attempt.key, () =>
+        client.createView(attempt!.input),
+      );
+      if (!owned() || creationAttempt.current !== attempt) return;
+      if (
+        !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(made.id) ||
+        attempt.before.has(made.id) ||
+        made.user_id !== userId ||
+        made.team_id !== payload.team_id ||
+        made.name !== payload.name ||
+        !same(fullDefinition(made.definition), payload.definition)
+      )
+        throw new Error(
+          "The view create receipt did not match. Check or replay only the retained request.",
+        );
+      creationAttempt.current = null;
+      setCreationStatus(null);
+      setViews((list) => [...list.filter((v) => v.id !== made.id), made]);
+      store.keepCreation(null);
+      setCreating(false);
+      if (creationLock.current === lease) creationLock.current = null;
+      open(made.id);
+    } catch (error) {
+      if (!owned() || creationLock.current !== lease) return;
+      if (
+        [400, 401, 403, 404, 409, 422].includes(
+          (error as { status?: number })?.status ?? 0,
+        )
+      )
+        creationAttempt.current = null;
+      setCreationStatus({
+        generation: version,
+        unknown: !!creationAttempt.current,
+      });
+      throw error;
+    } finally {
+      if (creationLock.current === lease) creationLock.current = null;
+    }
   };
   const setStar = (id: string, on: boolean) =>
     manage(async () => {
@@ -665,10 +787,7 @@ export default function ViewsScreen({ params }: ScreenProps) {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
 
-  const rows = useMemo(
-    () => (result ? refineRows(result.rows, refine) : []),
-    [result, refine],
-  );
+  const rows = useMemo(() => result?.rows ?? [], [result, refine]);
   const layoutRows = useMemo(
     () =>
       rows.map((row) =>
@@ -1232,14 +1351,108 @@ export default function ViewsScreen({ params }: ScreenProps) {
                 </Button>
               </div>
             )}
-            {view.can_edit && store.states[view.id] === "failed" && (
-              <div className="vw-note" role="status">
-                <span>Changes weren't saved.</span>
-                <Button onClick={() => store.change(view.id, def, true, true)}>
-                  Retry save
+            {hasRefine(refine) && (
+              <div className="vw-note">
+                <span>
+                  My filters are private. CSV exports the saved definition.
+                </span>
+                <Button onClick={() => setRefine(NO_REFINE)}>
+                  Clear my filters
                 </Button>
+                <Button
+                  onClick={() =>
+                    void create(
+                      `${view.name} (my filters)`,
+                      refineDefinition(def, refine),
+                      null,
+                    ).catch((e) =>
+                      actions.fail(e, "Couldn't save a personal copy."),
+                    )
+                  }
+                >
+                  Save personal copy
+                </Button>
+                {view.can_edit && (
+                  <Button
+                    disabled={
+                      busy ||
+                      !capabilities.data?.features.includes(VIEW_FEATURE)
+                    }
+                    onClick={async () => {
+                      if (!owned() || lock.current) return;
+                      lock.current = true;
+                      try {
+                        if (
+                          !(await confirm({
+                            title: "Make my filters part of this view?",
+                            action: "Save shared filters",
+                          }))
+                        )
+                          return;
+                        if (
+                          !owned() ||
+                          active.current.viewId !== view.id ||
+                          active.current.refine !== refine ||
+                          definition.current !== def ||
+                          !view.can_edit
+                        )
+                          return;
+                        const changed = refineDefinition(def, refine);
+                        definition.current = changed;
+                        setDef(changed);
+                        store.change(view.id, changed, true, true);
+                      } finally {
+                        lock.current = false;
+                      }
+                    }}
+                  >
+                    Save filters in view
+                  </Button>
+                )}
               </div>
             )}
+            {view.can_edit &&
+              (store.states[view.id] === "failed" ||
+                store.states[view.id] === "uncertain") && (
+                <div className="vw-note" role="status">
+                  <span>
+                    {store.states[view.id] === "uncertain"
+                      ? "The save outcome is unknown. Check its current revision before saving again."
+                      : "Changes weren't saved. Refresh the saved revision before retrying."}
+                  </span>
+                  <Button onClick={() => void store.check(view.id)}>
+                    Check saved view
+                  </Button>
+                  <Button
+                    disabled={!store.canRetry(view.id)}
+                    onClick={async () => {
+                      if (!owned() || lock.current) return;
+                      lock.current = true;
+                      try {
+                        if (
+                          !(await confirm({
+                            title:
+                              "Replace the saved view with your retained changes?",
+                            action: "Save retained changes",
+                          }))
+                        )
+                          return;
+                        if (
+                          !owned() ||
+                          active.current.viewId !== view.id ||
+                          definition.current !== def
+                        )
+                          return;
+                        store.change(view.id, def, true, true);
+                      } finally {
+                        lock.current = false;
+                      }
+                    }}
+                  >
+                    Save retained changes
+                  </Button>
+                </div>
+              )}
             {view.can_edit && store.states[view.id] === "saving" && (
               <p className="muted small" role="status">
                 Saving view…
@@ -1269,8 +1482,41 @@ export default function ViewsScreen({ params }: ScreenProps) {
           </>
         )}
       </section>
+      {creationStatus?.generation === version && creationStatus.unknown && (
+        <div role="status" className="vw-note">
+          <span>
+            The view creation outcome is unknown. Keep this request open; a new
+            create could duplicate it.
+          </span>
+          <Button
+            onClick={() => {
+              const attempt = creationAttempt.current;
+              if (attempt?.generation === version)
+                void create(
+                  attempt.input.name,
+                  attempt.input.definition,
+                  attempt.input.team_id,
+                ).catch((e) =>
+                  actions.fail(e, "Couldn't resolve view creation."),
+                );
+            }}
+          >
+            Retry exact create
+          </Button>
+        </div>
+      )}
       {creating && (
-        <NewView onClose={() => setCreating(false)} onCreate={create} />
+        <NewView
+          onClose={() => {
+            if (
+              creationAttempt.current?.generation === version ||
+              creationLock.current?.generation === version
+            )
+              toast({ text: "Resolve the pending create before closing." });
+            else setCreating(false);
+          }}
+          onCreate={create}
+        />
       )}
       {renaming && view && (
         <Rename

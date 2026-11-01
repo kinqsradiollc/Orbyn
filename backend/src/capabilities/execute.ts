@@ -428,7 +428,7 @@ export async function execute(
               options.primary,
             timeoutMs: READ_TIMEOUT_MS,
             jit: cap.readJit,
-            ...(options.recordQuietReads
+            ...(options.recordQuietReads || name === "query" || name === "fetch"
               ? { isolation: "repeatable read" as const }
               : {}),
           })

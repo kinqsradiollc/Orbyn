@@ -1,3 +1,4 @@
+import { takeTaskDrop } from "../shared-task/drag";
 import {
   sessionLine,
   statusLabels,
@@ -391,7 +392,7 @@ export function TimeGrid({
   };
   const onDrop = (e: DragEvent<HTMLDivElement>, day: number) => {
     setDropHint(null);
-    const id = e.dataTransfer.getData(TASK_MIME);
+    const id = takeTaskDrop(e.dataTransfer);
     if (!id) return;
     e.preventDefault();
     onDropTask(id, at(days[day], minutesAt(e.clientY, day)));
@@ -405,7 +406,7 @@ export function TimeGrid({
     onDragLeave: () => setDropDay((was) => (was === day ? null : was)),
     onDrop: (e: DragEvent) => {
       setDropDay(null);
-      const id = e.dataTransfer.getData(TASK_MIME);
+      const id = takeTaskDrop(e.dataTransfer);
       if (!id) return;
       e.preventDefault();
       onDropTaskOnDay(id, day);

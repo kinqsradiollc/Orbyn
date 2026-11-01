@@ -653,48 +653,203 @@ test("save_view and query: saved, run, changed, starred, and kept as the app kee
   assert.equal(back.definition.filters.due_within_days, 7);
 });
 
-test("query runs a view the app saved, and says what only the app applies", async () => {
+test("saved page views apply real custom fields consistently in app, query, fetch and CSV", async () => {
+  const madeField = await h.call(olga.token, "POST", "/fields", {
+    name: "View relevance",
+    applies_to: "page",
+    type: "text",
+  });
+  assert.equal(madeField.statusCode, 201, madeField.body);
+  const fieldId = madeField.json().id;
   const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO saved_views (user_id, name, source, definition)
-     VALUES ($1, 'Pages by field', 'pages', $2::jsonb) RETURNING id`,
+    `INSERT INTO saved_views (user_id,name,source,definition) VALUES($1,'Pages by field','pages',$2::jsonb) RETURNING id`,
     [
       olga.id,
       JSON.stringify({
         source: "pages",
-        filters: {
-          fields: [
-            {
-              field: "00000000-0000-4000-8000-000000000001",
-              op: "not_empty",
-            },
-          ],
-        },
+        filters: { fields: [{ field: fieldId, op: "not_empty" }] },
         sort: { by: "title", dir: "desc" },
         group_by: "folder",
         layout: "gallery",
       }),
     ],
   );
-  await newDoc(olga, { title: "Aardvark notes", content: [] });
-  await newDoc(olga, { title: "Zebra notes", content: [] });
+  const a = await newDoc(olga, { title: "Aardvark field notes", content: [] });
+  const z = await newDoc(olga, { title: "Zebra field notes", content: [] });
+  await newDoc(olga, { title: "Excluded field notes", content: [] });
+  for (const doc of [a, z]) {
+    const value = await h.call(olga.token, "PUT", `/fields/${fieldId}/value`, {
+      target: "page",
+      target_id: doc.id,
+      value: "included",
+    });
+    assert.equal(value.statusCode, 200, value.body);
+  }
+  const id = rows[0].id;
   const run = ok(
     await tool(keys.write, "query", {
-      view: `view:${rows[0].id}`,
-      text: "notes",
+      view: `view:${id}`,
+      text: "field notes",
     }),
   );
   assert.equal(run.over, "docs");
   assert.equal(run.view.layout, "gallery");
-  assert.equal(run.view.not_applied.length, 2);
-  const titles = run.rows.map((r: any) => r.title);
+  assert.deepEqual(run.view.not_applied, []);
+  assert.deepEqual(
+    run.rows.map((r: any) => r.id),
+    [`doc:${z.id}`, `doc:${a.id}`],
+  );
+  const appRun = await h.call(olga.token, "POST", "/views/run", { id });
+  assert.equal(appRun.statusCode, 200, appRun.body);
+  assert.deepEqual(
+    appRun.json().rows.map((r: any) => `doc:${r.id}`),
+    run.rows.map((r: any) => r.id),
+  );
+  const fetched = ok(await tool(keys.write, "fetch", { id: `view:${id}` }));
+  assert.doesNotMatch(fetched.text, /In the app, also:|Excluded field notes/);
   assert.ok(
-    titles.indexOf("Zebra notes") < titles.indexOf("Aardvark notes"),
-    "sorted by name, reversed",
+    fetched.text.indexOf("Zebra field notes") <
+      fetched.text.indexOf("Aardvark field notes"),
   );
-  const fetched = ok(
-    await tool(keys.write, "fetch", { id: `view:${rows[0].id}` }),
+  const csv = await h.call(olga.token, "GET", `/views/${id}/export.csv`);
+  assert.equal(csv.statusCode, 200, csv.body);
+  assert.doesNotMatch(csv.body, /Excluded field notes/);
+  assert.ok(
+    csv.body.includes("Zebra field notes") &&
+      csv.body.includes("Aardvark field notes"),
   );
-  assert.match(fetched.text, /In the app, also:/);
+  assert.ok(
+    csv.body.indexOf("Zebra field notes") <
+      csv.body.indexOf("Aardvark field notes"),
+  );
+});
+
+test("saved project status overrides use shared active/done semantics with unchanged query scope", async () => {
+  const marker = `lv-project-status-${olga.id}`;
+  const states = ["active", "done", "archived"] as const;
+  const inCrew = new Map<(typeof states)[number], string>();
+  const outside = new Map<(typeof states)[number], string>();
+  for (const [teamId, destination] of [
+    [crew, inCrew],
+    [other, outside],
+  ] as const) {
+    for (const status of states) {
+      const created = await h.call(olga.token, "POST", "/projects", {
+        name: `${marker} ${teamId === crew ? "crew" : "outside"} ${status}`,
+        team_id: teamId,
+      });
+      assert.equal(created.statusCode, 201, created.body);
+      const id = created.json().id as string;
+      const updated = await pool.query(
+        "UPDATE projects SET status=$1 WHERE id=$2 AND user_id=$3 AND team_id=$4 RETURNING id",
+        [status, id, olga.id, teamId],
+      );
+      assert.equal(updated.rowCount, 1);
+      destination.set(status, id);
+    }
+  }
+  const expected = (status: "open" | "done" | "any", ids = inCrew) => {
+    const selected: readonly (typeof states)[number][] =
+      status === "any" ? states : [status === "open" ? "active" : "done"];
+    return selected.map((state) => `project:${ids.get(state)!}`).sort();
+  };
+  for (const status of ["open", "done", "any"] as const) {
+    const made = await h.call(olga.token, "POST", "/views", {
+      name: `${marker} ${status}`,
+      team_id: crew,
+      definition: {
+        source: "projects",
+        filters: { text: marker, status },
+        sort: { by: "title", dir: "asc" },
+        layout: "table",
+      },
+    });
+    assert.equal(made.statusCode, 201, made.body);
+    const id = made.json().id as string;
+    const wanted = expected(status);
+    // Vi can read only Crew fixtures. Olga's crew-only key also excludes Other,
+    // despite Olga owning both sets, so these are equal effective fixture scopes.
+    const http = await h.call(vi.token, "POST", "/views/run", { id });
+    assert.equal(http.statusCode, 200, http.body);
+    assert.deepEqual(
+      http
+        .json()
+        .rows.map((row: { id: string }) => `project:${row.id}`)
+        .sort(),
+      wanted,
+    );
+    const run = ok(await tool(keys.crewOnly, "query", { view: `view:${id}` }));
+    assert.deepEqual(
+      run.rows.map((row: { id: string }) => row.id).sort(),
+      wanted,
+    );
+    const redundant = ok(
+      await tool(keys.crewOnly, "query", { view: `view:${id}`, status }),
+    );
+    assert.deepEqual(
+      redundant.rows.map((row: { id: string }) => row.id).sort(),
+      wanted,
+      `a redundant ${status} override must not reinterpret project completion as archive`,
+    );
+    const fetched = ok(
+      await tool(keys.crewOnly, "fetch", { id: `view:${id}` }),
+    );
+    assert.deepEqual(
+      (fetched.text.match(/\bproject:[a-f0-9-]{36}\b/gi) ?? []).sort(),
+      wanted,
+    );
+    for (const hidden of outside.values())
+      assert.ok(!fetched.text.includes(hidden));
+    if (status !== "any") {
+      const changedStatus = status === "open" ? "done" : "open";
+      const changed = ok(
+        await tool(keys.crewOnly, "query", {
+          view: `view:${id}`,
+          status: changedStatus,
+        }),
+      );
+      assert.deepEqual(
+        changed.rows.map((row: { id: string }) => row.id).sort(),
+        expected(changedStatus),
+      );
+    }
+    // The Other rows really qualify for the stored filter when the caller has
+    // authority. Their absence above is scope preservation, not fixture accident.
+    const broader = await h.call(olga.token, "POST", "/views/run", { id });
+    assert.equal(broader.statusCode, 200, broader.body);
+    assert.deepEqual(
+      broader
+        .json()
+        .rows.map((row: { id: string }) => `project:${row.id}`)
+        .sort(),
+      [...wanted, ...expected(status, outside)].sort(),
+    );
+  }
+  // Preserve the separately established legacy ad-hoc QueryDef contract.
+  const legacyOpen = ok(
+    await tool(keys.crewOnly, "query", {
+      over: "projects",
+      status: "open",
+      text: marker,
+    }),
+  );
+  assert.deepEqual(
+    legacyOpen.rows.map((row: { id: string }) => row.id).sort(),
+    [inCrew.get("active"), inCrew.get("done")]
+      .map((id) => `project:${id}`)
+      .sort(),
+  );
+  const legacyDone = ok(
+    await tool(keys.crewOnly, "query", {
+      over: "projects",
+      status: "done",
+      text: marker,
+    }),
+  );
+  assert.deepEqual(
+    legacyDone.rows.map((row: { id: string }) => row.id),
+    [`project:${inCrew.get("archived")}`],
+  );
 });
 
 test("team views: members share them, viewers' agents only read them", async () => {
@@ -962,4 +1117,49 @@ test("the server advertises prompts and completions on both eras", async () => {
   const modern = await h.modern(keys.write, "prompts/list");
   assert.equal(modern.status, 200, JSON.stringify(modern.body));
   assert.ok(modern.body.result.prompts.length >= 5);
+});
+
+test("saved-view overdue pagination binds the constraint rather than the moving request clock", async () => {
+  const marker = `cursor-clock-${crypto.randomUUID()}`;
+  const made: string[] = [];
+  let savedId = "";
+  try {
+    for (const suffix of ["a", "b", "c"]) {
+      const task = await newTask(olga, {
+        title: `${marker}-${suffix}`,
+        due_at: new Date(Date.now() - 86400000).toISOString(),
+      });
+      made.push(task.id);
+    }
+    const saved = await h.call(olga.token, "POST", "/views", {
+      name: marker,
+      definition: {
+        source: "tasks",
+        filters: { text: marker, status: "any" },
+        sort: { by: "title", dir: "asc" },
+      },
+    });
+    assert.equal(saved.statusCode, 201, saved.body);
+    savedId = saved.json().id;
+    const args = { view: `view:${savedId}`, overdue: true, limit: 1 };
+    const first = ok(await tool(keys.write, "query", args));
+    assert.equal(first.rows.length, 1);
+    assert.ok(first.next_cursor);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const second = ok(
+      await tool(keys.write, "query", { ...args, cursor: first.next_cursor }),
+    );
+    assert.equal(second.rows.length, 1);
+    assert.notEqual(second.rows[0].id, first.rows[0].id);
+  } finally {
+    if (savedId)
+      await pool.query("DELETE FROM saved_views WHERE id=$1 AND user_id=$2", [
+        savedId,
+        olga.id,
+      ]);
+    await pool.query(
+      "DELETE FROM items WHERE id=ANY($1::uuid[]) AND user_id=$2",
+      [made, olga.id],
+    );
+  }
 });

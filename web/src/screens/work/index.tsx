@@ -1,4 +1,9 @@
-import { useRouteInput, useRouteScope } from "../../lib/route-scope";
+import { startItemDrag } from "../shared-task/drag";
+import {
+  useRouteActivity,
+  useRouteInput,
+  useRouteScope,
+} from "../../lib/route-scope";
 import {
   boardColumns,
   boardFilterCounts,
@@ -9,6 +14,7 @@ import {
   BOARD_RANGE_LABELS,
   columnPrefill,
   dropChange,
+  dayBounds,
   durationText,
   emptyPlans,
   emptySearch,
@@ -264,11 +270,16 @@ function WorkBody() {
   const hasTeamItems = items.some((i) => i.team_id);
 
   const now = new Date();
-  const plannedToday = plannedTodayIds(feed, now);
+  const timeZone = planning.prefs?.timezone;
+  const todayWindow = dayBounds(now, timeZone);
+  const todayReady =
+    feed?.from === todayWindow.from.toISOString() &&
+    feed?.to === todayWindow.to.toISOString();
+  const plannedToday = plannedTodayIds(todayReady ? feed : null, now, timeZone);
   const matching = searchItems(items, query)
     .filter(
       (i) =>
-        matchesDue(i, filters.due, now, plannedToday) &&
+        matchesDue(i, filters.due, now, plannedToday, timeZone) &&
         (filters.priority === "any" || i.priority === filters.priority) &&
         (filters.list === "any" ||
           (filters.list === "none"
@@ -331,7 +342,7 @@ function WorkBody() {
             items: open.filter(
               (i) =>
                 !taken.has(i.id) &&
-                matchesDue(i, p.id, now, plannedToday) &&
+                matchesDue(i, p.id, now, plannedToday, timeZone) &&
                 !!taken.add(i.id),
             ),
           }))
@@ -384,14 +395,84 @@ function WorkBody() {
 
   const [moveError, setMoveError] = useState("");
   const [moving, setMoving] = useState(false);
+  const moveScope = useRouteScope();
+  useRouteActivity();
+  const moveGeneration = useRef(getSessionVersion()).current;
+  const moveMounted = useRef(true);
+  const latestMove = useRef({ scope: moveScope, canWrite });
+  latestMove.current = { scope: moveScope, canWrite };
+  type MoveOperation = { current: () => boolean };
+  const moveOperation = useRef<MoveOperation | null>(null);
+  useLayoutEffect(() => {
+    moveMounted.current = true;
+    return () => {
+      moveMounted.current = false;
+      moveOperation.current = null;
+    };
+  }, []);
+  // Retire this presentation's lock; an older request never unlocks its successor.
+  useLayoutEffect(() => {
+    if (moveOperation.current && !moveOperation.current.current()) {
+      moveOperation.current = null;
+      setMoving(false);
+    }
+  });
+  const mayBeginMove = (item: Item) =>
+    moveMounted.current &&
+    moveGeneration === getSessionVersion() &&
+    !moveOperation.current &&
+    latestMove.current.scope === moveScope &&
+    inputAllowed() &&
+    latestMove.current.canWrite(item);
+  const runMove = async (
+    item: Item,
+    work: () => Promise<unknown>,
+    fallback: string,
+  ) => {
+    if (!mayBeginMove(item)) return;
+    const opening = moveScope?.getSnapshot();
+    const run: MoveOperation = {
+      current: () => {
+        if (
+          !moveMounted.current ||
+          moveGeneration !== getSessionVersion() ||
+          moveOperation.current !== run ||
+          latestMove.current.scope !== moveScope
+        )
+          return false;
+        const here = moveScope?.getSnapshot();
+        return (
+          !moveScope ||
+          (!!here?.visible &&
+            here.activation === opening?.activation &&
+            here.pathname === opening?.pathname)
+        );
+      },
+    };
+    moveOperation.current = run;
+    setMoving(true);
+    setMoveError("");
+    try {
+      if (!run.current()) return;
+      await work();
+    } catch (error) {
+      if (run.current()) setMoveError(messageOf(error, fallback));
+    } finally {
+      if (run.current()) {
+        moveOperation.current = null;
+        setMoving(false);
+      }
+    }
+  };
   const moveCard = (item: Item, from: string, to: string) => {
-    if (moving || !canWrite(item)) return;
+    if (!mayBeginMove(item)) return;
     const result = dropChange(item, boardGroup, from, to, names);
     if (!result) return;
     if (!result.ok) return setMoveError(result.reason);
-    setMoveError("");
-    void saveColumn(item, result.change).catch((e) =>
-      setMoveError(messageOf(e, "Couldn't move the card.")),
+    void runMove(
+      item,
+      () => saveColumn(item, result.change),
+      "Couldn't move the card.",
     );
   };
 
@@ -405,16 +486,8 @@ function WorkBody() {
     to: { before_id?: string; after_id?: string },
   ) => {
     const item = items.find((candidate) => candidate.id === id);
-    if (!item || !canWrite(item) || moving) return;
-    setMoving(true);
-    setMoveError("");
-    try {
-      await moveItem(id, to);
-    } catch (e) {
-      setMoveError(messageOf(e, "Couldn't change the order."));
-    } finally {
-      setMoving(false);
-    }
+    if (!item) return;
+    await runMove(item, () => moveItem(id, to), "Couldn't change the order.");
   };
 
   // Selecting: x, a modified click, or the Select control.
@@ -579,8 +652,7 @@ function WorkBody() {
             }`}
             draggable={!moving && canWrite(i)}
             onDragStart={(event) => {
-              event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData("text/plain", i.id);
+              if (!startItemDrag(event, i)) return;
               setDragId(i.id);
             }}
             onDragEnd={() => {
@@ -671,6 +743,16 @@ function WorkBody() {
   );
 
   const body = () => {
+    if (filters.due === "today" && (!todayReady || planning.feedError))
+      return (
+        <ErrorNotice
+          message={
+            planning.feedError ||
+            "Refresh the complete planned sessions for today before showing this filter."
+          }
+          onRetry={() => void planning.retry().catch(() => undefined)}
+        />
+      );
     if (phase === "loading" && !items.length)
       return <Loading label="Loading your work" />;
     if (phase === "error" && !items.length)
@@ -1133,7 +1215,7 @@ function WorkBody() {
       )}
       {moving && (
         <p className="muted small" role="status">
-          Saving order…
+          Saving move…
         </p>
       )}
       {moveError && <ErrorNotice message={moveError} />}

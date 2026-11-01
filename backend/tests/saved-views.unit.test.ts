@@ -514,3 +514,154 @@ test("field values are checked by type, and read as words", () => {
   );
   assert.equal(calendarDay(row({ kind: "page" }), def, "UTC"), null);
 });
+
+test("exact task filters survive serialized definitions and apply before the view row limit", () => {
+  const definition = fullDefinition({
+    source: "tasks",
+    filters: {
+      status: "any",
+      task_status: "blocked",
+      priority: "high",
+      size: "none",
+      list: "none",
+      assignee: "none",
+    },
+  });
+  assert.deepEqual(
+    viewDefinition.parse(JSON.parse(JSON.stringify(definition))),
+    definition,
+  );
+  const early = Array.from({ length: 600 }, () =>
+    row({ status: "todo", priority: "low" }),
+  );
+  const wanted = row({
+    status: "blocked",
+    priority: "high",
+    team_id: "11111111-1111-4111-8111-111111111111",
+    estimate_minutes: 0,
+  });
+  assert.deepEqual(
+    applyView([...early, wanted], definition, ctx).rows.map((r) => r.id),
+    [wanted.id],
+  );
+  assert.equal(
+    applyView([row({ ...wanted, team_id: null })], definition, ctx).rows.length,
+    0,
+  );
+  assert.equal(
+    viewDefinition.safeParse({ source: "pages", filters: { priority: "high" } })
+      .success,
+    false,
+  );
+  assert.equal(
+    viewDefinition.safeParse({
+      source: "tasks",
+      filters: { task_status: "blocked", status: "open" },
+    }).success,
+    false,
+  );
+  assert.equal(
+    viewDefinition.safeParse({
+      source: "tasks",
+      filters: { due_bucket: "tomorrow", due_within_days: 1 },
+    }).success,
+    false,
+  );
+});
+
+test("exact sizes include null/zero and retain the existing 15/60 minute boundaries", () => {
+  for (const [size, minutes] of [
+    ["none", [null, 0]],
+    ["quick", [1, 15]],
+    ["short", [16, 60]],
+    ["long", [61, 120]],
+  ] as const) {
+    const definition = fullDefinition({ source: "tasks", filters: { size } });
+    assert.deepEqual(
+      applyView(
+        [null, 0, 1, 15, 16, 60, 61, 120].map((estimate_minutes) =>
+          row({ estimate_minutes }),
+        ),
+        definition,
+        ctx,
+      )
+        .rows.map((r) => r.estimate_minutes)
+        .sort((a, b) => (a ?? -1) - (b ?? -1)),
+      minutes,
+    );
+  }
+});
+
+test("Today includes reader-planned due-less and future-due tasks without narrowing Tomorrow or Soon", () => {
+  const clock = {
+    ...ctx,
+    now: new Date("2026-11-01T12:00:00Z"),
+    plannedTodayIds: new Set<string>(),
+  };
+  const noDue = row(),
+    tomorrow = row({ due_at: "2026-11-02T12:00:00Z" }),
+    soon = row({ due_at: "2026-11-03T12:00:00Z" }),
+    day7 = row({ due_at: "2026-11-08T12:00:00Z" });
+  clock.plannedTodayIds.add(noDue.id);
+  clock.plannedTodayIds.add(tomorrow.id);
+  clock.plannedTodayIds.add(soon.id);
+  const select = (due_bucket: "today" | "tomorrow" | "soon" | "week") =>
+    applyView(
+      [noDue, tomorrow, soon, day7],
+      fullDefinition({ source: "tasks", filters: { due_bucket } }),
+      clock,
+    )
+      .rows.map((r) => r.id)
+      .sort();
+  assert.deepEqual(select("today"), [noDue.id, tomorrow.id, soon.id].sort());
+  assert.deepEqual(select("tomorrow"), [tomorrow.id]);
+  assert.deepEqual(select("soon"), [soon.id]);
+  assert.deepEqual(select("week"), [tomorrow.id, soon.id].sort());
+  assert.throws(
+    () =>
+      applyView(
+        [noDue],
+        fullDefinition({ source: "tasks", filters: { due_bucket: "today" } }),
+        ctx,
+      ),
+    /planned-session/,
+  );
+  const legacy = fullDefinition({
+    source: "tasks",
+    filters: { due_within_days: 1 },
+  });
+  assert.deepEqual(
+    applyView([noDue, tomorrow, soon], legacy, clock).rows.map((r) => r.id),
+    [tomorrow.id],
+  );
+});
+
+test("viewer timezone and Sunday-exclusive Work week boundary survive serialized dynamic filters", () => {
+  const saturday = row({ due_at: "2026-11-07T12:00:00Z" }),
+    sunday = row({ due_at: "2026-11-08T12:00:00Z" });
+  const definition = fullDefinition({
+    source: "tasks",
+    filters: { due_bucket: "week" },
+  });
+  assert.deepEqual(
+    applyView([saturday, sunday], definition, {
+      ...ctx,
+      now: new Date("2026-11-02T12:00:00Z"),
+    }).rows.map((r) => r.id),
+    [saturday.id],
+  );
+  const due = row({ due_at: "2026-10-03T14:30:00Z" });
+  assert.equal(
+    applyView(
+      [due],
+      fullDefinition({ source: "tasks", filters: { due_bucket: "today" } }),
+      {
+        ...ctx,
+        now: new Date("2026-10-03T16:00:00Z"),
+        timeZone: "Australia/Melbourne",
+        plannedTodayIds: new Set(),
+      },
+    ).rows.length,
+    1,
+  );
+});

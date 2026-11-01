@@ -1,6 +1,8 @@
 import {
   dueBeforeToday,
-  dueDayAt,
+  localDateKey,
+  addDays,
+  dueDay,
   formatRrule,
   isClosed,
   latestDates,
@@ -116,20 +118,44 @@ export function matchesDue(
   due: DueFilter,
   now = new Date(),
   plannedToday?: Set<string>,
+  timeZone = deviceTimeZone(),
 ) {
   if (due === "any") return true;
   if (due === "none") return !i.due_at;
   if (due === "today" && plannedToday?.has(i.id)) return true;
   if (!i.due_at) return false;
-  if (due === "overdue") return isOverdue(i, now);
-  const at = dueDayAt(i)!;
-  const day = (n: number) =>
-    new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
-  const within = (from: number, to: number) => at >= day(from) && at < day(to);
-  if (due === "today") return within(0, 1);
-  if (due === "tomorrow") return within(1, 2);
-  if (due === "soon") return within(2, 7);
-  return within(0, 7 - now.getDay());
+  if (due === "overdue") {
+    const named = dueDay(
+      {
+        kind: "task",
+        due_at: i.due_at,
+        end_at: i.end_at,
+        all_day: i.all_day,
+        timezone: i.timezone,
+      },
+      timeZone,
+    );
+    return (
+      !isClosed(i.status) && !!named && named < localDateKey(now, timeZone)
+    );
+  }
+  const at = dueDay(
+    {
+      kind: "task",
+      due_at: i.due_at,
+      end_at: i.end_at,
+      all_day: i.all_day,
+      timezone: i.timezone,
+    },
+    timeZone,
+  );
+  if (!at) return false;
+  const today = localDateKey(now, timeZone);
+  if (due === "today") return at === today;
+  if (due === "tomorrow") return at === addDays(today, 1);
+  if (due === "soon") return at >= addDays(today, 2) && at <= addDays(today, 6);
+  const last = 6 - new Date(`${today}T12:00:00Z`).getUTCDay();
+  return at >= today && at <= addDays(today, last);
 }
 
 /** Open first, most pressing first, counting each task's latest date. */

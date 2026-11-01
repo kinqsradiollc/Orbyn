@@ -35,6 +35,7 @@ export type Planning = {
   tags: Tag[];
   prefs: PlannerPrefs | null;
   feed: PlannedFeed | null;
+  feedError: string;
 };
 
 const EMPTY: Planning = {
@@ -45,6 +46,7 @@ const EMPTY: Planning = {
   tags: [],
   prefs: null,
   feed: null,
+  feedError: "",
 };
 
 /** How long a deleted item can still be taken back. Matches the kit's toast. */
@@ -53,7 +55,8 @@ const POLL_MS = 30_000;
 
 const items = new PlannerItemStore(client, getToken);
 const listeners = new Set<() => void>();
-const patches = new Map<string, Partial<Item>>();
+type OptimisticPatch = { change: Partial<Item> };
+const patches = new Map<string, OptimisticPatch[]>();
 const hidden = new Set<string>();
 let planning = EMPTY;
 let shown: Item[] = [];
@@ -70,7 +73,12 @@ function recompute() {
     .filter((item) => !hidden.has(item.id))
     .map((item) => {
       const patch = patches.get(item.id);
-      return patch ? { ...item, ...patch } : item;
+      return patch
+        ? patch.reduce(
+            (current, layer) => ({ ...current, ...layer.change }),
+            item,
+          )
+        : item;
     });
   emit();
 }
@@ -107,14 +115,44 @@ async function refreshPlannerOwned(force = false, admitted = () => true) {
     teams.status === "fulfilled" ? teams.value.map((t) => t.id) : undefined;
   const scope =
     teams.status === "fulfilled" ? JSON.stringify([...teamIds!].sort()) : null;
-  const { from, to } = dayBounds(new Date());
-  const [read, lists, tags, prefs, feed] = await Promise.allSettled([
+  const [read, lists, tags, prefs] = await Promise.allSettled([
     items.refresh(scope, force, teamIds, admitted),
     client.listLists(),
     client.listTags(),
     client.getPlannerPrefs(),
-    client.planned({ from: from.toISOString(), to: to.toISOString() }),
   ]);
+  let feed: PromiseSettledResult<PlannedFeed>;
+  if (!owned()) return;
+  try {
+    if (read.status === "rejected") throw read.reason;
+    if (prefs.status === "rejected") throw prefs.reason;
+    const { from, to } = dayBounds(new Date(), prefs.value.timezone);
+    const feedTasks: PlannedFeed["tasks"] = [];
+    const ids = items
+      .getSnapshot()
+      .filter((i) => i.kind === "task")
+      .map((i) => i.id);
+    for (let at = 0; at < ids.length; at += 200) {
+      if (!owned()) return;
+      const chunk = await client.planned({
+        item_ids: ids.slice(at, at + 200),
+        from: from.toISOString(),
+        to: to.toISOString(),
+      });
+      if (!owned()) return;
+      feedTasks.push(...chunk.tasks);
+    }
+    feed = {
+      status: "fulfilled",
+      value: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        tasks: feedTasks,
+      },
+    };
+  } catch (reason) {
+    feed = { status: "rejected", reason };
+  }
   if (!owned()) return;
   if (
     [teams, read, lists, tags, prefs].some(
@@ -141,10 +179,14 @@ async function refreshPlannerOwned(force = false, admitted = () => true) {
       prefs.status === "fulfilled"
         ? keep(planning.prefs, prefs.value)
         : planning.prefs,
-    feed:
-      feed.status === "fulfilled"
-        ? keep(planning.feed, feed.value)
-        : planning.feed,
+    feed: feed.status === "fulfilled" ? keep(planning.feed, feed.value) : null,
+    feedError:
+      feed.status === "rejected"
+        ? messageOf(
+            feed.reason,
+            "Couldn't load all planned sessions. Today is unavailable until this read succeeds.",
+          )
+        : "",
     phase:
       read.status === "fulfilled"
         ? "ready"
@@ -280,11 +322,24 @@ export const findItem = (id: string) =>
   items.getSnapshot().find((item) => item.id === id);
 
 function patch(id: string, change: Partial<Item>) {
-  patches.set(id, { ...patches.get(id), ...change });
+  const layer = { change };
+  patches.set(id, [...(patches.get(id) ?? []), layer]);
+  recompute();
+  return layer;
+}
+function unpatch(id: string, layer: OptimisticPatch) {
+  const current = patches.get(id);
+  if (!current?.includes(layer)) return;
+  const next = current.filter((entry) => entry !== layer);
+  if (next.length) patches.set(id, next);
+  else patches.delete(id);
   recompute();
 }
-function unpatch(id: string) {
-  if (patches.delete(id)) recompute();
+
+function mutationOwner() {
+  const generation = getSessionVersion();
+  if (!getToken()) throw Error("Sign in again to change this task.");
+  return () => !!getToken() && generation === getSessionVersion();
 }
 
 const treeOf = (id: string) => {
@@ -302,20 +357,28 @@ const treeOf = (id: string) => {
 };
 
 /** Refreshes after a write. The write stands even if this read fails. */
-async function settle(id?: string) {
-  await quiet();
-  if (id) unpatch(id);
+async function settle(
+  owned: () => boolean,
+  id?: string,
+  layer?: OptimisticPatch,
+) {
+  if (!owned()) return;
+  await quiet(false, owned);
+  if (owned() && id && layer) unpatch(id, layer);
 }
 
 /** Status goes through the timeline, so everyone sees who moved what. */
 export async function saveStatus(item: Item, status: Status) {
-  patch(item.id, { status });
+  const owned = mutationOwner();
+  const layer = patch(item.id, { status });
   try {
+    if (!owned())
+      throw Error("This task change belongs to an earlier sign-in.");
     const next = await client.postItemUpdate(item.id, { status });
-    await settle(item.id);
+    await settle(owned, item.id, layer);
     return next;
   } catch (error) {
-    unpatch(item.id);
+    if (owned()) unpatch(item.id, layer);
     throw error;
   }
 }
@@ -325,16 +388,19 @@ export const reopenStatus = (item: Item): Status =>
 
 /** A change to a few fields, saved against the version it was shown at. */
 export async function saveFields(item: Item, change: Partial<ItemInput>) {
-  patch(item.id, change as Partial<Item>);
+  const owned = mutationOwner();
+  const layer = patch(item.id, change as Partial<Item>);
   try {
+    if (!owned())
+      throw Error("This task change belongs to an earlier sign-in.");
     const next = await client.updateItem(item.id, {
       ...writeBody(item),
       ...change,
     });
-    await settle(item.id);
+    await settle(owned, item.id, layer);
     return next;
   } catch (error) {
-    unpatch(item.id);
+    if (owned()) unpatch(item.id, layer);
     throw error;
   }
 }
@@ -351,6 +417,7 @@ export function writeBody(item: Item) {
 
 /** Column moves: fields, or handing to and taking back from your agent. */
 export async function saveColumn(item: Item, change: ColumnChange) {
+  const owned = mutationOwner();
   if ("status" in change) return saveStatus(item, change.status);
   if ("agent" in change) {
     const { agent, ...rest } = change;
@@ -358,12 +425,13 @@ export async function saveColumn(item: Item, change: ColumnChange) {
       agent === "hand"
         ? await client.handTaskToAgent(item.id)
         : await client.takeTaskBack(item.id);
+    if (!owned()) return after;
     if ("assignee_id" in rest)
       await client.updateItem(item.id, {
         ...writeBody(after),
         assignee_id: rest.assignee_id ?? null,
       });
-    await settle();
+    await settle(owned);
     return after;
   }
   return saveFields(item, change);
@@ -375,20 +443,22 @@ export async function saveItem(
   version: number,
   options: EditOptions = {},
 ) {
+  const owned = mutationOwner();
   const saved = await client.updateItem(
     item.id,
     { ...data, status: item.status, version },
     options,
   );
-  await settle();
+  await settle(owned);
   return saved;
 }
 
 export async function createItem(
   input: Partial<ItemInput> & { title: string; id?: string },
 ) {
+  const owned = mutationOwner();
   const made = await client.createItem(input);
-  await settle();
+  await settle(owned);
   return made;
 }
 
@@ -396,8 +466,9 @@ export async function moveItem(
   id: string,
   to: { before_id?: string; after_id?: string },
 ) {
+  const owned = mutationOwner();
   await client.moveItem(id, to);
-  await settle();
+  await settle(owned);
 }
 
 type PendingDelete = {
@@ -422,30 +493,37 @@ window.addEventListener("pagehide", () => {
  * dialog and removed at once.
  */
 export function deleteLater(item: Item, onFail: (message: string) => void) {
+  const owned = mutationOwner();
   const ids = treeOf(item.id);
   ids.forEach((id) => hidden.add(id));
   recompute();
   const show = () => {
+    if (!owned()) return;
     deletes.delete(item.id);
     ids.forEach((id) => hidden.delete(id));
     recompute();
   };
   const fire = () => {
+    if (!owned() || deletes.get(item.id) !== pending) return;
     deletes.delete(item.id);
     const version = findItem(item.id)?.version ?? item.version;
     client.deleteItem(item.id, version).then(
       () => {
+        if (!owned()) return;
         ids.forEach((id) => hidden.delete(id));
-        void quiet();
+        void quiet(false, owned);
       },
       (error) => {
+        if (!owned()) return;
         show();
         onFail(messageOf(error, "Couldn't delete this."));
       },
     );
   };
+  if (!owned()) return () => {};
   const timer = setTimeout(fire, UNDO_MS);
-  deletes.set(item.id, { id: item.id, ids, timer, fire });
+  const pending = { id: item.id, ids, timer, fire };
+  deletes.set(item.id, pending);
   return () => {
     clearTimeout(timer);
     show();
@@ -453,26 +531,33 @@ export function deleteLater(item: Item, onFail: (message: string) => void) {
 }
 
 export async function deleteNow(item: Item, options: EditOptions) {
+  const owned = mutationOwner();
   await client.deleteItem(item.id, item.version, options);
-  await settle();
+  await settle(owned);
 }
 
 /** Feedback for what a row, a card or a panel does to an item. */
 export function useTaskActions() {
   const toast = useToast();
+  const generation = useRef(getSessionVersion()).current;
+  const owned = useCallback(
+    () => !!getToken() && generation === getSessionVersion(),
+    [generation],
+  );
   const fail = useCallback(
-    (error: unknown, fallback: string) =>
-      toast({ text: messageOf(error, fallback), error: true }),
-    [toast],
+    (error: unknown, fallback: string) => {
+      if (owned()) toast({ text: messageOf(error, fallback), error: true });
+    },
+    [toast, owned],
   );
 
   const setStatus = useCallback(
     async (item: Item, status: Status) => {
-      if (item.status === status) return;
+      if (!owned() || item.status === status) return;
       const before = item.status;
       try {
         const next = await saveStatus(item, status);
-        if (status !== "done" && status !== "cancelled") return;
+        if (!owned() || (status !== "done" && status !== "cancelled")) return;
         toast({
           text: status === "done" ? "Done" : "Cancelled",
           // A repeating task moves on to its next time when it finishes.
@@ -481,6 +566,7 @@ export function useTaskActions() {
             : {
                 label: "Undo",
                 run: () =>
+                  owned() &&
                   void saveStatus({ ...item, ...next }, before).catch((e) =>
                     fail(e, "Couldn't undo that."),
                   ),
@@ -490,7 +576,7 @@ export function useTaskActions() {
         fail(error, "Couldn't change the status.");
       }
     },
-    [toast, fail],
+    [toast, fail, owned],
   );
 
   const toggle = useCallback(
@@ -501,26 +587,28 @@ export function useTaskActions() {
 
   const change = useCallback(
     async (item: Item, fields: Partial<ItemInput>) => {
+      if (!owned()) return null;
       try {
         return await saveFields(item, fields);
       } catch (error) {
         fail(error, "Couldn't save that.");
-        void quiet();
+        if (owned()) void quiet(false, owned);
         return null;
       }
     },
-    [fail],
+    [fail, owned],
   );
 
   const remove = useCallback(
     (item: Item) => {
+      if (!owned()) return;
       const undo = deleteLater(item, (text) => toast({ text, error: true }));
       toast({
         text: `Deleted “${item.title.slice(0, 40)}”`,
         action: { label: "Undo", run: undo },
       });
     },
-    [toast],
+    [toast, owned],
   );
 
   return { setStatus, toggle, change, remove, fail };

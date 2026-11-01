@@ -802,3 +802,265 @@ test("views and fields answer 429 past the per-minute limit", async () => {
     live.rate_limit_per_minute = was;
   }
 });
+
+test("exact task filters and viewer-planned Today narrow before the 3000-candidate guard", async () => {
+  const { runView } = await import("../src/modules/views/service.js");
+  const { fullDefinition } = await import("@orbyn/core");
+  const db = await pool.connect();
+  const marker = `exact-view-${randomUUID()}`;
+  try {
+    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await db.query(
+      `INSERT INTO items(user_id,team_id,kind,title,status,priority,estimate_minutes,due_at)
+      SELECT $1,$2,'task',$3 || '-' || x,'blocked','low',NULL,'2020-01-01T12:00:00Z'::timestamptz FROM generate_series(1,3001) x`,
+      [me.id, teamId, marker],
+    );
+    const wanted = (
+      await db.query<{ id: string }>(
+        `INSERT INTO items(user_id,team_id,kind,title,status,priority,estimate_minutes) VALUES($1,$2,'task',$3,'blocked','high',NULL) RETURNING id`,
+        [me.id, teamId, marker + "-wanted"],
+      )
+    ).rows[0].id;
+    const otherPlanned = (
+      await db.query<{ id: string }>(
+        `INSERT INTO items(user_id,team_id,kind,title,status,priority,estimate_minutes) VALUES($1,$2,'task',$3,'blocked','high',NULL) RETURNING id`,
+        [me.id, teamId, marker + "-not-my-session"],
+      )
+    ).rows[0].id;
+    await db.query(
+      `INSERT INTO time_blocks(user_id,item_id,start_at,end_at) VALUES($1,$2,'2026-11-01T09:00:00Z','2026-11-01T10:00:00Z'),($3,$4,'2026-11-01T09:00:00Z','2026-11-01T10:00:00Z')`,
+      [me.id, wanted, mate.id, otherPlanned],
+    );
+    const definition = fullDefinition({
+      source: "tasks",
+      filters: {
+        text: marker,
+        status: "any",
+        task_status: "blocked",
+        priority: "high",
+        size: "none",
+        list: "none",
+        assignee: "none",
+        due_bucket: "today",
+      },
+    });
+    const result = await runView(db, me.id, definition, {
+      now: new Date("2026-11-01T12:00:00Z"),
+      timeZone: "UTC",
+    });
+    assert.deepEqual(
+      result.rows.map((row) => row.id),
+      [wanted],
+    );
+    assert.equal(result.truncated, false);
+    const excludedSpace = await runView(db, me.id, definition, {
+      now: new Date("2026-11-01T12:00:00Z"),
+      timeZone: "UTC",
+      spaces: { personal: true, teamIds: [] },
+    });
+    assert.deepEqual(excludedSpace.rows, []);
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
+});
+
+test("extended definition replacement requires acknowledgement and its exact current revision", async () => {
+  const headers = {
+    authorization: `Bearer ${me.token}`,
+    "x-orbyn-view-features": "task-filters-v1",
+  };
+  const definition = {
+    source: "tasks",
+    filters: { status: "any", task_status: "blocked", priority: "high" },
+  };
+  const created = await app.inject({
+    method: "POST",
+    url: "/views",
+    headers,
+    payload: { name: "Exact revision " + randomUUID(), definition },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const view = created.json();
+  try {
+    assert.ok(Number.isSafeInteger(view.version));
+    const oldWriter = await call(me, "PUT", `/views/${view.id}`, {
+      definition: { source: "tasks", filters: { status: "any" } },
+    });
+    assert.equal(oldWriter.statusCode, 409, oldWriter.body);
+    const fresh = await app.inject({
+      method: "PUT",
+      url: `/views/${view.id}`,
+      headers,
+      payload: {
+        definition: {
+          ...definition,
+          filters: { ...definition.filters, priority: "medium" },
+        },
+        expected_version: view.version,
+      },
+    });
+    assert.equal(fresh.statusCode, 200, fresh.body);
+    assert.ok(fresh.json().version > view.version);
+    const stale = await app.inject({
+      method: "PUT",
+      url: `/views/${view.id}`,
+      headers,
+      payload: { definition, expected_version: view.version },
+    });
+    assert.equal(stale.statusCode, 409, stale.body);
+    const metadata = await call(me, "PUT", `/views/${view.id}`, {
+      name: "Renamed exact view",
+    });
+    assert.equal(metadata.statusCode, 200, metadata.body);
+    assert.equal(metadata.json().definition.filters.priority, "medium");
+  } finally {
+    const removed = await call(me, "DELETE", `/views/${view.id}`);
+    assert.equal(removed.statusCode, 204, removed.body);
+  }
+});
+
+test("SQL date narrowing agrees with core across DST, source zones, spans and timestamp precision", async () => {
+  const { runView } = await import("../src/modules/views/service.js");
+  const { fullDefinition, applyView, dayTime, addDays, localDateKey } =
+    await import("@orbyn/core");
+  const db = await pool.connect(),
+    marker = `date-parity-${randomUUID()}`;
+  const sourceZones = [
+    "UTC",
+    "Australia/Melbourne",
+    "America/New_York",
+    "America/Havana",
+    "America/Santiago",
+    "Pacific/Apia",
+  ];
+  const anchors = [
+    "2026-03-08",
+    "2026-04-05",
+    "2026-09-06",
+    "2026-10-04",
+    "2026-11-01",
+    "2011-12-30",
+  ];
+  try {
+    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    let serial = 0;
+    for (const zone of sourceZones)
+      for (const day of anchors) {
+        for (const offset of [-1, 0, 1]) {
+          const date = addDays(day, offset),
+            start = dayTime(date, 0, zone).toISOString();
+          await db.query(
+            `INSERT INTO items(user_id,kind,title,status,priority,due_at,end_at,all_day,timezone)
+          VALUES($1,'task',$2,'todo','medium',$3,NULL,true,$4),
+                ($1,'task',$2 || '-span','todo','medium',$3,$5,true,$4),
+                ($1,'task',$2 || '-timed','todo','medium',$6,NULL,false,$4)`,
+            [
+              me.id,
+              `${marker}-${serial++}`,
+              start,
+              zone,
+              dayTime(addDays(date, 2), 0, zone).toISOString(),
+              start.replace(".000Z", ".000999Z"),
+            ],
+          );
+        }
+      }
+    for (const timeZone of sourceZones)
+      for (const anchor of anchors) {
+        const now = new Date(`${anchor}T12:00:00.000Z`),
+          today = localDateKey(now, timeZone);
+        const common = { text: marker, status: "any" as const };
+        const baseline = await runView(
+          db,
+          me.id,
+          fullDefinition({
+            source: "tasks",
+            filters: common,
+            sort: { by: "title", dir: "asc" },
+          }),
+          { now, timeZone },
+        );
+        assert.equal(baseline.truncated, false);
+        for (const filter of [
+          { due_bucket: "today" as const },
+          { due_bucket: "tomorrow" as const },
+          { due_bucket: "soon" as const },
+          { due_bucket: "week" as const },
+          { overdue: true },
+          { due_after: addDays(today, -1), due_before: addDays(today, 1) },
+          { due_within_days: 2 },
+        ]) {
+          const definition = fullDefinition({
+            source: "tasks",
+            filters: { ...common, ...filter },
+            sort: { by: "title", dir: "asc" },
+          });
+          const actual = await runView(db, me.id, definition, {
+            now,
+            timeZone,
+          });
+          const expected = applyView(
+            baseline.rows,
+            definition,
+            { userId: me.id, now, timeZone, plannedTodayIds: new Set() },
+            [],
+            500,
+          );
+          assert.deepEqual(
+            actual.rows.map((row) => row.id),
+            expected.rows.map((row) => row.id),
+            JSON.stringify({ timeZone, anchor, filter }),
+          );
+          assert.equal(actual.truncated, false);
+        }
+      }
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
+});
+
+test("all-day metadata guard remains bounded and respects scalar narrowing and authorized spaces", async () => {
+  const { runView } = await import("../src/modules/views/service.js");
+  const { fullDefinition } = await import("@orbyn/core");
+  const db = await pool.connect(),
+    marker = `date-bound-${randomUUID()}`;
+  try {
+    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await db.query(
+      `INSERT INTO items(user_id,team_id,kind,title,status,priority,due_at,all_day,timezone)
+      SELECT $1,$2,'task',$3 || x,'todo','low','2020-01-01'::timestamptz + x * interval '1 day',true,'UTC' FROM generate_series(1,3001) x`,
+      [me.id, teamId, marker],
+    );
+    const definition = fullDefinition({
+      source: "tasks",
+      filters: { text: marker, due_bucket: "today" },
+    });
+    await assert.rejects(
+      runView(db, me.id, definition, {
+        now: new Date("2026-11-01T12:00:00Z"),
+        timeZone: "UTC",
+      }),
+      (error) => (error as { statusCode?: number }).statusCode === 422,
+    );
+    const narrowed = await runView(
+      db,
+      me.id,
+      fullDefinition({
+        ...definition,
+        filters: { ...definition.filters, priority: "high" },
+      }),
+      { timeZone: "UTC" },
+    );
+    assert.deepEqual(narrowed.rows, []);
+    const invisible = await runView(db, me.id, definition, {
+      timeZone: "UTC",
+      spaces: { personal: true, teamIds: [] },
+    });
+    assert.deepEqual(invisible.rows, []);
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
+});

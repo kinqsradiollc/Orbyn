@@ -15,6 +15,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  GripVertical,
   ListChecks,
   ListTree,
   MessageSquare,
@@ -24,7 +25,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { IconButton, Menu, Pill, useConfirm } from "../../ui/kit";
 import {
   isOverdue,
@@ -35,6 +36,9 @@ import {
   timeFact,
 } from "./format";
 import { useTasks } from "./host-store";
+import { startItemDrag } from "./drag";
+import { useTransferActions } from "./TransferActions";
+import { useNavigate } from "../../lib/router";
 import { useTaskActions, usePlanning } from "./store";
 
 const dayAt = (days: number) => {
@@ -49,6 +53,7 @@ export function ItemMenu({ item, label }: { item: Item; label?: string }) {
   const tasks = useTasks();
   const { setStatus, change, remove } = useTaskActions();
   const confirm = useConfirm();
+  const transfer = useTransferActions(item);
   const status = (next: Status, close: () => void) => {
     close();
     void setStatus(item, next);
@@ -66,71 +71,76 @@ export function ItemMenu({ item, label }: { item: Item; label?: string }) {
     });
   };
   return (
-    <Menu
-      label={`Options for ${item.title}`}
-      trigger={(open, expanded) => (
-        <IconButton
-          className="st-row-more"
-          label={label ?? `Options for ${item.title}`}
-          aria-expanded={expanded}
-          onClick={(event) => {
-            event.stopPropagation();
-            open();
-          }}
-        >
-          <MoreHorizontal />
-        </IconButton>
-      )}
-    >
-      {(close) => (
-        <>
-          {(["in_progress", "blocked", "todo"] as Status[])
-            .filter((s) => s !== item.status)
-            .map((s) => (
-              <button key={s} onClick={() => status(s, close)}>
-                {s === "todo"
-                  ? "Move to To do"
-                  : `Mark ${statusLabels[s].toLowerCase()}`}
-              </button>
-            ))}
-          <hr />
-          {(["high", "medium", "low"] as Priority[])
-            .filter((p) => p !== item.priority)
-            .map((p) => (
-              <button key={p} onClick={() => priority(p, close)}>
-                {p[0].toUpperCase() + p.slice(1)} priority
-              </button>
-            ))}
-          {!item.rrule && item.kind === "task" && (
-            <>
-              <hr />
-              <button onClick={() => due(0, close)}>Due today</button>
-              <button onClick={() => due(1, close)}>Due tomorrow</button>
-              <button onClick={() => due(7, close)}>Due in a week</button>
-              {item.due_at && (
-                <button onClick={() => due(null, close)}>No date</button>
-              )}
-            </>
-          )}
-          <hr />
-          <button
-            className="is-danger"
-            onClick={() => {
-              close();
-              if (item.rrule) return tasks.open(item);
-              void confirm({
-                title: `Delete “${item.title}”?`,
-                body: "You can undo this for a few seconds.",
-                action: "Delete",
-                danger: true,
-              }).then((yes) => yes && remove(item));
+    <>
+      <Menu
+        label={`Options for ${item.title}`}
+        trigger={(open, expanded) => (
+          <IconButton
+            className="st-row-more"
+            label={label ?? `Options for ${item.title}`}
+            aria-expanded={expanded}
+            onClick={(event) => {
+              event.stopPropagation();
+              open();
             }}
           >
-            <Trash2 aria-hidden="true" /> Delete
-          </button>
-        </>
-      )}
-    </Menu>
+            <MoreHorizontal />
+          </IconButton>
+        )}
+      >
+        {(close) => (
+          <>
+            {transfer.actions(close)}
+            <hr />
+            {(["in_progress", "blocked", "todo"] as Status[])
+              .filter((s) => s !== item.status)
+              .map((s) => (
+                <button key={s} onClick={() => status(s, close)}>
+                  {s === "todo"
+                    ? "Move to To do"
+                    : `Mark ${statusLabels[s].toLowerCase()}`}
+                </button>
+              ))}
+            <hr />
+            {(["high", "medium", "low"] as Priority[])
+              .filter((p) => p !== item.priority)
+              .map((p) => (
+                <button key={p} onClick={() => priority(p, close)}>
+                  {p[0].toUpperCase() + p.slice(1)} priority
+                </button>
+              ))}
+            {!item.rrule && item.kind === "task" && (
+              <>
+                <hr />
+                <button onClick={() => due(0, close)}>Due today</button>
+                <button onClick={() => due(1, close)}>Due tomorrow</button>
+                <button onClick={() => due(7, close)}>Due in a week</button>
+                {item.due_at && (
+                  <button onClick={() => due(null, close)}>No date</button>
+                )}
+              </>
+            )}
+            <hr />
+            <button
+              className="is-danger"
+              onClick={() => {
+                close();
+                if (item.rrule) return tasks.open(item);
+                void confirm({
+                  title: `Delete “${item.title}”?`,
+                  body: "You can undo this for a few seconds.",
+                  action: "Delete",
+                  danger: true,
+                }).then((yes) => yes && remove(item));
+              }}
+            >
+              <Trash2 aria-hidden="true" /> Delete
+            </button>
+          </>
+        )}
+      </Menu>
+      {transfer.dialog}
+    </>
   );
 }
 
@@ -183,6 +193,8 @@ export const TaskRow = memo(function TaskRow({
   onOpen,
 }: TaskRowProps) {
   const tasks = useTasks();
+  const navigate = useNavigate();
+  const dragged = useRef(false);
   const { toggle } = useTaskActions();
   const { listById, tagById, plannedById } = usePlanning();
   const done = item.status === "done";
@@ -218,6 +230,29 @@ export const TaskRow = memo(function TaskRow({
       className={`st-row${closed ? " is-closed" : ""}${selected ? " is-selected" : ""}${cursor ? " is-cursor" : ""}`}
       data-item={item.id}
     >
+      {!readOnly && !selecting && item.kind === "task" && !closed && (
+        <IconButton
+          label={`Schedule ${item.title}`}
+          title="Drag to a calendar or page, or click to schedule"
+          draggable
+          onDragStart={(event) => {
+            event.stopPropagation();
+            dragged.current = startItemDrag(event, item);
+          }}
+          onDragEnd={() => {
+            setTimeout(() => {
+              dragged.current = false;
+            }, 0);
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (dragged.current) return;
+            void navigate(`/app/calendar?plan=${encodeURIComponent(item.id)}`);
+          }}
+        >
+          <GripVertical aria-hidden="true" />
+        </IconButton>
+      )}
       {onToggleChildren ? (
         <button
           type="button"

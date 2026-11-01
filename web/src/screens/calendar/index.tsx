@@ -80,14 +80,35 @@ const remembered = (key: string) => {
   }
 };
 
-function useWidth() {
-  const [width, setWidth] = useState(() => window.innerWidth);
+/** Hidden retained calendars keep their last usable pane measurement. */
+function usePaneWidth() {
+  const element = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState<number | null>(null);
   useEffect(() => {
-    const change = () => setWidth(window.innerWidth);
-    window.addEventListener("resize", change);
-    return () => window.removeEventListener("resize", change);
+    const node = element.current;
+    if (!node) return;
+    let mounted = true;
+    const read = () => {
+      if (!mounted || !node.isConnected) return;
+      const style = getComputedStyle(node);
+      const next =
+        node.clientWidth -
+        parseFloat(style.paddingLeft) -
+        parseFloat(style.paddingRight);
+      if (next > 0)
+        setWidth((before) =>
+          before === null || Math.abs(next - before) >= 1 ? next : before,
+        );
+    };
+    const observer = new ResizeObserver(read);
+    observer.observe(node);
+    read();
+    return () => {
+      mounted = false;
+      observer.disconnect();
+    };
   }, []);
-  return width;
+  return { element, width };
 }
 
 export default function CalendarScreen() {
@@ -170,9 +191,11 @@ function Calendar({
     [setNav],
   );
 
-  const width = useWidth();
+  const pane = usePaneWidth();
+  const width = pane.width ?? 0;
   const narrow = width <= 820;
-  const span = width <= 520 ? 1 : width <= 900 ? 3 : 7;
+  // Week is always Monday–Sunday; compact panes scroll, never change its dates.
+  const span = 7;
   const range = rangeOf(mode, date, span);
   const days = useMemo(
     () => daysFrom(range.first, range.days),
@@ -693,7 +716,8 @@ function Calendar({
 
   return (
     <div
-      className={`calendar-page${showSide ? " has-side" : ""}`}
+      ref={pane.element}
+      className={`calendar-page${showSide ? " has-side" : ""}${width <= 1100 ? " is-pane-stacked" : ""}${narrow ? " is-pane-narrow" : ""}`}
       aria-busy={actions.saving || data.loading}
     >
       <div className="calendar-main">
@@ -782,6 +806,11 @@ function Calendar({
         <span className="sr-only" role="status">
           {actions.saving ? "Saving calendar" : ""}
         </span>
+        {mode === "week" && width <= 520 && (
+          <p className="small muted calendar-week-hint">
+            Choose Day or Agenda for more room.
+          </p>
+        )}
         <div className="calendar-surface">
           {failedView ? (
             <div className="calendar-state">

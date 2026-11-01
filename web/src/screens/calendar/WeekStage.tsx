@@ -1,3 +1,4 @@
+import { takeTaskDrop } from "../shared-task/drag";
 import { useRouteInput, useRouteScope } from "../../lib/route-scope";
 import {
   hoursLabel,
@@ -626,7 +627,7 @@ export function WeekStage({
     setDropCell(sign === null ? cellAt(event.clientX, event.clientY) : null);
   };
   const drop = (event: DragEvent) => {
-    const id = event.dataTransfer.getData(TASK_MIME);
+    const id = takeTaskDrop(event.dataTransfer);
     const sign = signAt(event.clientX, event.clientY);
     const cell = cellAt(event.clientX, event.clientY);
     setDropCell(null);

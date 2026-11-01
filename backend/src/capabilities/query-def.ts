@@ -194,6 +194,12 @@ export function describeSavedView(def: ViewDefinition): string {
   const parts = [
     `${status === "any" ? "All" : status === "done" ? "Done" : "Open"} ${VIEW_SOURCE_LABELS[def.source].toLowerCase()}`,
   ];
+  if (f.task_status) parts.push(`status ${f.task_status}`);
+  if (f.priority) parts.push(`${f.priority} priority`);
+  if (f.size) parts.push(`size ${f.size}`);
+  if (f.list === "none") parts.push("no list");
+  if (f.assignee === "none") parts.push("unassigned team tasks");
+  if (f.due_bucket) parts.push(`date bucket ${f.due_bucket}`);
   if (f.text) parts.push(`matching “${f.text}”`);
   if (f.overdue) parts.push("overdue");
   if (f.no_due) parts.push("without a deadline");

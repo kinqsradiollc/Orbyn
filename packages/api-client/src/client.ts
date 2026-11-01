@@ -1651,8 +1651,12 @@ export class OrbynClient {
 
   // Saved views (DATA-01) and your own fields (ORG-02)
   /** Every saved view you can see: yours and those shared with your teams. */
-  listViews() {
-    return views.callListViews.call(this);
+  viewCapabilities() {
+    return views.callViewCapabilities.call(this);
+  }
+
+  listViews(options: { fresh?: boolean } = {}) {
+    return views.callListViews.call(this, options);
   }
   createView(input: SavedViewInput) {
     return views.callCreateView.call(this, input);

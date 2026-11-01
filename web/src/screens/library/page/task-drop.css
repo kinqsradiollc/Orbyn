@@ -1,0 +1,9 @@
+.doc-line.is-task-drop {
+  box-shadow: inset 0 -2px var(--accent);
+}
+.doc-task-drop-status {
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-muted);
+}

@@ -27,11 +27,26 @@ const KIND_LABELS: Record<string, string> = {
   meeting: "Meeting notes",
 };
 
-type Due = "any" | "overdue" | "today" | "tomorrow" | "week" | "month" | "none";
+type Due =
+  | "any"
+  | "overdue"
+  | "today"
+  | "tomorrow"
+  | "week"
+  | "month"
+  | "none"
+  | "planned_today"
+  | "exact_tomorrow"
+  | "soon"
+  | "this_week";
 const DUE_LABELS: Record<Due, string> = {
   any: "Any time",
   overdue: "Overdue",
-  today: "Today",
+  today: "Due today",
+  planned_today: "Today (planned or due)",
+  exact_tomorrow: "Due tomorrow",
+  soon: "Due in 2–6 days",
+  this_week: "Due through Saturday",
   tomorrow: "By tomorrow",
   week: "In the next 7 days",
   month: "In the next 30 days",
@@ -45,6 +60,15 @@ const DUE_DAYS: Partial<Record<Due, number>> = {
 };
 
 const dueOf = (f: ViewFilters): Due => {
+  if (f.due_bucket)
+    return (
+      {
+        today: "planned_today",
+        tomorrow: "exact_tomorrow",
+        soon: "soon",
+        week: "this_week",
+      } as const
+    )[f.due_bucket];
   if (f.overdue) return "overdue";
   if (f.no_due) return "none";
   const found = (Object.keys(DUE_DAYS) as Due[]).find(
@@ -88,7 +112,13 @@ export function Filters({
   const latest = useRef(f);
   latest.current = f;
   const [words, setWords] = useState(f.text ?? "");
-  useEffect(() => setWords(f.text ?? ""), [f.text]);
+  const wordBaseline = useRef(f.text ?? "");
+  useEffect(() => {
+    const previous = wordBaseline.current,
+      next = f.text ?? "";
+    wordBaseline.current = next;
+    setWords((current) => (current === previous ? next : current));
+  }, [f.text]);
   const set = (next: Partial<ViewFilters>) =>
     onChange(tidy({ ...latest.current, ...next }));
   useEffect(() => {
@@ -105,6 +135,16 @@ export function Filters({
       overdue: due === "overdue" || undefined,
       no_due: due === "none" || undefined,
       due_within_days: DUE_DAYS[due],
+      due_after: undefined,
+      due_before: undefined,
+      due_bucket: (
+        {
+          planned_today: "today",
+          exact_tomorrow: "tomorrow",
+          soon: "soon",
+          this_week: "week",
+        } as const
+      )[due as "planned_today" | "exact_tomorrow" | "soon" | "this_week"],
     });
   const list = f.fields ?? [];
   const setFields = (next: FieldFilter[]) =>
@@ -126,6 +166,7 @@ export function Filters({
             value={f.status ?? "open"}
             onChange={(e) =>
               set({
+                task_status: undefined,
                 status:
                   e.target.value === "open"
                     ? undefined
@@ -149,11 +190,22 @@ export function Filters({
             value={dueOf(f)}
             onChange={(e) => setDue(e.target.value as Due)}
           >
-            {(Object.keys(DUE_LABELS) as Due[]).map((d) => (
-              <option key={d} value={d}>
-                {DUE_LABELS[d]}
-              </option>
-            ))}
+            {(Object.keys(DUE_LABELS) as Due[])
+              .filter(
+                (d) =>
+                  source === "tasks" ||
+                  ![
+                    "planned_today",
+                    "exact_tomorrow",
+                    "soon",
+                    "this_week",
+                  ].includes(d),
+              )
+              .map((d) => (
+                <option key={d} value={d}>
+                  {DUE_LABELS[d]}
+                </option>
+              ))}
           </SelectBox>
         </Field>
       )}
@@ -194,6 +246,7 @@ export function Filters({
               onChange={(e) => set({ list: e.target.value || undefined })}
             >
               <option value="">Any list</option>
+              <option value="none">No list</option>
               {lists.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
@@ -213,6 +266,7 @@ export function Filters({
             >
               <option value="">Anyone</option>
               <option value="me">Me</option>
+              <option value="none">Unassigned team tasks</option>
             </SelectBox>
           </Field>
         </>
@@ -285,7 +339,60 @@ export function Filters({
       </Field>
       {source === "tasks" && (
         <>
-          <Field label="Only this status">
+          <Field label="Saved exact status">
+            <SelectBox
+              value={f.task_status ?? ""}
+              onChange={(e) =>
+                set({
+                  task_status: (e.target.value ||
+                    undefined) as ViewFilters["task_status"],
+                  status: e.target.value ? "any" : f.status,
+                })
+              }
+            >
+              <option value="">Use broad status</option>
+              {STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {statusLabels[status]}
+                </option>
+              ))}
+            </SelectBox>
+          </Field>
+          <Field label="Saved priority">
+            <SelectBox
+              value={f.priority ?? ""}
+              onChange={(e) =>
+                set({
+                  priority: (e.target.value ||
+                    undefined) as ViewFilters["priority"],
+                })
+              }
+            >
+              <option value="">Any priority</option>
+              {["high", "medium", "low"].map((priority) => (
+                <option key={priority} value={priority}>
+                  {priority}
+                </option>
+              ))}
+            </SelectBox>
+          </Field>
+          <Field label="Saved size">
+            <SelectBox
+              value={f.size ?? ""}
+              onChange={(e) =>
+                set({
+                  size: (e.target.value || undefined) as ViewFilters["size"],
+                })
+              }
+            >
+              <option value="">Any size</option>
+              <option value="none">No estimate</option>
+              <option value="quick">Up to 15 min</option>
+              <option value="short">16–60 min</option>
+              <option value="long">Over 1 hour</option>
+            </SelectBox>
+          </Field>
+          <Field label="My exact status">
             <SelectBox
               value={refine.status}
               onChange={(e) =>
@@ -303,7 +410,7 @@ export function Filters({
               ))}
             </SelectBox>
           </Field>
-          <Field label="Priority">
+          <Field label="My priority">
             <SelectBox
               value={refine.priority}
               onChange={(e) =>
@@ -319,7 +426,7 @@ export function Filters({
               <option value="low">Low</option>
             </SelectBox>
           </Field>
-          <Field label="Size">
+          <Field label="My size">
             <SelectBox
               value={refine.size}
               onChange={(e) => onRefine({ ...refine, size: e.target.value })}
