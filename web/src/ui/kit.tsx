@@ -93,7 +93,9 @@ export const Input = (
   },
 ) => <input className="input" {...props} />;
 export const TextArea = (
-  props: TextareaHTMLAttributes<HTMLTextAreaElement>,
+  props: TextareaHTMLAttributes<HTMLTextAreaElement> & {
+    ref?: Ref<HTMLTextAreaElement>;
+  },
 ) => <textarea className="input" {...props} />;
 export const SelectBox = (props: SelectHTMLAttributes<HTMLSelectElement>) => (
   <select className="input" {...props} />
@@ -153,9 +155,24 @@ export function Dialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  useEffect(() => {
+  useLayoutEffect(() => {
     const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
+    if (!dialog) return;
+    const opener = document.activeElement;
+    if (!dialog.open) dialog.showModal();
+    return () => {
+      const ownedFocus =
+        dialog.contains(document.activeElement) ||
+        document.activeElement === document.body;
+      if (dialog.open) dialog.close();
+      if (
+        ownedFocus &&
+        opener instanceof HTMLElement &&
+        opener.isConnected &&
+        !document.querySelector("dialog[open]")
+      )
+        opener.focus({ preventScroll: true });
+    };
   }, []);
   return (
     <dialog

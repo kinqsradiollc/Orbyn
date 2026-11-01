@@ -11,14 +11,21 @@ import { FileText, Hash, Link2 } from "lucide-react";
 import {
   Fragment,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
+  useState,
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { messageOf } from "../../../lib/resource";
+import { client } from "../../../lib/session";
+import { useLibraryOwner } from "../lifetime";
 import { navigate } from "../../../lib/router";
 import { tasks } from "../../shared-task";
 import { FootnoteContext, PageContext, pillKey } from "./context";
 import { cut, type Mark } from "./marks";
+import { LinkedObject } from "./LinkedObject";
 
 export function Math({
   latex,
@@ -143,9 +150,19 @@ function LinkPillView({
   hint?: string;
 }) {
   const page = useContext(PageContext);
+  const [details, setDetails] = useState(false);
+  const [tickBusy, setTickBusy] = useState(false);
+  const [tickError, setTickError] = useState("");
+  const tickLock = useRef(false);
+  const current = useLibraryOwner();
+  const identity = useRef(href);
+  identity.current = href;
   const ref = parseObjectHref(href);
+  const pill = ref ? page?.pills.get(pillKey(ref)) : undefined;
+  useEffect(() => {
+    setTickError("");
+  }, [pill]);
   if (!ref) return null;
-  const pill = page?.pills.get(pillKey(ref));
   if (pill && pill.state !== "ok") {
     const deleted = pill.state === "deleted";
     return (
@@ -181,43 +198,106 @@ function LinkPillView({
     );
   };
   return (
-    <span
-      className={`doc-pill${done ? " is-done" : ""}`}
-      data-src={start}
-      title={hint}
-    >
-      {isTask && page?.onToggleTask && (
-        <input
-          type="checkbox"
-          checked={done}
-          aria-label={`Done: ${title}`}
-          onClick={(event) => event.stopPropagation()}
-          onChange={() => page.onToggleTask?.(ref.id, !done)}
-        />
-      )}
-      {!isTask &&
-        (ref.block ? (
-          <Hash aria-hidden="true" />
-        ) : (
-          <FileText aria-hidden="true" />
-        ))}
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          if (event.metaKey || event.ctrlKey) {
-            if (
-              target.kind === "doc" ||
-              target.kind === "project" ||
-              target.kind === "task"
-            )
-              tasks.peek({ kind: target.kind, id: target.id } as never);
-          } else open();
-        }}
+    <>
+      <span
+        className={`doc-pill${done ? " is-done" : ""}`}
+        data-src={start}
+        title={hint}
       >
-        {title}
-      </button>
-    </span>
+        {isTask && page?.onToggleTask && (
+          <input
+            type="checkbox"
+            checked={done}
+            aria-label={`Done: ${title}`}
+            onClick={(event) => event.stopPropagation()}
+            disabled={tickBusy || !!tickError}
+            onChange={() => {
+              if (tickLock.current || tickError || !current()) return;
+              tickLock.current = true;
+              setTickBusy(true);
+              void (async () => {
+                if (ref.kind !== "task" && ref.kind !== "event") return;
+                const receipt = await client.linkCard({
+                  kind: ref.kind,
+                  id: ref.id,
+                });
+                if (!current() || identity.current !== href) return;
+                if (receipt.state !== "ok" || !receipt.can_write)
+                  throw new Error("You don't have edit access to this task.");
+                await page.onToggleTask?.(ref.id, !done);
+              })()
+                .catch((failure: unknown) => {
+                  if (current() && identity.current === href)
+                    setTickError(
+                      messageOf(failure, "Couldn't confirm the task status."),
+                    );
+                })
+                .finally(() => {
+                  tickLock.current = false;
+                  if (current()) setTickBusy(false);
+                });
+            }}
+          />
+        )}
+        {!isTask &&
+          (ref.block ? (
+            <Hash aria-hidden="true" />
+          ) : (
+            <FileText aria-hidden="true" />
+          ))}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (event.metaKey || event.ctrlKey) {
+              const kind = target.kind === "event" ? "task" : target.kind;
+              if (kind === "doc" || kind === "project" || kind === "task")
+                tasks.peek({ kind, id: target.id });
+            } else open();
+          }}
+        >
+          {title}
+        </button>
+        {page &&
+          (ref.kind === "doc" ||
+            ref.kind === "task" ||
+            ref.kind === "event" ||
+            ref.kind === "project") && (
+            <button
+              type="button"
+              className="linked-object-trigger"
+              aria-label={`Details for ${title}`}
+              aria-haspopup="dialog"
+              disabled={tickBusy}
+              onClick={(event) => {
+                event.stopPropagation();
+                event.currentTarget.focus({ preventScroll: true });
+                setDetails(true);
+              }}
+            >
+              Details
+            </button>
+          )}
+      </span>
+      {tickError && (
+        <span className="linked-object-tick-error" role="alert">
+          {tickError} Open Details to check the current status.
+        </span>
+      )}
+      {details &&
+        page &&
+        (ref.kind === "doc" ||
+          ref.kind === "task" ||
+          ref.kind === "event" ||
+          ref.kind === "project") && (
+          <LinkedObject
+            key={`${ref.kind}:${ref.id}:${ref.block ?? ""}`}
+            target={{ ...ref, kind: ref.kind }}
+            links={page}
+            onClose={() => setDetails(false)}
+          />
+        )}
+    </>
   );
 }
 

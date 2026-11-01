@@ -2,8 +2,11 @@ import { PageMaintenanceStore, watchDocRefresh } from "@orbyn/api-client";
 import {
   blockText,
   DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET,
+  maintainedPageBindingInput,
+  MAX_MAINTAINED_BLOCKS,
   type Doc,
   type MaintainedPageBinding,
+  type MaintainedPageBindingInput,
 } from "@orbyn/core";
 import { MoreHorizontal } from "lucide-react";
 import {
@@ -13,8 +16,10 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { client, getToken } from "../../../lib/session";
+import { client, getSessionVersion, onToken } from "../../../lib/session";
+import { messageOf } from "../../../lib/resource";
 import { pageWatcher } from "../streams";
+import { useLibraryOwner } from "../lifetime";
 import {
   Button,
   Dialog,
@@ -26,7 +31,32 @@ import {
   Menu,
   Pill,
   TextArea,
+  useConfirm,
 } from "../../../ui/kit";
+
+type ScheduleDraft = {
+  selected: string[];
+  instruction: string;
+  frequency: string;
+  budget: string;
+  nextRun: string;
+  timezone: string;
+  paused: boolean;
+};
+
+const localTime = (date: Date) => {
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}T${two(date.getHours())}:${two(date.getMinutes())}`;
+};
+const blankDraft = (): ScheduleDraft => ({
+  selected: [],
+  instruction: "",
+  frequency: "FREQ=DAILY",
+  budget: String(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET),
+  nextRun: localTime(new Date(Date.now() + 24 * 60 * 60_000)),
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  paused: true,
+});
 
 const REPEATS = [
   { value: "FREQ=DAILY", label: "Every day" },
@@ -44,33 +74,48 @@ const RUN_STATE = {
 };
 
 /** Scheduled updates over chosen blocks; review shows the saved proposal. */
-export function MaintenanceDialog({
-  id,
-  onChanged,
-  onClose,
-}: {
-  id: string;
-  onChanged: (doc: Doc) => void;
-  onClose: () => void;
-}) {
+type Props = { id: string; onChanged: (doc: Doc) => void; onClose: () => void };
+
+export function MaintenanceDialog(props: Props) {
+  const owner = useSyncExternalStore(onToken, getSessionVersion);
+  return <MaintenanceBody key={`${owner}:${props.id}`} {...props} />;
+}
+
+function MaintenanceBody({ id, onChanged, onClose }: Props) {
+  const confirm = useConfirm();
+  const current = useLibraryOwner();
   const changed = useRef(onChanged);
   changed.current = onChanged;
   const store = useMemo(
     () =>
-      new PageMaintenanceStore(client, id, getToken, (doc) =>
-        changed.current(doc),
+      new PageMaintenanceStore(
+        client,
+        id,
+        () => String(getSessionVersion()),
+        (doc) => current() && changed.current(doc),
       ),
-    [id],
+    [id, current],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [form, setForm] = useState(false);
   const [editing, setEditing] = useState<MaintainedPageBinding>();
-  const [selected, setSelected] = useState<string[]>([]);
-  const [instruction, setInstruction] = useState("");
-  const [frequency, setFrequency] = useState("FREQ=DAILY");
-  const [budget, setBudget] = useState(
-    String(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET),
-  );
+  const [draft, setDraft] = useState(blankDraft);
+  const initialDraft = useRef(JSON.stringify(draft));
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [saveError, setSaveError] = useState("");
+  const [receipt, setReceipt] = useState<MaintainedPageBinding | null>(null);
+  const request = useRef<{
+    input: MaintainedPageBindingInput;
+    editing?: MaintainedPageBinding;
+    beforeIds: string[];
+  } | null>(null);
+  const busy = state.busy || saving;
+  const dirty = JSON.stringify(draft) !== initialDraft.current;
+  const change = (value: Partial<ScheduleDraft>) => {
+    setDraft((was) => ({ ...was, ...value }));
+    setSaveError("");
+  };
   useEffect(() => {
     void store.prepare();
     return () => store.dispose();
@@ -79,7 +124,7 @@ export function MaintenanceDialog({
     const watcher = watchDocRefresh({
       api: pageWatcher,
       id,
-      session: getToken,
+      session: () => String(getSessionVersion()),
       load: () => client.listPageMaintenanceRuns(id),
       received: store.receiveRuns,
       failed: store.receiveRunsError,
@@ -89,26 +134,155 @@ export function MaintenanceDialog({
   const edit = (binding: MaintainedPageBinding) => {
     setForm(true);
     setEditing(binding);
-    setSelected(binding.snapshot.blocks.map((block) => block.block_id));
-    setInstruction(binding.instruction);
-    setFrequency(binding.rrule);
-    setBudget(
-      String(binding.token_budget ?? DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET),
-    );
+    const next = {
+      selected: binding.snapshot.blocks.map((block) => block.block_id),
+      instruction: binding.instruction,
+      frequency: binding.rrule,
+      budget: String(
+        binding.token_budget ?? DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET,
+      ),
+      nextRun: localTime(new Date(binding.next_run_at)),
+      timezone: binding.timezone,
+      paused: binding.paused,
+    };
+    setDraft(next);
+    initialDraft.current = JSON.stringify(next);
+    setSaveError("");
+    setReceipt(null);
+    request.current = null;
   };
   const reset = () => {
     setForm(false);
     setEditing(undefined);
-    setSelected([]);
-    setInstruction("");
+    const next = blankDraft();
+    setDraft(next);
+    initialDraft.current = JSON.stringify(next);
+    setSaveError("");
+    request.current = null;
   };
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const mayDiscard = async () =>
+    !dirty ||
+    (await confirm({
+      title: "Discard schedule changes?",
+      body: "Your changes haven't been saved.",
+      action: "Discard",
+      danger: true,
+    }));
+  const close = async () => {
+    if (!busy && !savingRef.current && (await mayDiscard()) && current())
+      onClose();
+  };
+  const save = async () => {
+    const doc = store.getSnapshot().doc;
+    if (!doc || busy || savingRef.current || !current()) return;
+    const at = new Date(draft.nextRun);
+    if (!Number.isFinite(at.getTime())) {
+      setSaveError("Choose a valid next run time.");
+      return;
+    }
+    if (
+      (!editing ||
+        draft.nextRun !== localTime(new Date(editing.next_run_at))) &&
+      at.getTime() <= Date.now()
+    ) {
+      setSaveError("Choose a future next run time.");
+      return;
+    }
+    // An unchanged time retains its original seconds and timezone semantics.
+    const parsed = maintainedPageBindingInput.safeParse({
+      block_ids: draft.selected,
+      instruction: draft.instruction,
+      rrule: draft.frequency,
+      timezone: draft.timezone,
+      next_run_at:
+        editing && draft.nextRun === localTime(new Date(editing.next_run_at))
+          ? editing.next_run_at
+          : at.toISOString(),
+      expected_doc_version: doc.version,
+      token_budget: Number(draft.budget),
+      paused: draft.paused,
+    });
+    if (!parsed.success) {
+      setSaveError(
+        parsed.error.issues[0]?.message ?? "Check the schedule fields.",
+      );
+      return;
+    }
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError("");
+    try {
+      // These routes do not support Idempotency-Key. An explicit retry first
+      // checks whether the prior attempt saved, retaining its original intent.
+      const previous = request.current;
+      if (previous) {
+        const rows = await client.listPageMaintenance(id);
+        if (!current()) return;
+        const sameBlocks = (row: MaintainedPageBinding) =>
+          JSON.stringify(
+            row.snapshot.blocks.map((one) => one.block_id).sort(),
+          ) === JSON.stringify([...previous.input.block_ids].sort());
+        const saved = rows.find(
+          (row) =>
+            (previous.editing
+              ? row.id === previous.editing.id &&
+                row.revision > previous.editing.revision
+              : !previous.beforeIds.includes(row.id)) &&
+            row.instruction === previous.input.instruction &&
+            row.rrule === previous.input.rrule &&
+            row.timezone === previous.input.timezone &&
+            row.next_run_at === previous.input.next_run_at &&
+            row.paused === previous.input.paused &&
+            row.token_budget === previous.input.token_budget &&
+            sameBlocks(row),
+        );
+        if (saved) {
+          setReceipt(saved);
+          reset();
+          await store.refresh();
+          return;
+        }
+      }
+      request.current = {
+        input: parsed.data,
+        editing,
+        beforeIds: store.getSnapshot().bindings.map((one) => one.id),
+      };
+      const saved = editing
+        ? await client.updatePageMaintenance(id, editing.id, {
+            ...parsed.data,
+            expected_revision: editing.revision,
+          })
+        : await client.createPageMaintenance(id, parsed.data);
+      if (!current()) return;
+      setReceipt(saved);
+      reset();
+      await store.refresh();
+    } catch (failure) {
+      if (current())
+        setSaveError(
+          `${messageOf(failure, "Couldn't save the schedule.")} Your changes are kept. Retry checks saved schedules first.`,
+        );
+    } finally {
+      savingRef.current = false;
+      if (current()) setSaving(false);
+    }
+  };
   const blocks = (state.doc?.content ?? []).filter(
     (block) => block.id && "text" in block,
   );
-  const known = REPEATS.some((one) => one.value === frequency);
+  const known = REPEATS.some((one) => one.value === draft.frequency);
   return (
-    <Dialog title="Page updates" wide onClose={() => !state.busy && onClose()}>
+    <Dialog title="Page updates" wide onClose={() => void close()}>
+      {receipt && (
+        <p className="small" role="status">
+          Schedule saved{receipt.paused ? " and paused" : ""}.
+          {state.error
+            ? " Refresh to see the latest schedules; don't add it again."
+            : ""}
+        </p>
+      )}
+      {saveError && <ErrorNotice message={saveError} />}
       {state.error && (
         <ErrorNotice
           message={state.error}
@@ -116,40 +290,29 @@ export function MaintenanceDialog({
         />
       )}
       {!state.doc && !state.error && <Loading label="Loading page updates" />}
-      {state.doc && (form || !state.bindings.length) ? (
+      {state.doc && !receipt && (form || !state.bindings.length) ? (
         <form
           className="lib-form"
           onSubmit={(event) => {
             event.preventDefault();
-            void store
-              .save(
-                {
-                  block_ids: selected,
-                  instruction: instruction.trim(),
-                  rrule: frequency,
-                  timezone: timeZone,
-                  expected_doc_version: state.doc!.version,
-                  token_budget: Number(budget),
-                  ...(editing ? { paused: editing.paused } : {}),
-                } as never,
-                editing,
-              )
-              .then(reset);
+            void save();
           }}
         >
-          <fieldset className="page-blocks">
-            <legend className="small">Blocks to maintain</legend>
+          <fieldset className="page-blocks" disabled={busy}>
+            <legend className="small">
+              Blocks to maintain · up to {MAX_MAINTAINED_BLOCKS}
+            </legend>
             {blocks.map((block) => (
               <label key={block.id} className="check small">
                 <input
                   type="checkbox"
-                  checked={selected.includes(block.id!)}
+                  checked={draft.selected.includes(block.id!)}
                   onChange={(event) =>
-                    setSelected((was) =>
-                      event.target.checked
-                        ? [...was, block.id!]
-                        : was.filter((one) => one !== block.id),
-                    )
+                    change({
+                      selected: event.target.checked
+                        ? [...draft.selected, block.id!]
+                        : draft.selected.filter((one) => one !== block.id),
+                    })
                   }
                 />
                 <span dir="auto">{blockText(block).slice(0, 120)}</span>
@@ -158,18 +321,27 @@ export function MaintenanceDialog({
           </fieldset>
           <Field label="What should stay current">
             <TextArea
-              value={instruction}
-              onChange={(event) => setInstruction(event.currentTarget.value)}
+              value={draft.instruction}
+              maxLength={4000}
+              disabled={busy}
+              onChange={(event) =>
+                change({ instruction: event.currentTarget.value })
+              }
             />
           </Field>
           <div className="page-share-options">
             <Field label="Repeat">
               <select
                 className="input"
-                value={frequency}
-                onChange={(event) => setFrequency(event.currentTarget.value)}
+                value={draft.frequency}
+                disabled={busy}
+                onChange={(event) =>
+                  change({ frequency: event.currentTarget.value })
+                }
               >
-                {!known && <option value={frequency}>Current rule</option>}
+                {!known && (
+                  <option value={draft.frequency}>Current rule</option>
+                )}
                 {REPEATS.map((one) => (
                   <option key={one.value} value={one.value}>
                     {one.label}
@@ -177,26 +349,89 @@ export function MaintenanceDialog({
                 ))}
               </select>
             </Field>
-            <Field label="Token budget per run">
+            <Field
+              label="Token budget per run"
+              hint="1,000–20,000 estimated tokens; Overnight limits also apply."
+            >
               <Input
                 type="number"
-                min={1}
-                value={budget}
-                onChange={(event) => setBudget(event.currentTarget.value)}
+                min={1000}
+                max={DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET}
+                step={1}
+                disabled={busy}
+                value={draft.budget}
+                onChange={(event) =>
+                  change({ budget: event.currentTarget.value })
+                }
               />
             </Field>
           </div>
+          <div className="page-share-options">
+            <Field label="Next run (your local time)">
+              <Input
+                type="datetime-local"
+                required
+                disabled={busy}
+                value={draft.nextRun}
+                onChange={(event) =>
+                  change({ nextRun: event.currentTarget.value })
+                }
+              />
+            </Field>
+            <Field
+              label="Schedule timezone"
+              hint="Repeating runs follow this timezone."
+            >
+              <Input
+                required
+                disabled={busy}
+                value={draft.timezone}
+                onChange={(event) =>
+                  change({ timezone: event.currentTarget.value })
+                }
+              />
+            </Field>
+          </div>
+          <label className="check small">
+            <input
+              type="checkbox"
+              checked={!draft.paused}
+              disabled={busy}
+              onChange={(event) =>
+                change({ paused: !event.currentTarget.checked })
+              }
+            />
+            Enable scheduled updates
+          </label>
+          <p className="small muted">
+            {draft.paused
+              ? "Saved paused. No runs start until you enable it."
+              : "Overnight can work on these blocks from the next run time."}
+          </p>
           <div className="dialog-actions">
-            {!!state.bindings.length && (
-              <Button variant="ghost" onClick={reset}>
-                Cancel
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() =>
+                void (async () => {
+                  if ((await mayDiscard()) && current()) {
+                    if (state.bindings.length) reset();
+                    else onClose();
+                  }
+                })()
+              }
+            >
+              Cancel
+            </Button>
             <Button
               type="submit"
               variant="primary"
-              busy={state.busy}
-              disabled={!selected.length || !instruction.trim()}
+              busy={busy}
+              disabled={
+                !draft.selected.length ||
+                draft.selected.length > MAX_MAINTAINED_BLOCKS ||
+                !draft.instruction.trim()
+              }
             >
               {editing ? "Save schedule" : "Add schedule"}
             </Button>
@@ -207,7 +442,16 @@ export function MaintenanceDialog({
         <section>
           <div className="page-panel-head">
             <h3>Schedules</h3>
-            <Button onClick={() => setForm(true)}>New schedule</Button>
+            <Button
+              disabled={busy}
+              onClick={() => {
+                reset();
+                setReceipt(null);
+                setForm(true);
+              }}
+            >
+              New schedule
+            </Button>
           </div>
           <ul className="lib-picklist">
             {state.bindings.map((binding) => (
@@ -219,7 +463,9 @@ export function MaintenanceDialog({
                   <span className="small muted">
                     {REPEATS.find((one) => one.value === binding.rrule)
                       ?.label ?? binding.rrule}{" "}
-                    · {binding.snapshot.blocks.length} blocks
+                    · {binding.snapshot.blocks.length} blocks ·{" "}
+                    {binding.timezone} · next{" "}
+                    {new Date(binding.next_run_at).toLocaleString()}
                   </span>
                 </span>
                 {binding.paused && <Pill>Paused</Pill>}
@@ -238,6 +484,7 @@ export function MaintenanceDialog({
                   {(close) => (
                     <>
                       <button
+                        disabled={busy}
                         type="button"
                         onClick={() => {
                           close();
@@ -247,6 +494,7 @@ export function MaintenanceDialog({
                         Edit
                       </button>
                       <button
+                        disabled={busy}
                         type="button"
                         onClick={() => {
                           close();
@@ -256,6 +504,7 @@ export function MaintenanceDialog({
                         {binding.paused ? "Resume" : "Pause"}
                       </button>
                       <button
+                        disabled={busy}
                         type="button"
                         className="is-danger"
                         onClick={() => {
@@ -279,7 +528,7 @@ export function MaintenanceDialog({
             <h3>Recent runs</h3>
             <Button
               variant="ghost"
-              disabled={state.busy}
+              disabled={busy}
               onClick={() => void store.refresh()}
             >
               Refresh
@@ -299,14 +548,14 @@ export function MaintenanceDialog({
                 {run.can_review && (
                   <>
                     <Button
-                      disabled={state.busy}
+                      disabled={busy}
                       onClick={() => void store.decide(run, true)}
                     >
                       Approve
                     </Button>
                     <Button
                       variant="ghost"
-                      disabled={state.busy}
+                      disabled={busy}
                       onClick={() => void store.decide(run, false)}
                     >
                       Decline

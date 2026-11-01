@@ -109,7 +109,7 @@
   cursor: pointer;
   font-size: 13px;
   color: var(--text-soft);
-  min-height: 36px;
+  min-height: var(--control);
   display: flex;
   align-items: center;
 }
@@ -282,5 +282,34 @@
   }
   .study-card {
     padding: 16px;
+  }
+}
+
+.study-imports {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.study-imports .row-title,
+.study-page-choices .row-title {
+  display: block;
+}
+.study-imports progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 6px;
+  accent-color: var(--accent);
+}
+.study-page-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 800px) {
+  .study-imports .row {
+    flex-wrap: wrap;
+  }
+  .study-imports .row-main {
+    flex-basis: 100%;
   }
 }

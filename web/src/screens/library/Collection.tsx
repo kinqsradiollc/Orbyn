@@ -34,7 +34,8 @@ import {
 } from "react";
 import { messageOf } from "../../lib/resource";
 import { navigate } from "../../lib/router";
-import { client } from "../../lib/session";
+import { client, getSessionVersion } from "../../lib/session";
+import { useLibraryOwner } from "./lifetime";
 import {
   Button,
   Dialog,
@@ -79,6 +80,7 @@ export function Collection({
   fixedKind?: FixedKind;
   railToggle: ReactNode;
 }) {
+  const current = useLibraryOwner();
   const state = useLibraryState();
   const { place, filters, folders, stars, fading, teams, memory, agents } =
     state;
@@ -117,18 +119,19 @@ export function Collection({
       ? folders.find((one) => one.id === place.id)
       : undefined;
   const name = placeName(effective, fixedKind, folder?.name, state.docs ?? []);
-  const report = (failure: unknown, fallback: string) =>
-    toast({ text: messageOf(failure, fallback), error: true });
+  const report = (failure: unknown, fallback: string) => {
+    if (current()) toast({ text: messageOf(failure, fallback), error: true });
+  };
 
   const run = async (work: () => Promise<void>, fallback: string) => {
-    if (busy) return;
+    if (!current() || busy) return;
     setBusy(true);
     try {
       await work();
     } catch (failure) {
       report(failure, fallback);
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   };
 
@@ -138,11 +141,13 @@ export function Collection({
         kind,
         folder_id: place.at === "folder" && !fixedKind ? place.id : null,
       });
+      if (!current()) return;
       void loadLibrary();
       navigate(`/app/doc/${made.id}`);
     }, "Couldn't create the page.");
 
   const moveDoc = async (doc: DocSummary, to: MoveTarget) => {
+    if (!current()) return;
     try {
       if (moving?.many) {
         const ids = moving.many.map((one) => one.id);
@@ -150,12 +155,14 @@ export function Collection({
           ids,
           folder_id: to.folder_id ?? null,
         });
+        if (!current()) return;
         setPicked(new Set(result.skipped.map((row) => row.id)));
         toast({
           text: `Moved ${result.done.length} pages.${result.skipped.length ? ` ${result.skipped.length} couldn't be changed.` : ""}`,
         });
       } else {
         await client.moveDoc(doc.id, to);
+        if (!current()) return;
         toast({ text: "Page moved." });
       }
       await loadLibrary();
@@ -164,13 +171,16 @@ export function Collection({
     }
   };
   const moveToProject = async (doc: DocSummary, projectId: string) => {
+    if (!current()) return;
     try {
       const full = await client.getDocForEditor(doc.id);
+      if (!current()) return;
       await client.updateDocForEditor(doc.id, {
         version: full.version,
         document: full.document ?? { format: 1, blocks: full.content },
         project_id: projectId,
       });
+      if (!current()) return;
       toast({ text: "Page moved to project." });
       await loadLibrary();
     } catch (failure) {
@@ -198,17 +208,31 @@ export function Collection({
     run(async () => {
       const ids = [...picked];
       const result = await client.bulkDocs({ ids, archived: true });
+      if (!current()) return;
       setPicked(new Set(result.skipped.map((row) => row.id)));
       await loadLibrary();
+      if (!current()) return;
+      const actionGeneration = getSessionVersion();
       toast({
         text: `${result.done.length} pages archived.${result.skipped.length ? ` ${result.skipped.length} couldn't be changed.` : ""}`,
         action: {
           label: "Undo",
-          run: () =>
+          run: () => {
+            if (actionGeneration !== getSessionVersion()) return;
             void client.bulkDocs({ ids: result.done, archived: false }).then(
-              () => loadLibrary(),
-              (failure) => report(failure, "Couldn't restore those pages."),
-            ),
+              () => {
+                if (actionGeneration === getSessionVersion())
+                  void loadLibrary();
+              },
+              (failure) => {
+                if (actionGeneration === getSessionVersion())
+                  toast({
+                    text: messageOf(failure, "Couldn't restore those pages."),
+                    error: true,
+                  });
+              },
+            );
+          },
         },
       });
     }, "Couldn't archive those pages.");
@@ -218,9 +242,11 @@ export function Collection({
         ids: [...picked],
         tag_id: tag.id,
       });
+      if (!current()) return;
       setPicked(new Set(result.skipped.map((row) => row.id)));
       setTagging(false);
       await loadLibrary();
+      if (!current()) return;
       toast({
         text: `Tagged ${result.done.length} pages.${result.skipped.length ? ` ${result.skipped.length} couldn't be changed.` : ""}`,
       });
@@ -230,6 +256,7 @@ export function Collection({
     folder &&
     run(async () => {
       const saved = await client.archiveFolder(folder.id, true);
+      if (!current()) return;
       setFolders((all) =>
         all.map((one) =>
           one.id === folder.id
@@ -239,6 +266,7 @@ export function Collection({
       );
       goTo({ at: "all" });
       await loadLibrary();
+      if (!current()) return;
       toast({ text: "Folder archived." });
     }, "Couldn't archive this folder.");
 
@@ -642,6 +670,7 @@ function Rows({
   onCards: (doc: DocSummary) => void;
   uploads: boolean;
 }) {
+  const current = useLibraryOwner();
   const { folders, stars, teams, fading } = useLibraryState();
   const toast = useToast();
   const row = (doc: DocSummary) => {
@@ -741,21 +770,24 @@ function Rows({
           }
           aria-pressed={star}
           className={`lib-row-act${star ? " is-on" : ""}`}
-          onClick={() =>
+          onClick={() => {
+            if (!current()) return;
             void starDoc(doc.id, !star).then(
               () =>
+                current() &&
                 toast({
                   text: star
                     ? "Page removed from favorites."
                     : "Page added to favorites.",
                 }),
               (failure) =>
+                current() &&
                 toast({
                   text: messageOf(failure, "Couldn't change favorites."),
                   error: true,
                 }),
-            )
-          }
+            );
+          }}
         >
           <Star fill={star ? "currentColor" : "none"} />
         </IconButton>
@@ -799,6 +831,7 @@ function TagPicked({
   onClose: () => void;
   onPick: (tag: Tag) => void;
 }) {
+  const current = useLibraryOwner();
   const [tags, setTags] = useState<Tag[] | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -806,14 +839,18 @@ function TagPicked({
   useEffect(() => {
     let live = true;
     setError("");
+    if (!current()) return;
     client.listTags().then(
-      (list) => live && setTags(list),
-      (failure) => live && setError(messageOf(failure, "Couldn't load tags.")),
+      (list) => live && current() && setTags(list),
+      (failure) =>
+        live &&
+        current() &&
+        setError(messageOf(failure, "Couldn't load tags.")),
     );
     return () => {
       live = false;
     };
-  }, [attempt]);
+  }, [attempt, current]);
   const words = query.trim().toLocaleLowerCase();
   const shown = tags?.filter((tag) =>
     tag.name.toLocaleLowerCase().includes(words),
@@ -854,12 +891,14 @@ function TagPicked({
 }
 
 function ArchivedList({ fixedKind }: { fixedKind?: FixedKind }) {
+  const current = useLibraryOwner();
   const { folders } = useLibraryState();
   const toast = useToast();
   const [rows, setRows] = useState<DocSummary[] | null>(null);
   const [error, setError] = useState("");
   const read = useRef(0);
   const load = useCallback(async () => {
+    if (!current()) return;
     const id = ++read.current;
     setError("");
     try {
@@ -867,45 +906,49 @@ function ArchivedList({ fixedKind }: { fixedKind?: FixedKind }) {
         archived: "only",
         ...(fixedKind ? { kind: fixedKind } : {}),
       });
-      if (id === read.current) setRows(list);
+      if (current() && id === read.current) setRows(list);
     } catch (failure) {
-      if (id === read.current)
+      if (current() && id === read.current)
         setError(messageOf(failure, "Couldn't load archived pages."));
     }
-  }, [fixedKind]);
+  }, [fixedKind, current]);
   useEffect(() => void load(), [load]);
   const archived = folders.filter((folder) => folder.archived_at);
-  const restoreDoc = (doc: DocSummary) =>
-    client.archiveDoc(doc.id, false).then(
-      () => {
-        setRows((all) => all?.filter((one) => one.id !== doc.id) ?? all);
-        toast({ text: "Page restored." });
-        void loadLibrary();
-      },
-      (failure) =>
+  const restoreDoc = async (doc: DocSummary) => {
+    if (!current()) return;
+    try {
+      await client.archiveDoc(doc.id, false);
+      if (!current()) return;
+      setRows((all) => all?.filter((one) => one.id !== doc.id) ?? all);
+      toast({ text: "Page restored." });
+      void loadLibrary();
+    } catch (failure) {
+      if (current())
         toast({
           text: messageOf(failure, "Couldn't restore this page."),
           error: true,
-        }),
-    );
-  const restoreFolder = (id: string) =>
-    client.archiveFolder(id, false).then(
-      () => {
-        setFolders((all) =>
-          all.map((one) =>
-            one.id === id ? { ...one, archived_at: null } : one,
-          ),
-        );
-        toast({ text: "Folder restored." });
-        void load();
-        void loadLibrary();
-      },
-      (failure) =>
+        });
+    }
+  };
+  const restoreFolder = async (id: string) => {
+    if (!current()) return;
+    try {
+      await client.archiveFolder(id, false);
+      if (!current()) return;
+      setFolders((all) =>
+        all.map((one) => (one.id === id ? { ...one, archived_at: null } : one)),
+      );
+      toast({ text: "Folder restored." });
+      void load();
+      void loadLibrary();
+    } catch (failure) {
+      if (current())
         toast({
           text: messageOf(failure, "Couldn't restore this folder."),
           error: true,
-        }),
-    );
+        });
+    }
+  };
   if (error) return <ErrorNotice message={error} onRetry={() => void load()} />;
   if (!rows) return <Loading label="Loading archived pages" />;
   if (!rows.length && !archived.length)
@@ -958,6 +1001,7 @@ function ArchivedList({ fixedKind }: { fixedKind?: FixedKind }) {
 }
 
 function TrashList() {
+  const current = useLibraryOwner();
   const toast = useToast();
   const confirm = useConfirm();
   const [rows, setRows] = useState<TrashedDoc[] | null>(null);
@@ -965,57 +1009,71 @@ function TrashList() {
   const [busy, setBusy] = useState(false);
   const read = useRef(0);
   const load = useCallback(async () => {
+    if (!current()) return;
     const id = ++read.current;
     setError("");
     try {
       const list = await client.listTrash();
-      if (id === read.current) setRows(list);
+      if (current() && id === read.current) setRows(list);
     } catch (failure) {
-      if (id === read.current)
+      if (current() && id === read.current)
         setError(messageOf(failure, "Couldn't load Trash."));
     }
-  }, []);
+  }, [current]);
   useEffect(() => void load(), [load]);
   const restore = async (page: TrashedDoc) => {
+    if (!current() || busy) return;
     setBusy(true);
     try {
       const back = await client.restoreDoc(page.id);
+      if (!current()) return;
       setRows((all) => all?.filter((one) => one.id !== page.id) ?? all);
       void loadLibrary();
+      const actionGeneration = getSessionVersion();
       toast({
         text: "Page restored.",
-        action: { label: "Open", run: () => navigate(`/app/doc/${back.id}`) },
+        action: {
+          label: "Open",
+          run: () => {
+            if (actionGeneration === getSessionVersion())
+              navigate(`/app/doc/${back.id}`);
+          },
+        },
       });
     } catch (failure) {
+      if (!current()) return;
       toast({
         text: messageOf(failure, "Couldn't restore this page."),
         error: true,
       });
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   };
   const destroy = async (page: TrashedDoc) => {
+    if (!current() || busy) return;
     const ok = await confirm({
       title: "Delete page permanently?",
       body: `${page.title || "Untitled"} · Its history and comments are also deleted.`,
       action: "Delete permanently",
       danger: true,
     });
-    if (!ok) return;
+    if (!ok || !current()) return;
     setBusy(true);
     try {
       await client.deleteDocForever(page.id);
+      if (!current()) return;
       setRows((all) => all?.filter((one) => one.id !== page.id) ?? all);
       dropDoc(page.id);
       toast({ text: "Page permanently deleted." });
     } catch (failure) {
+      if (!current()) return;
       toast({
         text: messageOf(failure, "Couldn't delete this page."),
         error: true,
       });
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   };
   if (error) return <ErrorNotice message={error} onRetry={() => void load()} />;

@@ -24,10 +24,17 @@ import {
   type RefObject,
 } from "react";
 import { messageOf } from "../../../lib/resource";
-import { client } from "../../../lib/session";
-import { Button, Segmented, useToast } from "../../../ui/kit";
+import { client, getToken, getSessionVersion } from "../../../lib/session";
+import { Button, Segmented, useToast, useConfirm } from "../../../ui/kit";
 import { LatexPreview } from "./Latex";
 import type { Page } from "./usePage";
+import { leavesOf } from "./tree";
+import {
+  latexSourceSelector,
+  sameSourceBase,
+  sourceOrdinal,
+  type LatexSourceDraft,
+} from "./source-draft";
 
 const SPLIT_KEY = "orbyn-doc-split";
 const readSplit = () => {
@@ -58,6 +65,9 @@ export function SourceWorkspace({
   onAsk: (selection: DocSelection) => void;
 }) {
   const [split, setSplit] = useState(readSplit);
+  const [latexSource, setLatexSource] = useState(
+    () => docLatexBlock(page.leaves, 0)?.text ?? docWholeLatex(page.leaves),
+  );
   const [view, setView] = useState<"source" | "preview">("source");
   const root = useRef<HTMLDivElement>(null);
   const [narrow, setNarrow] = useState(false);
@@ -71,7 +81,10 @@ export function SourceWorkspace({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  useEffect(() => onStuck(false), [onStuck]);
+  useEffect(
+    () => onStuck(page.sourceDrafts.pending),
+    [onStuck, page.sourceDrafts.pending],
+  );
   const store = (next: number) => {
     const value = Math.max(20, Math.min(80, next));
     setSplit(value);
@@ -117,10 +130,14 @@ export function SourceWorkspace({
       <LatexSource
         page={page}
         canWrite={canWrite}
+        onStuck={onStuck}
+        onPreview={setLatexSource}
         report={(text) => toast({ text, error: true })}
       />
     );
-  const latexResult = format === "latex" && <LatexResult page={page} />;
+  const latexResult = format === "latex" && (
+    <LatexPreview source={latexSource} fill />
+  );
   return (
     <div className="doc-split-frame" ref={root}>
       {narrow && (
@@ -361,45 +378,208 @@ function LatexSource({
   page,
   canWrite,
   report,
+  onStuck,
+  onPreview,
 }: {
   page: Page;
   canWrite: boolean;
   report: (text: string) => void;
+  onStuck: (stuck: boolean) => void;
+  onPreview: (source: string) => void;
 }) {
   const document = page.document!;
   const leaves = page.leaves;
   const count = leaves.filter(
     (block) => block.type === "code" && block.lang === "latex-document",
   ).length;
-  const [which, setWhich] = useState(count ? 0 : -1);
+  const [selected, setSelected] = useState(() =>
+    latexSourceSelector(document, count ? 0 : -1),
+  );
+  const which = sourceOrdinal(selected, document) ?? -2;
   const block = which >= 0 ? docLatexBlock(leaves, which) : undefined;
   const whole = useMemo(() => docWholeLatex(leaves), [leaves]);
-  const base = which >= 0 ? (block?.text ?? EMPTY_LATEX_DOCUMENT) : whole;
+  const base =
+    which >= 0
+      ? (block?.text ?? EMPTY_LATEX_DOCUMENT)
+      : which === -1
+        ? whole
+        : "";
+  const latestBase = useRef(base);
+  latestBase.current = base;
+  const confirm = useConfirm();
   const [text, setText] = useState(base);
+  useEffect(() => onPreview(text), [text, onPreview]);
   const [problem, setProblem] = useState("");
-  const typed = useRef(false);
+  const loadedDraft = useRef<string | null>(null);
+  const manualRecovery = useRef(false);
+  const [exporting, setExporting] = useState(false);
+  const exportLock = useRef(false);
+  const owner = useRef({
+    token: getToken(),
+    version: getSessionVersion(),
+  }).current;
+  const alive = useRef(true);
+  const currentOwner = useCallback(
+    () =>
+      alive.current &&
+      getToken() === owner.token &&
+      getSessionVersion() === owner.version,
+    [owner],
+  );
   useEffect(() => {
-    if (!typed.current) setText(base);
-  }, [base]);
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      onStuck(false);
+    };
+  }, [onStuck]);
+  useEffect(() => {
+    onStuck(!!problem || page.sourceDrafts.pending);
+    if (!problem && !page.sourceDrafts.pending) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [problem, onStuck, page.sourceDrafts.pending]);
+  const typed = useRef(false);
+  const lastApplied = useRef(base);
+  const lastStoreSource = useRef(base);
+  useEffect(() => {
+    // The shared store already merged or rejected the remote revision. Adopt
+    // its current source when this input has no separate unapplied draft.
+    if (typed.current && base === lastStoreSource.current) return;
+    if (
+      !problem &&
+      !page.state.conflict &&
+      (!typed.current || text === lastApplied.current || text === base)
+    ) {
+      lastApplied.current = base;
+      lastStoreSource.current = base;
+      typed.current = false;
+      setText(base);
+    }
+  }, [base, text, problem, page.state.conflict]);
+  useEffect(() => {
+    const draft = page.sourceDrafts.active;
+    if (
+      !currentOwner() ||
+      !page.sourceDrafts.pending ||
+      !draft ||
+      loadedDraft.current === draft.id
+    )
+      return;
+    // Returning to this pane only restores the local input, never the page.
+    loadedDraft.current = draft.id;
+    manualRecovery.current = true;
+    typed.current = true;
+    setSelected(draft.selector);
+    setText(draft.raw);
+    setProblem("Recovered source is unapplied. Review it, then apply.");
+  }, [page.sourceDrafts.active, page.sourceDrafts.pending, currentOwner]);
+  useEffect(() => {
+    const draft = page.sourceDrafts.active;
+    if (currentOwner() && page.sourceDrafts.pending && page.recovery) {
+      setProblem(
+        "Restore or discard the page draft before applying this source.",
+      );
+      return;
+    }
+    if (
+      currentOwner() &&
+      page.sourceDrafts.pending &&
+      draft &&
+      (!sameSourceBase(draft, document) ||
+        sourceOrdinal(draft.selector, document) === null)
+    )
+      setProblem(
+        "The page changed since this source was kept. Save a source copy and compare it with the current page before discarding this draft.",
+      );
+    else if (currentOwner() && page.sourceDrafts.pending && draft)
+      setProblem((previous) =>
+        previous ===
+        "Restore or discard the page draft before applying this source."
+          ? "Recovered source is unapplied. Review it, then apply."
+          : previous,
+      );
+  }, [
+    page.sourceDrafts.active,
+    page.sourceDrafts.pending,
+    document,
+    currentOwner,
+    page.recovery,
+  ]);
+
   const apply = useCallback(
-    (next: string) => {
+    (next: string, explicit = false) => {
+      if (!currentOwner() || !canWrite || page.state.conflict) return;
       setText(next);
       typed.current = true;
+      const current = page.store.state.session?.document ?? document;
+      let draft = page.sourceDrafts.pending ? page.sourceDrafts.active : null;
+      const retain = () => {
+        draft = page.sourceDrafts.remember(next, draft?.selector ?? selected);
+        if (draft) loadedDraft.current = draft.id;
+      };
+      if (page.recovery) {
+        retain();
+        manualRecovery.current = true;
+        setProblem(
+          "Restore or discard the page draft before applying this source.",
+        );
+        return;
+      }
+      if (draft) {
+        retain();
+        if (
+          draft &&
+          (!sameSourceBase(draft, current) ||
+            sourceOrdinal(draft.selector, current) === null)
+        ) {
+          setProblem(
+            "The page changed since this source was kept. Save a source copy and compare it with the current page before discarding this draft.",
+          );
+          return;
+        }
+        if (manualRecovery.current && !explicit) {
+          setProblem("Recovered source is unapplied. Review it, then apply.");
+          return;
+        }
+      }
       if (next.length > DOC_LATEX_SOURCE_MAX) {
+        retain();
         setProblem(
           `This source is over the ${DOC_LATEX_SOURCE_MAX.toLocaleString()} character limit. Your draft stays here.`,
         );
         return;
       }
       try {
-        const current = page.store.state.session?.document ?? document;
+        const ordinal = sourceOrdinal(draft?.selector ?? selected, current);
+        if (ordinal === null)
+          throw new Error(
+            "This LaTeX note is no longer available. Save a source copy before choosing another note.",
+          );
         const operation =
-          which >= 0
-            ? docLatexOperation(current, next, which)
+          ordinal >= 0
+            ? docLatexOperation(current, next, ordinal)
             : docWholeLatexOperation(current, next);
-        page.edit(operation);
+        if (!page.edit(operation))
+          throw new Error(
+            "This edit couldn't be applied. Your source is still here; resolve the page draft or save a source copy.",
+          );
+        const savedInput = page.store.state.session?.document;
+        if (savedInput) {
+          const nextLeaves = leavesOf(savedInput);
+          lastStoreSource.current =
+            ordinal >= 0
+              ? (docLatexBlock(nextLeaves, ordinal)?.text ??
+                EMPTY_LATEX_DOCUMENT)
+              : docWholeLatex(nextLeaves);
+        }
+        lastApplied.current = next;
+        manualRecovery.current = false;
+        page.sourceDrafts.accepted();
         setProblem("");
       } catch (failure) {
+        retain();
         setProblem(
           messageOf(
             failure,
@@ -408,18 +588,80 @@ function LatexSource({
         );
       }
     },
-    [page, document, which],
+    [page, document, selected, canWrite, currentOwner],
   );
   useEffect(() => {
     typed.current = false;
-  }, [which]);
-  const exportPdf = async () => {
-    if (!(await page.flush())) return;
+  }, [selected]);
+  const saveCopy = (raw: string) => {
+    if (!currentOwner()) return;
     try {
+      const url = URL.createObjectURL(
+        new Blob([raw], { type: "text/plain;charset=utf-8" }),
+      );
+      const link = globalThis.document.createElement("a");
+      link.href = url;
+      link.download = `${page.session?.title || "document"}-draft.tex`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (failure) {
+      report(messageOf(failure, "Couldn't save a source copy."));
+    }
+  };
+  const recover = (draft: LatexSourceDraft) => {
+    if (!currentOwner()) return;
+    const restored = page.sourceDrafts.recover(draft.id);
+    if (!restored) return;
+    loadedDraft.current = restored.id;
+    manualRecovery.current = true;
+    typed.current = true;
+    setSelected(restored.selector);
+    setText(restored.raw);
+    setProblem("Recovered source is unapplied. Review it, then apply.");
+  };
+  const discard = async (draftId?: string) => {
+    if (!currentOwner()) return;
+    const activeId = page.sourceDrafts.active?.id;
+    const accepted = await confirm({
+      title: "Discard source draft?",
+      body: "Unapplied source changes are removed. Save a source copy first if you want to keep them.",
+      action: "Discard",
+      danger: true,
+    });
+    if (!accepted || !currentOwner()) return;
+    const wasActive = draftId === undefined || draftId === activeId;
+    if (wasActive && page.sourceDrafts.active?.id !== activeId) return;
+    const error = page.sourceDrafts.discard(draftId ?? activeId);
+    if (error) {
+      report(error);
+      return;
+    }
+    if (wasActive) {
+      loadedDraft.current = null;
+      manualRecovery.current = false;
+      typed.current = false;
+      setText(latestBase.current);
+      setProblem("");
+    }
+  };
+  const exportPdf = async () => {
+    if (
+      !currentOwner() ||
+      exportLock.current ||
+      problem ||
+      page.sourceDrafts.pending ||
+      which === -2
+    )
+      return;
+    exportLock.current = true;
+    setExporting(true);
+    try {
+      if (!(await page.flush()) || !currentOwner()) return;
       const blob = await client.compileDocLatex(page.id, {
         source: text,
         version: page.store.state.session?.saved.version ?? 0,
       });
+      if (!currentOwner()) return;
       const url = URL.createObjectURL(blob);
       const link = globalThis.document.createElement("a");
       link.href = url;
@@ -427,7 +669,11 @@ function LatexSource({
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (failure) {
-      report(messageOf(failure, "Couldn't update the PDF. Try again."));
+      if (currentOwner())
+        report(messageOf(failure, "Couldn't update the PDF. Try again."));
+    } finally {
+      exportLock.current = false;
+      if (currentOwner()) setExporting(false);
     }
   };
   return (
@@ -436,9 +682,27 @@ function LatexSource({
         <select
           className="input lib-select"
           aria-label="LaTeX source"
+          disabled={exporting}
           value={which}
-          onChange={(event) => setWhich(Number(event.currentTarget.value))}
+          onChange={(event) => {
+            if (exporting || !currentOwner()) return;
+            if (problem || page.sourceDrafts.pending) {
+              setProblem(
+                "Resolve or save a source copy before choosing another note.",
+              );
+              return;
+            }
+            setSelected(
+              latexSourceSelector(
+                page.store.state.session?.document ?? document,
+                Number(event.currentTarget.value),
+              ),
+            );
+          }}
         >
+          {which === -2 && (
+            <option value={-2}>Selected note is unavailable</option>
+          )}
           <option value={-1}>Whole page</option>
           {Array.from({ length: count }, (_, index) => (
             <option key={index} value={index}>
@@ -448,16 +712,91 @@ function LatexSource({
         </select>
         <Button
           variant="ghost"
-          disabled={which < 0 && !docWholeLatexCanExport(leaves)}
+          busy={exporting}
+          disabled={
+            !!problem ||
+            page.sourceDrafts.pending ||
+            which === -2 ||
+            (which < 0 && !docWholeLatexCanExport(leaves))
+          }
           onClick={() => void exportPdf()}
         >
           Export PDF
         </Button>
       </div>
-      {problem && (
-        <p className="small doc-latex-error doc-pane-note" role="alert">
-          {problem}
-        </p>
+      {page.sourceDrafts.items.length > 0 && (
+        <div
+          className="doc-pane-note small"
+          aria-label="Source recovery copies"
+        >
+          {page.sourceDrafts.items.map((draft) => (
+            <div key={draft.id}>
+              <span>
+                Unapplied{" "}
+                {draft.selector.kind === "whole"
+                  ? "whole-page source"
+                  : "LaTeX note"}{" "}
+                from {new Date(draft.at).toLocaleString()}.
+              </span>{" "}
+              <Button
+                variant="ghost"
+                disabled={!!problem || page.sourceDrafts.pending}
+                onClick={() => recover(draft)}
+              >
+                Recover source
+              </Button>
+              <Button variant="ghost" onClick={() => saveCopy(draft.raw)}>
+                Save source copy
+              </Button>
+              <Button variant="ghost" onClick={() => void discard(draft.id)}>
+                Discard
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {(problem || page.sourceDrafts.error) && (
+        <div className="small doc-latex-error doc-pane-note" role="alert">
+          {problem && <p>{problem}</p>}
+          {page.sourceDrafts.error && (
+            <>
+              <p>{page.sourceDrafts.error}</p>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  if (currentOwner()) page.sourceDrafts.retry();
+                }}
+              >
+                Try again
+              </Button>
+            </>
+          )}
+          <Button variant="ghost" onClick={() => saveCopy(text)}>
+            Save source copy
+          </Button>
+          {problem && (
+            <>
+              <Button
+                variant="ghost"
+                disabled={
+                  !canWrite ||
+                  !!page.recovery ||
+                  page.state.conflict ||
+                  text.length > DOC_LATEX_SOURCE_MAX ||
+                  (!!page.sourceDrafts.active &&
+                    !sameSourceBase(page.sourceDrafts.active, document)) ||
+                  which === -2
+                }
+                onClick={() => apply(text, true)}
+              >
+                Apply source
+              </Button>
+              <Button variant="ghost" onClick={() => void discard()}>
+                Discard source draft
+              </Button>
+            </>
+          )}
+        </div>
       )}
       <textarea
         className="doc-source"
@@ -470,10 +809,4 @@ function LatexSource({
       />
     </>
   );
-}
-
-function LatexResult({ page }: { page: Page }) {
-  const leaves = page.leaves;
-  const source = useMemo(() => docWholeLatex(leaves), [leaves]);
-  return <LatexPreview source={source} fill />;
 }

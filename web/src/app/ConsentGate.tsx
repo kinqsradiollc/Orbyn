@@ -1,31 +1,48 @@
 import { MINIMUM_AGE, type LegalSummary } from "@orbyn/core";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { messageOf } from "../lib/resource";
-import { client } from "../lib/session";
+import { client, getToken, getSessionVersion } from "../lib/session";
 import { Button } from "../ui/kit";
 import { useAccount } from "./account";
 import "../screens/public/public.css";
 
 /** Held before the app until the current Terms are accepted. */
 export function ConsentGate({ legal }: { legal: LegalSummary }) {
-  const { user, refresh, signOut } = useAccount();
+  const { user, token, version, refresh, signOut } = useAccount();
   const updated = !!user?.terms_version;
   const [agreed, setAgreed] = useState(false);
   const [analytics, setAnalytics] = useState(!user?.analytics_opt_out);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const lock = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const current = () =>
+    alive.current && getToken() === token && getSessionVersion() === version;
 
   async function accept() {
+    if (!current() || !agreed || lock.current) return;
+    lock.current = true;
     setBusy(true);
     setError("");
     try {
       await client.acceptTerms(legal.terms_version);
+      if (!current()) return;
       if (analytics === !!user?.analytics_opt_out)
         await client.setPrivacy({ analytics_opt_out: !analytics });
+      if (!current()) return;
       await refresh();
     } catch (failure) {
+      if (!current()) return;
       setError(messageOf(failure, "Couldn't save that. Try again."));
-      setBusy(false);
+    } finally {
+      lock.current = false;
+      if (current()) setBusy(false);
     }
   }
 

@@ -1,11 +1,9 @@
 import {
   IMPORT_ACCEPT,
-  importRefusal,
-  type DocSummary,
-  type ImportJob,
+  IMPORT_ACTIVE,
+  importHint,
+  importStatusLine,
   type StudyExam,
-  type StudyOverview,
-  type RevisionPlan,
 } from "@orbyn/core";
 import {
   BookOpenCheck,
@@ -20,12 +18,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAccount } from "../../app/account";
 import { messageOf, useResource } from "../../lib/resource";
 import { navigate, useTitle } from "../../lib/router";
 import { client } from "../../lib/session";
 import {
   Button,
-  Dialog,
   Empty,
   ErrorNotice,
   IconButton,
@@ -36,18 +34,32 @@ import {
   useConfirm,
   useToast,
 } from "../../ui/kit";
-import { deviceTimeZone } from "../shared-task";
+import { UploadsProvider, useUploads } from "../library/Uploads";
+import { useStudyOwner } from "./lifetime";
 import { MakeCards } from "./MakeCards";
 import { Review, type Session } from "./Review";
+import { ExamPages, PagePicker, PlanDialog } from "./StudyDialogs";
 import "./study.css";
 
 const EXAMPLE =
   "What does CAP stand for? :: Consistency, availability, partition tolerance";
 
 export default function StudyScreen() {
+  const { token } = useAccount();
+  return (
+    <UploadsProvider key={token}>
+      <StudyBody />
+    </UploadsProvider>
+  );
+}
+
+function StudyBody() {
   useTitle("Study");
   const toast = useToast();
   const confirm = useConfirm();
+  const current = useStudyOwner();
+  const action = useRef(false);
+  const uploads = useUploads();
   const overview = useResource(() => client.study(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [note, setNote] = useState("");
@@ -60,55 +72,32 @@ export default function StudyScreen() {
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("due");
-  const [uploading, setUploading] = useState(false);
-  const [jobs, setJobs] = useState<ImportJob[]>([]);
+  const { jobs, busy: uploading } = uploads;
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const refreshJobs = () => client.listImports().then(setJobs, () => {});
+  const ready = useRef(new Set<string>());
   useEffect(() => {
-    void refreshJobs();
-  }, []);
+    const added = jobs.some(
+      (job) => job.status === "ready" && !ready.current.has(job.id),
+    );
+    for (const job of jobs)
+      if (job.status === "ready") ready.current.add(job.id);
+    if (added) void overview.reload();
+  }, [jobs, overview.reload]);
 
   const report = (failure: unknown, fallback: string) =>
     toast({ text: messageOf(failure, fallback), error: true });
   const run = async (work: () => Promise<void>, fallback: string) => {
-    if (busy) return;
+    if (action.current || !current()) return;
+    action.current = true;
     setBusy(true);
     try {
       await work();
     } catch (failure) {
-      report(failure, fallback);
+      if (current()) report(failure, fallback);
     } finally {
-      setBusy(false);
-    }
-  };
-  const importFiles = async (files: File[]) => {
-    setUploading(true);
-    try {
-      for (const file of files) {
-        const refused = importRefusal(file.name, file.type);
-        if (refused) {
-          toast({ text: refused, error: true });
-          continue;
-        }
-        const { upload_path, import: started } = await client.createImport({
-          file_name: file.name,
-          bytes: file.size,
-          mime: file.type || undefined,
-        });
-        try {
-          await client.uploadImportFile(upload_path, file, file.type);
-        } catch (failure) {
-          await client.removeImport(started.id).catch(() => {});
-          throw failure;
-        }
-      }
-      toast({ text: "Imported. Your page will be ready in a moment." });
-      void refreshJobs();
-    } catch (failure) {
-      report(failure, "Couldn't import this file.");
-    } finally {
-      setUploading(false);
+      action.current = false;
+      if (current()) setBusy(false);
     }
   };
   const newPage = () =>
@@ -125,7 +114,7 @@ export default function StudyScreen() {
           { type: "bullet", text: EXAMPLE },
         ],
       });
-      navigate(`/app/doc/${doc.id}`);
+      if (current()) navigate(`/app/doc/${doc.id}`);
     }, "Couldn't create the page.");
   const makeHabit = () =>
     run(async () => {
@@ -134,14 +123,14 @@ export default function StudyScreen() {
         body: "Orbyn sets aside 15 minutes a day for reviewing cards and keeps your streak.",
         action: "Add the habit",
       });
-      if (!ok) return;
+      if (!ok || !current()) return;
       await client.createHabit({
         name: "Review cards",
         cadence: 1,
         period: "day",
         duration_minutes: 15,
       });
-      setNote("Review habit added.");
+      if (current()) setNote("Review habit added.");
     }, "Couldn't add the habit.");
 
   const data = overview.data;
@@ -368,10 +357,11 @@ export default function StudyScreen() {
           onChange={(event) => {
             const files = [...(event.currentTarget.files ?? [])];
             event.currentTarget.value = "";
-            if (files.length) void importFiles(files);
+            if (files.length) void uploads.importFiles(files);
           }}
         />
       </section>
+      <ImportProgress onRetry={() => fileInput.current?.click()} />
       <details className="study-manual">
         <summary>Write cards manually</summary>
         <p className="small muted">
@@ -430,18 +420,49 @@ export default function StudyScreen() {
                       {exam.title}
                     </div>
                     <div className="small muted">
+                      <time dateTime={exam.starts_at}>
+                        {date.toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                        {!exam.all_day
+                          ? `, ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                          : ""}
+                      </time>
+                      {" · "}
                       {exam.days_left === 0
                         ? "Today"
                         : `${exam.days_left} days left`}
                       {ready !== null
                         ? ` · ${ready}% known well`
                         : " · Choose pages to revise"}
+                      {exam.projected !== null && exam.projected !== undefined
+                        ? ` · ${Math.round(exam.projected * 100)}% by the exam if you keep up`
+                        : ""}
+                      {exam.source !== "yours" ? ` · ${exam.source}` : ""}
                       {exam.target ? ` · ${exam.target}` : ""}
                     </div>
                   </div>
                   <Button variant="ghost" onClick={() => setAttaching(exam)}>
                     Pages
                   </Button>
+                  {exam.doc_ids.length > 0 && (
+                    <Button
+                      onClick={() =>
+                        setSession({
+                          title: exam.title,
+                          docId:
+                            exam.doc_ids.length === 1
+                              ? exam.doc_ids[0]
+                              : undefined,
+                          quiz: false,
+                          ahead: true,
+                        })
+                      }
+                    >
+                      Revise now
+                    </Button>
+                  )}
                   <Button
                     disabled={!exam.doc_ids.length}
                     onClick={() => setPlanning(exam)}
@@ -487,6 +508,9 @@ export default function StudyScreen() {
                 (deck.known / Math.max(1, deck.cards)) * 100,
               );
               const waiting = deck.due + deck.new;
+              const exam = data.exams.find((one) =>
+                one.doc_ids.includes(deck.doc_id),
+              );
               return (
                 <li key={deck.doc_id} className="row study-deck">
                   <div className="row-main">
@@ -495,6 +519,12 @@ export default function StudyScreen() {
                     </div>
                     <div className="small muted">
                       {deck.cards} cards · {known}% known well
+                      {deck.due > 0 ? ` · ${deck.due} due` : ""}
+                      {deck.new > 0 ? ` · ${deck.new} new` : ""}
+                      {!deck.due && deck.next_due_at
+                        ? ` · next review ${new Date(deck.next_due_at).toLocaleDateString()}`
+                        : ""}
+                      {exam ? ` · ${exam.title}` : ""}
                       {deck.imported_from ? ` · ${deck.imported_from}` : ""}
                     </div>
                   </div>
@@ -621,6 +651,7 @@ export default function StudyScreen() {
       {picking && (
         <PagePicker
           decks={data}
+          busy={busy}
           onClose={() => setPicking(false)}
           onPick={(page) => {
             setPicking(false);
@@ -631,6 +662,7 @@ export default function StudyScreen() {
       )}
       {making && (
         <MakeCards
+          key={making.id}
           docId={making.id}
           title={making.title}
           onClose={(added) => {
@@ -641,16 +673,19 @@ export default function StudyScreen() {
       )}
       {attaching && (
         <ExamPages
+          key={attaching.key}
           exam={attaching}
           onClose={() => setAttaching(null)}
           onSaved={(next) => {
             overview.set(() => next);
+            void overview.reload();
             setAttaching(null);
           }}
         />
       )}
       {planning && (
         <PlanDialog
+          key={planning.key}
           exam={planning}
           onClose={(planned) => {
             setPlanning(null);
@@ -665,277 +700,49 @@ export default function StudyScreen() {
   );
 }
 
-function PagePicker({
-  decks,
-  onClose,
-  onPick,
-  onNew,
-}: {
-  decks: StudyOverview;
-  onClose: () => void;
-  onPick: (page: DocSummary) => void;
-  onNew: () => void;
-}) {
-  const pages = useResource(() => client.listDocs(), []);
-  const [query, setQuery] = useState("");
-  const words = query.trim().toLocaleLowerCase();
-  const shown = (pages.data ?? [])
-    .filter(
-      (page) =>
-        page.kind !== "agenda" &&
-        `${page.title} ${page.preview}`.toLocaleLowerCase().includes(words),
-    )
-    .slice(0, 40);
-  const withCards = new Set(decks.decks.map((deck) => deck.doc_id));
+function ImportProgress({ onRetry }: { onRetry: () => void }) {
+  const uploads = useUploads();
+  const pending = uploads.jobs.filter((job) => job.status !== "ready");
   return (
-    <Dialog title="Choose a page" onClose={onClose}>
-      <Input
-        autoFocus
-        aria-label="Search your pages"
-        placeholder="Search your pages"
-        value={query}
-        onChange={(event) => setQuery(event.currentTarget.value)}
-      />
-      {pages.error && (
+    <section className="study-imports" aria-label="Imported material">
+      <p className="small muted">{importHint(uploads.caps)}</p>
+      {uploads.error && (
         <ErrorNotice
-          message={pages.error}
-          onRetry={() => void pages.reload()}
+          message={uploads.error}
+          onRetry={() => void uploads.refresh()}
         />
       )}
-      {pages.loading && !pages.data && <Loading label="Loading your pages" />}
-      {pages.data && !shown.length && (
-        <p className="small muted">No pages match.</p>
-      )}
-      <ul className="rows">
-        {shown.map((page) => (
-          <li key={page.id}>
-            <button type="button" className="row" onClick={() => onPick(page)}>
+      {pending.length > 0 && (
+        <ul className="rows">
+          {pending.map((job) => (
+            <li className="row" key={job.id}>
               <span className="row-main">
-                <span className="row-title" dir="auto">
-                  {page.title || "Untitled"}
+                <strong className="row-title" dir="auto">
+                  {job.file_name}
+                </strong>
+                <span className="study-preview small muted">
+                  {job.status === "failed"
+                    ? job.error || "This file couldn't be read."
+                    : importStatusLine(job)}
                 </span>
-                <span className="small muted study-preview" dir="auto">
-                  {page.preview}
-                </span>
+                {IMPORT_ACTIVE.includes(job.status) && (
+                  <progress aria-label={`Importing ${job.file_name}`} />
+                )}
               </span>
-              {page.imported_from && <Pill>Imported</Pill>}
-              {withCards.has(page.id) && <Pill>Has cards</Pill>}
-            </button>
-          </li>
-        ))}
-      </ul>
-      <details className="study-manual">
-        <summary>Write cards by hand</summary>
-        <p className="small muted">
-          <code>Question :: Answer</code> makes a card.
-        </p>
-        <Button onClick={onNew}>
-          <Plus /> New study page
-        </Button>
-      </details>
-    </Dialog>
-  );
-}
-
-function ExamPages({
-  exam,
-  onClose,
-  onSaved,
-}: {
-  exam: StudyExam;
-  onClose: () => void;
-  onSaved: (next: StudyOverview) => void;
-}) {
-  const pages = useResource(() => client.listDocs(), []);
-  const [chosen, setChosen] = useState(new Set(exam.doc_ids));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  return (
-    <Dialog
-      title="Pages to revise"
-      onClose={onClose}
-      actions={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            busy={busy}
-            onClick={() => {
-              setBusy(true);
-              setError("");
-              client
-                .setExamDecks({
-                  key: exam.key,
-                  title: exam.title,
-                  starts_at: exam.starts_at,
-                  doc_ids: [...chosen],
-                })
-                .then(onSaved, (failure) => {
-                  setError(messageOf(failure, "Couldn't save these pages."));
-                  setBusy(false);
-                });
-            }}
-          >
-            Save
-          </Button>
-        </>
-      }
-    >
-      <p className="small muted" dir="auto">
-        {exam.title}
-      </p>
-      {(error || pages.error) && (
-        <ErrorNotice
-          message={error || pages.error}
-          onRetry={pages.error ? () => void pages.reload() : undefined}
-        />
-      )}
-      {pages.loading && !pages.data && <Loading label="Loading your pages" />}
-      {pages.data
-        ?.filter((page) => page.kind !== "agenda")
-        .map((page) => (
-          <label key={page.id} className="check small">
-            <input
-              type="checkbox"
-              checked={chosen.has(page.id)}
-              onChange={(event) => {
-                const on = event.currentTarget.checked;
-                setChosen((was) => {
-                  const next = new Set(was);
-                  if (on) next.add(page.id);
-                  else next.delete(page.id);
-                  return next;
-                });
-              }}
-            />
-            <span dir="auto">{page.title || "Untitled"}</span>
-          </label>
-        ))}
-    </Dialog>
-  );
-}
-
-function PlanDialog({
-  exam,
-  onClose,
-}: {
-  exam: StudyExam;
-  onClose: (planned: boolean) => void;
-}) {
-  const [minutes, setMinutes] = useState(45);
-  const [plan, setPlan] = useState<RevisionPlan | null>(null);
-  const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
-  const [off, setOff] = useState(new Set<string>());
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let live = true;
-    setPlan(null);
-    setError("");
-    setOff(new Set());
-    client
-      .planRevision({ key: exam.key, minutes, timezone: deviceTimeZone() })
-      .then(
-        (next) => live && setPlan(next),
-        (failure) =>
-          live && setError(messageOf(failure, "Couldn't plan revision.")),
-      );
-    return () => {
-      live = false;
-    };
-  }, [exam.key, minutes, attempt]);
-  const chosen = (plan?.sessions ?? []).filter((one) => !off.has(one.start_at));
-  const apply = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      await client.applyRevision({ key: exam.key, sessions: chosen });
-      onClose(true);
-    } catch (failure) {
-      setError(messageOf(failure, "Couldn't add these sessions."));
-      setBusy(false);
-    }
-  };
-  return (
-    <Dialog
-      title={`Plan revision for ${exam.title}`}
-      onClose={() => !busy && onClose(false)}
-      actions={
-        <>
-          <Button
-            variant="ghost"
-            disabled={busy}
-            onClick={() => onClose(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            busy={busy}
-            disabled={!chosen.length}
-            onClick={() => void apply()}
-          >
-            Add {chosen.length} session{chosen.length === 1 ? "" : "s"}
-          </Button>
-        </>
-      }
-    >
-      <label className="field">
-        Session length
-        <select
-          className="input"
-          value={minutes}
-          onChange={(event) => setMinutes(Number(event.currentTarget.value))}
-        >
-          {[25, 45, 60, 90].map((value) => (
-            <option key={value} value={value}>
-              {value} minutes
-            </option>
+              {job.status === "failed" && (
+                <Button disabled={uploads.busy} onClick={onRetry}>
+                  Try another file
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => void uploads.remove(job)}>
+                {IMPORT_ACTIVE.includes(job.status)
+                  ? "Cancel import"
+                  : "Remove"}
+              </Button>
+            </li>
           ))}
-        </select>
-      </label>
-      {error && (
-        <ErrorNotice
-          message={error}
-          onRetry={plan ? undefined : () => setAttempt((n) => n + 1)}
-        />
+        </ul>
       )}
-      {!plan && !error && <Loading label="Finding free time" />}
-      {plan && !plan.sessions.length && (
-        <p className="small muted">No free time found before this exam.</p>
-      )}
-      {plan?.sessions.map((one) => {
-        const start = new Date(one.start_at);
-        return (
-          <label key={one.start_at} className="check small">
-            <input
-              type="checkbox"
-              checked={!off.has(one.start_at)}
-              onChange={(event) => {
-                const on = event.currentTarget.checked;
-                setOff((was) => {
-                  const next = new Set(was);
-                  if (on) next.delete(one.start_at);
-                  else next.add(one.start_at);
-                  return next;
-                });
-              }}
-            />
-            {start.toLocaleDateString(undefined, {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-            })}
-            ,{" "}
-            {start.toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-            })}
-          </label>
-        );
-      })}
-    </Dialog>
+    </section>
   );
 }

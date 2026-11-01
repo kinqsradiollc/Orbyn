@@ -1,7 +1,8 @@
 import type { RelatedPage, UnlinkedMention } from "@orbyn/core";
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { messageOf } from "../../../lib/resource";
 import { client } from "../../../lib/session";
+import { useLibraryOwner } from "../lifetime";
 import { useToast } from "../../../ui/kit";
 import { PageContext } from "./context";
 
@@ -14,45 +15,55 @@ export function LinkedHere({ id, title }: { id: string; title: string }) {
   const [list, setList] = useState<Linked | null>(null);
   const [mentions, setMentions] = useState<UnlinkedMention[]>([]);
   const [related, setRelated] = useState<RelatedPage[]>([]);
-  const [failed, setFailed] = useState(false);
+  const [failures, setFailures] = useState<string[]>([]);
+  const [pending, setPending] = useState<string[]>([]);
+  const pendingRef = useRef(new Set<string>());
+  const current = useLibraryOwner();
   const [round, setRound] = useState(0);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     let live = true;
-    setFailed(false);
+    if (!current()) return;
+    setFailures([]);
+    setList(null);
+    setMentions([]);
+    setRelated([]);
+    const failed = (label: string) => {
+      if (live && current()) setFailures((was) => [...was, label]);
+    };
     client.linksHere("doc", id).then(
-      (next) => live && setList(next),
-      () => live && setFailed(true),
+      (next) => live && current() && setList(next),
+      () => failed("links"),
     );
     client.unlinkedMentions("doc", id).then(
-      (next) => live && setMentions(next),
-      () => {},
+      (next) => live && current() && setMentions(next),
+      () => failed("unlinked mentions"),
     );
     client.relatedPages(id).then(
-      (next) => live && setRelated(next),
-      () => {},
+      (next) => live && current() && setRelated(next),
+      () => failed("related pages"),
     );
     return () => {
       live = false;
     };
-  }, [id, round]);
-  if (failed)
-    return (
-      <p className="small muted page-linked">
-        Couldn't load what links here.{" "}
-        <button
-          type="button"
-          className="doc-textlink"
-          onClick={() => setRound((n) => n + 1)}
-        >
-          Try again
-        </button>
-      </p>
-    );
+  }, [id, round, current]);
   const count = list?.count ?? 0;
-  if (!count && !mentions.length && !related.length) return null;
+  if (!count && !mentions.length && !related.length && !failures.length)
+    return null;
   return (
     <section className="page-linked" aria-label="Linked here">
+      {failures.length > 0 && (
+        <p className="small muted" role="status">
+          Couldn't load {failures.join(", ")}.{" "}
+          <button
+            type="button"
+            className="doc-textlink"
+            onClick={() => setRound((n) => n + 1)}
+          >
+            Try again
+          </button>
+        </p>
+      )}
       <button
         type="button"
         className="small doc-textlink"
@@ -96,7 +107,14 @@ export function LinkedHere({ id, title }: { id: string; title: string }) {
                 <button
                   type="button"
                   className="doc-textlink"
-                  onClick={() =>
+                  disabled={pending.includes(
+                    `${mention.doc_id}:${mention.block_id}`,
+                  )}
+                  onClick={() => {
+                    const key = `${mention.doc_id}:${mention.block_id}`;
+                    if (!current() || pendingRef.current.has(key)) return;
+                    pendingRef.current.add(key);
+                    setPending([...pendingRef.current]);
                     void client
                       .linkMention({
                         doc_id: mention.doc_id,
@@ -105,14 +123,21 @@ export function LinkedHere({ id, title }: { id: string; title: string }) {
                         target: { kind: "doc", id },
                       })
                       .then(
-                        () => setRound((n) => n + 1),
+                        () => {
+                          if (current()) setRound((n) => n + 1);
+                        },
                         (failure) =>
+                          current() &&
                           toast({
                             text: messageOf(failure, `Couldn't link ${title}.`),
                             error: true,
                           }),
                       )
-                  }
+                      .finally(() => {
+                        pendingRef.current.delete(key);
+                        if (current()) setPending([...pendingRef.current]);
+                      });
+                  }}
                 >
                   Link
                 </button>

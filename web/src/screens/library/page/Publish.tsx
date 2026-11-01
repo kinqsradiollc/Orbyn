@@ -13,7 +13,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import { messageOf } from "../../../lib/resource";
-import { client, getToken } from "../../../lib/session";
+import { client, getSessionVersion, onToken } from "../../../lib/session";
+import { useLibraryOwner } from "../lifetime";
 import {
   Button,
   Dialog,
@@ -39,11 +40,29 @@ export function PublishDialog({
   title: string;
   onClose: () => void;
 }) {
+  const owner = useSyncExternalStore(onToken, getSessionVersion);
   if (kind === "doc") return <PublicationDialog id={id} onClose={onClose} />;
-  return <FolderPublish id={id} title={title} onClose={onClose} />;
+  return (
+    <FolderPublish
+      key={`${owner}:${id}`}
+      id={id}
+      title={title}
+      onClose={onClose}
+    />
+  );
 }
 
-export function PublicationDialog({
+type PublicationProps = {
+  id: string;
+  onChanged?: (doc: Doc) => void;
+  onClose: () => void;
+};
+export function PublicationDialog(props: PublicationProps) {
+  const owner = useSyncExternalStore(onToken, getSessionVersion);
+  return <PublicationBody key={`${owner}:${props.id}`} {...props} />;
+}
+
+function PublicationBody({
   id,
   onChanged,
   onClose,
@@ -52,36 +71,53 @@ export function PublicationDialog({
   onChanged?: (doc: Doc) => void;
   onClose: () => void;
 }) {
+  const current = useLibraryOwner();
   const toast = useToast();
   const changed = useRef(onChanged);
   changed.current = onChanged;
   const store = useMemo(
     () =>
-      new PagePublicationStore(client, id, getToken, (doc) =>
-        changed.current?.(doc),
-      ),
-    [id],
+      new PagePublicationStore(client, id, getSessionVersion, (doc) => {
+        if (current()) changed.current?.(doc);
+      }),
+    [id, current],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   useEffect(() => {
-    void store.prepare();
+    if (current()) void store.prepare();
     return () => store.dispose();
-  }, [store]);
+  }, [store, current]);
   const blocks: DocBlock[] = state.doc?.content ?? [];
   const publication = state.publication;
   const path = publication?.path;
   const url = path ? absolute(path) : "";
-  const copy = (value: string) =>
+  const copy = (value: string) => {
+    if (!current()) return;
     void navigator.clipboard.writeText(value).then(
-      () => toast({ text: "Link copied" }),
-      () => toast({ text: "Couldn't copy the link", error: true }),
+      () => {
+        if (current()) toast({ text: "Link copied" });
+      },
+      () => {
+        if (current()) toast({ text: "Couldn't copy the link", error: true });
+      },
     );
+  };
   return (
-    <Dialog title="Share page" wide onClose={() => !state.busy && onClose()}>
+    <Dialog
+      title="Share page"
+      wide
+      onClose={() => current() && !state.busy && onClose()}
+    >
       {state.error && (
         <ErrorNotice
           message={state.error}
-          onRetry={state.doc ? undefined : () => void store.prepare()}
+          onRetry={
+            state.doc
+              ? undefined
+              : () => {
+                  if (current()) void store.prepare();
+                }
+          }
         />
       )}
       {!state.doc && !state.error && <Loading label="Loading sharing" />}
@@ -91,7 +127,9 @@ export function PublicationDialog({
           <Button
             variant="ghost"
             disabled={state.busy}
-            onClick={() => void store.revokeLegacy()}
+            onClick={() => {
+              if (current()) void store.revokeLegacy();
+            }}
           >
             Turn off
           </Button>
@@ -109,7 +147,9 @@ export function PublicationDialog({
           <Button
             variant="danger"
             disabled={state.busy}
-            onClick={() => void store.revoke()}
+            onClick={() => {
+              if (current()) void store.revoke();
+            }}
           >
             Turn off sharing
           </Button>
@@ -128,6 +168,7 @@ export function PublicationDialog({
                     checked={state.selected.includes(block.id!)}
                     disabled={state.busy}
                     onChange={(event) =>
+                      current() &&
                       store.configure({
                         selected: event.currentTarget.checked
                           ? [...state.selected, block.id!]
@@ -148,6 +189,7 @@ export function PublicationDialog({
                 value={state.mode}
                 disabled={state.busy}
                 onChange={(event) =>
+                  current() &&
                   store.configure({
                     mode: event.currentTarget.value as "snapshot" | "live",
                   })
@@ -163,6 +205,7 @@ export function PublicationDialog({
                 value={state.expiryDays}
                 disabled={state.busy}
                 onChange={(event) =>
+                  current() &&
                   store.configure({
                     expiryDays: Number(event.currentTarget.value) as 0 | 7 | 30,
                   })
@@ -180,20 +223,29 @@ export function PublicationDialog({
               checked={state.consent}
               disabled={state.busy}
               onChange={(event) =>
+                current() &&
                 store.configure({ consent: event.currentTarget.checked })
               }
             />
             Anyone with the link can read the selected blocks.
           </label>
           <div className="dialog-actions">
-            <Button variant="ghost" disabled={state.busy} onClick={onClose}>
+            <Button
+              variant="ghost"
+              disabled={state.busy}
+              onClick={() => {
+                if (current()) onClose();
+              }}
+            >
               Close
             </Button>
             <Button
               variant="primary"
               busy={state.busy}
               disabled={!state.consent || !state.selected.length}
-              onClick={() => void store.save()}
+              onClick={() => {
+                if (current()) void store.save();
+              }}
             >
               {publication ? "Update link" : "Create link"}
             </Button>
@@ -213,6 +265,7 @@ function FolderPublish({
   title: string;
   onClose: () => void;
 }) {
+  const current = useLibraryOwner();
   const confirm = useConfirm();
   const toast = useToast();
   const [state, setState] = useState<PublishState | null>(null);
@@ -223,6 +276,7 @@ function FolderPublish({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const take = (next: PublishState) => {
+    if (!current()) return;
     setState(next);
     setSlug(next.published?.slug ?? "");
     setDescription(next.published?.description ?? "");
@@ -230,15 +284,15 @@ function FolderPublish({
     setPassword("");
   };
   const load = () => {
+    if (!current()) return;
     setError("");
-    client
-      .getPublish("folder", id)
-      .then(take, (failure) =>
-        setError(messageOf(failure, "Couldn't load publishing.")),
-      );
+    client.getPublish("folder", id).then(take, (failure) => {
+      if (current()) setError(messageOf(failure, "Couldn't load publishing."));
+    });
   };
   useEffect(load, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = async () => {
+    if (!current() || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -248,30 +302,36 @@ function FolderPublish({
         noindex: hidden,
         ...(password ? { password } : {}),
       } as never);
+      if (!current()) return;
       take(await client.getPublish("folder", id));
+      if (!current()) return;
       toast({ text: "Folder published." });
     } catch (failure) {
-      setError(messageOf(failure, "Couldn't publish this folder."));
+      if (current())
+        setError(messageOf(failure, "Couldn't publish this folder."));
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   };
   const unpublish = async () => {
+    if (!current() || busy) return;
     const ok = await confirm({
       title: "Unpublish this folder?",
       body: "Its link stops working at once.",
       action: "Unpublish",
       danger: true,
     });
-    if (!ok) return;
+    if (!ok || !current()) return;
     setBusy(true);
     try {
       await client.unpublish("folder", id);
+      if (!current()) return;
       take(await client.getPublish("folder", id));
     } catch (failure) {
-      setError(messageOf(failure, "Couldn't unpublish this folder."));
+      if (current())
+        setError(messageOf(failure, "Couldn't unpublish this folder."));
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   };
   const url = state?.published?.path ? absolute(state.published.path) : "";
@@ -286,7 +346,14 @@ function FolderPublish({
           {url && (
             <div className="page-share-link">
               <Input readOnly aria-label="The address" value={url} />
-              <Button onClick={() => void navigator.clipboard.writeText(url)}>
+              <Button
+                onClick={() => {
+                  if (!current()) return;
+                  void navigator.clipboard.writeText(url).catch(() => {
+                    if (current()) setError("Couldn't copy the link.");
+                  });
+                }}
+              >
                 Copy link
               </Button>
             </div>
@@ -338,7 +405,12 @@ function FolderPublish({
                 Unpublish
               </Button>
             )}
-            <Button variant="ghost" onClick={onClose}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                if (current()) onClose();
+              }}
+            >
               Close
             </Button>
             <Button variant="primary" busy={busy} onClick={() => void save()}>

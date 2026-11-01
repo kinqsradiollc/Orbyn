@@ -4,6 +4,8 @@ import {
   blockToType,
   blockText,
   docReferenceLinks,
+  dateOptions,
+  splitHeadingQuery,
   emptyTable,
   EMBED_LANG,
   embedText,
@@ -47,6 +49,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -57,6 +60,7 @@ import {
 } from "react";
 import { messageOf } from "../../../lib/resource";
 import { client } from "../../../lib/session";
+import { useLibraryOwner } from "../lifetime";
 import { useToast } from "../../../ui/kit";
 import { BlockView } from "./Blocks";
 import { BlockMenu } from "./BlockMenu";
@@ -152,6 +156,9 @@ export function Writer({
     !page.state.sourceInvalid;
   const typing = writable || (mode === "suggest" && !page.state.conflict);
   const [editing, setEditing] = useState<Editing | null>(null);
+  useLayoutEffect(() => {
+    setEditing(null);
+  }, [mode, canWrite]);
   const [menu, setMenu] = useState<{ leaf: Leaf; at: DOMRect } | null>(null);
   const settleRef = useRef<() => void>(() => {});
   handle.current = { settle: () => settleRef.current() };
@@ -855,7 +862,7 @@ export function Writer({
     if (hidden[leaf.index]) return null;
     const block = leaf.block;
     const key = pathKey(leaf.path);
-    const isOpen = editing && pathKey(editing.path) === key;
+    const isOpen = mode !== "read" && editing && pathKey(editing.path) === key;
     const lineMarks = block.id ? marks[block.id] : undefined;
     const editable = typing && isTextLeaf(block);
     const heading = block.type === "heading" && block.id;
@@ -1034,12 +1041,14 @@ export function Writer({
             }
             data-container-path={pathKey(here)}
           >
-            {node.callout && (
-              <strong className="small">
-                {CALLOUT_LABELS[node.callout.tone]}
-              </strong>
+            {node.callout ? (
+              <details open={!node.callout.folded}>
+                <summary>{CALLOUT_LABELS[node.callout.tone]}</summary>
+                {tree(node.children, here)}
+              </details>
+            ) : (
+              tree(node.children, here)
             )}
-            {tree(node.children, here)}
           </blockquote>
         );
       const Tag = node.ordered ? "ol" : "ul";
@@ -1145,7 +1154,26 @@ function fit(area: HTMLTextAreaElement) {
 type Picker =
   | { kind: "slash"; from: number; query: string; inline: boolean }
   | { kind: "mention"; from: number; query: string }
-  | { kind: "link"; start: number; query: string };
+  | {
+      kind: "link";
+      start: number;
+      query: string;
+      doc?: LinkOption;
+      choosePage?: boolean;
+    };
+
+// Compare semantic block data, including nested values, independently of object
+// property order. A parser's normalized copy must not erase an in-progress space.
+const blockKey = (block: DocBlock) =>
+  JSON.stringify(block, (_key, value: unknown) =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(
+          Object.entries(value).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        )
+      : value,
+  );
 
 function LineEditor({
   page,
@@ -1191,11 +1219,30 @@ function LineEditor({
   const initial = useRef(lineSource(block, number)).current;
   const [value, setValue] = useState(initial);
   const area = useRef<HTMLTextAreaElement>(null);
-  const committed = useRef(JSON.stringify(block));
+  const pendingSelection = useRef<{
+    text: string;
+    start: number;
+    end: number;
+  } | null>(null);
+  const committed = useRef(blockKey(block));
   const settled = useRef(false);
   const plainPaste = useRef(0);
   const [picker, setPicker] = useState<Picker | null>(null);
+  const pickerId = useId();
   const [active, setActive] = useState(0);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerError, setPickerError] = useState("");
+  const [pickerHint, setPickerHint] = useState("");
+  const [pickerAttempt, setPickerAttempt] = useState(0);
+  const [choiceBusy, setChoiceBusy] = useState(false);
+  const choiceLock = useRef(false);
+  const retryChoice = useRef<(() => void) | null>(null);
+  const documentSearch = useRef<{
+    page: string;
+    result: Promise<LinkOption[]>;
+  } | null>(null);
+  const creationKeys = useRef(new Map<string, string>());
+  const ownsSource = useLibraryOwner();
   const [options, setOptions] = useState<
     { key: string; label: string; hint?: string | null; run: () => void }[]
   >([]);
@@ -1220,19 +1267,32 @@ function LineEditor({
 
   // Someone else's change to a line not typed in here reaches the box too.
   useEffect(() => {
-    const now = JSON.stringify(block);
+    const now = blockKey(block);
     if (now === committed.current || suggesting) return;
     const incoming = lineSource(block, number);
     if (incoming === valueRef.current) {
       committed.current = now;
       return;
     }
-    if (valueRef.current === initial) {
+    if (
+      !page.dirty &&
+      !page.state.conflict &&
+      !page.state.sourceInvalid &&
+      !page.state.error
+    ) {
       committed.current = now;
+      valueRef.current = incoming;
       setValue(incoming);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [block]);
+  }, [
+    block,
+    number,
+    suggesting,
+    page.dirty,
+    page.state.conflict,
+    page.state.sourceInvalid,
+    page.state.error,
+  ]);
 
   const commit = useCallback(
     (text: string) => {
@@ -1245,7 +1305,7 @@ function LineEditor({
         { ...current, id: current.id ?? editing.id },
         text,
       );
-      committed.current = JSON.stringify(next);
+      committed.current = blockKey(next);
       page.edit({
         kind: "replace-leaf",
         path: leafRef.current.path,
@@ -1276,17 +1336,34 @@ function LineEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, suggesting]);
   settleRef.current = settle;
-  useEffect(() => () => settle(), [settle]);
+  const settleOnUnmount = useRef(settle);
+  settleOnUnmount.current = settle;
+  // Store receipts and keystrokes rerender the page. Only leaving the editor
+  // settles structure; effect replacement must not turn typing into a leave.
+  useEffect(() => () => settleOnUnmount.current(), []);
 
+  // A deferred animation-frame caret can move behind the next keystroke.
+  // Apply the operation's selection with its controlled text before paint.
+  useLayoutEffect(() => {
+    const next = pendingSelection.current;
+    if (!next) return;
+    pendingSelection.current = null;
+    const input = area.current;
+    if (!input || input.value !== next.text || valueRef.current !== next.text)
+      return;
+    input.setSelectionRange(next.start, next.end);
+  });
   const typeInto = (
     made: Restyled | { text: string; start: number; end: number },
   ) => {
+    pendingSelection.current = made;
     setValue(made.text);
     valueRef.current = made.text;
     commit(made.text);
-    requestAnimationFrame(() =>
-      area.current?.setSelectionRange(made.start, made.end),
-    );
+    if (area.current?.value === made.text) {
+      area.current.setSelectionRange(made.start, made.end);
+      pendingSelection.current = null;
+    }
   };
 
   retypeRef.current = (at, words) => {
@@ -1302,7 +1379,21 @@ function LineEditor({
     if (code) return setPicker(null);
     const link = linkQueryAt(text, caret);
     if (link)
-      return setPicker({ kind: "link", start: link.start, query: link.query });
+      return setPicker((previous) => {
+        const samePage =
+          previous?.kind === "link" &&
+          previous.start === link.start &&
+          splitHeadingQuery(previous.query)?.page ===
+            splitHeadingQuery(link.query)?.page;
+        return {
+          kind: "link",
+          start: link.start,
+          query: link.query,
+          ...(samePage && previous.kind === "link"
+            ? { doc: previous.doc, choosePage: previous.choosePage }
+            : {}),
+        };
+      });
     const mention = mentionQuery(text, caret);
     if (mention)
       return setPicker({
@@ -1327,19 +1418,36 @@ function LineEditor({
     setPicker(null);
   };
 
-  // What the open picker offers. Search-backed lists guard against late answers.
+  // One search owns its rows. Heading words refine one explicitly chosen
+  // page, rather than issuing a heading request for every matching page.
   useEffect(() => {
-    if (!picker) {
-      setOptions([]);
-      return;
-    }
+    setOptions([]);
+    setPickerError("");
+    setPickerHint("");
+    setPickerLoading(false);
+    retryChoice.current = null;
+    if (!picker) return;
     setActive(0);
+    const source = valueRef.current;
+    const lineIdentity = pathKey(leafRef.current.path);
+    const lineId = leafRef.current.block.id ?? editing.id;
     const target: SlashTarget = {
       leaf: leafRef.current,
-      value: valueRef.current,
+      value: source,
       from: picker.kind === "link" ? picker.start : picker.from,
-      caret: area.current?.selectionStart ?? valueRef.current.length,
+      caret: area.current?.selectionStart ?? source.length,
     };
+    let live = true;
+    const current = () =>
+      live &&
+      ownsSource() &&
+      !settled.current &&
+      !page.replacing.current &&
+      !page.store.state.conflict &&
+      !page.store.state.sourceInvalid &&
+      valueRef.current === source &&
+      pathKey(leafRef.current.path) === lineIdentity &&
+      (leafRef.current.block.id ?? editing.id) === lineId;
     if (picker.kind === "slash") {
       setOptions(
         slashChoices
@@ -1354,19 +1462,102 @@ function LineEditor({
             label: choice.label,
             hint: choice.hint,
             run: () => {
+              if (!current() || choiceLock.current) return;
               setPicker(null);
               choice.run(target);
             },
           })),
       );
-      return;
+      return () => {
+        live = false;
+      };
     }
-    let live = true;
+    const put = (ref: ObjectRef, title: string) => {
+      if (!current() || picker.kind !== "link") return;
+      const opening = linkQueryAt(
+        valueRef.current,
+        area.current?.selectionStart ?? target.caret,
+      );
+      if (opening?.start !== picker.start || opening.query !== picker.query)
+        return;
+      if (embedNext.current) {
+        if (ref.kind !== "doc" || ref.id === page.id) {
+          setPickerError(
+            ref.kind !== "doc"
+              ? "Choose a page to embed."
+              : "A page cannot embed itself.",
+          );
+          return;
+        }
+        embedNext.current = false;
+        settled.current = true;
+        page.edit({
+          kind: "replace-leaf",
+          path: leafRef.current.path,
+          block: {
+            type: "code",
+            lang: EMBED_LANG,
+            text: embedText({
+              kind: "section",
+              doc: ref.id,
+              block: ref.block ?? null,
+            }),
+            id: leafRef.current.block.id ?? newBlockId(),
+          },
+        });
+        setPicker(null);
+        onClose();
+        return;
+      }
+      const made = insertLink(
+        valueRef.current,
+        picker.start,
+        target.caret,
+        ref,
+        title,
+      );
+      area.current?.focus({ preventScroll: true });
+      typeInto({ text: made.text, start: made.caret, end: made.caret });
+      setPicker(null);
+    };
+    const select = (work: () => Promise<{ ref: ObjectRef; title: string }>) => {
+      const take = () => {
+        if (!current() || choiceLock.current) return;
+        choiceLock.current = true;
+        setChoiceBusy(true);
+        setPickerError("");
+        retryChoice.current = take;
+        void work()
+          .then(
+            (result) => {
+              if (current()) put(result.ref, result.title);
+              else if (ownsSource())
+                report(
+                  "Your draft changed before the selection finished. It was kept; choose the link again.",
+                );
+            },
+            (failure) => {
+              if (current())
+                setPickerError(
+                  messageOf(failure, "Couldn't use this selection."),
+                );
+            },
+          )
+          .finally(() => {
+            choiceLock.current = false;
+            if (ownsSource()) setChoiceBusy(false);
+          });
+      };
+      return take;
+    };
+    setPickerLoading(true);
     const timer = window.setTimeout(() => {
-      if (picker.kind === "mention") {
-        client.docPeople(page.id).then(
-          (people) => {
-            if (!live) return;
+      void (async () => {
+        try {
+          if (!current()) return;
+          if (picker.kind === "mention") {
+            const people = await client.docPeople(page.id);
+            if (!current()) return;
             const words = picker.query.toLocaleLowerCase();
             setOptions(
               people
@@ -1378,6 +1569,7 @@ function LineEditor({
                   key: person.id,
                   label: person.name,
                   run: () => {
+                    if (!current() || choiceLock.current) return;
                     const made = mentionMarkdown(person);
                     const caret = picker.from + made.length + 1;
                     typeInto({
@@ -1389,124 +1581,236 @@ function LineEditor({
                   },
                 })),
             );
-          },
-          () => live && setOptions([]),
-        );
-        return;
-      }
-      client.pickLinks(picker.query, 12).then(
-        (hits: LinkOption[]) => {
-          if (!live) return;
-          const put = (ref: ObjectRef, title: string) => {
-            const caret =
-              area.current?.selectionStart ?? valueRef.current.length;
-            setPicker(null);
-            if (embedNext.current) {
-              embedNext.current = false;
-              if (ref.kind !== "doc" || ref.id === page.id) {
-                report(
-                  ref.kind !== "doc"
-                    ? "Only a page can be embedded."
-                    : "That's this page.",
-                );
+            setPickerHint("No people match these words.");
+            return;
+          }
+          const section = splitHeadingQuery(picker.query);
+          if (
+            (section
+              ? Math.max(section.page.length, section.heading.trim().length)
+              : picker.query.trim().length) > 200
+          ) {
+            setPickerHint("Use 200 characters or fewer to search.");
+            return;
+          }
+          if (section) {
+            let chosen = picker.doc;
+            if (!chosen) {
+              if (documentSearch.current?.page !== section.page) {
+                documentSearch.current = {
+                  page: section.page,
+                  result: client
+                    .pickLinks(section.page, 30)
+                    .then((hits) => hits.filter((hit) => hit.kind === "doc")),
+                };
+              }
+              const documents = await documentSearch.current.result;
+              if (!current()) return;
+              const exact = documents.filter(
+                (doc) =>
+                  doc.title.trim().toLocaleLowerCase() ===
+                  section.page.toLocaleLowerCase(),
+              );
+              chosen = !picker.choosePage
+                ? exact.length === 1
+                  ? exact[0]
+                  : documents.length === 1
+                    ? documents[0]
+                    : undefined
+                : undefined;
+              if (chosen) {
+                setPicker({ ...picker, doc: chosen });
                 return;
               }
-              const id = leafRef.current.block.id ?? newBlockId();
-              page.edit({
-                kind: "replace-leaf",
-                path: leafRef.current.path,
-                block: {
-                  type: "code",
-                  lang: EMBED_LANG,
-                  text: embedText({
-                    kind: "section",
-                    doc: ref.id,
-                    block: ref.block ?? null,
-                  }),
-                  id,
-                },
-              });
-              onClose();
+              setPickerHint(
+                documents.length
+                  ? "Choose a page to search its headings and lines."
+                  : "No matching pages. Change the words before #.",
+              );
+              setOptions(
+                documents.map((doc) => ({
+                  key: `page:${doc.id}`,
+                  label: doc.title,
+                  hint: doc.hint || "Page",
+                  run: () => {
+                    if (current() && !choiceLock.current)
+                      setPicker({ ...picker, doc, choosePage: false });
+                  },
+                })),
+              );
               return;
             }
-            const made = insertLink(
-              valueRef.current,
-              picker.start,
-              caret,
-              ref,
-              title,
+            const selected = chosen;
+            const headings = await client.pageHeadings(
+              selected.id,
+              section.heading.trim(),
             );
-            typeInto({ text: made.text, start: made.caret, end: made.caret });
-          };
-          const doc = page.state.doc;
+            if (!current()) return;
+            setPickerHint(
+              "No matching headings or lines. Change the words after #.",
+            );
+            setOptions([
+              {
+                key: `whole:${selected.id}`,
+                label: `${embedNext.current ? "Embed" : "Link"} entire page: ${selected.title}`,
+                hint: selected.hint,
+                run: () => {
+                  if (!choiceLock.current)
+                    put({ kind: "doc", id: selected.id }, selected.title);
+                },
+              },
+              ...headings.map((heading) => ({
+                key: `heading:${heading.block_id ?? heading.index}`,
+                label: heading.text,
+                hint: `${selected.title} · ${heading.level ? `Heading ${heading.level}` : "Line"}`,
+                run: select(async () => {
+                  const block =
+                    heading.block_id ??
+                    (
+                      await client.anchorLine(
+                        selected.id,
+                        heading.index,
+                        heading.text,
+                      )
+                    ).block_id;
+                  return {
+                    ref: { kind: "doc", id: selected.id, block },
+                    title: `${selected.title} · ${heading.text}`,
+                  };
+                }),
+              })),
+              {
+                key: "choose-another-page",
+                label: "Choose another page",
+                hint: section.page,
+                run: () => {
+                  if (current() && !choiceLock.current)
+                    setPicker({ ...picker, doc: undefined, choosePage: true });
+                },
+              },
+            ]);
+            if (!headings.length)
+              setPickerHint(
+                "No matching headings or lines. You can link the whole page or change the words after #.",
+              );
+            return;
+          }
+          documentSearch.current = null;
+          const hits = await client.pickLinks(picker.query.trim(), 30);
+          if (!current()) return;
+          const dates: LinkOption[] = dateOptions(picker.query).map((date) => ({
+            kind: "date",
+            ...date,
+          }));
           const creating = picker.query.trim();
+          const doc = page.state.doc;
+          const create = (kind: "doc" | "task") =>
+            select(async () => {
+              const operation = `${page.id}:${lineIdentity}:${picker.start}:${kind}:${creating}`;
+              let key = creationKeys.current.get(operation);
+              if (!key) {
+                key = crypto.randomUUID();
+                creationKeys.current.set(operation, key);
+              }
+              if (kind === "doc") {
+                const made = await client.once(key, () =>
+                  client.createDoc({
+                    title: creating,
+                    team_id: doc?.team_id,
+                    project_id: doc?.project_id,
+                  }),
+                );
+                return { ref: { kind: "doc", id: made.id }, title: made.title };
+              }
+              const made = await client.once(key, () =>
+                client.createItem({
+                  title: creating,
+                  ...(doc?.team_id ? { team_id: doc.team_id } : {}),
+                  ...(doc?.project_id ? { project_id: doc.project_id } : {}),
+                }),
+              );
+              return { ref: { kind: "task", id: made.id }, title: made.title };
+            });
           setOptions([
-            ...hits.map((hit) => ({
+            ...[...hits, ...dates].map((hit) => ({
               key: `${hit.kind}:${hit.id}`,
               label: hit.title,
               hint: hit.hint,
-              run: () => put({ kind: hit.kind, id: hit.id }, hit.title),
+              run: () => {
+                if (!choiceLock.current)
+                  put({ kind: hit.kind, id: hit.id }, hit.title);
+              },
             })),
             ...(creating
               ? [
                   {
                     key: "new-page",
                     label: `New page: ${creating}`,
-                    run: () =>
-                      void client
-                        .createDoc({
-                          title: creating,
-                          team_id: doc?.team_id,
-                          project_id: doc?.project_id,
-                        })
-                        .then(
-                          (made) =>
-                            put({ kind: "doc", id: made.id }, made.title),
-                          (failure) =>
-                            report(
-                              messageOf(failure, "Couldn't create the page."),
-                            ),
-                        ),
+                    run: create("doc"),
                   },
-                  {
-                    key: "new-task",
-                    label: `New task: ${creating}`,
-                    run: () =>
-                      void client
-                        .createItem({
-                          title: creating,
-                          ...(doc?.team_id ? { team_id: doc.team_id } : {}),
-                          ...(doc?.project_id
-                            ? { project_id: doc.project_id }
-                            : {}),
-                        })
-                        .then(
-                          (made) =>
-                            put({ kind: "task", id: made.id }, made.title),
-                          (failure) =>
-                            report(
-                              messageOf(failure, "Couldn't create the task."),
-                            ),
-                        ),
-                  },
+                  ...(!embedNext.current
+                    ? [
+                        {
+                          key: "new-task",
+                          label: `New task: ${creating}`,
+                          run: create("task"),
+                        },
+                      ]
+                    : []),
                 ]
               : []),
           ]);
-        },
-        () => live && setOptions([]),
-      );
+          setPickerHint(
+            creating
+              ? "No matching objects."
+              : "Type a name or date. Use Page# to choose a section.",
+          );
+        } catch (failure) {
+          if (current())
+            setPickerError(messageOf(failure, "Couldn't load suggestions."));
+        } finally {
+          if (current()) setPickerLoading(false);
+        }
+      })();
     }, 120);
     return () => {
       live = false;
       clearTimeout(timer);
     };
+    // Query and explicit document choice own the request, not callback identities.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [picker?.kind, picker?.query, slashChoices]);
+  }, [
+    picker?.kind,
+    picker?.query,
+    picker?.kind === "link" ? picker.doc?.id : null,
+    picker?.kind === "link" ? picker.choosePage : null,
+    picker?.kind === "link" ? picker.start : null,
+    pickerAttempt,
+    slashChoices,
+    value,
+  ]);
 
   const key = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
     const element = event.currentTarget;
     const text = element.value;
+    if (
+      picker &&
+      (choiceLock.current || pickerLoading) &&
+      (event.key === "Enter" || event.key === "Tab")
+    ) {
+      event.preventDefault();
+      return;
+    }
+    if (picker && pickerError && event.key === "Enter") {
+      event.preventDefault();
+      if (retryChoice.current) retryChoice.current();
+      else {
+        documentSearch.current = null;
+        setPickerAttempt((n) => n + 1);
+      }
+      return;
+    }
     if (picker && options.length) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -1612,7 +1916,13 @@ function LineEditor({
       const to = event.key === "ArrowUp" ? -1 : 1;
       const atEdge = to < 0 ? before === 0 : before === text.length;
       window.setTimeout(() => {
-        if (atEdge && element.selectionStart === before) onMove(to);
+        if (
+          ownsSource() &&
+          element.isConnected &&
+          atEdge &&
+          element.selectionStart === before
+        )
+          onMove(to);
       });
     }
   };
@@ -1700,6 +2010,11 @@ function LineEditor({
         rows={1}
         dir="auto"
         aria-label={`Edit block ${leaf.index + 1}`}
+        aria-autocomplete={!code ? "list" : undefined}
+        aria-controls={picker ? pickerId : undefined}
+        aria-activedescendant={
+          picker && options[active] ? `${pickerId}-${active}` : undefined
+        }
         spellCheck={!code}
         className={code ? "doc-input is-code" : "doc-input"}
         value={value}
@@ -1764,13 +2079,65 @@ function LineEditor({
           <BlockView block={{ ...block, text: value }} />
         </div>
       )}
-      {picker && options.length > 0 && (
-        <ul className="doc-picker" role="listbox" aria-label="Suggestions">
+      {picker && (
+        <ul
+          className="doc-picker"
+          id={pickerId}
+          role="listbox"
+          aria-label="Suggestions"
+          aria-busy={pickerLoading || choiceBusy}
+        >
+          {(pickerLoading || choiceBusy) && (
+            <li role="presentation">
+              <p className="small muted" role="status">
+                {choiceBusy ? "Preparing selection…" : "Loading suggestions…"}
+              </p>
+            </li>
+          )}
+          {pickerError && (
+            <li role="presentation">
+              <p role="alert" className="small">
+                {pickerError}
+              </p>
+              <button
+                type="button"
+                disabled={choiceBusy}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  if (retryChoice.current) retryChoice.current();
+                  else {
+                    documentSearch.current = null;
+                    setPickerAttempt((n) => n + 1);
+                  }
+                }}
+              >
+                Try again
+              </button>
+            </li>
+          )}
+          {!pickerLoading &&
+            !pickerError &&
+            (options.length === 0 ||
+              (picker.kind === "link" &&
+                !!splitHeadingQuery(picker.query) &&
+                (!picker.doc || options.length === 2))) && (
+              <li role="presentation">
+                <p className="small muted" role="status">
+                  {pickerHint || "No matching suggestions."}
+                </p>
+              </li>
+            )}
           {options.map((option, index) => (
-            <li key={option.key} role="option" aria-selected={index === active}>
+            <li
+              key={option.key}
+              id={`${pickerId}-${index}`}
+              role="option"
+              aria-selected={index === active}
+            >
               <button
                 type="button"
                 tabIndex={-1}
+                disabled={choiceBusy || pickerLoading}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={option.run}
               >

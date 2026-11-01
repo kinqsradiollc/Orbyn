@@ -1,4 +1,45 @@
-import { IMAGE_MAX_SIDE } from "@orbyn/core";
+import { IMAGE_MAX_SIDE, type PageFile } from "@orbyn/core";
+import { client, getToken, onToken } from "../../../lib/session";
+
+export type FileLink = { url: string; file: PageFile; until: number };
+let ownerGeneration = 0;
+const pending = new Map<string, Promise<FileLink>>();
+onToken(() => {
+  ownerGeneration++;
+  pending.clear();
+});
+export const fileOwnerGeneration = () => ownerGeneration;
+
+/** Only concurrent reads share a link; later opens recheck authorization. */
+export function fileLink(id: string, fresh = false): Promise<FileLink> {
+  const generation = ownerGeneration;
+  const owner = getToken();
+  const existing = pending.get(id);
+  if (existing && !fresh) return existing;
+  // A revalidation must also bypass the client's older in-flight GET sharing.
+  if (fresh) client.noteExternalMutation();
+  const request = client
+    .pageFile(id)
+    .then((link) => {
+      if (generation !== ownerGeneration || owner !== getToken())
+        throw new Error("The account changed. Reopen this file.");
+      if (
+        !Number.isFinite(Date.parse(link.expires_at)) ||
+        Date.parse(link.expires_at) <= Date.now()
+      )
+        throw new Error("This file link has expired. Try again.");
+      return {
+        url: client.urlFor(link.url_path),
+        file: link.file,
+        until: Date.parse(link.expires_at),
+      };
+    })
+    .finally(() => {
+      if (pending.get(id) === request) pending.delete(id);
+    });
+  pending.set(id, request);
+  return request;
+}
 
 /** A large photo is scaled before upload; a GIF keeps its frames. */
 export async function scaledPicture(file: File, max = IMAGE_MAX_SIDE) {

@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { messageOf } from "../../../lib/resource";
 import { client } from "../../../lib/session";
+import { useLibraryOwner } from "../lifetime";
 import { Button, Dialog, ErrorNotice, Input, Loading } from "../../../ui/kit";
 import { deviceTimeZone } from "../../shared-task";
 
@@ -25,6 +26,7 @@ export function MergeDialog({
   onClose: () => void;
   onMerged: (into: Doc, relinked: number) => void;
 }) {
+  const current = useLibraryOwner();
   const busyRef = useRef(false);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<LinkOption[] | null>(null);
@@ -38,29 +40,35 @@ export function MergeDialog({
     setFound(null);
     setSearchFailed(false);
     const timer = window.setTimeout(() => {
+      if (!current()) return;
       client.pickLinks(query, 20).then(
         (hits) =>
           live &&
+          current() &&
           setFound(
             hits.filter((hit) => hit.kind === "doc" && hit.id !== doc.id),
           ),
-        () => live && setSearchFailed(true),
+        () => live && current() && setSearchFailed(true),
       );
     }, 150);
     return () => {
       live = false;
       clearTimeout(timer);
     };
-  }, [query, doc.id, attempt]);
+  }, [query, doc.id, attempt, current]);
   const merge = async () => {
-    if (!picked || busyRef.current) return;
+    if (!picked || busyRef.current || !current()) return;
     busyRef.current = true;
     setBusy(true);
     setError("");
     try {
-      const done = await client.mergeDoc(doc.id, picked.id, await version());
+      const savedVersion = await version();
+      if (!current()) return;
+      const done = await client.mergeDoc(doc.id, picked.id, savedVersion);
+      if (!current()) return;
       onMerged(done.doc, done.relinked);
     } catch (failure) {
+      if (!current()) return;
       setError(messageOf(failure, "Couldn't merge these pages."));
       busyRef.current = false;
       setBusy(false);

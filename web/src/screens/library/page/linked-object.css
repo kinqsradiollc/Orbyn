@@ -1,0 +1,87 @@
+.doc-pill .linked-object-trigger {
+  align-self: stretch;
+  min-height: var(--control);
+  padding: 0 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.doc-pill .linked-object-trigger:hover {
+  color: var(--accent-text);
+}
+.linked-object {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.linked-object-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.linked-object-heading strong {
+  overflow-wrap: anywhere;
+}
+.linked-object-facts {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) minmax(0, 3fr);
+  gap: 12px 16px;
+  margin: 0;
+  font-size: 14px;
+}
+.linked-object-facts dt {
+  color: var(--text-muted);
+}
+.linked-object-facts dd {
+  display: flex;
+  align-items: start;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.linked-object-facts .btn {
+  white-space: normal;
+  text-align: start;
+  padding-inline: 0;
+  min-width: 0;
+}
+.linked-object-preview {
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--sunken);
+  border-radius: var(--r-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+.linked-object-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.linked-object-deadline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.linked-object progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.linked-object-tick-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.doc-pill.is-done .linked-object-trigger {
+  text-decoration: none;
+  color: var(--text-muted);
+}
+.doc-pill > button:not(.linked-object-trigger) {
+  min-width: 0;
+}

@@ -3,8 +3,9 @@ import { blockText, type DocBlock, type DocComment } from "@orbyn/core";
 import { MoreHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { messageOf } from "../../../lib/resource";
-import { client, getToken } from "../../../lib/session";
+import { client, getSessionVersion } from "../../../lib/session";
 import { pageWatcher } from "../streams";
+import { useLibraryOwner } from "../lifetime";
 import {
   Button,
   ErrorNotice,
@@ -49,6 +50,7 @@ export function CommentsPanel({
   onGoTo: (blockId: string) => void;
   onClose: () => void;
 }) {
+  const current = useLibraryOwner();
   const toast = useToast();
   const confirm = useConfirm();
   const [comments, setComments] = useState<DocComment[] | null>(null);
@@ -63,30 +65,31 @@ export function CommentsPanel({
   useEffect(() => {
     let live = true;
     client.docPeople(docId).then(
-      (list) => live && setPeople(list),
+      (list) => live && current() && setPeople(list),
       () => {},
     );
     return () => {
       live = false;
     };
-  }, [docId]);
+  }, [docId, current]);
 
   useEffect(() => {
     const watcher = watchDocRefresh({
       api: pageWatcher,
       id: docId,
-      session: getToken,
+      session: () => String(getSessionVersion()),
       load: () => client.listDocComments(docId),
       received: (list) => {
+        if (!current()) return;
         setComments(list);
         setError("");
       },
       failed: (failure) =>
-        setError(messageOf(failure, "Couldn't load comments.")),
+        current() && setError(messageOf(failure, "Couldn't load comments.")),
     });
     refresh.current = watcher.refresh;
     return watcher.dispose;
-  }, [docId]);
+  }, [docId, current]);
 
   const open = useMemo(
     () => (comments ?? []).filter((one) => !one.resolved_at),
@@ -131,13 +134,13 @@ export function CommentsPanel({
   );
 
   const report = (failure: unknown, fallback: string) =>
-    toast({ text: messageOf(failure, fallback), error: true });
+    current() && toast({ text: messageOf(failure, fallback), error: true });
 
   const add = async (
     body: string,
     anchor?: Parameters<typeof client.addDocComment>[2],
   ) => {
-    if (!body.trim() || busy) return false;
+    if (!current() || !body.trim() || busy) return false;
     setBusy(true);
     try {
       const named = people
@@ -147,17 +150,19 @@ export function CommentsPanel({
         ...anchor,
         ...(named.length ? { mentions: named } : {}),
       });
+      if (!current()) return false;
       await refresh.current();
-      return true;
+      return current();
     } catch (failure) {
       report(failure, "Couldn't add the comment. Your words are still here.");
       return false;
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   };
 
   const setResolved = async (comment: DocComment, resolved: boolean) => {
+    if (!current()) return;
     try {
       await client.resolveDocComment(
         docId,
@@ -165,20 +170,23 @@ export function CommentsPanel({
         resolved,
         comment.revision,
       );
+      if (!current()) return;
       await refresh.current();
     } catch (failure) {
       report(failure, "Couldn't change this comment.");
     }
   };
   const remove = async (comment: DocComment) => {
+    if (!current()) return;
     const ok = await confirm({
       title: "Delete this comment?",
       action: "Delete",
       danger: true,
     });
-    if (!ok) return;
+    if (!ok || !current()) return;
     try {
       await client.deleteDocComment(docId, comment.id);
+      if (!current()) return;
       await refresh.current();
     } catch (failure) {
       report(failure, "Couldn't delete this comment.");

@@ -16,6 +16,7 @@ import {
   TextArea,
   useToast,
 } from "../../ui/kit";
+import { useStudyOwner } from "./lifetime";
 import "./study.css";
 
 type Card = SuggestedCard & { keep: boolean };
@@ -33,6 +34,9 @@ export function MakeCards({
   onClose: (added: number) => void;
 }) {
   const toast = useToast();
+  const current = useStudyOwner();
+  const action = useRef(false);
+  const generation = useRef(0);
   const [cards, setCards] = useState<Card[] | null>(null);
   const [provider, setProvider] = useState("");
   const [error, setError] = useState("");
@@ -40,23 +44,30 @@ export function MakeCards({
   const [attempt, setAttempt] = useState(0);
   const additions = useRef<{ blocks: DocBlock[]; count: number } | null>(null);
   useEffect(() => {
-    let live = true;
+    const read = ++generation.current;
+    setCards(null);
+    setProvider("");
     setError("");
+    setSaving(false);
+    action.current = false;
+    additions.current = null;
     client.suggestCards(docId, max).then(
       (result) => {
-        if (!live) return;
+        if (!current() || read !== generation.current) return;
         setProvider(
           result.provider ? aiFeatureProviderLabel(result.provider) : "",
         );
         setCards(result.cards.map((card) => ({ ...card, keep: true })));
       },
-      (failure) =>
-        live && setError(messageOf(failure, "Couldn't suggest cards.")),
+      (failure) => {
+        if (current() && read === generation.current)
+          setError(messageOf(failure, "Couldn't suggest cards."));
+      },
     );
     return () => {
-      live = false;
+      generation.current++;
     };
-  }, [docId, max, attempt]);
+  }, [docId, max, attempt, current]);
   const update = (index: number, change: Partial<Card>) =>
     setCards(
       (all) =>
@@ -68,7 +79,9 @@ export function MakeCards({
     (card) => card.keep && card.question.trim() && card.answer.trim(),
   );
   const add = async () => {
-    if (!kept.length) return;
+    if (!kept.length || action.current || !current()) return;
+    action.current = true;
+    const read = generation.current;
     setSaving(true);
     setError("");
     try {
@@ -81,6 +94,7 @@ export function MakeCards({
       };
       const adding = additions.current;
       const doc = await client.getDocForEditor(docId);
+      if (!current() || read !== generation.current) return;
       const document = doc.document ?? {
         format: 1 as const,
         blocks: doc.content,
@@ -114,13 +128,19 @@ export function MakeCards({
                 }
               : { format: 1, blocks: [...document.blocks, ...adding.blocks] },
         });
+      if (!current() || read !== generation.current) return;
       toast({ text: `${adding.count} cards added.` });
       onClose(adding.count);
     } catch (failure) {
-      setError(messageOf(failure, "Couldn't add these cards."));
-      setSaving(false);
+      if (current() && read === generation.current) {
+        setError(messageOf(failure, "Couldn't add these cards."));
+        setSaving(false);
+      }
+    } finally {
+      if (read === generation.current) action.current = false;
     }
   };
+  const frozen = saving || additions.current !== null;
   return (
     <Dialog
       title={`Cards from ${title}`}
@@ -153,7 +173,13 @@ export function MakeCards({
       {cards?.length === 0 && (
         <p className="small muted">No new cards to suggest.</p>
       )}
-      {!!cards?.length && (
+      {additions.current !== null && !saving && (
+        <p className="small muted">
+          Retry adding these cards, or close and review the page before changing
+          them.
+        </p>
+      )}
+      {!!cards?.length && !frozen && (
         <p className="small muted">Edit or deselect cards before adding.</p>
       )}
       <ul className="study-suggested">
@@ -163,7 +189,7 @@ export function MakeCards({
               type="checkbox"
               aria-label={`Keep card ${index + 1}`}
               checked={card.keep}
-              disabled={saving}
+              disabled={frozen}
               onChange={(event) =>
                 update(index, { keep: event.currentTarget.checked })
               }
@@ -174,7 +200,7 @@ export function MakeCards({
                 dir="auto"
                 rows={2}
                 maxLength={500}
-                disabled={saving}
+                disabled={frozen}
                 value={card.question}
                 onChange={(event) =>
                   update(index, { question: event.currentTarget.value })
@@ -185,7 +211,7 @@ export function MakeCards({
                 dir="auto"
                 rows={3}
                 maxLength={1000}
-                disabled={saving}
+                disabled={frozen}
                 value={card.answer}
                 onChange={(event) =>
                   update(index, { answer: event.currentTarget.value })

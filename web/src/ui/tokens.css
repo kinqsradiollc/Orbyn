@@ -37,6 +37,8 @@
   --sans: "DM Sans", system-ui, sans-serif;
   --head: Manrope, "DM Sans", system-ui, sans-serif;
   --control: 36px;
+  --action-fs: 13px;
+  --action-line: 20px;
   --fast: 120ms;
   --base: 200ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -77,6 +79,7 @@
 @media (max-width: 800px), (pointer: coarse) {
   :root {
     --control: 44px;
+    --action-fs: 15px;
   }
 }
 *,

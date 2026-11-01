@@ -9,7 +9,12 @@ import {
 } from "@orbyn/core";
 import { useEffect, useSyncExternalStore } from "react";
 import { messageOf } from "../../lib/resource";
-import { client, getToken, onToken } from "../../lib/session";
+import {
+  client,
+  getToken,
+  getSessionVersion,
+  onToken,
+} from "../../lib/session";
 import { canWriteIn } from "../shared-task";
 import { watchAccount } from "./streams";
 
@@ -85,9 +90,37 @@ const blank = (): State => ({
 });
 
 let state = blank();
-let owner = getToken();
-let read = 0;
 const listeners = new Set<() => void>();
+const PASSIVE_GAP_MS = 5_000;
+const BATCH_MS = 160;
+
+type ReadRun = { epoch: number };
+type ReadOwner = {
+  token: string;
+  generation: number;
+  epoch: number;
+  active: ReadRun | null;
+  deadline: number | null;
+  timer: ReturnType<typeof setTimeout> | undefined;
+  lastStarted: number;
+  waiting: ((fresh: boolean) => void)[];
+};
+
+const newOwner = (): ReadOwner => ({
+  token: getToken(),
+  generation: getSessionVersion(),
+  epoch: 0,
+  active: null,
+  deadline: null,
+  timer: undefined,
+  lastStarted: Number.NEGATIVE_INFINITY,
+  waiting: [],
+});
+let owner = newOwner();
+const owns = (account: ReadOwner) =>
+  account === owner &&
+  account.token === getToken() &&
+  account.generation === getSessionVersion();
 
 function publish(change: Partial<State>) {
   state = { ...state, ...change };
@@ -95,9 +128,13 @@ function publish(change: Partial<State>) {
 }
 
 onToken(() => {
-  if (getToken() === owner) return;
-  owner = getToken();
-  read++;
+  if (owns(owner)) return;
+  const previous = owner;
+  owner = newOwner();
+  clearTimeout(previous.timer);
+  previous.timer = undefined;
+  previous.deadline = null;
+  previous.waiting.splice(0).forEach((resolve) => resolve(false));
   state = blank();
   listeners.forEach((listener) => listener());
 });
@@ -125,9 +162,7 @@ export const resetFilters = () =>
 export const setRailOpen = (railOpen: boolean) => publish({ railOpen });
 
 /** Read everything; a partial failure keeps what is showing and says so. */
-export async function loadLibrary() {
-  const id = ++read;
-  publish({ loading: true });
+async function readLibrary(account: ReadOwner, epoch: number) {
   const results = await Promise.allSettled([
     client.listDocs(),
     client.listFolders(),
@@ -137,7 +172,7 @@ export async function loadLibrary() {
     client.listDocs({ kind: "agent" }),
     client.listTeams(),
   ]);
-  if (id !== read) return false;
+  if (!owns(account) || epoch !== account.epoch) return false;
   const [pages, folders, stars, fading, memory, agents, teams] = results;
   const names = [
     "pages",
@@ -175,42 +210,136 @@ export async function loadLibrary() {
   return !missing.length;
 }
 
+/** Only a current causal read settles callers. Superseded callers travel to
+ * the queued follow-up; an old account completion cannot touch the new queue. */
+function finishRead(account: ReadOwner, run: ReadRun, fresh: boolean) {
+  if (!owns(account) || account.active !== run) return;
+  account.active = null;
+  if (run.epoch === account.epoch && account.deadline === null)
+    account.waiting.splice(0).forEach((resolve) => resolve(fresh));
+  armRead(account);
+}
+
+function armRead(account: ReadOwner) {
+  if (!owns(account) || account.active || account.deadline === null) return;
+  clearTimeout(account.timer);
+  account.timer = setTimeout(
+    () => {
+      account.timer = undefined;
+      if (!owns(account) || account.active || account.deadline === null) return;
+      account.deadline = null;
+      const run = { epoch: account.epoch };
+      account.active = run;
+      account.lastStarted = performance.now();
+      void readLibrary(account, run.epoch).then(
+        (fresh) => finishRead(account, run, fresh),
+        (failure) => {
+          if (owns(account) && run.epoch === account.epoch)
+            publish({
+              loading: false,
+              failed: messageOf(failure, "Couldn't load your pages."),
+            });
+          finishRead(account, run, false);
+        },
+      );
+    },
+    Math.max(0, account.deadline - performance.now()),
+  );
+}
+
+function queueRead(account: ReadOwner, passive: boolean) {
+  // Fence publication now, even when cooldown or an active read delays dispatch.
+  account.epoch++;
+  const now = performance.now();
+  const batchAt = now + (state.docs === null ? 0 : BATCH_MS);
+  // A later notification cannot demote an explicit caller still awaiting its
+  // fresh receipt. Only entirely background work uses the cooldown.
+  const background = passive && account.waiting.length === 0;
+  const due = background
+    ? Math.max(batchAt, account.lastStarted + PASSIVE_GAP_MS)
+    : batchAt;
+  // Keep the earliest deadline: a steady stream cannot postpone the last read.
+  account.deadline = Math.min(account.deadline ?? due, due);
+  if (!background || state.docs === null) publish({ loading: true });
+  armRead(account);
+}
+
+/** Explicit refresh always causes a read started after this call. Calls in the
+ * pre-dispatch batch share that future read, never a pre-event active read or a
+ * completed result. Explicit work bypasses the passive cooldown. */
+export function loadLibrary(): Promise<boolean> {
+  const account = owner;
+  if (!owns(account) || !account.token) return Promise.resolve(false);
+  client.noteExternalMutation();
+  const result = new Promise<boolean>((resolve) =>
+    account.waiting.push(resolve),
+  );
+  queueRead(account, false);
+  return result;
+}
+
+/** Passive news is still an invalidation, not a completed-result cache hit.
+ * Warm reads keep current actions available and start at most once per gap. */
+function invalidateLibrary(account: ReadOwner) {
+  if (!owns(account) || !account.token) return;
+  queueRead(account, true);
+}
+
 /** Keeps the library current while a screen is showing it. */
 export function useLibraryFeed() {
   useEffect(() => {
+    const account = owner;
     void loadLibrary();
-    let soon: ReturnType<typeof setTimeout> | undefined;
     const stop = watchAccount((news) => {
       if (
         news.kind !== "changed" ||
         (news.area && news.area !== "docs" && news.area !== "organize")
       )
         return;
-      clearTimeout(soon);
-      soon = setTimeout(() => void loadLibrary(), 400);
+      invalidateLibrary(account);
     });
+    const visible = () => {
+      if (document.visibilityState === "visible") {
+        client.noteExternalMutation();
+        invalidateLibrary(account);
+      }
+    };
+    document.addEventListener("visibilitychange", visible);
     return () => {
-      clearTimeout(soon);
       stop();
+      document.removeEventListener("visibilitychange", visible);
     };
   }, []);
 }
 
-export const patchDocs = (change: (doc: DocSummary) => DocSummary) =>
+// Confirmed local receipts supersede any older graph already in flight.
+// Their callers still own the opening account and component lifetime.
+export const patchDocs = (change: (doc: DocSummary) => DocSummary) => {
+  invalidateLibrary(owner);
   publish({ docs: state.docs?.map(change) ?? null });
+};
 
-export const dropDoc = (id: string) =>
+export const dropDoc = (id: string) => {
+  invalidateLibrary(owner);
   publish({
     docs: state.docs?.filter((doc) => doc.id !== id) ?? null,
     memory: state.memory.filter((doc) => doc.id !== id),
     agents: state.agents.filter((doc) => doc.id !== id),
   });
+};
 
-export const setFolders = (change: (all: Folder[]) => Folder[]) =>
+export const setFolders = (change: (all: Folder[]) => Folder[]) => {
+  invalidateLibrary(owner);
   publish({ folders: change(state.folders) });
+};
 
 export async function starDoc(id: string, starred: boolean) {
+  const account = owner;
+  if (!owns(account)) return;
   await client.setFavourite("doc", id, starred);
+  if (!owns(account)) return;
+  // The local receipt must not be overwritten by a read begun before the write.
+  invalidateLibrary(account);
   const others = state.stars.filter(
     (star) => !(star.kind === "doc" && star.target_id === id),
   );

@@ -6,7 +6,8 @@ export type PageLinks = {
   pills: Map<string, LinkPill>;
   onFragment: (fragment: string) => void;
   onOpen: (url: string) => void;
-  onToggleTask?: (id: string, done: boolean) => void;
+  onToggleTask?: (id: string, done: boolean) => Promise<void>;
+  onChanged?: () => void;
   onSummarise?: (fileId: string, name: string) => void;
   onRestoreDoc?: (id: string) => void;
   projectId: string | null;

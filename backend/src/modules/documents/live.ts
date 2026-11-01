@@ -205,6 +205,7 @@ export async function streamDocUpdates(
   await ensureListening();
   const sink: UpdateSink = (updates) => {
     try {
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
       for (const row of updates)
         reply.raw.write(`data: ${JSON.stringify(row)}\n\n`);
     } catch {
@@ -221,6 +222,7 @@ export async function streamDocUpdates(
   void deliverUpdates(docId, sink).catch(() => {});
   const beat = setInterval(() => {
     try {
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
       const at = watermarks.get(sink) ?? 0;
       reply.raw.write(`: seq ${at}\n\n`);
     } catch {
@@ -246,7 +248,7 @@ export async function streamDocChanges(
   docId: string,
   /** The reader's own id: their own saves are not news to them. */
   selfId: string,
-  allowed?: () => Promise<boolean>,
+  allowed?: (notice?: Parameters<Listener>[0]) => Promise<boolean>,
 ): Promise<() => void> {
   await ensureListening();
 
@@ -272,8 +274,8 @@ export async function streamDocChanges(
   const listener: Listener = (payload) => {
     if (payload.by === selfId) return;
     void (async () => {
-      if (allowed && !(await allowed())) return;
-      if (!reply.raw.destroyed)
+      if (allowed && !(await allowed(payload))) return;
+      if (!reply.raw.destroyed && !reply.raw.writableEnded)
         reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
     })().catch(() => {
       reply.raw.end();
@@ -287,7 +289,8 @@ export async function streamDocChanges(
   const beat = setInterval(() => {
     void (async () => {
       if (allowed && !(await allowed())) return;
-      if (!reply.raw.destroyed) reply.raw.write(": beat\n\n");
+      if (!reply.raw.destroyed && !reply.raw.writableEnded)
+        reply.raw.write(": beat\n\n");
     })().catch(() => {
       reply.raw.end();
     });

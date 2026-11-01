@@ -9,10 +9,11 @@ import {
   streamDocUpdates,
 } from "../documents/live.js";
 import { closeLiveNews, streamLive } from "../presence/live.js";
-import { visibleDocs } from "../../lib/visibility.js";
+import { readableDocs, visibleDocs } from "../../lib/visibility.js";
 
 /** Documents `$1` can see: their own, and their teams'. */
 const VISIBLE_DOC = visibleDocs("d");
+const READABLE_DOC = readableDocs("d");
 
 /**
  * The realtime service: every long-lived connection lives here, so the API
@@ -86,28 +87,71 @@ async function docStream(
   // editors merge as they land. A reader that sent `since` wants the
   // update log too; older apps, which never do, are none the wiser.
   const since = Number(r.query && (r.query as { since?: string }).since) || 0;
-  // Authorization is live: membership, session and account revocation must
-  // stop an already-open stream before another parcel is released.
-  const allowed = async () => {
+  // Legacy clients discard drafts on a Trash hint. Only clients explicitly
+  // preserving them receive terminal state; admission remains visible-only.
+  const preserveDrafts =
+    typeof r.query === "object" &&
+    r.query !== null &&
+    "terminal" in r.query &&
+    r.query.terminal === "preserve-drafts-v1";
+  const ongoingVisibility = preserveDrafts ? READABLE_DOC : VISIBLE_DOC;
+  let closed = false;
+  const isClosed = () =>
+    closed || reply.raw.destroyed || reply.raw.writableEnded;
+  const close = () => {
+    if (!isClosed()) {
+      closed = true;
+      reply.raw.end();
+    }
+    return false;
+  };
+  r.raw.on("close", () => {
+    closed = true;
+  });
+  const allowed = async (notice?: { trashed?: boolean }) => {
+    if (isClosed()) return false;
     try {
       const current = await authenticate(r);
-      const visible = (
-        await pool.query(
-          `SELECT 1 FROM docs d WHERE d.id=$2 AND ${VISIBLE_DOC}`,
+      if (isClosed()) return false;
+      const readable = (
+        await pool.query<{ version: number; deleted_at: string | null }>(
+          `SELECT d.version,d.deleted_at FROM docs d
+            WHERE d.id=$2 AND ${ongoingVisibility}`,
           [current.id, id],
         )
-      ).rowCount;
-      if (visible) return true;
+      ).rows[0];
+      // Document and CRDT callbacks may authorize concurrently. A terminal
+      // decision owns the response before any other pending guard resumes.
+      if (isClosed()) return false;
+      if (!readable) return close();
+      if (readable.deleted_at) {
+        if (!preserveDrafts) return close();
+        closed = true;
+        try {
+          reply.raw.write(
+            `data: ${JSON.stringify({ version: readable.version, trashed: true })}\n\n`,
+          );
+        } finally {
+          reply.raw.end();
+        }
+        return false;
+      }
+      // NOTIFY can arrive after restore. Opted-in clients use current state;
+      // legacy clients retain their previous notification forwarding behavior.
+      return !preserveDrafts || !notice?.trashed;
     } catch {
-      /* Closed credentials are treated like lost visibility. */
+      // Closed credentials or failed authority reads release no metadata/body.
+      return close();
     }
-    reply.raw.end();
-    return false;
   };
   const stops: (() => void)[] = [
     await streamDocChanges(reply, id, editor, allowed),
   ];
-  if (since > 0) stops.push(await streamDocUpdates(reply, id, since, allowed));
-  r.raw.on("close", () => stops.forEach((stop) => stop()));
+  if (since > 0 && !isClosed())
+    stops.push(await streamDocUpdates(reply, id, since, allowed));
+  const stop = () => stops.forEach((dispose) => dispose());
+  r.raw.on("close", stop);
+  // A disconnect/terminal guard may finish during asynchronous subscription setup.
+  if (isClosed()) stop();
   return reply;
 }

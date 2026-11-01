@@ -1501,8 +1501,19 @@ data: {"docId":"…","version":7,"by":"e4f1c2ab"}
 The reader then re-reads the document and folds the new copy into what is on screen. Keeping the
 payload to a version number means a reader that misses an event still catches up on the next one.
 
-When the page is moved to Trash the event also carries `"trashed": true`; an editor that has it
-open lets it go and says where it went, rather than finding out from a save that fails.
+Clients that preserve unsaved page and source drafts before closing an editor opt in with
+`?terminal=preserve-drafts-v1`. An existing, still-authorized reader then receives
+one final `{"version":7,"trashed":true}` notice when the current page is in Trash,
+and the stream closes without releasing further document or CRDT data. The reader
+keeps its unsaved copy for explicit recovery after restoration. An older Trash
+hint is ignored if the current page has already been restored.
+
+Missing or unknown `terminal` values retain legacy behavior: Trash ends the stream
+without a terminal payload. This avoids activating legacy editor handlers that
+discard in-memory drafts. New streams still reject trashed documents with `404`,
+and live authentication or membership revocation closes either mode without
+releasing terminal metadata or document data. The opt-in applies to both stream
+paths and may be combined with `since`.
 
 `by` is the editor that saved — a per-tab id sent as `X-Orbyn-Editor` on writes and on this
 request — or `"task"` when a task tied to one of its lines was finished or reopened somewhere else,

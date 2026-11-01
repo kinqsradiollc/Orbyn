@@ -34,6 +34,7 @@ import {
 import { messageOf } from "../../lib/resource";
 import { navigate } from "../../lib/router";
 import { client } from "../../lib/session";
+import { useLibraryOwner } from "./lifetime";
 import {
   Button,
   Dialog,
@@ -99,6 +100,7 @@ export function Rail({
   openId: string | null;
   onChose: () => void;
 }) {
+  const current = useLibraryOwner();
   const { docs, folders, place, memory, agents, fading, teams } =
     useLibraryState();
   const uploads = useUploads();
@@ -108,20 +110,24 @@ export function Rail({
   const [moving, setMoving] = useState<DocSummary | null>(null);
   const [renaming, setRenaming] = useState<DocSummary | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
-  const report = (failure: unknown, fallback: string) =>
-    toast({ text: messageOf(failure, fallback), error: true });
+  const report = (failure: unknown, fallback: string) => {
+    if (current()) toast({ text: messageOf(failure, fallback), error: true });
+  };
 
   const everyPage = [...(docs ?? []), ...memory, ...agents];
   const pick = (next: Place) => {
+    if (!current()) return;
     goTo(next);
     onChose();
     if (location.pathname !== "/app/docs") navigate("/app/docs");
   };
   const showFixed = (kind: FixedKind) => {
+    if (!current()) return;
     onChose();
     navigate(kind === "memory" ? "/app/memory" : "/app/agent-notes");
   };
   const open = (id: string) => {
+    if (!current()) return;
     onChose();
     navigate(`/app/doc/${id}`);
   };
@@ -148,10 +154,13 @@ export function Rail({
   };
 
   const moveTo = async (doc: DocSummary, to: MoveTarget) => {
+    if (!current()) return;
     try {
       await client.moveDoc(doc.id, to);
+      if (!current()) return;
       if (to.parent_id) tree.toggle(to.parent_id, true);
       await loadLibrary();
+      if (!current()) return;
       toast({ text: "Page moved." });
     } catch (failure) {
       report(failure, "Couldn't move this page.");
@@ -196,6 +205,7 @@ export function Rail({
       return { parent_id: null, folder_id: folder.id };
     });
   const newInside = async (parent: DocSummary) => {
+    if (!current()) return;
     try {
       const kind =
         parent.kind === "memory" || parent.kind === "agent"
@@ -206,8 +216,10 @@ export function Rail({
         team_id: parent.team_id,
         parent_id: parent.id,
       });
+      if (!current()) return;
       tree.toggle(parent.id, true);
       await loadLibrary();
+      if (!current()) return;
       open(made.id);
     } catch (failure) {
       report(failure, "Couldn't create the page.");
@@ -650,6 +662,7 @@ function NewFolder({
   onClose: () => void;
   onMade: (id: string) => void;
 }) {
+  const current = useLibraryOwner();
   const { teams } = useLibraryState();
   const [name, setName] = useState("");
   const [team, setTeam] = useState("");
@@ -682,18 +695,20 @@ function NewFolder({
         className="lib-form"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!name.trim() || busy) return;
+          if (!current() || !name.trim() || busy) return;
           setBusy(true);
           setError("");
           client
             .createFolder({ name: name.trim(), team_id: team || null })
             .then(
               (folder) => {
+                if (!current()) return;
                 setFolders((all) => [...all, folder]);
                 onClose();
                 onMade(folder.id);
               },
               (failure) => {
+                if (!current()) return;
                 setError(messageOf(failure, "Couldn't create the folder."));
                 setBusy(false);
               },
@@ -736,22 +751,28 @@ function RenamePage({
   doc: DocSummary;
   onClose: () => void;
 }) {
+  const current = useLibraryOwner();
   const [title, setTitle] = useState(doc.title);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submit = async () => {
+    if (!current() || busy) return;
     setBusy(true);
     setError("");
     try {
       const full = await client.getDocForEditor(doc.id);
+      if (!current()) return;
       await client.updateDocForEditor(doc.id, {
         title: title.trim(),
         document: full.document ?? { format: 1, blocks: full.content },
         version: full.version,
       });
+      if (!current()) return;
       await loadLibrary();
+      if (!current()) return;
       onClose();
     } catch (failure) {
+      if (!current()) return;
       setError(messageOf(failure, "Couldn't rename this page."));
       setBusy(false);
     }

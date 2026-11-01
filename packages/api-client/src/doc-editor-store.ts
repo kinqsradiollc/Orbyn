@@ -9,6 +9,7 @@ import {
   reconcileDocEditorSession,
   sourceDocEditorSession,
   titleDocEditorSession,
+  DocContentFormatError,
   type Doc,
   type DocContentOperation,
   type DocEditorSession,
@@ -199,6 +200,40 @@ export class DocEditorStore {
     } catch (error) {
       this.publish({ error });
     }
+  }
+
+  /** Replace a complete draft without routing rich ownership through Markdown. */
+  changeDocument(
+    expected: VersionedDocContent,
+    document: VersionedDocContent,
+  ): boolean {
+    const session = this.value.session;
+    if (
+      !session ||
+      this.value.conflict ||
+      this.value.error !== null ||
+      this.value.sourceInvalid
+    )
+      return false;
+    let next: DocEditorSession;
+    try {
+      next = sourceDocEditorSession(session, expected, document);
+      if (next.document.format !== session.document.format)
+        throw new DocContentFormatError(
+          "A document replacement cannot change its content format.",
+        );
+    } catch (error) {
+      this.publish({ error });
+      return false;
+    }
+    this.edit++;
+    this.publish({
+      session: next,
+      source: null,
+      sourceInvalid: false,
+      error: null,
+    });
+    return true;
   }
 
   /** Mobile may keep a failed network save in its durable outbox. */

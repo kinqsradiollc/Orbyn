@@ -14,7 +14,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAccount } from "../../app/account";
 import { messageOf } from "../../lib/resource";
 import { useTitle } from "../../lib/router";
 import { client } from "../../lib/session";
@@ -28,13 +27,14 @@ import {
   useToast,
 } from "../../ui/kit";
 import { PageScreen } from "../library/page/PageScreen";
+import { useLibraryOwner } from "../library/lifetime";
 import { useLibraryFeed } from "../library/store";
 import { deviceTimeZone } from "../shared-task";
 import "../library/library.css";
 import "./brief.css";
 
-const DAYS_BACK = 60;
-const DAYS_AHEAD = 14;
+const DAYS_BACK = 366;
+const DAYS_AHEAD = 62;
 
 function dayName(date: string, today: string) {
   if (date === today) return "Today";
@@ -47,11 +47,10 @@ function dayName(date: string, today: string) {
 export default function BriefScreen() {
   useTitle("Daily brief");
   useLibraryFeed();
-  const { user } = useAccount();
+  const current = useLibraryOwner();
   const toast = useToast();
   const confirm = useConfirm();
-  const timeZone =
-    (user as { timezone?: string } | null)?.timezone || deviceTimeZone();
+  const [timeZone, setTimeZone] = useState(deviceTimeZone);
   const zone = useRef(timeZone);
   zone.current = timeZone;
   const [doc, setDoc] = useState<Doc | null>(null);
@@ -63,47 +62,97 @@ export default function BriefScreen() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [edition, setEdition] = useState(0);
+  const [trashed, setTrashed] = useState(false);
+  const trashedDay = useRef<{ id: string; date: string | null } | null>(null);
+  const selectedDay = useRef(date);
+  selectedDay.current = date;
+  const selectedDoc = useRef(doc?.id);
+  selectedDoc.current = doc?.id;
   const request = useRef(0);
-  const load = useCallback(() => {
-    const id = ++request.current;
-    setFailed("");
-    setDayFailed(false);
-    setNote("");
-    setLoading(true);
-    setDoc(null);
-    client
-      .agendaToday(deviceTimeZone())
-      .then(
-        (next) => {
-          if (id !== request.current) return;
-          setDoc(next);
-          const day =
-            next.agenda_date ?? localDateKey(new Date(), zone.current);
-          setDate(day);
-          setToday(day);
-        },
-        (failure) => {
-          if (id === request.current)
-            setFailed(messageOf(failure, "Today's brief couldn't be loaded."));
-        },
-      )
-      .finally(() => {
-        if (id === request.current) setLoading(false);
-      });
+  const mutation = useRef(false);
+  const settle = useRef<(() => Promise<boolean>) | null>(null);
+  const onSettle = useCallback((next: (() => Promise<boolean>) | null) => {
+    settle.current = next;
   }, []);
+  useEffect(() => {
+    if (!current()) return;
+    let live = true;
+    void client.getPlannerPrefs().then(
+      (prefs) => {
+        if (live && current()) setTimeZone(prefs.timezone || deviceTimeZone());
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [current]);
+  const load = useCallback(
+    async (day?: string) => {
+      if (mutation.current || !current()) return;
+      mutation.current = true;
+      setBusy(true);
+      const id = ++request.current;
+      try {
+        // Flush the embedded editor before replacing it or reading a new day.
+        if (settle.current && !(await settle.current())) return;
+        if (!current() || id !== request.current) return;
+        setFailed("");
+        setDayFailed(false);
+        setNote("");
+        setTrashed(false);
+        trashedDay.current = null;
+        setLoading(true);
+        setDoc(null);
+        if (day) setDate(day);
+        if (day) {
+          const found = await client.agendaOn(day, deviceTimeZone());
+          if (!current() || id !== request.current) return;
+          setDoc(found.doc);
+          setToday(found.today);
+        } else {
+          const next = await client.agendaToday(deviceTimeZone());
+          if (!current() || id !== request.current) return;
+          setDoc(next);
+          const loadedDay =
+            next.agenda_date ?? localDateKey(new Date(), zone.current);
+          setDate(loadedDay);
+          setToday(loadedDay);
+        }
+      } catch (failure) {
+        if (!current() || id !== request.current) return;
+        if (day) setDayFailed(true);
+        else setFailed(messageOf(failure, "Today's brief couldn't be loaded."));
+      } finally {
+        if (id === request.current) mutation.current = false;
+        if (current() && id === request.current) {
+          setBusy(false);
+          setLoading(false);
+        }
+      }
+    },
+    [current],
+  );
   useEffect(() => {
     load();
     return () => {
       request.current++;
+      mutation.current = false;
     };
   }, [load]);
 
   // Left open past midnight, today's labels follow the clock.
   useEffect(() => {
-    const check = () =>
-      setToday((was) => agendaTodayAt(was, new Date(), zone.current));
+    const check = () => {
+      if (current())
+        setToday((was) => agendaTodayAt(was, new Date(), zone.current));
+    };
+    const visible = () => {
+      if (document.visibilityState === "visible") check();
+    };
     let timer: ReturnType<typeof setTimeout>;
     const atMidnight = () => {
+      if (!current()) return;
       const now = new Date();
       timer = setTimeout(
         () => {
@@ -116,74 +165,102 @@ export default function BriefScreen() {
     check();
     atMidnight();
     window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", visible);
     return () => {
       clearTimeout(timer);
       window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", visible);
     };
-  }, [timeZone]);
+  }, [timeZone, current]);
 
   const go = (day: string) => {
-    if (loading || busy) return;
-    if (day === today) return load();
-    const id = ++request.current;
-    setFailed("");
-    setDayFailed(false);
-    setNote("");
-    setLoading(true);
-    setDoc(null);
-    setDate(day);
-    client
-      .agendaOn(day, deviceTimeZone())
-      .then(
-        (found) => {
-          if (id !== request.current) return;
-          setDoc(found.doc);
-          setToday(found.today);
-        },
-        () => {
-          if (id === request.current) setDayFailed(true);
-        },
-      )
-      .finally(() => {
-        if (id === request.current) setLoading(false);
-      });
+    if (loading) return;
+    void load(day === today ? undefined : day);
   };
   const write = async () => {
-    if (!date) return;
+    if (!date || loading || mutation.current || !current()) return;
+    mutation.current = true;
+    const id = ++request.current;
+    const day = date;
+    const owns = () =>
+      current() && id === request.current && selectedDay.current === day;
     setBusy(true);
     try {
-      setDoc(await client.writeAgenda(date));
+      const next = await client.writeAgenda(day);
+      if (owns()) setDoc(next);
     } catch (failure) {
-      toast({
-        text: messageOf(failure, "Couldn't write this day."),
-        error: true,
-      });
+      if (owns())
+        toast({
+          text: messageOf(failure, "Couldn't write this day."),
+          error: true,
+        });
     } finally {
-      setBusy(false);
+      if (id === request.current) mutation.current = false;
+      if (owns()) setBusy(false);
     }
   };
   const rewrite = async () => {
-    const ok = await confirm({
-      title: "Rewrite today's brief?",
-      body: "Replaces everything above Notes with your current calendar. Your notes stay.",
-      action: "Rewrite",
-    });
-    if (!ok) return;
+    if (!date || date !== today || loading || mutation.current || !current())
+      return;
+    mutation.current = true;
+    const id = ++request.current;
+    const day = date;
+    const document = doc?.id;
+    const owns = () =>
+      current() &&
+      id === request.current &&
+      selectedDay.current === day &&
+      selectedDoc.current === document;
     setBusy(true);
     try {
+      const ok = await confirm({
+        title: "Rewrite today's brief?",
+        body: "Replaces everything above Notes with your current calendar. Your notes and end-of-day answers stay.",
+        action: "Rewrite",
+      });
+      if (!ok || !owns()) return;
+      if (settle.current && !(await settle.current())) return;
+      if (!owns()) return;
       const next = await client.rewriteAgenda(deviceTimeZone());
+      if (!owns()) return;
       setDoc(next);
       setEdition((n) => n + 1);
       setNote(agendaRewriteFeedback(next));
     } catch (failure) {
-      toast({
-        text: messageOf(failure, "Couldn't rewrite the brief."),
-        error: true,
-      });
+      if (owns())
+        toast({
+          text: messageOf(failure, "Couldn't rewrite the brief."),
+          error: true,
+        });
     } finally {
-      setBusy(false);
+      if (id === request.current) mutation.current = false;
+      if (current() && id === request.current) setBusy(false);
     }
   };
+  const onTrashed = useCallback(
+    (id: string) => {
+      if (!current() || id !== doc?.id || id !== selectedDoc.current) return;
+      trashedDay.current = { id, date: selectedDay.current };
+      setDoc(null);
+      setTrashed(true);
+    },
+    [current, doc?.id],
+  );
+  const onRestored = useCallback(
+    (restored: Doc) => {
+      const previous = trashedDay.current;
+      if (
+        !current() ||
+        previous?.id !== restored.id ||
+        previous.date !== selectedDay.current
+      )
+        return;
+      setDoc(restored);
+      setTrashed(false);
+      trashedDay.current = null;
+    },
+    [current],
+  );
   if (failed)
     return (
       <div className="page">
@@ -236,19 +313,27 @@ export default function BriefScreen() {
             railToggle={days}
             heading={
               onToday ? (
-                <Button
-                  variant="ghost"
-                  disabled={blocked}
-                  title={
-                    note || "Written from your calendars. Your notes stay."
-                  }
-                  onClick={() => void rewrite()}
-                >
-                  <RefreshCw /> Rewrite
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    disabled={blocked}
+                    title="Written from your calendars. Your notes stay."
+                    onClick={() => void rewrite()}
+                  >
+                    <RefreshCw /> Rewrite
+                  </Button>
+                  {note && (
+                    <span className="brief-note small" role="status">
+                      {note}
+                    </span>
+                  )}
+                </>
               ) : undefined
             }
+            onSettle={onSettle}
             onWorkspaceWide={noop}
+            onTrashed={onTrashed}
+            onRestored={onRestored}
           />
         </div>
       </div>
@@ -256,7 +341,15 @@ export default function BriefScreen() {
   return (
     <div className="brief">
       <div className="brief-bar">{days}</div>
-      {loading ? (
+      {trashed ? (
+        <Empty
+          title={`${onToday ? "Today's" : "This day's"} brief is in Trash`}
+        >
+          <Button onClick={() => go(date)}>
+            {onToday ? "Write a new one" : "Look again"}
+          </Button>
+        </Empty>
+      ) : loading ? (
         <div className="page">
           <Loading label="Loading brief" />
         </div>

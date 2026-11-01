@@ -50,7 +50,7 @@ import {
 import { useAccount } from "../../../app/account";
 import { messageOf } from "../../../lib/resource";
 import { navigate, useTitle } from "../../../lib/router";
-import { client } from "../../../lib/session";
+import { client, getToken, getSessionVersion } from "../../../lib/session";
 import {
   Button,
   Empty,
@@ -59,6 +59,7 @@ import {
   Loading,
   Menu,
   Pill,
+  SelectBox,
   Segmented,
   useConfirm,
   useToast,
@@ -76,6 +77,7 @@ import {
   dropDoc,
 } from "../store";
 import { DOC_MIME } from "../drag";
+import { useLibraryOwner } from "../lifetime";
 import { Ask } from "./Ask";
 import { fileLink } from "./Blocks";
 import { CommentsPanel } from "./Comments";
@@ -104,9 +106,26 @@ import { usePage } from "./usePage";
 import { Writer, type WriterHandle, type WriterMode } from "./Writer";
 import { useViewers, Viewers } from "./Viewers";
 import { Tags } from "./Tags";
+import { draftCopyFile } from "./draft-copy";
 
 const MODE_KEY = "orbyn-doc-mode";
 const READ_KEY = "orbyn-pages-read-first";
+
+function downloadDraftCopy(
+  text: string,
+  name: string,
+  type = "text/plain;charset=utf-8",
+) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  try {
+    const link = globalThis.document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.click();
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
 
 function rememberedMode(id: string): WriterMode | null {
   try {
@@ -170,19 +189,44 @@ export function PageScreen({
   railToggle,
   heading,
   onWorkspaceWide,
+  onTrashed,
+  onRestored,
+  onSettle,
 }: {
   id: string;
   railToggle: ReactNode;
   /** Takes the crumb's place, for a page shown inside another screen. */
   heading?: ReactNode;
   onWorkspaceWide: (wide: boolean) => void;
+  /** An embedded page keeps its owning route and its own Trash state. */
+  onTrashed?: (id: string) => void;
+  onRestored?: (doc: Doc) => void;
+  /** Owning screens settle the editor before changing its date or context. */
+  onSettle?: (settle: (() => Promise<boolean>) | null) => void;
 }) {
+  const current = useLibraryOwner();
   const { user } = useAccount();
   const { teams, stars } = useLibraryState();
   const [teamId, setTeamId] = useState<string | null | undefined>(undefined);
   const canWrite = teamId === undefined ? false : canWriteDoc(teams, teamId);
   const page = usePage(id, user?.id ?? "", canWrite);
   const doc = page.state.doc;
+  const sourceCopies = [
+    ...new Map(
+      [
+        ...(page.sourceDrafts.active ? [page.sourceDrafts.active] : []),
+        ...page.sourceDrafts.items,
+      ].map((copy) => [copy.id, copy]),
+    ).values(),
+  ];
+  const sourceCopiesAtRisk =
+    !!page.sourceDrafts.error && sourceCopies.length > 0;
+  useEffect(() => {
+    // An embedded Brief must leave memory-only copies reachable until the
+    // person keeps them or explicitly chooses to leave.
+    if (page.gone === "trashed" && !page.localDraftError && !sourceCopiesAtRisk)
+      onTrashed?.(id);
+  }, [page.gone, page.localDraftError, sourceCopiesAtRisk, id, onTrashed]);
   useLayoutEffect(() => {
     if (doc) setTeamId(doc.team_id);
   }, [doc?.team_id, doc]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -197,9 +241,10 @@ export function PageScreen({
   const toast = useToast();
   const confirm = useConfirm();
   const report = useCallback(
-    (failure: unknown, fallback = "Something went wrong.") =>
-      toast({ text: messageOf(failure, fallback), error: true }),
-    [toast],
+    (failure: unknown, fallback = "Something went wrong.") => {
+      if (current()) toast({ text: messageOf(failure, fallback), error: true });
+    },
+    [toast, current],
   );
 
   const [mode, setModeState] = useState<WriterMode>(
@@ -235,6 +280,9 @@ export function PageScreen({
   const writer = useRef<WriterHandle | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const draftInput = useRef<HTMLInputElement>(null);
+  const draftReadBusy = useRef(false);
+  const [readingDraft, setReadingDraft] = useState(false);
   const filePlace = useRef<{ leaf: Leaf | null; images: boolean } | null>(null);
   const viewers = useViewers(id);
   const pageMutation = useRef(false);
@@ -247,6 +295,7 @@ export function PageScreen({
       ? "suggest"
       : "read";
   const setMode = (next: WriterMode) => {
+    if (!current()) return;
     writer.current?.settle();
     setModeState(next);
     rememberMode(id, next);
@@ -266,6 +315,7 @@ export function PageScreen({
 
   const saveFolds = useCallback(
     (next: Set<string>) => {
+      if (!current()) return;
       setFolds(next);
       client
         .setDocFolds(id, [...next])
@@ -275,12 +325,11 @@ export function PageScreen({
   );
 
   const loadSuggestions = useCallback(() => {
-    client
-      .listDocSuggestions(id)
-      .then(setSuggestions, (failure) =>
-        report(failure, "Couldn't load proposed changes."),
-      );
-  }, [id, report]);
+    client.listDocSuggestions(id).then(
+      (next) => current() && setSuggestions(next),
+      (failure) => report(failure, "Couldn't load proposed changes."),
+    );
+  }, [id, report, current]);
   useEffect(() => loadSuggestions(), [loadSuggestions]);
 
   // Link pills read their live titles and ticks.
@@ -301,7 +350,7 @@ export function PageScreen({
       chunks.map((chunk) => client.resolveLinks(chunk as never)),
     ).then(
       (all) => {
-        if (!live) return;
+        if (!live || !current()) return;
         const next = new Map<string, LinkPill>();
         all.flat().forEach((pill) => next.set(pillKey(pill), pill));
         setPills(next);
@@ -326,12 +375,24 @@ export function PageScreen({
 
   /** Everything typed is saved, or the action doesn't go ahead. */
   const settled = useCallback(async () => {
+    if (!current()) return false;
+    if (splitStuck || page.sourceDrafts.pending) {
+      setNavError(
+        "Resolve or discard the source draft before leaving this view. You can save a source copy first.",
+      );
+      return false;
+    }
     writer.current?.settle();
     const ok = await page.flush();
+    if (!current()) return false;
     if (!ok) setNavError("Save or resolve your draft first.");
     else setNavError("");
     return ok;
-  }, [page]);
+  }, [page, splitStuck, current]);
+  useEffect(() => {
+    onSettle?.(settled);
+    return () => onSettle?.(null);
+  }, [onSettle, settled]);
 
   const flashLine = (blockId: string | null | undefined) => {
     if (!blockId) return;
@@ -422,22 +483,22 @@ export function PageScreen({
       onOpen: openLink,
       projectId: doc?.project_id ?? null,
       onSummarise: (fileId, name) => setSummarising({ fileId, name }),
-      onToggleTask: (task, done) => {
-        client
-          .updateItem(task, { status: done ? "done" : "todo" } as never)
-          .then(
-            () => setPillRound((n) => n + 1),
-            (failure) => report(failure, "Couldn't change this task."),
-          );
+      onToggleTask: async (task, done) => {
+        if (!current()) return;
+        await client.postItemUpdate(task, { status: done ? "done" : "todo" });
+        if (!current()) return;
+        setPillRound((n) => n + 1);
       },
+      onChanged: () => setPillRound((n) => n + 1),
       onRestoreDoc: (target) => {
+        if (!current()) return;
         client.restoreDoc(target).then(
-          () => setPillRound((n) => n + 1),
+          () => current() && setPillRound((n) => n + 1),
           (failure) => report(failure, "Couldn't restore this page."),
         );
       },
     }),
-    [id, pills, goToFragment, openLink, doc?.project_id, report],
+    [id, pills, goToFragment, openLink, doc?.project_id, report, current],
   );
 
   const marks = useMemo(() => {
@@ -456,6 +517,7 @@ export function PageScreen({
 
   /** A line needs a name before anything can point at it. */
   const nameLine = async (leaf: Leaf) => {
+    if (!current()) throw new Error("This page session has ended.");
     if (leaf.block.id) return leaf.block.id;
     const session = page.store.state.session;
     const named = await client.anchorLine(
@@ -464,7 +526,9 @@ export function PageScreen({
       "text" in leaf.block ? leaf.block.text : "",
       session?.saved.version,
     );
+    if (!current()) throw new Error("This page session has ended.");
     await page.store.refresh();
+    if (!current()) throw new Error("This page session has ended.");
     return named.block_id;
   };
   const leafOf = (blockId: string): Leaf | null => {
@@ -483,6 +547,7 @@ export function PageScreen({
     if (!(await settled())) return;
     try {
       const blockId = await nameLine(leaf);
+      if (!current()) return;
       setPendingComment({
         blockId,
         quote: (
@@ -500,7 +565,9 @@ export function PageScreen({
   const linesToTasks = async (blockIds?: string[]) => {
     if (!(await settled())) return 0;
     const { created } = await client.docToTasks(id, blockIds);
+    if (!current()) return 0;
     await page.store.refresh();
+    if (!current()) return 0;
     page.announce();
     return created;
   };
@@ -545,6 +612,7 @@ export function PageScreen({
               },
       });
       const made = await linesToTasks([blockId]);
+      if (!current()) return;
       toast({
         text: made ? `Added “${title}” to your tasks` : "Already a task",
       });
@@ -575,11 +643,15 @@ export function PageScreen({
         block_ids: ids,
         version: session.saved.version,
       });
+      if (!current()) return;
       page.adopt(source);
       void loadLibrary();
       toast({
         text: `Moved to “${made.title}”. A link to it is left here.`,
-        action: { label: "Open", run: () => navigate(`/app/doc/${made.id}`) },
+        action: {
+          label: "Open",
+          run: () => current() && navigate(`/app/doc/${made.id}`),
+        },
       });
     } catch (failure) {
       report(failure, "Couldn't move this to a new page.");
@@ -600,7 +672,7 @@ export function PageScreen({
     after: Leaf | null,
     replace: boolean,
   ) => {
-    if (!files.length) return;
+    if (!files.length || !current()) return;
     toast({
       text:
         files.length === 1
@@ -610,6 +682,7 @@ export function PageScreen({
     const { scaledPicture } = await import("./files");
     const made: DocBlock[] = [];
     for (const file of files) {
+      if (!current()) return;
       try {
         const mime = pageFileType(file.name, file.type);
         if (!mime)
@@ -625,13 +698,16 @@ export function PageScreen({
               height: undefined,
               type: mime,
             };
+        if (!current()) return;
         const { file: row, upload_path } = await client.createPageFile(id, {
           name: file.name.slice(0, 300) || "File",
           bytes: data.blob.size,
           mime: data.type || mime,
           ...(data.width ? { width: data.width, height: data.height } : {}),
         });
+        if (!current()) return;
         await client.uploadPageFile(upload_path, data.blob, data.type || mime);
+        if (!current()) return;
         made.push(
           row.kind === "image"
             ? { type: "image", file: row.id, text: "", id: newBlockId() }
@@ -681,8 +757,9 @@ export function PageScreen({
   const propose = async (leaf: Leaf, before: string, after: string) => {
     try {
       const change = proposeEdit(await nameLine(leaf), before, after);
-      if (!change) return;
+      if (!change || !current()) return;
       const made = await client.proposeDocChanges(id, [change]);
+      if (!current()) return;
       setSuggestions((list) => [...list, ...made]);
       toast({ text: "Suggested. It waits for someone to take it." });
     } catch (failure) {
@@ -698,17 +775,22 @@ export function PageScreen({
     try {
       if (!(await settled())) return;
       for (const { suggestion, take } of actions) {
+        if (!current()) return;
         if (take === undefined)
           await client.withdrawDocSuggestion(id, suggestion.id);
         else await client.decideDocSuggestion(id, suggestion.id, take);
       }
+      if (!current()) return;
       await page.store.refresh();
+      if (!current()) return;
       page.announce();
     } catch (failure) {
       report(failure, "Couldn't finish this review.");
     } finally {
-      setDeciding(false);
-      loadSuggestions();
+      if (current()) {
+        setDeciding(false);
+        loadSuggestions();
+      }
     }
   };
 
@@ -726,6 +808,7 @@ export function PageScreen({
           "The selected text changed. Select it again before asking.",
         );
       const blockId = await nameLine(leaf);
+      if (!current()) return;
       const session = page.store.state.session;
       if (!session) return;
       const made = await client.assistDoc(id, {
@@ -737,6 +820,7 @@ export function PageScreen({
         quote: picked.quote,
         version: session.saved.version,
       });
+      if (!current()) return;
       setSuggestions((list) => [...list, made]);
       toast({ text: "Suggested. Review it before accepting." });
     } catch (failure) {
@@ -752,6 +836,7 @@ export function PageScreen({
       const { blob, name } = await client.exportDoc(id, type, {
         version: page.store.state.session?.saved.version,
       });
+      if (!current()) return;
       const url = URL.createObjectURL(blob);
       const link = globalThis.document.createElement("a");
       link.href = url;
@@ -783,6 +868,7 @@ export function PageScreen({
         const { html, text } = blocksToClipboard(list, {
           fileUrl: (file) => urls.get(file) ?? null,
         });
+        if (!current()) return;
         await navigator.clipboard.write([
           new ClipboardItem({
             "text/html": new Blob([html], { type: "text/html" }),
@@ -802,7 +888,7 @@ export function PageScreen({
   };
 
   const runPage = async (work: () => Promise<void>, fallback: string) => {
-    if (pageMutation.current) return;
+    if (pageMutation.current || !current()) return;
     pageMutation.current = true;
     try {
       await work();
@@ -824,8 +910,9 @@ export function PageScreen({
           action: "Forget",
           danger: true,
         });
-        if (!ok) return;
+        if (!ok || !current()) return;
         await client.forgetMemory(id);
+        if (!current()) return;
         dropDoc(id);
         toast({ text: "Memory topic forgotten" });
         navigate("/app/memory");
@@ -833,20 +920,33 @@ export function PageScreen({
       }
       if (!(await settled())) return;
       await client.deleteDoc(id);
+      if (!current()) return;
       dropDoc(id);
-      navigate("/app/docs");
+      if (onTrashed) onTrashed(id);
+      else navigate("/app/docs");
+      const undoGeneration = getSessionVersion();
       toast({
         text: `Moved “${title}” to Trash`,
         action: {
           label: "Undo",
-          run: () =>
+          run: () => {
+            if (undoGeneration !== getSessionVersion()) return;
             void client.restoreDoc(id).then(
               (back) => {
+                if (undoGeneration !== getSessionVersion()) return;
                 void loadLibrary();
-                navigate(`/app/doc/${back.id}`);
+                if (onRestored) onRestored(back);
+                else navigate(`/app/doc/${back.id}`);
               },
-              (failure) => report(failure, "Couldn't restore this page."),
-            ),
+              (failure) => {
+                if (undoGeneration === getSessionVersion())
+                  toast({
+                    text: messageOf(failure, "Couldn't restore this page."),
+                    error: true,
+                  });
+              },
+            );
+          },
         },
       });
     }, "Couldn't delete this page.");
@@ -857,7 +957,9 @@ export function PageScreen({
       if (!(await settled())) return;
       const next = !doc.archived;
       await client.archiveDoc(id, next);
+      if (!current()) return;
       await page.store.refresh();
+      if (!current()) return;
       page.announce();
       void loadLibrary();
       toast({ text: next ? "Page archived." : "Page restored." });
@@ -909,20 +1011,112 @@ export function PageScreen({
     return (
       <div className="page-frame">
         <div className="page-bar">{railToggle}</div>
-        <Empty
-          title={
-            page.gone === "forgotten"
-              ? "This note was forgotten"
-              : "This page moved to Trash"
-          }
-        >
-          <p className="small">
-            {page.gone === "trashed"
-              ? "It can be restored from Trash."
-              : "It can't be brought back."}
-          </p>
-          <Button onClick={() => navigate("/app/docs")}>Back to Library</Button>
-        </Empty>
+        <div className="page-gone">
+          <Empty
+            title={
+              page.gone === "forgotten"
+                ? "This note was forgotten"
+                : "This page moved to Trash"
+            }
+          >
+            <p className="small">
+              {page.gone === "forgotten"
+                ? "It can't be brought back."
+                : page.localDraftError || sourceCopiesAtRisk
+                  ? "Save copies of your unsaved changes before leaving."
+                  : page.localDraft || sourceCopies.length > 0
+                    ? "Restore the page from Trash to recover your unsaved changes."
+                    : "It can be restored from Trash."}
+            </p>
+            {page.gone === "trashed" && page.localDraftError && (
+              <ErrorNotice
+                message={page.localDraftError}
+                onRetry={() => page.retryLocalDraft()}
+              />
+            )}
+            {page.gone === "trashed" && sourceCopiesAtRisk && (
+              <ErrorNotice
+                message={page.sourceDrafts.error}
+                onRetry={() => page.sourceDrafts.retry()}
+              />
+            )}
+            {page.gone === "trashed" && (
+              <div className="page-gone-copies">
+                {page.localDraft && (
+                  <Button
+                    variant={page.localDraftError ? "primary" : "ghost"}
+                    onClick={() => {
+                      const copy = page.localDraft;
+                      if (!copy || !current()) return;
+                      try {
+                        const file = draftCopyFile(copy, user?.id ?? "", id);
+                        downloadDraftCopy(
+                          file.text,
+                          `${copy.title || "Unsaved page"}-draft.${file.extension}`,
+                          file.type,
+                        );
+                      } catch (failure) {
+                        report(failure, "Couldn't save a draft copy.");
+                      }
+                    }}
+                  >
+                    Save page draft copy
+                  </Button>
+                )}
+                {(sourceCopiesAtRisk
+                  ? sourceCopies
+                  : page.sourceDrafts.active
+                    ? [page.sourceDrafts.active]
+                    : []
+                ).map((copy, index, copies) => (
+                  <Button
+                    key={copy.id}
+                    variant={
+                      sourceCopiesAtRisk && !page.localDraftError && index === 0
+                        ? "primary"
+                        : "ghost"
+                    }
+                    onClick={() => {
+                      if (!current()) return;
+                      try {
+                        downloadDraftCopy(
+                          copy.raw,
+                          `Unsaved LaTeX source${copies.length > 1 ? ` ${index + 1}` : ""}.tex`,
+                        );
+                      } catch (failure) {
+                        report(failure, "Couldn't save a source copy.");
+                      }
+                    }}
+                  >
+                    {sourceCopiesAtRisk && sourceCopies.length > 1
+                      ? `Save LaTeX copy ${index + 1}`
+                      : "Save LaTeX source copy"}
+                  </Button>
+                ))}
+              </div>
+            )}
+            <Button
+              onClick={async () => {
+                if (!current()) return;
+                if (page.localDraftError || sourceCopiesAtRisk) {
+                  const accepted = await confirm({
+                    title: "Leave these drafts?",
+                    body: "Some changes couldn't be kept on this device. Save copies before leaving.",
+                    action: "Leave",
+                    danger: true,
+                  });
+                  if (!accepted || !current()) return;
+                }
+                if (page.gone === "trashed" && onTrashed) onTrashed(id);
+                else navigate("/app/docs");
+              }}
+            >
+              {page.gone === "trashed" && onTrashed
+                ? "Back to brief"
+                : "Back to Library"}
+            </Button>
+          </Empty>
+        </div>
       </div>
     );
 
@@ -963,16 +1157,18 @@ export function PageScreen({
   const foldable = foldableHeadings(page.leaves);
   const anyOpen = foldable.some((one) => !folds.has(one));
   const dirtyBlocked = page.dirty || page.state.source !== null;
-  const saveIcon =
-    page.status === "saving" ? (
-      <Loader2 className="doc-spin" aria-hidden="true" />
-    ) : page.status === "saved" ? (
-      <Check aria-hidden="true" />
-    ) : page.status === "offline" ? (
-      <CloudOff aria-hidden="true" />
-    ) : (
-      <Cloud aria-hidden="true" />
-    );
+  const sourceDraftPending = page.sourceDrafts.pending;
+  const saveIcon = sourceDraftPending ? (
+    <Cloud aria-hidden="true" />
+  ) : page.status === "saving" ? (
+    <Loader2 className="doc-spin" aria-hidden="true" />
+  ) : page.status === "saved" ? (
+    <Check aria-hidden="true" />
+  ) : page.status === "offline" ? (
+    <CloudOff aria-hidden="true" />
+  ) : (
+    <Cloud aria-hidden="true" />
+  );
 
   const blocksNow =
     page.document.format === 2
@@ -1127,8 +1323,12 @@ export function PageScreen({
             </span>
           )}
           <Viewers viewers={viewers} />
-          <span className={`page-status small is-${page.status}`} role="status">
-            {saveIcon} {STATUS[page.status]}
+          <span
+            className={`page-status small is-${sourceDraftPending ? "unsaved" : page.status}`}
+            data-source-draft={sourceDraftPending || undefined}
+            role="status"
+          >
+            {saveIcon} {sourceDraftPending ? "Draft" : STATUS[page.status]}
           </span>
           {(page.status === "failed" || page.status === "offline") && (
             <Button variant="ghost" onClick={() => void page.save(true)}>
@@ -1240,6 +1440,13 @@ export function PageScreen({
                         {item("LaTeX", () => void chooseFormat("latex"))}
                       </>
                     )}
+                    {canWrite &&
+                      item(
+                        "Open structured draft…",
+                        () => draftInput.current?.click(),
+                        false,
+                        readingDraft,
+                      )}
                     {item("Page history", () => setPanel("history"))}
                     {item("Page info", () => setPanel("info"))}
                     {showsOutline(outline) &&
@@ -1384,7 +1591,7 @@ export function PageScreen({
                             action: "Delete",
                             danger: true,
                           }).then((ok) => {
-                            if (!ok) return;
+                            if (!ok || !current()) return;
                             void client.deleteOriginal(id).then(
                               () => void page.store.refresh(),
                               (failure) =>
@@ -1431,26 +1638,124 @@ export function PageScreen({
             Comments and suggestions still work.
           </p>
         )}
+        {page.recoveryError && (
+          <div className="page-banner is-warn small" role="alert">
+            <span>{page.recoveryError}</span>
+            <Button variant="ghost" onClick={() => void page.retryRecovery()}>
+              Retry
+            </Button>
+          </div>
+        )}
         {page.recovery && (
           <div className="page-banner is-warn small" role="alert">
             <span>
               Unsaved changes from {new Date(page.recovery.at).toLocaleString()}{" "}
               were kept on this device.
             </span>
+            {page.recoveryOptions.length > 1 && (
+              <SelectBox
+                aria-label="Unsaved draft"
+                value={page.recoveryKey ?? ""}
+                onChange={(event) => page.chooseRecovery(event.target.value)}
+              >
+                {page.recoveryOptions.map((copy, index) => (
+                  <option key={copy.key} value={copy.key}>
+                    {index + 1}. {copy.title || "Untitled"} ·{" "}
+                    {new Date(copy.at).toLocaleString()}
+                  </option>
+                ))}
+              </SelectBox>
+            )}
             <Button
               variant="ghost"
               onClick={() => {
-                const problem = page.recover(true);
+                const rawSource = page.recovery?.source !== undefined;
+                const problem = page.recover(
+                  true,
+                  page.recoveryKey ?? undefined,
+                );
                 if (problem) report(new Error(problem));
+                else if (rawSource) {
+                  setMode("edit");
+                  setFormat("markdown");
+                }
               }}
             >
               Restore them
             </Button>
-            <Button variant="ghost" onClick={() => page.recover(false)}>
-              Discard
+            <Button
+              variant="ghost"
+              onClick={() => {
+                const copy = page.recovery;
+                if (!copy) return;
+                try {
+                  const file = draftCopyFile(copy, user?.id ?? "", id);
+                  downloadDraftCopy(
+                    file.text,
+                    `${copy.title || "Unsaved page"}-draft.${file.extension}`,
+                    file.type,
+                  );
+                } catch (failure) {
+                  report(failure, "Couldn't save a draft copy.");
+                }
+              }}
+            >
+              Save draft copy
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                const key = page.recoveryKey;
+                const copy = page.recovery;
+                if (!key || !copy) return;
+                const legacy = page.recoveryOptions.find(
+                  (option) => option.key === key,
+                )?.legacy;
+                const accepted = await confirm({
+                  title: legacy ? "Dismiss this draft?" : "Discard this draft?",
+                  body: legacy
+                    ? "This hides this copy from recovery here. Other drafts stay available."
+                    : "This removes this unsaved copy from this device. Other drafts stay available.",
+                  action: legacy ? "Dismiss" : "Discard",
+                  danger: !legacy,
+                });
+                if (!accepted || !current()) return;
+                const problem = page.recover(false, key);
+                if (problem) report(new Error(problem));
+              }}
+            >
+              {page.recoveryOptions.find(
+                (option) => option.key === page.recoveryKey,
+              )?.legacy
+                ? "Dismiss"
+                : "Discard"}
             </Button>
           </div>
         )}
+        {format !== "latex" &&
+          (page.sourceDrafts.pending ||
+            page.sourceDrafts.error ||
+            page.sourceDrafts.items.length > 0) && (
+            <div className="page-banner is-warn small" role="status">
+              <span>
+                {page.sourceDrafts.error ||
+                  "A LaTeX source draft needs review."}
+              </span>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  if (!current()) return;
+                  writer.current?.settle();
+                  if (canWrite) setMode("edit");
+                  setFormat("latex");
+                  setPanel(null);
+                  onWorkspaceWide(true);
+                }}
+              >
+                Review source draft
+              </Button>
+            </div>
+          )}
         {page.state.conflict && <ConflictBanner page={page} doc={doc} />}
         {page.status === "failed" && !page.state.conflict && (
           <p className="page-banner is-warn small" role="alert">
@@ -1469,6 +1774,17 @@ export function PageScreen({
             {page.state.error instanceof Error
               ? page.state.error.message
               : "This source can't be read yet."}
+            {(format !== "markdown" || reading) && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setMode("edit");
+                  setFormat("markdown");
+                }}
+              >
+                Edit source
+              </Button>
+            )}
           </p>
         )}
         {navError && (
@@ -1482,6 +1798,7 @@ export function PageScreen({
             writing
           ) : (
             <SourceWorkspace
+              key={page.resetKey}
               page={page}
               format={format}
               canWrite={canWrite && !reading}
@@ -1609,6 +1926,40 @@ export function PageScreen({
           }}
         />
         <input
+          ref={draftInput}
+          type="file"
+          hidden
+          accept=".json,application/json"
+          aria-label="Open structured draft copy"
+          onChange={async (event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            if (!file || !current() || draftReadBusy.current) return;
+            if (file.size > 32 * 1024 * 1024) {
+              report(
+                new Error(
+                  "This draft copy is larger than 32 MB. Keep the original file and open a smaller copy.",
+                ),
+              );
+              return;
+            }
+            draftReadBusy.current = true;
+            setReadingDraft(true);
+            try {
+              const raw = await file.text();
+              if (!current()) return;
+              const problem = page.openDraftCopy(raw);
+              if (problem) report(new Error(problem));
+              else toast({ text: "Draft copy ready to restore." });
+            } catch (failure) {
+              report(failure, "Couldn't read this draft copy.");
+            } finally {
+              draftReadBusy.current = false;
+              if (current()) setReadingDraft(false);
+            }
+          }}
+        />
+        <input
           ref={fileInput}
           type="file"
           hidden
@@ -1644,6 +1995,7 @@ export function PageScreen({
             }
             onClose={() => setDialog(null)}
             onMerged={(into, relinked) => {
+              if (!current()) return;
               dropDoc(id);
               toast({
                 text: relinked
@@ -1677,13 +2029,18 @@ export function PageScreen({
             onClose={() => setDialog(null)}
             onAdded={(block) => {
               const document = page.store.state.session?.document;
-              if (!document) return;
-              page.edit({
-                kind: "insert",
-                owner: [],
-                index: rootsOf(document).length,
-                node: { kind: "block", block },
-              });
+              if (
+                !document ||
+                !page.edit({
+                  kind: "insert",
+                  owner: [],
+                  index: rootsOf(document).length,
+                  node: { kind: "block", block },
+                })
+              )
+                throw new Error(
+                  "The page couldn't accept the recording. Your audio is still here.",
+                );
             }}
           />
         )}
@@ -1694,16 +2051,28 @@ export function PageScreen({
             onClose={() => setSummarising(null)}
             onAdd={(lines) => {
               const document = page.store.state.session?.document;
-              if (!document) return;
+              if (!document)
+                throw new Error(
+                  "Open the page again before adding the summary.",
+                );
               const nodes = nodesFromSource(
                 document,
                 { type: "paragraph", text: "" },
                 serializeDoc(lines),
               );
-              let index = rootsOf(document).length;
-              nodes.forEach((node) =>
-                page.edit({ kind: "insert", owner: [], index: index++, node }),
+              const next = [...rootsOf(document), ...nodes];
+              const accepted = page.replaceDocument(
+                document.format === 2
+                  ? { format: 2, nodes: next }
+                  : {
+                      format: 1,
+                      blocks: docContainerBlocks(next, { projected: true }),
+                    },
               );
+              if (!accepted)
+                throw new Error(
+                  "The page couldn't accept the summary. Save or resolve its draft, then retry.",
+                );
             }}
           />
         )}
@@ -1747,6 +2116,7 @@ function HeadingStar({
   blockId: string;
   text: string;
 }) {
+  const current = useLibraryOwner();
   const { stars } = useLibraryState();
   const toast = useToast();
   const on = stars.some(
@@ -1761,8 +2131,9 @@ function HeadingStar({
       aria-pressed={on}
       onClick={() =>
         void client.setFavourite("heading", docId, !on, blockId).then(
-          () => void loadLibrary(),
+          () => current() && void loadLibrary(),
           (failure) =>
+            current() &&
             toast({
               text: messageOf(failure, "Couldn't change favorites."),
               error: true,
@@ -1828,6 +2199,7 @@ function TitleField({
 }
 
 function OriginalLine({ doc }: { doc: Doc }) {
+  const current = useLibraryOwner();
   const toast = useToast();
   const original = doc.original;
   if (!original) return null;
@@ -1838,6 +2210,7 @@ function OriginalLine({ doc }: { doc: Doc }) {
       onClick={() =>
         void client.downloadOriginal(doc.id).then(
           ({ blob, name }) => {
+            if (!current()) return;
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
@@ -1869,34 +2242,67 @@ function ConflictBanner({
   const confirm = useConfirm();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  const owner = useRef({
+    token: getToken(),
+    version: getSessionVersion(),
+  }).current;
+  const alive = useRef(true);
+  const current = () =>
+    alive.current &&
+    owner.token === getToken() &&
+    owner.version === getSessionVersion();
+  const attempt = useRef<{ snapshot: string; key: string } | null>(null);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const keepCopy = async () => {
     const session = page.store.state.session;
-    if (!session) return;
+    if (!session || lock.current || !current()) return;
+    lock.current = true;
     setBusy(true);
+    const input = {
+      title: `${session.title || "Untitled"} (my copy)`,
+      kind: "doc" as const,
+      team_id: doc.team_id,
+      ...(session.document.format === 2
+        ? { document: session.document }
+        : { content: session.document.blocks }),
+    };
+    const snapshot = JSON.stringify(input);
+    if (attempt.current?.snapshot !== snapshot)
+      attempt.current = { snapshot, key: crypto.randomUUID() };
     try {
-      const body = serializeDoc(
-        session.document.format === 2
-          ? docContainerBlocks(session.document.nodes, { projected: true })
-          : session.document.blocks,
-      );
-      const made = await client.createDoc({
-        title: `${session.title || "Untitled"} (my copy)`,
-        team_id: doc.team_id,
-        content: [{ type: "paragraph", text: body }],
+      const made = await client.once(attempt.current.key, () => {
+        const metadata = {
+          title: input.title,
+          kind: input.kind,
+          team_id: input.team_id,
+        };
+        return session.document.format === 2
+          ? client.createDocForEditor(metadata, session.document)
+          : client.createDoc({ ...metadata, content: session.document.blocks });
       });
+      if (!current()) return;
       await page.discard();
+      if (!current()) return;
       void loadLibrary();
       toast({
         text: "Your draft is saved as a new page.",
         action: { label: "Open", run: () => navigate(`/app/doc/${made.id}`) },
       });
     } catch (failure) {
+      if (!current()) return;
       toast({
         text: messageOf(failure, "Couldn't save your copy."),
         error: true,
       });
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (current()) setBusy(false);
     }
   };
   return (

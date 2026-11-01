@@ -20,7 +20,6 @@ import {
   renderBoundedMermaid,
   tableMarkdown,
   type DocBlock,
-  type PageFile,
   type TableAlign,
   type TableCells,
 } from "@orbyn/core";
@@ -46,11 +45,12 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from "react";
 import { messageOf } from "../../../lib/resource";
-import { client } from "../../../lib/session";
+import { client, onToken } from "../../../lib/session";
 import { watchPage } from "../streams";
 import { Button, Dialog, IconButton, useToast } from "../../../ui/kit";
 import { FootnoteContext, PageContext, pillKey } from "./context";
@@ -58,6 +58,8 @@ import { Inline, Math as Formula } from "./Inline";
 import { LatexNote } from "./Latex";
 import { LiveList } from "./LiveList";
 import type { Mark } from "./marks";
+import { fileLink, fileOwnerGeneration, type FileLink } from "./files";
+export { fileLink } from "./files";
 
 const BULLETS = ["•", "◦", "▪", "•"];
 
@@ -671,45 +673,74 @@ function TableView({
   );
 }
 
-type FileLink = { url: string; file: PageFile; until: number };
-const links = new Map<string, FileLink>();
-const waiting = new Map<string, Promise<FileLink>>();
-
-export function fileLink(id: string) {
-  const kept = links.get(id);
-  if (kept && kept.until > Date.now()) return Promise.resolve(kept);
-  const running = waiting.get(id);
-  if (running) return running;
-  const made = client
-    .pageFile(id)
-    .then((link) => {
-      const next = {
-        url: client.urlFor(link.url_path),
-        file: link.file,
-        until: Date.parse(link.expires_at) - 5 * 60_000,
-      };
-      links.set(id, next);
-      return next;
-    })
-    .finally(() => waiting.delete(id));
-  waiting.set(id, made);
-  return made;
-}
-
 function useFileLink(id: string, attempt: number) {
-  const [link, setLink] = useState<FileLink | "gone" | null>(null);
+  const page = useContext(PageContext);
+  const owner = useSyncExternalStore(onToken, fileOwnerGeneration);
+  const [state, setState] = useState<{
+    owner: number;
+    id: string;
+    link: FileLink | "gone" | null;
+  }>({ owner, id, link: null });
+  const request = useRef(0);
   useEffect(() => {
     let live = true;
-    setLink(null);
-    fileLink(id).then(
-      (next) => live && setLink(next),
-      () => live && setLink("gone"),
-    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = (fresh = false) => {
+      const ticket = ++request.current;
+      clearTimeout(timer);
+      setState({ owner, id, link: null });
+      fileLink(id, fresh).then(
+        (link) => {
+          if (
+            !live ||
+            ticket !== request.current ||
+            owner !== fileOwnerGeneration()
+          )
+            return;
+          setState({ owner, id, link });
+          // Renew before expiry without leaving a permanently broken image.
+          timer = setTimeout(
+            refresh,
+            Math.max(
+              1000,
+              Math.min(
+                2_147_000_000,
+                link.until -
+                  Date.now() -
+                  Math.min(60_000, (link.until - Date.now()) / 2),
+              ),
+            ),
+          );
+        },
+        () => {
+          if (
+            live &&
+            ticket === request.current &&
+            owner === fileOwnerGeneration()
+          )
+            setState({ owner, id, link: "gone" });
+        },
+      );
+    };
+    refresh(attempt > 0);
+    const foreground = () => {
+      if (!document.hidden) refresh(true);
+    };
+    window.addEventListener("focus", foreground);
+    document.addEventListener("visibilitychange", foreground);
+    const stop = page?.docId
+      ? watchPage(page.docId, () => refresh(true))
+      : undefined;
     return () => {
       live = false;
+      request.current++;
+      clearTimeout(timer);
+      stop?.();
+      window.removeEventListener("focus", foreground);
+      document.removeEventListener("visibilitychange", foreground);
     };
-  }, [id, attempt]);
-  return link;
+  }, [id, attempt, owner, page?.docId]);
+  return state.owner === owner && state.id === id ? state.link : null;
 }
 
 function ImageView({
@@ -722,6 +753,7 @@ function ImageView({
   const [attempt, setAttempt] = useState(0);
   const link = useFileLink(block.file, attempt);
   const [viewing, setViewing] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
   const figure = useRef<HTMLElement>(null);
   const [caption, setCaption] = useState(block.text);
@@ -744,10 +776,16 @@ function ImageView({
           role="status"
           aria-label="Loading picture"
         />
-      ) : link === "gone" ? (
+      ) : link === "gone" || failed === link.url ? (
         <div className="doc-image-hold">
           <span className="small muted">This picture couldn't be loaded.</span>
-          <Button variant="ghost" onClick={() => setAttempt((n) => n + 1)}>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setFailed(null);
+              setAttempt((n) => n + 1);
+            }}
+          >
             Try again
           </Button>
         </div>
@@ -760,7 +798,12 @@ function ImageView({
           }
           onClick={() => setViewing(true)}
         >
-          <img src={link.url} alt={block.text} draggable={false} />
+          <img
+            src={link.url}
+            alt={block.text}
+            draggable={false}
+            onError={() => setFailed(link.url)}
+          />
         </button>
       )}
       {onChange && (
@@ -849,6 +892,59 @@ function FileCard({ block }: { block: Extract<DocBlock, { type: "file" }> }) {
   const [attempt, setAttempt] = useState(0);
   const link = useFileLink(block.file, attempt);
   const file = link && link !== "gone" ? link.file : null;
+  const owner = useSyncExternalStore(onToken, fileOwnerGeneration);
+  const alive = useRef(true);
+  const downloading = useRef(false);
+  const downloadGeneration = useRef(0);
+  const [downloadBusy, setDownloadBusy] = useState(false);
+  useEffect(() => {
+    alive.current = true;
+    downloadGeneration.current++;
+    downloading.current = false;
+    setDownloadBusy(false);
+    return () => {
+      alive.current = false;
+      downloadGeneration.current++;
+    };
+  }, [owner, block.file]);
+  const download = async () => {
+    if (downloading.current) return;
+    downloading.current = true;
+    setDownloadBusy(true);
+    const target = block.file;
+    const ticket = downloadGeneration.current;
+    try {
+      const next = await fileLink(target, true);
+      if (
+        !alive.current ||
+        ticket !== downloadGeneration.current ||
+        owner !== fileOwnerGeneration()
+      )
+        return;
+      const a = document.createElement("a");
+      a.href = next.url;
+      a.download = next.file.name;
+      a.click();
+    } catch (failure) {
+      if (
+        alive.current &&
+        ticket === downloadGeneration.current &&
+        owner === fileOwnerGeneration()
+      )
+        toast({
+          text: messageOf(failure, "Couldn't download this file."),
+          error: true,
+        });
+    } finally {
+      if (ticket === downloadGeneration.current) downloading.current = false;
+      if (
+        alive.current &&
+        ticket === downloadGeneration.current &&
+        owner === fileOwnerGeneration()
+      )
+        setDownloadBusy(false);
+    }
+  };
   return (
     <div className="doc-file" onClick={(event) => event.stopPropagation()}>
       <FileText aria-hidden="true" />
@@ -881,21 +977,8 @@ function FileCard({ block }: { block: Extract<DocBlock, { type: "file" }> }) {
           <IconButton
             label={`Download ${block.text}`}
             disabled={!file}
-            onClick={() =>
-              void fileLink(block.file).then(
-                (next) => {
-                  const a = document.createElement("a");
-                  a.href = next.url;
-                  a.download = block.text;
-                  a.click();
-                },
-                (failure) =>
-                  toast({
-                    text: messageOf(failure, "Couldn't download this file."),
-                    error: true,
-                  }),
-              )
-            }
+            busy={downloadBusy}
+            onClick={() => void download()}
           >
             <Download />
           </IconButton>
@@ -1012,6 +1095,51 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
 
 function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
   const page = useContext(PageContext);
+  const pending = useRef(new Set<string>());
+  const [pendingIds, setPendingIds] = useState(new Set<string>());
+  const [error, setError] = useState("");
+  const owner = useSyncExternalStore(onToken, fileOwnerGeneration);
+  const generation = useRef(0);
+  const mounted = useRef(true);
+  const scope = page?.docId;
+  useEffect(() => {
+    mounted.current = true;
+    generation.current++;
+    pending.current.clear();
+    setPendingIds(new Set());
+    setError("");
+    return () => {
+      mounted.current = false;
+      generation.current++;
+    };
+  }, [scope, owner]);
+  const toggle = async (id: string, done: boolean) => {
+    const change = page?.onToggleTask;
+    if (!change || pending.current.has(id)) return;
+    const ticket = generation.current;
+    pending.current.add(id);
+    setPendingIds(new Set(pending.current));
+    setError("");
+    try {
+      await change(id, done);
+    } catch (failure) {
+      if (
+        mounted.current &&
+        ticket === generation.current &&
+        owner === fileOwnerGeneration()
+      )
+        setError(messageOf(failure, "Couldn't change this task. Try again."));
+    } finally {
+      if (
+        mounted.current &&
+        ticket === generation.current &&
+        owner === fileOwnerGeneration()
+      ) {
+        pending.current.delete(id);
+        setPendingIds(new Set(pending.current));
+      }
+    }
+  };
   const refs = useMemo(() => {
     const seen = new Set<string>();
     return docObjectLinks(blocks)
@@ -1027,6 +1155,11 @@ function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
       <div className="doc-embed-head small">
         <span>Tasks linked from this page</span>
       </div>
+      {error && (
+        <p className="small" role="alert">
+          {error}
+        </p>
+      )}
       {!refs.length ? (
         <p className="small muted">
           Link tasks in this page with [[ and they're listed here.
@@ -1043,9 +1176,11 @@ function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
                   type="checkbox"
                   className="doc-check"
                   checked={done}
-                  disabled={!page?.onToggleTask || !pill}
+                  disabled={
+                    !page?.onToggleTask || !pill || pendingIds.has(ref.id)
+                  }
                   aria-label={pill?.title ?? "Task"}
-                  onChange={() => page?.onToggleTask?.(ref.id, !done)}
+                  onChange={() => void toggle(ref.id, !done)}
                 />
                 <button
                   type="button"

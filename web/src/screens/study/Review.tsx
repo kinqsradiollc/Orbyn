@@ -19,6 +19,7 @@ import {
   TextArea,
 } from "../../ui/kit";
 import { Inline } from "../library/page/Inline";
+import { useStudyOwner } from "./lifetime";
 
 const LABEL: Record<Rating, string> = {
   again: "Again",
@@ -56,7 +57,6 @@ export function Review({
 }) {
   const [cards, setCards] = useState<StudyCard[] | null>(null);
   const [error, setError] = useState("");
-  const [at, setAt] = useState(0);
   const [shown, setShown] = useState(false);
   const [answer, setAnswer] = useState("");
   const [grade, setGrade] = useState<Grade | null>(null);
@@ -65,9 +65,19 @@ export function Review({
   const [reviewed, setReviewed] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const lock = useRef(false);
+  const generation = useRef(0);
+  const root = useRef<HTMLDivElement>(null);
+  const answerBox = useRef<HTMLTextAreaElement>(null);
+  const current = useStudyOwner();
   useEffect(() => {
-    let live = true;
+    const read = ++generation.current;
+    setCards(null);
     setError("");
+    setReviewed(0);
+    setShown(false);
+    setAnswer("");
+    setGrade(null);
+    setExplained(null);
     client
       .studyQueue({
         docId: session.docId,
@@ -75,70 +85,115 @@ export function Review({
         ahead: session.ahead,
       })
       .then(
-        (next) => live && setCards(next),
-        (failure) =>
-          live && setError(messageOf(failure, "Couldn't load cards.")),
+        (next) => {
+          if (current() && read === generation.current) setCards(next);
+        },
+        (failure) => {
+          if (current() && read === generation.current)
+            setError(messageOf(failure, "Couldn't load cards."));
+        },
       );
     return () => {
-      live = false;
+      generation.current++;
     };
-  }, [session, attempt]);
-  const card = cards?.[at];
+  }, [session.docId, session.quiz, session.ahead, attempt, current]);
+  const card = cards?.[0];
+  const total = reviewed + (cards?.length ?? 0);
   const rate = useCallback(
     async (rating: Rating) => {
-      if (!card || lock.current) return;
+      if (!card || lock.current || !current()) return;
       lock.current = true;
+      const read = generation.current;
       setBusy(true);
       setError("");
       try {
-        await client.reviewCard(card.id, rating);
+        const next = await client.reviewCard(card.id, rating);
+        if (!current() || read !== generation.current) return;
+        setCards((all) => {
+          const remaining = (all ?? []).slice(1);
+          return rating === "again" && !session.quiz
+            ? [...remaining, next]
+            : remaining;
+        });
         setReviewed((n) => n + 1);
-        setAt((n) => n + 1);
         setShown(false);
         setAnswer("");
         setGrade(null);
         setExplained(null);
       } catch (failure) {
-        setError(messageOf(failure, "Couldn't save this rating. Try again."));
+        if (current() && read === generation.current)
+          setError(messageOf(failure, "Couldn't save this rating. Try again."));
       } finally {
         lock.current = false;
-        setBusy(false);
+        if (current() && read === generation.current) setBusy(false);
       }
     },
-    [card],
+    [card, current, session.quiz],
   );
   const check = async () => {
-    if (!card || !answer.trim() || busy) return;
+    if (!card || !answer.trim() || lock.current || !current()) return;
+    lock.current = true;
+    const read = generation.current;
     setBusy(true);
     setError("");
     try {
-      setGrade(await client.gradeAnswer(card.id, answer.trim()));
+      const result = await client.gradeAnswer(card.id, answer.trim());
+      if (!current() || read !== generation.current) return;
+      setGrade(result);
       setShown(true);
     } catch (failure) {
-      setError(
-        messageOf(
-          failure,
-          "Couldn't check this answer. You can still show the card.",
-        ),
-      );
+      if (current() && read === generation.current)
+        setError(
+          messageOf(
+            failure,
+            "Couldn't check this answer. You can still show the card.",
+          ),
+        );
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (current() && read === generation.current) setBusy(false);
     }
   };
   const explain = async () => {
-    if (!card || busy) return;
+    if (!card || lock.current || !current()) return;
+    lock.current = true;
+    const read = generation.current;
     setBusy(true);
+    setError("");
     try {
-      setExplained(await client.explainCard(card.id));
+      const result = await client.explainCard(card.id);
+      if (current() && read === generation.current) setExplained(result);
     } catch (failure) {
-      setError(messageOf(failure, "Couldn't explain this card."));
+      if (current() && read === generation.current)
+        setError(messageOf(failure, "Couldn't explain this card."));
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (current() && read === generation.current) setBusy(false);
     }
   };
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if ((event.target as HTMLElement)?.closest("textarea, input, button, a"))
+      const active = document.activeElement;
+      if (
+        !card ||
+        session.quiz ||
+        !current() ||
+        lock.current ||
+        event.defaultPrevented ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        !root.current?.getClientRects().length ||
+        (active &&
+          active !== document.body &&
+          !root.current.contains(active)) ||
+        document.querySelector(
+          'dialog[open], [aria-modal="true"], [role="menu"]',
+        ) ||
+        (event.target as HTMLElement)?.closest(
+          "textarea, input, button, a, select, [contenteditable]",
+        )
+      )
         return;
       if (!shown && (event.key === " " || event.key === "Enter")) {
         event.preventDefault();
@@ -150,11 +205,14 @@ export function Review({
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [shown, rate]);
+  }, [shown, rate, card, current, session.quiz]);
+  useEffect(() => {
+    if (session.quiz && card && !shown) answerBox.current?.focus();
+  }, [card, session.quiz, shown]);
 
   const head = (
     <div className="study-review-head">
-      <Button variant="ghost" onClick={() => onDone(reviewed)}>
+      <Button variant="ghost" disabled={busy} onClick={() => onDone(reviewed)}>
         <ArrowLeft /> Back
       </Button>
       <span className="row-main small muted" dir="auto">
@@ -162,14 +220,14 @@ export function Review({
       </span>
       {cards && !!cards.length && (
         <span className="small muted">
-          {Math.min(at + 1, cards.length)} / {cards.length}
+          {Math.min(reviewed + 1, total)} / {total}
         </span>
       )}
     </div>
   );
   if (!cards)
     return (
-      <div className="page study">
+      <div ref={root} className="page study">
         {head}
         {error ? (
           <ErrorNotice
@@ -183,7 +241,7 @@ export function Review({
     );
   if (!card)
     return (
-      <div className="page study">
+      <div ref={root} className="page study">
         {head}
         <Empty
           title={
@@ -199,13 +257,13 @@ export function Review({
       </div>
     );
   return (
-    <div className="page study">
+    <div ref={root} className="page study">
       {head}
       <progress
         className="study-progress"
         aria-label="Session progress"
-        value={at}
-        max={cards.length}
+        value={reviewed}
+        max={total}
       />
       {error && <ErrorNotice message={error} />}
       <article className="study-card">
@@ -223,7 +281,9 @@ export function Review({
             }}
           >
             <TextArea
+              ref={answerBox}
               autoFocus
+              disabled={busy}
               aria-label="Your answer"
               dir="auto"
               value={answer}
@@ -244,7 +304,11 @@ export function Review({
               >
                 <Sparkles /> Check answer
               </Button>
-              <Button variant="ghost" onClick={() => setShown(true)}>
+              <Button
+                variant="ghost"
+                disabled={busy}
+                onClick={() => setShown(true)}
+              >
                 Show answer
               </Button>
             </div>
@@ -294,7 +358,11 @@ export function Review({
       </article>
       {!shown && !session.quiz && (
         <div className="study-actions">
-          <Button variant="primary" onClick={() => setShown(true)}>
+          <Button
+            variant="primary"
+            disabled={busy}
+            onClick={() => setShown(true)}
+          >
             Show answer
           </Button>
           <span className="small muted">Press space to show</span>
@@ -333,6 +401,7 @@ export function Review({
             {card.doc_id && (
               <Button
                 variant="ghost"
+                disabled={busy}
                 onClick={() =>
                   navigate(
                     `/app/doc/${card.doc_id}${card.block_id ? `#${card.block_id}` : ""}`,

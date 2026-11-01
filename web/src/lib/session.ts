@@ -13,16 +13,37 @@ function read() {
 }
 
 let token = read();
+let version = 0;
+
+const streamFetch: typeof fetch = (input, init) => {
+  const request = input instanceof Request;
+  const url = new URL(
+    request ? input.url : String(input),
+    window.location.href,
+  );
+  if (/\/(?:events\/docs\/[^/]+|docs\/[^/]+\/live)$/.test(url.pathname)) {
+    // This client preserves drafts before closing a trashed editor. Legacy
+    // clients retain their existing stream behavior until they opt in too.
+    url.searchParams.set("terminal", "preserve-drafts-v1");
+    return fetch(request ? new Request(url, input) : url, init);
+  }
+  return fetch(input, init);
+};
 
 export const client = new OrbynClient({
   baseUrl: import.meta.env.VITE_API_URL || "/api",
   getToken: () => token,
+  streamFetch,
 });
 
 export const getToken = () => token;
+export const getSessionVersion = () => version;
 
 export function setToken(next: string) {
+  if (next === token) return;
+  version++;
   token = next;
+  client.noteExternalMutation();
   try {
     if (next) localStorage.setItem(KEY, next);
     else localStorage.removeItem(KEY);
@@ -38,7 +59,9 @@ export function onToken(listener: () => void) {
 }
 
 window.addEventListener("storage", (event) => {
-  if (event.key !== KEY) return;
+  if (event.key !== KEY || (event.newValue ?? "") === token) return;
+  version++;
   token = event.newValue ?? "";
+  client.noteExternalMutation();
   listeners.forEach((listener) => listener());
 });

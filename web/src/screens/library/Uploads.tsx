@@ -31,6 +31,7 @@ import {
   useToast,
 } from "../../ui/kit";
 import { goTo, loadLibrary } from "./store";
+import { useLibraryOwner } from "./lifetime";
 
 type Uploads = {
   jobs: ImportJob[];
@@ -61,9 +62,10 @@ export function UploadsProvider({
   children: ReactNode;
 }) {
   const toast = useToast();
-  const alive = useRef(true);
+  const current = useLibraryOwner();
   const request = useRef(0);
   const uploading = useRef(false);
+  const removing = useRef(new Set<string>());
   const seen = useRef(new Set<string>());
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [caps, setCaps] = useState<ImportCapabilities | null>(null);
@@ -72,10 +74,11 @@ export function UploadsProvider({
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
+    if (!current()) return;
     const id = ++request.current;
     try {
       const list = await client.listImports();
-      if (!alive.current || id !== request.current) return;
+      if (!current() || id !== request.current) return;
       const fresh = list.filter(
         (job) => job.status === "ready" && !seen.current.has(job.id),
       );
@@ -86,25 +89,26 @@ export function UploadsProvider({
       setJobs(list);
       setError("");
     } catch (failure) {
-      if (alive.current && id === request.current)
+      if (current() && id === request.current)
         setError(messageOf(failure, "Couldn't load imports."));
     } finally {
-      if (alive.current && id === request.current) setLoading(false);
+      if (current() && id === request.current) setLoading(false);
     }
-  }, []);
+  }, [current]);
 
   useEffect(() => {
-    alive.current = true;
+    if (!current()) return;
+    let live = true;
     void refresh();
     client.importCapabilities().then(
-      (next) => alive.current && setCaps(next),
+      (next) => live && current() && setCaps(next),
       () => {},
     );
     return () => {
-      alive.current = false;
+      live = false;
       request.current++;
     };
-  }, [refresh]);
+  }, [refresh, current]);
 
   const active = jobs.some((job) => IMPORT_ACTIVE.includes(job.status));
   useEffect(() => {
@@ -114,17 +118,17 @@ export function UploadsProvider({
   }, [active, starting, refresh]);
 
   const refuse = useCallback(
-    (text: string) => toast({ text, error: true }),
-    [toast],
+    (text: string) => current() && toast({ text, error: true }),
+    [toast, current],
   );
 
   const importFiles = useCallback(
     async (files: File[]) => {
-      if (uploading.current) return;
+      if (!current() || uploading.current) return;
       uploading.current = true;
       try {
         for (const file of files) {
-          if (!alive.current) break;
+          if (!current()) break;
           const refused = importRefusal(file.name, file.type);
           if (refused) {
             refuse(refused);
@@ -158,14 +162,17 @@ export function UploadsProvider({
               project_team_id: projectId ? projectTeamId : undefined,
             });
             startedId = started.id;
+            if (!current()) return;
             await refresh();
+            if (!current()) return;
             await client.uploadImportFile(upload_path, file, file.type);
           } catch (failure) {
+            if (!current()) return;
             refuse(messageOf(failure, `Couldn't import ${file.name}.`));
             // The bytes never arrived, so nothing is left waiting for them.
             if (startedId) await client.removeImport(startedId).catch(() => {});
           } finally {
-            if (alive.current) {
+            if (current()) {
               setStarting((count) => count - 1);
               void refresh();
             }
@@ -175,20 +182,25 @@ export function UploadsProvider({
         uploading.current = false;
       }
     },
-    [caps, projectId, projectTeamId, refresh, refuse],
+    [caps, projectId, projectTeamId, refresh, refuse, current],
   );
 
   const remove = useCallback(
     async (job: ImportJob) => {
+      if (!current() || removing.current.has(job.id)) return;
+      removing.current.add(job.id);
       try {
         await client.removeImport(job.id);
+        if (!current()) return;
         setJobs((all) => all.filter((next) => next.id !== job.id));
         await refresh();
       } catch (failure) {
         refuse(messageOf(failure, "Couldn't remove this import."));
+      } finally {
+        removing.current.delete(job.id);
       }
     },
-    [refresh, refuse],
+    [refresh, refuse, current],
   );
 
   const value = useMemo(
@@ -218,6 +230,7 @@ export function ImportButton({
   label?: string;
 }) {
   const uploads = useUploads();
+  const current = useLibraryOwner();
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -239,7 +252,7 @@ export function ImportButton({
         onChange={(event) => {
           const files = [...(event.currentTarget.files ?? [])];
           event.currentTarget.value = "";
-          if (files.length) {
+          if (files.length && current()) {
             goTo({ at: "uploads" });
             navigate("/app/docs");
             void uploads.importFiles(files);
@@ -257,19 +270,22 @@ export function keepOriginalsLabel(keep: boolean) {
 /** Files being read, and the switch for keeping what was imported. */
 export function UploadsPanel() {
   const uploads = useUploads();
+  const current = useLibraryOwner();
   const toast = useToast();
   const [keep, setKeep] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  const changing = useRef(false);
   useEffect(() => {
+    if (!current()) return;
     let live = true;
     client.originals().then(
-      (next) => live && setKeep(next.keep),
+      (next) => live && current() && setKeep(next.keep),
       () => {},
     );
     return () => {
       live = false;
     };
-  }, []);
+  }, [current]);
   const shown = uploads.jobs.filter((job) => job.status !== "ready");
   return (
     <section className="lib-uploads" aria-label="Imports">
@@ -282,19 +298,25 @@ export function UploadsPanel() {
               checked={keep}
               disabled={busy}
               onChange={(event) => {
+                if (!current() || changing.current) return;
                 const next = event.currentTarget.checked;
+                changing.current = true;
                 setBusy(true);
                 client
                   .setKeepOriginals(next)
                   .then(
-                    () => setKeep(next),
+                    () => current() && setKeep(next),
                     (failure) =>
+                      current() &&
                       toast({
                         text: messageOf(failure, "Couldn't change this."),
                         error: true,
                       }),
                   )
-                  .finally(() => setBusy(false));
+                  .finally(() => {
+                    changing.current = false;
+                    if (current()) setBusy(false);
+                  });
               }}
             />
             Keep the original

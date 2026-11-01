@@ -610,6 +610,25 @@ button.lib-twist:disabled {
   width: 100%;
   margin: 0 auto;
 }
+.page-gone {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+}
+.page-gone .empty,
+.page-gone .notice {
+  min-width: 0;
+  max-width: 100%;
+}
+.page-gone-copies {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+}
 .page-main {
   flex: 1;
   min-height: 0;
@@ -1864,6 +1883,8 @@ button.lib-twist:disabled {
 }
 .doc-latex-error {
   color: var(--danger);
+}
+.doc-latex-error:not(.doc-pane-note) {
   padding: 4px 0;
 }
 
@@ -1922,7 +1943,8 @@ button.lib-twist:disabled {
   .doc-handle {
     display: none;
   }
-  .doc-input {
+  .doc-input,
+  .doc-source {
     font-size: 16px;
   }
   .doc-select-bar .btn {
@@ -1935,7 +1957,7 @@ button.lib-twist:disabled {
     width: auto;
     background: var(--canvas);
   }
-  .page-status {
+  .page-status:not([data-source-draft]) {
     font-size: 0;
   }
   .page-status svg {
