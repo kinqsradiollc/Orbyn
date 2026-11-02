@@ -49,7 +49,10 @@ import { useTheme } from "../lib/theme";
 import { Button, ErrorNotice, IconButton, Menu, useToast } from "../ui/kit";
 import { TaskHost, useTasks, useItems, nextUp } from "../screens/shared-task";
 import { useAccount } from "./account";
-import { prepareTaskWorkspaceExit } from "../screens/shared-task/host-store";
+import {
+  prepareExit,
+  prepareTaskWorkspaceExit,
+} from "../screens/shared-task/host-store";
 import { useShellData } from "./shell-feed";
 import { Banners } from "./Banners";
 import { CommandBar } from "./CommandBar";
@@ -298,14 +301,14 @@ export function Shell({
     setLeaving(true);
     setLeaveError("");
     try {
-      const permission = await (
+      const permission = await prepareExit(
         prepareSignOut ??
-        (() =>
-          prepareLegacyExit({
-            current: () => generation === getSessionVersion(),
-            prepareGlobal: prepareTaskWorkspaceExit,
-          }))
-      )();
+          (() =>
+            prepareLegacyExit({
+              current: () => generation === getSessionVersion(),
+              prepareGlobal: prepareTaskWorkspaceExit,
+            })),
+      );
       if (!permission.allowed) {
         if (generation === getSessionVersion())
           setLeaveError("Resolve open drafts and dialogs before signing out.");
@@ -358,6 +361,25 @@ export function Shell({
     [prefs.prefs.sidebar, isAdmin],
   );
   const close = () => setNavOpen(false);
+  useEffect(() => {
+    if (!navOpen) return;
+    const key = (event: KeyboardEvent) => {
+      // A dialog or menu above the drawer owns Escape first.
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        document.querySelector("dialog[open], .menu")
+      )
+        return;
+      event.preventDefault();
+      setNavOpen(false);
+      const button = document.querySelector<HTMLElement>(".menu-button");
+      if (button?.offsetParent) button.focus();
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [navOpen]);
   const inTab =
     controller && origin && tabsEnabled
       ? (href: string, background = true) => {
@@ -731,15 +753,17 @@ export function Shell({
         </header>
         <Banners isAdmin={isAdmin} />
         <UpdateBanner
-          prepareReload={
-            prepareReload ??
-            (controller
-              ? () => controller.prepareAll("reload")
-              : () =>
-                  prepareLegacyExit({
-                    current: () => generation === getSessionVersion(),
-                    prepareGlobal: prepareTaskWorkspaceExit,
-                  }))
+          prepareReload={() =>
+            prepareExit(
+              prepareReload ??
+                (controller
+                  ? () => controller.prepareAll("reload")
+                  : () =>
+                      prepareLegacyExit({
+                        current: () => generation === getSessionVersion(),
+                        prepareGlobal: prepareTaskWorkspaceExit,
+                      })),
+            )
           }
         />
 

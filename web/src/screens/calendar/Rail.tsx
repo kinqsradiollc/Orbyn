@@ -47,18 +47,15 @@ function toPlace(items: Item[], planned: Workspace["plannedById"]) {
 export function TasksToPlace({
   workspace,
   onSchedule,
+  onRetry,
 }: {
   workspace: Workspace;
   onSchedule: (item: Item) => void;
+  /** One retry for every failed read on the page; this notice only asks for it. */
+  onRetry: () => void;
 }) {
   const [all, setAll] = useState(false);
-  const {
-    items,
-    plannedById,
-    itemsLoading,
-    error: itemsError,
-    retry,
-  } = workspace;
+  const { items, plannedById, itemsLoading, error: itemsError } = workspace;
   const open = useMemo(() => toPlace(items, plannedById), [items, plannedById]);
   const shown = all ? open : open.slice(0, SHOWN);
   return (
@@ -70,10 +67,7 @@ export function TasksToPlace({
         </h2>
       </div>
       {itemsError && !items.length ? (
-        <ErrorNotice
-          message="Couldn't load your tasks."
-          onRetry={() => void retry()}
-        />
+        <ErrorNotice message="Couldn't load your tasks." onRetry={onRetry} />
       ) : itemsLoading ? (
         <Loading label="Loading tasks" />
       ) : !shown.length ? (
@@ -138,17 +132,22 @@ export function TasksToPlace({
 export function CheckIns({
   tz,
   version,
+  retry,
+  onRetry,
   onOpen,
   onPlanIt,
   onChanged,
 }: {
   tz: string;
   version: unknown;
+  /** Changes when the page retries its failed reads. */
+  retry: unknown;
+  onRetry: () => void;
   onOpen: (itemId: string) => void;
   onPlanIt: (itemId: string) => void;
   onChanged: () => void;
 }) {
-  const list = useResource(() => client.sessionCheckIns(), [version]);
+  const list = useResource(() => client.sessionCheckIns(), [version, retry]);
   const [asking, setAsking] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -193,7 +192,7 @@ export function CheckIns({
     return (
       <ErrorNotice
         message="Couldn't load session check-ins."
-        onRetry={() => void list.reload()}
+        onRetry={onRetry}
       />
     );
   if (!rows.length && !said) return null;

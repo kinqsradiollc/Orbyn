@@ -73,11 +73,27 @@ export function registerFocusPreparation(
     if (prepareFocus === prepare) prepareFocus = null;
   };
 }
+let exitDiscards = 0;
+/**
+ * Reload and sign-out ask the open item to confirm; a confirmed answer closes it,
+ * so its dialog no longer blocks the exit. Closing invalidates the caller's first
+ * permit, so a caller may prepare once more when this count moved meanwhile.
+ */
+export async function prepareExit<
+  T extends { allowed: boolean; current(): boolean },
+>(prepare: () => Promise<T>): Promise<T> {
+  const before = exitDiscards;
+  const permit = await prepare();
+  if ((permit.allowed && permit.current()) || exitDiscards === before)
+    return permit;
+  return prepare();
+}
+
 /** Global timer has an account lifetime, including after its opening tab has closed. */
 export async function prepareTaskWorkspaceExit() {
-  const opening = layer,
-    generation = getSessionVersion(),
+  let opening = layer,
     ticket = transition;
+  const generation = getSessionVersion();
   let focusPermit: FocusPreparationResult = false;
   const current = () =>
     generation === getSessionVersion() &&
@@ -89,11 +105,27 @@ export async function prepareTaskWorkspaceExit() {
     if (!focusPermit) return { allowed: false, current };
   }
   if (!current()) return { allowed: false, current };
-  if (
-    (opening.open || opening.create) &&
-    (!prepareLayer || !(await prepareLayer()))
-  )
-    return { allowed: false, current };
+  if (opening.open || opening.create) {
+    if (!prepareLayer || !(await prepareLayer()) || !current())
+      return { allowed: false, current };
+    // The confirmation applies to this draft: close it so its dialog stops blocking the exit.
+    const { open, create } = opening;
+    transition++;
+    replacing = false;
+    prepareLayer = null;
+    exitDiscards++;
+    set({ open: null, create: null });
+    const closed = layer,
+      closedAt = transition;
+    open?.options.onClose?.();
+    create?.onClose?.();
+    // Let the closed dialog unmount and release its portal before the caller checks again.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (layer !== closed || transition !== closedAt)
+      return { allowed: false, current };
+    opening = closed;
+    ticket = closedAt;
+  }
   return { allowed: current(), current };
 }
 

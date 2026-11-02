@@ -551,9 +551,6 @@ function WorkBody() {
       if (k === "/") {
         event.preventDefault();
         searchBox.current?.focus();
-      } else if (k === "n" || k === "N") {
-        event.preventDefault();
-        tasks.create({});
       } else if (k === "Escape" && selecting) clearSelection();
       else if (
         layout === "list" &&

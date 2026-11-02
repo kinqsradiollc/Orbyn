@@ -291,7 +291,7 @@ function Calendar({
   }, [actions.reloadIdle]);
   useLive(refreshView);
 
-  const mates = useTeammates(
+  const teammates = useTeammates(
     workspace.teams,
     account,
     prefs.pinned_user_ids,
@@ -299,6 +299,17 @@ function Calendar({
     data.to,
     mode === "stage" || mode === "week" || mode === "day",
   );
+  // One Try again for every read that failed, in any notice. Reads only: no
+  // save or delete is replayed from here.
+  const [retried, setRetried] = useState(0);
+  const retryReads = () => {
+    if (data.error) void data.reload();
+    if (data.fieldsError) void data.reloadFields();
+    if (workspace.error) void workspace.retry();
+    if (teammates.error) teammates.retry();
+    setRetried((n) => n + 1);
+  };
+  const mates = { ...teammates, retry: retryReads };
 
   // ---- what's open ----
   const [pickedRef, setPickedRef] = useState<PickedRef | null>(null);
@@ -787,13 +798,13 @@ function Calendar({
         {data.fieldsError && (
           <ErrorNotice
             message="Page and project dates couldn't load."
-            onRetry={() => void data.reloadFields()}
+            onRetry={retryReads}
           />
         )}
         {shown && data.error && (
           <ErrorNotice
             message="Couldn't refresh the calendar. Showing what's loaded."
-            onRetry={() => void data.reload()}
+            onRetry={retryReads}
           />
         )}
         {mates.shown.length > 0 && (
@@ -831,7 +842,7 @@ function Calendar({
             <div className="calendar-state">
               <ErrorNotice
                 message="Couldn't load the calendar."
-                onRetry={() => void data.reload()}
+                onRetry={retryReads}
               />
             </div>
           ) : loadingView || !shown ? (
@@ -968,12 +979,15 @@ function Calendar({
           <CheckIns
             tz={tz}
             version={revision}
+            retry={retried}
+            onRetry={retryReads}
             onOpen={openItem}
             onPlanIt={planIt}
             onChanged={refreshAll}
           />
           <TasksToPlace
             workspace={workspace}
+            onRetry={retryReads}
             onSchedule={(item) => setDialog({ kind: "schedule", item })}
           />
         </aside>
