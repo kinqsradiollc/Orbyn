@@ -32,8 +32,13 @@ approval and cancellation lifecycle, with no SMTP delivery. Admin/Developers and
 Settings have their scoped qualification and local checkpoint commits. Settings
 includes its modal and all six categories, ChatGPT and legacy aliases. Stage 6
 retained shell integration has completed its scoped qualification and checkpoint
-checks. Stage 7 parity closure, external delivery/provider limits and the final
-whole-client checks remain open.
+checks.
+
+Stage 7 is complete locally, as recorded in "Stage 7 closeout" below. Every parity
+row was exercised against the real local API or is listed under "Cannot be verified
+on this stack". The full default backend suite passes 5,869/5,869 on `5d1870c6`. The
+whole-client route sweep and the seven checkpoint gates pass on the final commit.
+What remains before replacing `desktop/` is the owner's manual UI review and cutover.
 
 ## How to run
 
@@ -44,9 +49,9 @@ whole-client checks remain open.
 
 ## Parity gaps
 
-Every capability of `desktop/` must exist in `web/` before cutover. This inventory
-includes implemented but unverified flows and historical items still awaiting
-receipt reconciliation; each remains open until its current evidence is recorded.
+Every capability of `desktop/` must exist in `web/` before cutover. Stage 7 closed
+the rows below; the evidence for each is under "Stage 7 closeout". They are kept
+for history. What is still open is listed in that section.
 
 From Work and Lists:
 
@@ -2383,3 +2388,136 @@ transformed camera while labels sit outside the floor; the current fit estimates
 the floor rather than checking the projected label extent. This needs a focused
 geometry measurement and correction, including narrow and orbit/zoom controls.
 It remains open; the sweep's structural pass does not establish pixel correctness.
+
+## Stage 7 closeout — 2 November 2026
+
+Each batch below ran in a real browser against the real local API, with readback
+from the API rather than the page alone. "Controlled" means real app components
+with injected failures or held responses; it is kept separate from native evidence.
+Private receipts are under `output/client-rebuild/evidence/` with the named tag.
+Every fixture created was deleted and confirmed absent, except where noted.
+
+### Defects fixed
+
+- Project header and Portfolio counts now follow task changes without a remount.
+  One project-local read owner publishes the project; mutation receipts fence older
+  reads; a failed refresh keeps the data and drafts with a Retry; 403/404 show the
+  project as unavailable. Newer typing during a held rename save is kept, and a
+  stage removed elsewhere can't be saved as if it still existed.
+- Project link, rename and summary saves recover an unknown write by reading back
+  whether it landed.
+- 3D hour labels are fitted from where they actually project: no clipped digits at
+  1440, 1024 or 375, the first and last labels no longer overlap, and the phone
+  close-up keeps every label inside the stage.
+- Calendar refreshes the background grid after a confirmed task-panel save or
+  status change while the panel stays open (one read, about 0.2s), instead of
+  waiting for the five-second coalescing.
+- Calendar tile drags no longer drop when a tile crosses another or changes day,
+  and a tap after a drag is no longer swallowed.
+- Focus custom Work/Break fields can be cleared and retyped; phase copy reads
+  "1 minute".
+- The bell's unread count drops as soon as a notification is read.
+- Confirming Discard on Reload or sign-out now closes the draft and continues;
+  Cancel keeps it. A pending or unknown write still refuses first.
+- Escape closes the phone navigation drawer after any dialog above it.
+- A custom N shortcut is honoured on Work.
+- One Calendar Try again recovers every failed read.
+- The device time zone is reported once per account and zone, not on every
+  account refresh.
+- Terms and Privacy no longer repeat the version line their authored body carries.
+- Today's character browse shows each preset's artwork.
+
+### Evidence by area
+
+- **Projects, Today, Notifications** (`stage7-project-header-after-1`,
+  `stage7-projects-batch-1`): native header and Portfolio counts for done, create
+  and cancel; controlled out-of-order, 503, 404, hidden frame and account switch;
+  dirty link draft departure on navigation and Back; native Notifications
+  reschedule and start, mark read, Today check-ins, and a real 409 move retry;
+  native promises, asks, agent question answer, welcome back, 3D map node, claiming,
+  cover icon with Undo, character editor, and first run with its preset on
+  `new@orbyn.local` (restored afterwards).
+- **Calendar** (`stage7-calendar-after-1`, `stage7-calendar-batch-1`,
+  `stage7-calendar-flows-1`): native Plan open, pin by drag, estimate, What if,
+  experiments, roll forward and stale banner; Alt-drag copy; rail drop; emulated
+  touch drag at 375; controlled event-move rollback; native Manage sets, feeds,
+  frames and habits; subscriptions refused by the real network guard for local
+  URLs, with the success path controlled; teammates overlay; Find time; `?plan=`
+  and `?date=`; panel reset; controlled drag-while-saving and account switch.
+- **Work and tasks** (`stage7-work-batch-1`): native keyboard Schedule; controlled
+  failed and 409 transfers to Calendar and to a page; native bulk status, priority,
+  due, list, tag and delete with Undo; native team visibility and assignment for
+  admin and member; controlled failed and unknown recurring edits; native Focus
+  rhythm, Start/Pause/Resume/End and return; controlled Focus phase end with sound
+  and notification fakes; controlled Quick line retry and lost response; native
+  Quick line account change and mentions; native filter dimensions with CSV and
+  saved-view reload; shared-view permissions; Peek read-only controls and
+  recovery; command-bar background tab and object links.
+- **Shell** (`stage7-shell-batch-1`, `stage7-shell-defects-1`): native sidebar
+  Arrange, Icon rail and phone navigation; controlled live reconnect; native
+  Activity; controlled update, announcement, maintenance, email and terms gates;
+  native What's new, pinned panel, unread badge and overlay Escape order; native
+  page commands, command pins, typed filters, sidebar slots, shortcut sheet and
+  collision/Reset; native rapid navigation (32 changes in 11s, no 429); controlled
+  429 wave with recovery on 13 of 16 routes, the others keeping cached data;
+  native assistant `?task=`, `?project=`, `?chat=`, `?ask=` (held, not sent),
+  `?panel=upcoming`, Teams `?team=`, Booking `?open=` and `/app/doc/:id#heading`.
+
+### Backend and gates
+
+The complete default suite selected every `tests/*.test.ts` file and passed
+5,869/5,869, with no skips, on `5d1870c6`. It ran against the guarded `orbyn_test`
+database with the masked environment and network guard; no backend or package
+source changed during the run. The two backend tests that read `web/` passed
+39/39 again on `8f1bea8d`. The seven checkpoint gates pass on the final commit.
+
+### Whole-client sweep
+
+A read-only sweep visited 272 routes on `8f1bea8d`: every member route with its
+aliases and Settings sections, a real project, review, task and team, all 13 Admin
+sections, and 17 public routes, each in light and dark at 1440 and 375. Every
+non-GET request was refused and recorded; none were attempted. It reported zero
+notBuilt, crashes, empty pages, horizontal overflow, off-screen controls, page
+errors or unexpected writes. The only flags were the 404 answers for the deliberately
+invented `/book/…` and `/u/…` links, which correctly show their not-found states.
+Small-control flags at 375 were the task checkboxes, whose hit area is 48px through
+their pseudo-element, and the signup Terms checkbox inside its label. The member
+account had no saved view, page or booking page, so those detail routes were not in
+this sweep; earlier stages exercised them. Structural checks do not judge visual
+quality: that is the owner's manual review. Private receipt:
+`stage7-all-routes-final-1`.
+
+### Cannot be verified on this stack
+
+- Anything that needs a model provider, which is not configured: project
+  assistant drafting, ProposalReview from a project, real proposal application.
+- File storage is not configured (`FILES_SECRET` unset): cover upload and Peek file
+  download return 503 and say so.
+- Real SMTP delivery, OS notification delivery, audible chime, a physical phone,
+  and Focus pickup or handover across real devices.
+- `?conversation=&entry=`: this server's canonical conversation endpoint returns
+  404, and the page says so.
+- A truly ambiguous mention needs two teammates with the same name; the demo data
+  has none. Events cannot be filed in a project (the API refuses), so they cannot
+  affect project counts.
+- A hidden retained Calendar while a discard confirmation is open: the page
+  ignores New tab during that confirmation, so the case cannot arise.
+
+### Known issues, not blocking review
+
+- The API rate limit is 180 requests a minute per address without a device
+  session. Normal clicking stays under it; sustained scripted load does not.
+- Calendar still shows three Try again buttons after a multi-read failure; any
+  one recovers all of them.
+- Page autosave retries a 409 three times before showing Unsaved. Whether that is
+  the intended merge retry was not confirmed.
+- `/app/tasks` can stay on its skeleton for 20s or more when requests are slow or
+  rate-limited, with no error shown.
+- Work's status chip persists in local storage and carries into the next
+  Save as view.
+- A failed recurring save always shows as unknown; only Discard clears it.
+- One finished QA experiment record remains on the member account, because the
+  backend has no delete route for work records. Team activity entries from QA
+  tasks also remain.
+- If Discard is confirmed for the task-panel draft and a page draft then refuses
+  the exit, the panel draft is already closed.
