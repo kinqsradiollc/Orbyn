@@ -2295,16 +2295,15 @@ horizontal overflow were reported in this subset. Admin Storage is held pending
 proof of its configured Files-service origin; other dynamic/capability and valid
 effect-flow branches remain separate requirements.
 
-The public-route phone subset also passes 11 cases in each of light and dark at
-375px: landing, signup, forgot password, bare reset and verification links, Terms,
-Privacy, Security, Changelog, Developers MCP and bare OAuth. All 22 captures were
-inspected, with no reported route error, unexpected effect, horizontal overflow
-or blocking viewport defect. The missing-link states do not qualify valid reset,
-verification or OAuth consent flows. Desktop cells, scrolling, native interaction
-and the rest of the full matrix remain open. A minor duplicate Version label in
+The public-route subset passes 11 cases in all four light/dark × 1440/375 cells: landing, signup, forgot password, bare reset and verification links, Terms,
+Privacy, Security, Changelog, Developers MCP and bare OAuth. All 44 captures were inspected, with no reported route error, unexpected effect,
+horizontal overflow or blocking viewport defect. The missing-link states do not qualify valid reset,
+verification or OAuth consent flows. Scrolling, native interaction and the rest of the full matrix remain open. A minor duplicate Version label in
 Terms/Privacy remains to fix without altering the authored legal body. Private
 receipts: `stage7-final-routes-v4-public-light375-1` and
-`stage7-final-routes-v4-public-dark375-1`.
+`stage7-final-routes-v4-public-dark375-1`,
+`stage7-final-routes-v4-public-light1440-1` and
+`stage7-final-routes-v4-public-dark1440-1`.
 
 #### Stage 7 initial navigation and milestone reads
 
@@ -2368,3 +2367,20 @@ opening value after task completion even while its milestone and primary API are
 current. Its separate resource/refresh ownership is being investigated. Immediate
 Calendar background refresh and the remaining whole-client parity and route
 acceptance also remain open; this checkpoint does not close them.
+
+
+Add, Projects, Lists and Calendar also pass all four light/dark × 1440/375
+render cells, with zero reported notBuilt/problems/errors/violations/source drift.
+All 16 actual captures were opened. The phone layout shows the list picker and
+single-day 3D stage; the desktop retains the selected list and whole week. These
+are partial render audits of existing local data, not new action, permission,
+scrolling or all-Calendar-mode qualification. Private receipts use
+`stage7-final-routes-v4-collections-<theme><width>-1`.
+
+Pixel inspection found a further small Calendar defect even though the document
+has no horizontal overflow: lower 3D hour labels can lose their leading digit at
+the stage's left clipping edge in the default desktop pose. The stage clips its
+transformed camera while labels sit outside the floor; the current fit estimates
+the floor rather than checking the projected label extent. This needs a focused
+geometry measurement and correction, including narrow and orbit/zoom controls.
+It remains open; the sweep's structural pass does not establish pixel correctness.
