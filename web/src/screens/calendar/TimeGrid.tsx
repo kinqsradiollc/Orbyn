@@ -116,6 +116,8 @@ type Gesture = {
   moved: boolean;
 };
 
+type PointerPoint = { clientX: number; clientY: number; altKey: boolean };
+
 type Drag = { key: string; start_at: string; end_at: string; copy: boolean };
 
 type Props = {
@@ -197,6 +199,8 @@ export function TimeGrid({
   const scroller = useRef<HTMLDivElement>(null);
   const cols = useRef<(HTMLDivElement | null)[]>([]);
   const gesture = useRef<Gesture | null>(null);
+  const stopGesture = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopGesture.current?.(), []);
   const suppressClick = useRef(false);
   const [drag, setDragState] = useState<Drag | null>(null);
   const dragRef = useRef(drag);
@@ -267,7 +271,7 @@ export function TimeGrid({
     if (e.button !== 0 || (e.pointerType === "touch" && mode === "move"))
       return;
     e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    suppressClick.current = false;
     gesture.current = {
       mode,
       picked,
@@ -279,9 +283,37 @@ export function TimeGrid({
       end: Date.parse(span.end_at),
       moved: false,
     };
+    // Follow the pointer on the window, not by capture on the tile: moving a
+    // tile past another or into the next day re-orders or re-parents its node,
+    // and that releases capture and drops the gesture.
+    const id = e.pointerId;
+    const off = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      stopGesture.current = null;
+    };
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId === id) move(ev);
+    };
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return;
+      off();
+      finish(ev);
+    };
+    const onCancel = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return;
+      off();
+      cancel();
+    };
+    stopGesture.current?.();
+    stopGesture.current = off;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
   };
 
-  const move = (e: ReactPointerEvent<HTMLElement>) => {
+  const move = (e: PointerPoint) => {
     const g = gesture.current;
     if (!g) return;
     const dx = e.clientX - g.x;
@@ -323,13 +355,18 @@ export function TimeGrid({
     });
   };
 
-  const finish = (e: ReactPointerEvent<HTMLElement>) => {
+  const finish = (e: PointerPoint) => {
     const g = gesture.current;
     gesture.current = null;
     const d = dragRef.current;
     setDrag(null);
     if (!g?.moved) return;
+    // The click that follows a drag is swallowed. It may land on another
+    // element when the tile moved, so the flag also expires on its own.
     suppressClick.current = true;
+    setTimeout(() => {
+      suppressClick.current = false;
+    }, 100);
     if (
       !d ||
       (Date.parse(d.start_at) === g.start && Date.parse(d.end_at) === g.end)
@@ -780,9 +817,6 @@ export function TimeGrid({
                               })
                           : undefined
                       }
-                      onPointerMove={draggable ? move : undefined}
-                      onPointerUp={draggable ? finish : undefined}
-                      onPointerCancel={draggable ? cancel : undefined}
                       onClick={(ev) => {
                         if (suppressClick.current) {
                           suppressClick.current = false;
@@ -841,9 +875,6 @@ export function TimeGrid({
                                   begin(ev, picked, p.key, "move", n, span)
                               : undefined
                           }
-                          onPointerMove={draggable ? move : undefined}
-                          onPointerUp={draggable ? finish : undefined}
-                          onPointerCancel={draggable ? cancel : undefined}
                           onClick={(ev) => {
                             if (suppressClick.current) {
                               suppressClick.current = false;
@@ -868,9 +899,6 @@ export function TimeGrid({
                             onPointerDown={(ev) =>
                               begin(ev, picked, p.key, "resize", n, span)
                             }
-                            onPointerMove={move}
-                            onPointerUp={finish}
-                            onPointerCancel={cancel}
                           />
                         )}
                         {joinable(e, now.getTime()) && (
@@ -981,9 +1009,6 @@ export function TimeGrid({
                                   begin(ev, picked, p.key, "move", n, span)
                               : undefined
                           }
-                          onPointerMove={draggable ? move : undefined}
-                          onPointerUp={draggable ? finish : undefined}
-                          onPointerCancel={draggable ? cancel : undefined}
                           onClick={(ev) => {
                             if (suppressClick.current) {
                               suppressClick.current = false;
@@ -1010,9 +1035,6 @@ export function TimeGrid({
                             onPointerDown={(ev) =>
                               begin(ev, picked, p.key, "resize", n, span)
                             }
-                            onPointerMove={move}
-                            onPointerUp={finish}
-                            onPointerCancel={cancel}
                           />
                         )}
                       </div>
@@ -1045,9 +1067,6 @@ export function TimeGrid({
                             ? (ev) => begin(ev, picked, p.key, "move", n, span)
                             : undefined
                         }
-                        onPointerMove={tunable ? move : undefined}
-                        onPointerUp={tunable ? finish : undefined}
-                        onPointerCancel={tunable ? cancel : undefined}
                         onClick={(ev) => {
                           if (suppressClick.current) {
                             suppressClick.current = false;
