@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-26",
+  "version": "2026-11-02",
   "server": {
     "name": "orbyn",
     "title": "Orbyn",
@@ -4608,7 +4608,7 @@
     {
       "name": "save_view",
       "title": "Save a view",
-      "description": "Creates a saved view, or changes one (view + version): a name, what it lists (source: tasks, pages or projects), filters, sort ({by, dir}), group_by, columns and layout (list, board, table, calendar; gallery for pages). The same definition the app's Views screen uses, so the view opens there too. space: \"personal\" (default) or a team id to share it with the team. star puts it in the person's favourites; pin in their sidebar. export: \"csv\" returns a saved view's rows as CSV text (csv), changing nothing. Run it with query(view). The definition language is in orbyn://spec/views.",
+      "description": "Create a saved view or update view + version. Uses the app definition: source, filters, sort, group_by, columns and layout (gallery: pages only). space: personal (default) or shared team id. star: favourites; pin: sidebar. export: csv reads rows without changes. Run with query(view). Spec: orbyn://spec/views.",
       "kind": "write",
       "access": "write",
       "toolset": "workspace",
@@ -4625,30 +4625,30 @@
         "type": "object",
         "properties": {
           "view": {
-            "description": "To change a saved view: view:<id>. Leave out to make one.",
+            "description": "Update: view:<id>; omit to create.",
             "type": "string",
             "minLength": 1,
             "maxLength": 300
           },
           "version": {
-            "description": "The view's version, when changing it.",
+            "description": "Required for updates.",
             "type": "integer",
             "minimum": 1,
             "maximum": 9007199254740991
           },
           "name": { "type": "string", "minLength": 1, "maxLength": 80 },
           "space": {
-            "description": "Where a new view is kept: \"personal\" (the default), or a team id to share it with the team.",
+            "description": "New view: personal (default), or shared team id.",
             "type": "string",
             "maxLength": 100
           },
           "source": {
-            "description": "What a new view lists (default tasks). A view keeps it.",
+            "description": "New source (default tasks); immutable.",
             "type": "string",
             "enum": ["tasks", "pages", "projects"]
           },
           "filters": {
-            "description": "The filters (they replace the view's own when changing it). Days are YYYY-MM-DD; due_within_days and updated_within_days count from today.",
+            "description": "Replaces filters on update. Dates: YYYY-MM-DD; relative days count from today.",
             "type": "object",
             "properties": {
               "text": { "type": "string", "minLength": 1, "maxLength": 200 },
@@ -4669,9 +4669,14 @@
                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               },
               "list": {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                "anyOf": [
+                  { "type": "string", "const": "none" },
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                ]
               },
               "tag": {
                 "type": "string",
@@ -4681,12 +4686,29 @@
               "assignee": {
                 "anyOf": [
                   { "type": "string", "const": "me" },
+                  { "type": "string", "const": "none" },
                   {
                     "type": "string",
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   }
                 ]
+              },
+              "priority": {
+                "type": "string",
+                "enum": ["high", "medium", "low"]
+              },
+              "size": {
+                "type": "string",
+                "enum": ["quick", "short", "long", "none"]
+              },
+              "task_status": {
+                "type": "string",
+                "enum": ["todo", "in_progress", "blocked", "done", "cancelled"]
+              },
+              "due_bucket": {
+                "type": "string",
+                "enum": ["today", "tomorrow", "soon", "week"]
               },
               "due_after": {
                 "type": "string",
@@ -4766,7 +4788,7 @@
             "additionalProperties": false
           },
           "group_by": {
-            "description": "none, or what the source groups by (tasks: status, list, tag, size, priority, project, due_week, assignee).",
+            "description": "none, or source grouping; tasks: status, list, tag, size, priority, project, due_week, assignee.",
             "type": "string",
             "minLength": 1,
             "maxLength": 60
@@ -9501,6 +9523,13 @@
   ],
   "changelog": [
     {
+      "date": "2026-11-02",
+      "changes": [
+        "Saved task views add exact priority, size, task-status and due-bucket filters, plus explicit no-list and unassigned choices. App views, query and CSV use the same definitions and membership rules; existing filters remain supported.",
+        "Fetch a saved view for its current version before changing it with save_view. Updates require that expected version and refuse stale definitions; unsupported filter definitions remain preserved rather than silently rewritten. Compact discovery descriptions retain every typed filter and validation rule."
+      ]
+    },
+    {
       "date": "2026-10-26",
       "changes": [
         "Task project concurrency cutover: link task_project accepts optional version now, retaining the caller's expected version whenever supplied. Versionless calls have a deployment-wide 90-day grace period from migration 290, then fail with INVALID and instructions to fetch and send version. During the grace period only, omission uses the current locked row version through canonical placement. REST remains version-required.",
@@ -9563,5 +9592,5 @@
       ]
     }
   ],
-  "routes": { "covered": 271, "excluded": 346, "pending": 0 }
+  "routes": { "covered": 271, "excluded": 347, "pending": 0 }
 }

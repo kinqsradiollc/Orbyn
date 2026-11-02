@@ -618,24 +618,24 @@ Up to 50 write-tool steps as one job: all checked first, then made in one transa
 
 ### `save_view`
 
-Creates a saved view, or changes one (view + version): a name, what it lists (source: tasks, pages or projects), filters, sort ({by, dir}), group_by, columns and layout (list, board, table, calendar; gallery for pages). The same definition the app's Views screen uses, so the view opens there too. space: "personal" (default) or a team id to share it with the team. star puts it in the person's favourites; pin in their sidebar. export: "csv" returns a saved view's rows as CSV text (csv), changing nothing. Run it with query(view). The definition language is in orbyn://spec/views.
+Create a saved view or update view + version. Uses the app definition: source, filters, sort, group_by, columns and layout (gallery: pages only). space: personal (default) or shared team id. star: favourites; pin: sidebar. export: csv reads rows without changes. Run with query(view). Spec: orbyn://spec/views.
 
-| Argument     | Type                                            | Notes                                                                                                                                      |
-| ------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `view`       | string                                          | To change a saved view: `view:<id>`. Leave out to make one.                                                                                |
-| `version`    | integer                                         | The view's version, when changing it.                                                                                                      |
-| `name`       | string                                          |                                                                                                                                            |
-| `space`      | string                                          | Where a new view is kept: "personal" (the default), or a team id to share it with the team.                                                |
-| `source`     | `tasks`, `pages`, `projects`                    | What a new view lists (default tasks). A view keeps it.                                                                                    |
-| `filters`    | object                                          | The filters (they replace the view's own when changing it). Days are YYYY-MM-DD; due_within_days and updated_within_days count from today. |
-| `sort`       | object                                          | by: due, updated, created, priority, title, estimate, days_left or `field:<id>`.                                                           |
-| `group_by`   | string                                          | none, or what the source groups by (tasks: status, list, tag, size, priority, project, due_week, assignee).                                |
-| `layout`     | `list`, `board`, `table`, `calendar`, `gallery` |                                                                                                                                            |
-| `columns`    | list of string                                  |                                                                                                                                            |
-| `star`       | boolean                                         |                                                                                                                                            |
-| `pin`        | boolean                                         |                                                                                                                                            |
-| `export`     | `csv`                                           |                                                                                                                                            |
-| `client_ref` | string                                          | Idempotency key: sent again within 24 h, the first answer comes back.                                                                      |
+| Argument     | Type                                            | Notes                                                                                            |
+| ------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `view`       | string                                          | Update: `view:<id>`; omit to create.                                                             |
+| `version`    | integer                                         | Required for updates.                                                                            |
+| `name`       | string                                          |                                                                                                  |
+| `space`      | string                                          | New view: personal (default), or shared team id.                                                 |
+| `source`     | `tasks`, `pages`, `projects`                    | New source (default tasks); immutable.                                                           |
+| `filters`    | object                                          | Replaces filters on update. Dates: YYYY-MM-DD; relative days count from today.                   |
+| `sort`       | object                                          | by: due, updated, created, priority, title, estimate, days_left or `field:<id>`.                 |
+| `group_by`   | string                                          | none, or source grouping; tasks: status, list, tag, size, priority, project, due_week, assignee. |
+| `layout`     | `list`, `board`, `table`, `calendar`, `gallery` |                                                                                                  |
+| `columns`    | list of string                                  |                                                                                                  |
+| `star`       | boolean                                         |                                                                                                  |
+| `pin`        | boolean                                         |                                                                                                  |
+| `export`     | `csv`                                           |                                                                                                  |
+| `client_ref` | string                                          | Idempotency key: sent again within 24 h, the first answer comes back.                            |
 
 ### `update_project`
 
@@ -1126,9 +1126,14 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 - Error codes and their meaning never change; new codes may be added.
 - Every change to a tool, resource or prompt shows in docs/mcp-catalog.json, which CI compares with the code, and in this changelog. The catalog's version is the date of its last change.
 
-Catalog version: `2026-10-26`.
+Catalog version: `2026-11-02`.
 
 ## Changelog
+
+### 2026-11-02
+
+- Saved task views add exact priority, size, task-status and due-bucket filters, plus explicit no-list and unassigned choices. App views, query and CSV use the same definitions and membership rules; existing filters remain supported.
+- Fetch a saved view for its current version before changing it with save_view. Updates require that expected version and refuse stale definitions; unsupported filter definitions remain preserved rather than silently rewritten. Compact discovery descriptions retain every typed filter and validation rule.
 
 ### 2026-10-26
 
@@ -1188,4 +1193,4 @@ Catalog version: `2026-10-26`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 271 of the app's signed-in routes are covered by tools, 346 are never for agents, and 0 are still to come.
+Routes: 271 of the app's signed-in routes are covered by tools, 347 are never for agents, and 0 are still to come.

@@ -208,6 +208,27 @@ export const tasks = {
       options.origin,
     );
   },
+  /** A committed save may fork a series without replacing this presentation. */
+  adoptSaved(
+    expected: NonNullable<Layer["open"]>,
+    item: Item,
+    generation: number,
+  ) {
+    if (layer.open !== expected || generation !== getSessionVersion())
+      return false;
+    set({
+      open: {
+        ...expected,
+        id: item.id,
+        item,
+        options: {
+          ...expected.options,
+          ...(item.id !== expected.id ? { occurrence: null } : {}),
+        },
+      },
+    });
+    return true;
+  },
   /** Closes the panel; pass an id to close only that task. */
   close(id?: string, expected?: NonNullable<Layer["open"]>) {
     if (

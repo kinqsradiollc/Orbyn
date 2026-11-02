@@ -33,6 +33,8 @@ export const EXCLUSION_REASONS = {
     "Binary synchronization and capability-negotiated document editor transport are interactive client protocols; connected agents use typed page capabilities instead.",
   planner_sync:
     "Whole-account snapshot reconciliation is an interactive planner protocol; connected agents use scoped query and fetch capabilities instead of mirroring the client cache.",
+  view_sync:
+    "Saved-view feature and definition-version negotiation is an interactive client protocol; connected agents use the typed save_view schema and orbyn://spec/views.",
   stream: "Long-lived event streams (subscriptions/listen arrives in phase 6).",
   mcp: "The MCP address itself.",
   device:
@@ -402,6 +404,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /me/agent-routines/setup-context": "assistant_control",
   "POST /me/agent-routines/setup": "assistant_control",
   "GET /items/reconcile": "planner_sync",
+  "GET /views/capabilities": "view_sync",
   "GET /docs/:id/content": "editor_sync",
   "PUT /docs/:id/content": "editor_sync",
   "GET /agent-channels/slack": "credentials",

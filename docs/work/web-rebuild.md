@@ -51,8 +51,9 @@ receipt reconciliation; each remains open until its current evidence is recorded
 From Work and Lists:
 
 - Task transfer is implemented. Native Work-to-page, Work/Lists-to-Calendar and
-  Work-to-3D timed/day drops pass with real API readback and cleanup. Board/manual
-  order, keyboard Schedule and adverse transfer variants remain to qualify.
+  Work-to-3D timed/day drops pass with real API readback and cleanup. Native Board
+  column moves and manual arrows/drag/reload also pass. Keyboard Schedule and
+  adverse transfer variants remain to qualify.
 - Task completion uses the confirmation toast with Undo. The user explicitly
   approved this replacement for the celebration effect on 1 November 2026.
 - Focus: custom rhythms, sound and notifications, and picking up a session running on another device.
@@ -64,7 +65,11 @@ From Work and Lists:
   are verified; the other dimensions, consumers and recovery cases remain open.
 - Quick line loads team members on first mention intent. Native ambiguity,
   account changes and complete real-API retry coverage still need reconciliation.
-- Native board changes, bulk mutations, team-only flows and repeat scopes "this" and "following" remain to qualify. Focus, Peek and Save as view have bounded evidence below; their unexercised variants remain open.
+- Native Board status/priority changes and bulk Done/Undo pass bounded real-API
+  checks. Repeating-task scope Cancel, This and later Following title edits also
+  pass. Other bulk mutations, team-only flows and scoped recurrence deletions
+  remain to qualify. Focus, Peek and Save as view have bounded
+  evidence below; their unexercised variants remain open.
 
 Cross-screen wiring:
 
@@ -1920,3 +1925,134 @@ requests, unknown outcomes or source drift occurred. The dark capture was
 inspected, and only the confirmed version3 test task was deleted with204/404
 verification. This is the same-account successful task path, not bulk, recurrence,
 checklist, handoff or cross-account native qualification.
+
+#### Stage 7 local checkpoint and native Board, ordering and bulk acceptance
+
+Local checkpoint `e136e413010400b6ca710a45b8a042f542d08499` contains the verified
+Stage 7 group. All seven required checkpoint gates passed against its exact staged
+bytes: formatting, workspace types, code organization, current document links,
+GitHub helper tests, production web build and backend week-scene tests. The
+staged file set and blob hashes were checked against the gate receipt before
+commit, and the clean committed tree was verified afterward. Nothing was pushed.
+
+The native Board run passes three checks on a fresh personal task: trusted card
+status drag to In progress, native Columns selection and Move menu to High
+priority, and settled primary readbacks with unchanged persisted preferences.
+The exact status POST returns version 2 and the priority PUT returns version 3;
+unrelated fields are compared to preceding receipts. Only the confirmed version 3
+fixture is removed with 204/404 proof. An earlier run passed both mutations but
+its bubbling event observer lost the detached target's column identity; capture
+phase fixed the private observer. That original task was independently reconciled
+against its saved full version 3 fingerprint before cleanup. Application source
+was unchanged by this qualification.
+
+Manual ordering passes three checks with a fresh private list and exactly three
+tasks: native Move up, trusted HTML drag before the first row, and reload with
+persisted sibling ranks. Every sibling's rank and full primary record are checked;
+only position and appropriate update timestamps change, with edit versions
+remaining 1. The actual preferences remain unchanged; preference writes are
+synthetic in this bounded test. The dark drag capture was inspected. All three
+confirmed tasks and then the confirmed empty list were deleted with readback.
+An earlier private-driver callback missed its browser argument; after correction,
+that original cohort's arrow passed but its reload assertion rejected a valid 304. The exact saved fingerprints were reconciled and cleaned, and the complete
+fresh run disabled browser caching to obtain explicit response bodies. Failed
+attempts are retained; neither was an application ordering failure.
+
+Native bulk status and Undo pass four checks: actual selection mode, labelled
+checkbox and Select all five; five exact Done POSTs at version 2; native click on
+the actual six-second success toast's Undo; and five todo version 3 primary
+readbacks with trusted input, exactly ten forwarded status writes, unchanged
+unrelated fields and no further effects. Transport stayed within four concurrent
+requests; the fifth followed the first four response headers. Status-only Undo
+preserves 100% progress under the existing backend contract, with two timeline
+entries and one reminder-version increment. All five full final fingerprints were
+confirmed before versioned cleanup, each returning 204 followed by 404.
+
+The first bulk attempt hit the local session rate limit during safety reads;
+all five status requests were refused before forwarding. The original journal
+was retained, all five records were confirmed identical to their original version
+1 fingerprints, and the same cohort was used after a full rate-limit window.
+The successful run had no errors, violations, unresolved outcomes or source
+changes. Account preference reads use a synthetic deterministic presentation in
+this test, while actual persisted preferences are separately compared unchanged.
+This qualifies bulk status/Undo, not other bulk fields, deletion or recurrence.
+The full guarded backend suite and remaining parity/route acceptance are still
+required before completion.
+
+#### Stage 7 full backend result and MCP metadata correction
+
+The complete default backend suite selected all 630 `tests/*.test.ts` files and
+finished with 5,857 tests: 5,851 passed, six failed, zero skipped, cancelled or
+todo. The complete log and terminal receipt were inspected. All tracked source
+and package output hashes stayed unchanged during that run. Tests used only the
+owner-verified `orbyn_test` database with its persisted `test` marker on the
+loopback-only test container. App environment loading was masked in child
+processes, with an allowlisted process environment and network isolation.
+
+Three failures were in the private qualification environment: a global
+PAGE_FILES_DIR override conflicted with agent-files' own temporary FILES_DIR,
+and the TCP guard rejected two netguard tests before their explicit pinned
+lookup could resolve a fake hostname to their own local HTTP server. The corrected
+runner leaves PAGE_FILES_DIR unset. Its guard validates every actual address from
+a supplied lookup before connecting; default external hostnames, public resolved
+addresses and demo-service ports remain refused. Positive pinned-local HTTP and
+negative external/protected-port controls all pass. The original failures remain
+in the full-run log.
+
+The other three failures exposed MCP metadata omissions from the saved-view
+integration: generated catalog drift, workspace discovery exceeding its strict
+28,200-character limit, and the new signed-in views/capabilities route missing
+from the capability inventory. Seven descriptions are shorter without removing
+any typed filter, parser, validation rule or feature. The interactive view
+negotiation route now has an explicit protocol exclusion; connected agents use
+the typed save_view schema and views specification. Catalog version/changelog
+2026-11-02 records the changed view contract, and the canonical generator refreshed
+all seven changed catalog/distribution outputs. These are local generated files,
+not a published plugin or deployment.
+
+All seven affected backend test files subsequently pass 70/70 with unchanged
+source, no skips and no network refusals: agent files, netguard, MCP catalog,
+toolsets, route inventory, MCP saved-view links and saved-view SQL/API contracts.
+The same strict budgets and route ratchets remain. This is a completed full run
+followed by passing affected rechecks, not a claimed uninterrupted green rerun of
+the whole suite.
+
+#### Stage 7 task-panel fork ownership and native recurrence edits
+
+The actual TaskHost/TaskPanel baseline reproduced two defects under controlled
+service boundaries: a dirty title followed by an immediate status change caused
+an extra stale-status write, and a later Following split left the host on the old
+ID while a subsequent save combined the new ID with the old version.
+
+The corrected host conditionally adopts a successful save receipt only for its
+exact current presentation and account generation. The returned series becomes
+the host's task identity; mismatched detail/list records cannot merge, and the
+old occurrence reference is cleared on a fork. Field save no longer interprets
+a retained draft status as new status intent. Immediate status controls retain
+their separate owner. A synchronous operation protects later reads, receipt
+adoption and UI settlement across account ABA, unmount and host retirement.
+Newer typing survives an earlier save receipt. A known successful write followed
+by a failed detail read adopts its known ID and requires explicit read recovery
+before another field write.
+
+Web typechecking passes. The controlled actual-component/host run passes 14/14,
+including repeat save/version/link/section targeting, stale old-series reads,
+409 draft preservation, known-success/read-failure recovery, same-turn admission,
+retired results and legitimate visible-pane focus loss. The two baseline checks
+are defect reproductions, not qualification passes. The private runner originally
+shadowed its report-save helper with its UI-save helper; root renamed the latter
+before any execution. No API traffic was forwarded by these controlled checks.
+
+A separate real local native run passes five checks: scope-dialog Cancel retains
+the dirty title with zero edit; This at the current occurrence records exactly one
+title override without changing the base title/rule; native Calendar navigation
+opens the later occurrence; Following returns a distinct version-1 series while
+the original becomes version 3 with the correct cutoff; and both primary records
+and finite Calendar expansion remain exact with no status or planner writes.
+The new series has four remaining occurrences and the original retains only its
+first occurrence and override. Both full fingerprints are confirmed before any
+cleanup, then each versioned deletion returns 204 followed by 404. No errors,
+violations, unresolved outcomes or source drift occurred. Both dark desktop
+captures were inspected. This qualifies successful title scopes and Cancel;
+scoped deletions, lost-response recovery, other recurrence variants and the final
+whole-client route/theme/phone acceptance remain open.

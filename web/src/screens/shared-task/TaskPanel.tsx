@@ -38,7 +38,14 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { messageOf } from "../../lib/resource";
 import { useNavigate } from "../../lib/router";
@@ -109,12 +116,14 @@ export function TaskPanel({
   listed,
   occurrence,
   onClose,
+  onSaved,
 }: {
   id: string;
   /** The item as a screen had it, to show at once. */
   listed?: Item;
   occurrence?: OccurrenceRef | null;
   onClose: () => void;
+  onSaved: (item: Item, generation: number) => boolean;
 }) {
   const tasks = useTasks();
   const scope = useRouteScope();
@@ -122,7 +131,8 @@ export function TaskPanel({
   const items = useItems();
   const planning = usePlanning();
   const fromList = items.find((item) => item.id === id) ?? listed;
-  const [detail, setDetail] = useState<ItemDetail | null>(null);
+  const [readDetail, setDetail] = useState<ItemDetail | null>(null);
+  const detail = readDetail?.id === id ? readDetail : null;
   const [readError, setReadError] = useState("");
   const [gone, setGone] = useState(false);
   const [readTry, setReadTry] = useState(0);
@@ -130,6 +140,26 @@ export function TaskPanel({
   const [pending, setPending] = useState(false);
   const writing = useRef(false);
   const read = useRef(0);
+  const generation = useRef(getSessionVersion()).current;
+  const mounted = useRef(true);
+  const identity = useRef({ id, scope, ready: false, canWrite: false });
+  identity.current.id = id;
+  identity.current.scope = scope;
+  type Operation = { current: () => boolean };
+  const operation = useRef<Operation | null>(null);
+  const savedReadFailure = useRef<{
+    item: Item;
+    retry: number;
+    draft: Draft;
+  } | null>(null);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      operation.current = null;
+      writing.current = false;
+    };
+  }, []);
   const panel = useRef<HTMLElement>(null);
   const toast = useToast();
   const confirm = useConfirm();
@@ -149,13 +179,25 @@ export function TaskPanel({
   useEffect(() => {
     let alive = true;
     const request = ++read.current;
+    if (!mounted.current || generation !== getSessionVersion()) return;
+    if (
+      savedReadFailure.current?.item.id === id &&
+      savedReadFailure.current.retry === readTry
+    )
+      return;
+    const owns = () =>
+      alive &&
+      mounted.current &&
+      generation === getSessionVersion() &&
+      request === read.current &&
+      identity.current.id === id;
     setReadError("");
     client.getItem(id).then(
       (next) => {
-        if (alive && request === read.current) setDetail(next);
+        if (owns()) setDetail(next);
       },
       (e) => {
-        if (!alive || request !== read.current) return;
+        if (!owns()) return;
         const status = (e as { status?: number }).status;
         if (status === 404 || status === 403) setGone(true);
         else setReadError(messageOf(e, "Couldn't load this task."));
@@ -167,7 +209,12 @@ export function TaskPanel({
   }, [reloadKey, id, readTry]);
 
   useEffect(() => {
-    void client.recordRecent("task", id).catch(() => undefined);
+    if (
+      mounted.current &&
+      generation === getSessionVersion() &&
+      identity.current.id === id
+    )
+      void client.recordRecent("task", id).catch(() => undefined);
   }, [id]);
 
   // Focus moves in and goes back to what opened the panel.
@@ -214,7 +261,9 @@ export function TaskPanel({
   const current: Item | undefined = detail
     ? {
         ...detail,
-        ...(fromList && fromList.version >= detail.version
+        ...(fromList &&
+        fromList.id === detail.id &&
+        fromList.version >= detail.version
           ? pick(fromList)
           : {}),
       }
@@ -222,8 +271,62 @@ export function TaskPanel({
 
   const draftState = useDraft(current, detail, occurrence ?? null);
   const { draft, update, dirty, reset, pendingRows, known } = draftState;
+  const latestDraft = useRef(draft);
+  latestDraft.current = draft;
 
   const canWrite = current ? planning.canWrite(current) : false;
+  identity.current.ready = !!detail && !readError;
+  identity.current.canWrite = canWrite;
+  useEffect(() => {
+    const failed = savedReadFailure.current;
+    if (
+      !mounted.current ||
+      generation !== getSessionVersion() ||
+      !failed ||
+      detail?.id !== failed.item.id ||
+      detail.version < failed.item.version
+    )
+      return;
+    savedReadFailure.current = null;
+    if (latestDraft.current === failed.draft) reset();
+  }, [detail, reset]);
+  const panelOwned = () =>
+    mounted.current &&
+    generation === getSessionVersion() &&
+    identity.current.id === id &&
+    identity.current.scope === scope;
+  const begin = (): Operation | null => {
+    const opening = scope?.getSnapshot();
+    if (
+      writing.current ||
+      !panelOwned() ||
+      !identity.current.ready ||
+      !identity.current.canWrite ||
+      (scope && (!opening?.visible || !opening.focused))
+    )
+      return null;
+    const href = opening
+      ? opening.pathname + opening.search + opening.hash
+      : "";
+    const owned: Operation = {
+      current: () => {
+        const here = scope?.getSnapshot();
+        return (
+          mounted.current &&
+          generation === getSessionVersion() &&
+          operation.current === owned &&
+          identity.current.scope === scope &&
+          (!scope ||
+            (!!here?.pathname &&
+              here.pathname + here.search + here.hash === href))
+        );
+      },
+    };
+    operation.current = owned;
+    writing.current = true;
+    ++read.current;
+    return owned;
+  };
 
   const requestClose = useCallback(async () => {
     if (writing.current) return;
@@ -240,8 +343,6 @@ export function TaskPanel({
     onClose();
   }, [dirty, confirm, onClose]);
 
-  const latestDraft = useRef(draft);
-  latestDraft.current = draft;
   const prepareClose = useCallback(async () => {
     if (writing.current) return false;
     const captured = latestDraft.current;
@@ -275,41 +376,49 @@ export function TaskPanel({
     return () => document.removeEventListener("keydown", key);
   }, [requestClose]);
 
-  /** Runs a change that returns the fresh task, then refreshes the list. */
+  /** Runs a change only while this presentation still owns its receipt. */
   const run = useCallback(
     async (work: () => Promise<ItemDetail>) => {
-      if (writing.current) return false;
-      writing.current = true;
-      const request = ++read.current;
+      const owned = begin();
+      if (!owned) return false;
       setPending(true);
       setError("");
       try {
         const next = await work();
+        if (!owned.current()) return false;
         setDetail(next);
         refresh();
         return true;
-      } catch (e) {
-        setError(messageOf(e, "Couldn't save that."));
-        if ((e as { status?: number }).status === 409)
-          void client.getItem(id).then(
-            (next) => {
-              if (request === read.current) setDetail(next);
-            },
-            () => undefined,
-          );
+      } catch (error) {
+        if (!owned.current()) return false;
+        setError(messageOf(error, "Couldn't save that."));
+        if ((error as { status?: number }).status === 409) {
+          try {
+            const next = await client.getItem(id);
+            if (owned.current()) setDetail(next);
+          } catch {
+            /* The original error remains visible. */
+          }
+        }
         return false;
       } finally {
-        writing.current = false;
-        setPending(false);
+        if (owned.current()) {
+          operation.current = null;
+          writing.current = false;
+          setPending(false);
+        }
       }
     },
-    [id],
+    [id, scope],
   );
 
   const setStatus = (status: Status) => {
     if (!current || status === current.status) return;
     void run(async () => {
+      const owned = operation.current;
       await saveStatus(current, status);
+      if (!owned?.current())
+        throw Error("This task change belongs to an earlier presentation.");
       return client.getItem(id);
     });
   };
@@ -321,31 +430,52 @@ export function TaskPanel({
     if (!current || !draft) return;
     const built = buildInput(draft, current, known, draftState.repeatStart);
     if (built.error !== undefined) return setError(built.error);
+    const owned = begin();
+    if (!owned) return;
     setSaving(true);
     setError("");
-    writing.current = true;
+    let saved: Item | null = null;
     try {
-      const saved = await saveItem(
-        current,
-        built.data,
-        current.version,
-        options,
-      );
-      let next: ItemDetail | null = null;
-      if (built.data.status !== current.status)
-        next = await client.postItemUpdate(id, { status: built.data.status });
-      setDetail(next ?? (await client.getItem(saved.id)));
-      reset();
+      // Saved-panel status is immediate; a dirty field draft is not status intent.
+      saved = await saveItem(current, built.data, current.version, options);
+      if (!owned.current()) return;
+      const next = await client.getItem(saved.id);
+      if (!owned.current() || !onSaved(next, generation)) return;
+      setDetail(next);
+      if (latestDraft.current === draft) reset();
       toast({ text: "Saved" });
-    } catch (e) {
-      setError(messageOf(e, "Couldn't save your changes."));
-      // Keep the draft and pick up the newer version for the next try.
-      if ((e as { status?: number }).status === 409)
-        setError("This task changed elsewhere. Review it, then save again.");
-      void client.getItem(id).then(setDetail, () => undefined);
+    } catch (error) {
+      if (!owned.current()) return;
+      if (saved) {
+        // The write is known. Adopt its identity and require a read, never refork it.
+        savedReadFailure.current = { item: saved, retry: readTry, draft };
+        if (!onSaved(saved, generation)) return;
+        setDetail(null);
+        setReadError(
+          "Your changes were saved, but the updated task couldn't be loaded. Retry loading it before saving again.",
+        );
+        setError("");
+      } else {
+        setError(
+          (error as { status?: number }).status === 409
+            ? "This task changed elsewhere. Review it, then save again."
+            : messageOf(error, "Couldn't save your changes."),
+        );
+        if ((error as { status?: number }).status === 409) {
+          try {
+            const next = await client.getItem(id);
+            if (owned.current()) setDetail(next);
+          } catch {
+            /* Keep the dirty draft and original conflict visible. */
+          }
+        }
+      }
     } finally {
-      writing.current = false;
-      setSaving(false);
+      if (owned.current()) {
+        operation.current = null;
+        writing.current = false;
+        setSaving(false);
+      }
     }
   };
 
@@ -766,7 +896,12 @@ export function TaskPanel({
             <Button variant="ghost" disabled={saving} onClick={reset}>
               Discard
             </Button>
-            <Button variant="primary" busy={saving} onClick={save}>
+            <Button
+              variant="primary"
+              busy={saving}
+              disabled={!detail || !!readError || pending}
+              onClick={save}
+            >
               Save changes
             </Button>
           </footer>

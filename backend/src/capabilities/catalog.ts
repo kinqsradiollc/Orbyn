@@ -41,7 +41,7 @@ const kindOf = (c: Capability) =>
  * The catalog's version: the date of the last change to any tool's
  * contract. Bump it (and add a CHANGELOG entry) with every change.
  */
-export const CATALOG_VERSION = "2026-10-26";
+export const CATALOG_VERSION = "2026-11-02";
 
 /**
  * How tools change (the versioning and deprecation policy), in the words
@@ -58,6 +58,13 @@ export const VERSIONING_POLICY = [
 
 /** What changed in the MCP server, newest first. */
 export const CHANGELOG: { date: string; changes: string[] }[] = [
+  {
+    date: "2026-11-02",
+    changes: [
+      "Saved task views add exact priority, size, task-status and due-bucket filters, plus explicit no-list and unassigned choices. App views, query and CSV use the same definitions and membership rules; existing filters remain supported.",
+      "Fetch a saved view for its current version before changing it with save_view. Updates require that expected version and refuse stale definitions; unsupported filter definitions remain preserved rather than silently rewritten. Compact discovery descriptions retain every typed filter and validation rule.",
+    ],
+  },
   {
     date: "2026-10-26",
     changes: [

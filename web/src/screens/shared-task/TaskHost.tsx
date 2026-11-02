@@ -75,6 +75,9 @@ export function TaskHost() {
             listed={open.item}
             occurrence={open.options.occurrence}
             onClose={() => tasks.close(open.id, open)}
+            onSaved={(item, generation) =>
+              tasks.adoptSaved(open, item, generation)
+            }
           />
         )}
         {create && (

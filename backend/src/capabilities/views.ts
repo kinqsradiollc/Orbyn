@@ -62,7 +62,7 @@ export const saveView = defineCapability({
   name: "save_view",
   title: "Save a view",
   description:
-    'Creates a saved view, or changes one (view + version): a name, what it lists (source: tasks, pages or projects), filters, sort ({by, dir}), group_by, columns and layout (list, board, table, calendar; gallery for pages). The same definition the app\'s Views screen uses, so the view opens there too. space: "personal" (default) or a team id to share it with the team. star puts it in the person\'s favourites; pin in their sidebar. export: "csv" returns a saved view\'s rows as CSV text (csv), changing nothing. Run it with query(view). The definition language is in orbyn://spec/views.',
+    "Create a saved view or update view + version. Uses the app definition: source, filters, sort, group_by, columns and layout (gallery: pages only). space: personal (default) or shared team id. star: favourites; pin: sidebar. export: csv reads rows without changes. Run with query(view). Spec: orbyn://spec/views.",
   input: z
     .object({
       view: z
@@ -71,30 +71,28 @@ export const saveView = defineCapability({
         .min(1)
         .max(300)
         .optional()
-        .describe("To change a saved view: view:<id>. Leave out to make one."),
+        .describe("Update: view:<id>; omit to create."),
       version: z
         .number()
         .int()
         .min(1)
         .optional()
-        .describe("The view's version, when changing it."),
+        .describe("Required for updates."),
       name: z.string().trim().min(1).max(80).optional(),
       space: z
         .string()
         .trim()
         .max(100)
         .optional()
-        .describe(
-          'Where a new view is kept: "personal" (the default), or a team id to share it with the team.',
-        ),
+        .describe("New view: personal (default), or shared team id."),
       source: z
         .enum(VIEW_SOURCES)
         .optional()
-        .describe("What a new view lists (default tasks). A view keeps it."),
+        .describe("New source (default tasks); immutable."),
       filters: viewFilters
         .optional()
         .describe(
-          "The filters (they replace the view's own when changing it). Days are YYYY-MM-DD; due_within_days and updated_within_days count from today.",
+          "Replaces filters on update. Dates: YYYY-MM-DD; relative days count from today.",
         ),
       sort: z
         .object({
@@ -113,7 +111,7 @@ export const saveView = defineCapability({
         .max(60)
         .optional()
         .describe(
-          "none, or what the source groups by (tasks: status, list, tag, size, priority, project, due_week, assignee).",
+          "none, or source grouping; tasks: status, list, tag, size, priority, project, due_week, assignee.",
         ),
       layout: z.enum(VIEW_LAYOUTS).optional(),
       columns: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
