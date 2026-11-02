@@ -124,7 +124,11 @@ From Today, Projects, Views, Notifications:
 - Global shell owners are implemented as recorded above; final unread-badge,
   pinned-view and overlay combinations still need receipt reconciliation.
 - Assistant must read ?chat= ?project= ?ask= ?panel=upcoming ?conversation=&entry= ; Booking ?open= ; Teams ?team=.
-- Project page makes 29 requests on load; rate limiter trips under rapid navigation.
+- Project read-count qualification now removes unused Home batches outside Home:
+  leaving Home makes 0 reads instead of 3, and a cold List window makes 27 instead
+  of 30. Those are fixed 12-second local windows including background refreshes,
+  not production latency. Cold Home critical-path and rapid-navigation rate-limit
+  qualification remain open.
 
 ## Cutover
 
@@ -2139,3 +2143,77 @@ contained and their programmatic focus checks pass. This is component layout
 qualification, not native-input or full accessibility qualification. The final
 private receipt is `stage7-taskpanel-unknown-after-5`; real local lost-response
 recurrence, other parity flows and whole-client route acceptance remain open.
+
+#### Stage 7 real local recurring save with a withheld receipt
+
+The uncertain-save correction is committed locally as `80ff0675`, after all seven
+required checkpoint gates and exact staged/committed byte verification. A further
+native actual-app run passes five checks on that same committed source. It creates
+one fresh personal daily series, opens its later Calendar occurrence and submits
+one Following title edit. The guarded test forwards that exact PUT once, retains
+the real backend 200 privately, and gives the frontend only an injected 503.
+The backend original advances to version 2 with the exact cutoff; the returned
+fork is version 1 with the four remaining occurrences. Full primary fingerprints
+and Calendar expansion confirm both records. The application never receives the
+private receipt or fork identity.
+
+The actual frontend host remains the original presentation with its title draft,
+unknown notice and disabled Save/status/Star. Native Check state reads only the
+original ID and reports its changed version without replaying or resolving the
+save. Native Close followed by Cancel preserves the same draft and presentation.
+There are no additional item/status/planner writes. Desktop dark and 375px light
+and dark captures were inspected; both narrow recovery actions meet 44px targets.
+A disclosed read-only observer uses the actual host-store hook to inspect owner
+identity; it invokes no application action. Viewport, theme and focus changes are
+controlled presentation stimuli rather than native theme/focus qualification.
+
+The complete known two-record cohort is checked before cleanup. Exact version-2
+and version-1 deletions each return 204 followed by primary 404; no fixtures or
+unknown effects remain. The run reports zero errors, violations or source drift.
+This is deliberate delivery-fault qualification after a real local commit, not a
+naturally occurring outage, backend exactly-once guarantee or automatic user-facing
+reconciliation. Private receipt: `stage7-recurring-unknown-native-1`.
+
+#### Stage 7 Project Home request admission
+
+The Project Home data loader previously ran its pages/records/links batch when
+leaving Home as well as entering it, because its boolean mode dependency changes
+in both directions. It also ran on an initial List entry and could run from an
+import-ready refresh while another view was selected. The loader now uses the
+existing HomeData contract and skips network dispatch outside Home or after its
+opening owner retires. The Home branch, widget readers, local link updates and
+fresh reads on Home entry/return/Retry are unchanged. This adds no cache or TTL.
+
+A native actual-app baseline and candidate use the same existing personal project,
+source-frozen four-window driver, fresh browser pages and disabled browser HTTP
+cache. Each observation window is 12 seconds and includes background refreshes.
+Initial Home remains 37 reads; leaving Home falls from 3 to 0; returning Home
+remains 16; initial List falls from 30 to 27. The removed requests are exactly the
+three unused Home endpoints. Both actual Home visits still fetch all three once.
+Native List/Home actions and rendered pages/files/task content were inspected.
+No fixture was created, no domain write forwarded, and the complete project
+fingerprint remains unchanged. Activity writes were explicitly suppressed.
+
+The measurement preserves the application's conditional validator cache. Initial
+private attempts rejected Chrome's empty-body aborted events for valid 304s;
+those attempts remain recorded. The final driver accepts only proved 304 chains:
+same actor, page, URL/editor and validator, a completed matching 200, resolved
+fetch observations, and a sequential nonoverlapping correlation. Twenty-one
+positive/negative classifier controls pass in each final run. Every other failure,
+including 429, remains fatal. Both final four-window runs have zero errors,
+violations, unproved read failures or source drift. Private receipts are
+`stage7-project-read-measure-v3-1` and `stage7-project-read-measure-v3-after-1`.
+
+This proves a request-count reduction, not lower cold-load latency. Candidate
+visible-ready times were slower in these single local development runs; Vite,
+server and host costs were not isolated. No aggregate speedup or production health
+is claimed. Cold Home critical-path, repeated navigation/rate behavior, other
+Project mutations/recovery and whole-client visual acceptance remain open.
+
+The recurrence audit also found a separate pending projection gap: the task panel
+header reads the first series date while the form uses the selected opening
+snapshot, which can itself go stale after a same-ID This reschedule or reset.
+The opening-date-only patch was not applied. A coherent shared timing projection
+for Calendar, the header and draft is being prepared with stored-override,
+all-day/DST, reset, known/unknown receipt and current-owner behavior; it is not yet
+implemented or qualified.

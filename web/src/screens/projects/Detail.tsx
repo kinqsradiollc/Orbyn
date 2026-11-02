@@ -62,7 +62,7 @@ import {
 } from "../shared-task";
 import { Chats } from "./Chats";
 import { History } from "./History";
-import { Home } from "./Home";
+import { Home, type HomeData } from "./Home";
 import { useImports } from "./imports";
 import { Cover, LookDialog, LookIcon } from "./look";
 import { Pages } from "./Pages";
@@ -440,7 +440,10 @@ function Body({
   useEffect(() => {
     if (sessions.data) setLastSessions(sessions.data);
   }, [sessions.data]);
-  const home = useResource(async () => {
+  const home = useResource<HomeData | undefined>(async () => {
+    // The effect also runs when leaving Home, and imports can refresh off-tab.
+    // Neither case needs this batch; entering Home always reads it afresh.
+    if (mode !== "home" || !owned()) return undefined;
     const [notes, records, links] = await Promise.all([
       client.listDocs({ project: project.id }),
       client.listWorkRecords({ project_id: project.id }),
