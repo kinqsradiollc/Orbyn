@@ -141,6 +141,8 @@ export function FocusMode({
     const r = focus.rhythm.work ? focus.rhythm : focusRhythm("25-5");
     return { work: r?.work ?? 25, rest: r?.short_break ?? 5 };
   });
+  // What is being typed, until it is a whole number in range or the field is left.
+  const [typed, setTyped] = useState<{ work?: string; rest?: string }>({});
 
   useEffect(() => {
     let live = true;
@@ -380,6 +382,30 @@ export function FocusMode({
     const r = focusRhythm(customRhythmId(work, rest, rest * 3, 4));
     if (r) focus.chooseRhythm(r);
   };
+  const CUSTOM_RANGE = { work: [5, 180], rest: [1, 30] } as const;
+  /** Take a number as it is typed, but only once it is valid, so a field can be cleared and retyped. */
+  const typeCustom = (field: "work" | "rest", text: string) => {
+    setTyped((was) => ({ ...was, [field]: text }));
+    const [min, max] = CUSTOM_RANGE[field];
+    const value = Number(text);
+    if (text.trim() && Number.isInteger(value) && value >= min && value <= max)
+      pickCustom(
+        field === "work" ? value : custom.work,
+        field === "rest" ? value : custom.rest,
+      );
+  };
+  /** Leaving a field settles it on a valid number. */
+  const settleCustom = (field: "work" | "rest") => {
+    const text = typed[field];
+    if (text === undefined) return;
+    const [min, max] = CUSTOM_RANGE[field];
+    const value = Math.max(min, Math.min(max, Math.round(Number(text)) || min));
+    setTyped((was) => ({ ...was, [field]: undefined }));
+    pickCustom(
+      field === "work" ? value : custom.work,
+      field === "rest" ? value : custom.rest,
+    );
+  };
 
   return (
     <dialog
@@ -454,16 +480,9 @@ export function FocusMode({
                       min={5}
                       max={180}
                       disabled={locked}
-                      value={custom.work}
-                      onChange={(e) =>
-                        pickCustom(
-                          Math.max(
-                            5,
-                            Math.min(180, Number(e.target.value) || 5),
-                          ),
-                          custom.rest,
-                        )
-                      }
+                      value={typed.work ?? custom.work}
+                      onChange={(e) => typeCustom("work", e.target.value)}
+                      onBlur={() => settleCustom("work")}
                     />
                   </label>
                   <label className="field">
@@ -473,16 +492,9 @@ export function FocusMode({
                       min={1}
                       max={30}
                       disabled={locked}
-                      value={custom.rest}
-                      onChange={(e) =>
-                        pickCustom(
-                          custom.work,
-                          Math.max(
-                            1,
-                            Math.min(30, Number(e.target.value) || 1),
-                          ),
-                        )
-                      }
+                      value={typed.rest ?? custom.rest}
+                      onChange={(e) => typeCustom("rest", e.target.value)}
+                      onBlur={() => settleCustom("rest")}
                     />
                   </label>
                 </div>

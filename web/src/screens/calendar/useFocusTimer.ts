@@ -80,6 +80,8 @@ function confirmsCurrent(value: unknown, expected: FocusState) {
   return stateFields.every((key) => state[key] === expected[key]);
 }
 
+const minutesCount = (n: number) => `${n} ${n === 1 ? "minute" : "minutes"}`;
+
 function chime() {
   try {
     const context = new AudioContext();
@@ -331,7 +333,7 @@ export function useFocusTimer({
           tell(
             s.phase === "work" ? "Time for a break" : "Break's over",
             s.phase === "work"
-              ? `${phaseMinutes(latest.current.rhythm, next.phase)} minutes. ${latest.current.item.title} will be here.`
+              ? `${minutesCount(phaseMinutes(latest.current.rhythm, next.phase))}. ${latest.current.item.title} will be here.`
               : `Ready for ${focusPhaseLabel(latest.current.rhythm, next).toLowerCase()}?`,
           );
         })
