@@ -221,7 +221,7 @@ export function Home({
           items={mine}
           canWrite={canWrite}
           onChanged={onItemsChanged}
-          refreshKey={sessions}
+          refreshKey={items}
         />
         {coming.length > 0 && (
           <section className="pj-block">

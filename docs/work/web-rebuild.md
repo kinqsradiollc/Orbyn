@@ -2294,3 +2294,77 @@ projection candidate. No unexpected domain effects, route errors or document
 horizontal overflow were reported in this subset. Admin Storage is held pending
 proof of its configured Files-service origin; other dynamic/capability and valid
 effect-flow branches remain separate requirements.
+
+The public-route phone subset also passes 11 cases in each of light and dark at
+375px: landing, signup, forgot password, bare reset and verification links, Terms,
+Privacy, Security, Changelog, Developers MCP and bare OAuth. All 22 captures were
+inspected, with no reported route error, unexpected effect, horizontal overflow
+or blocking viewport defect. The missing-link states do not qualify valid reset,
+verification or OAuth consent flows. Desktop cells, scrolling, native interaction
+and the rest of the full matrix remain open. A minor duplicate Version label in
+Terms/Privacy remains to fix without altering the authored legal body. Private
+receipts: `stage7-final-routes-v4-public-light375-1` and
+`stage7-final-routes-v4-public-dark375-1`.
+
+#### Stage 7 initial navigation and milestone reads
+
+The Shell now retains initial-stream and explicit Retry urgency while a facet
+read is active. The first observed stream-open callback for each Shell owner
+queues a 160ms catch-up after settlement; subsequent stream callbacks and ordinary
+changes retain the existing five-second coalescing rule and earliest deadline.
+Epoch/session guards, serialized reads and partial-error preservation remain in
+place. No TTL, second stream, backend contract or provider configuration is added.
+Thirteen actual-component controlled cases pass for both baseline and candidate,
+including the reproduced baseline delay, active Retry, continuous changes,
+partial failure/recovery, unmount and account ABA. These use controlled transport
+and clocks, not a real server or cross-device execution.
+
+A separate frozen actual-app observation compares one cold Project Home page per
+variant against unchanged real local account/project data. The unread header
+state appears 4935.7ms after the actual SSE response before the change and 303.2ms
+afterward; both runs make 36 API reads. The browser-clock DOM publication times
+from navigation are 6421.6ms and 1367.5ms. Only the reviewed Shell source differs.
+Both runs pass the retained 21 conditional-response classifier controls and report
+no unexpected effects, errors, unproved read failures or source drift. Both final
+light/1440 captures were inspected. This is a local one-sample observation, not a
+production benchmark, SQL measurement or whole-client load-time guarantee. Pins
+and stars are empty in this account, so their display timing is unqualified.
+Private receipts: `stage7-shell-publication-before-1` and
+`stage7-shell-publication-after-1`.
+
+Project Home milestones now refresh on the stable shared items snapshot rather
+than the sessions response. This removes the redundant initial read caused by
+sessions completing, and follows the task changes that alter milestone rollups.
+The four-phase read-only comparison reduces milestone reads from 2/0/2/0 to
+1/0/1/0 and total reads from 37/0/16/27 to 36/0/15/27 across cold Home, leaving
+Home, returning Home and cold List. No cold Home latency improvement is claimed.
+The same real project fingerprint and unchanged non-Home behavior were checked;
+all eight final captures were inspected. Private receipts:
+`stage7-project-milestones-before-1` and `stage7-project-milestones-after-1`.
+
+The fresh-cohort native/API run passes three checks. It creates one personal
+project, task and milestone, then uses trusted task-panel Done. The task's real
+201 receipt and primary version-3 detail agree with the server milestone rollup.
+While subsequent project-session reads are deliberately held and the task panel
+remains open, the actual milestone changes to “1 of 1 task done”. This controlled
+read delay proves refresh is independent of a new sessions response; it is not
+natural latency evidence. Both dark/1440 captures were inspected. Exact versioned
+task deletion and parent milestone/project cleanup pass, with task/project primary
+404s and the prior unrelated project fingerprints unchanged. No unknown effects,
+violations, page errors or source drift remain. Private receipt:
+`stage7-project-milestone-native-after-2`.
+
+The first native attempt passed its two functional assertions but correctly failed
+its final guard on four omitted project metadata read families. It preserved its
+cohort. A separate read-only full snapshot and root review established current
+identity before three exact cleanup DELETEs, primary absence and unchanged prior
+projects were verified. The corrected driver admits only exact fresh-project
+queries; failed evidence remains retained. The initial native receipt omitted a
+full response hash, so the recovery snapshot is a new inspection baseline, not a
+claim of retrospective full receipt equality.
+
+These captures also reveal that Project's header completion count can retain its
+opening value after task completion even while its milestone and primary API are
+current. Its separate resource/refresh ownership is being investigated. Immediate
+Calendar background refresh and the remaining whole-client parity and route
+acceptance also remain open; this checkpoint does not close them.

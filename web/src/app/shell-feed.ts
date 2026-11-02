@@ -19,13 +19,16 @@ export function useShellData() {
     let live = true,
       epoch = 0,
       active = false,
-      queued = false;
+      queued = false,
+      urgentQueued = false,
+      firstConnection = true;
     let timer: ReturnType<typeof setTimeout> | null = null,
       lastStart = 0;
     const current = () => live && generation === getSessionVersion();
     const schedule = (explicit = false) => {
       if (!current()) return;
       queued = true;
+      urgentQueued ||= explicit;
       if (active) return;
       if (timer) {
         if (!explicit) return;
@@ -33,7 +36,7 @@ export function useShellData() {
         timer = null;
       }
       const delay =
-        explicit || !lastStart
+        urgentQueued || !lastStart
           ? 160
           : Math.max(160, 5000 - (Date.now() - lastStart));
       timer = setTimeout(() => {
@@ -45,6 +48,7 @@ export function useShellData() {
       if (!current() || active) return;
       active = true;
       queued = false;
+      urgentQueued = false;
       lastStart = Date.now();
       const mine = epoch;
       const [stars, views, notices] = await Promise.allSettled([
@@ -78,13 +82,21 @@ export function useShellData() {
       if (current() && (queued || mine !== epoch)) schedule();
     };
     // Invalidate publication immediately; keep the earliest queued deadline under continuous writes.
-    const invalidate = () => {
+    const invalidate = (urgent = false) => {
       epoch++;
-      schedule();
+      schedule(urgent);
     };
-    const stop = watchAccount((news) => {
-      if (news.kind === "changed") invalidate();
-    }, invalidate);
+    const stop = watchAccount(
+      (news) => {
+        if (news.kind === "changed") invalidate();
+      },
+      () => {
+        // The initial stream opens during the first read; catch up without a five-second empty sidebar.
+        const initial = firstConnection;
+        firstConnection = false;
+        invalidate(initial);
+      },
+    );
     retry.current = () => {
       epoch++;
       schedule(true);
