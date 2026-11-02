@@ -36,6 +36,15 @@ export const client = new OrbynClient({
   streamFetch,
 });
 
+/** Fired after this device changes a notification, so the bell's unread count follows at once. */
+export const NOTICES_CHANGED = "orbyn:notices-changed";
+const markNoticeRead = client.markNotificationRead.bind(client);
+client.markNotificationRead = async (id: string) => {
+  const done = await markNoticeRead(id);
+  window.dispatchEvent(new Event(NOTICES_CHANGED));
+  return done;
+};
+
 export const getToken = () => token;
 export const getSessionVersion = () => version;
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import type { SavedView, StarredItem } from "@orbyn/core";
 import { watchAccount } from "../lib/account-events";
-import { client, getSessionVersion } from "../lib/session";
+import { client, getSessionVersion, NOTICES_CHANGED } from "../lib/session";
 import { messageOf } from "../lib/resource";
 type Data = {
   starred: StarredItem[];
@@ -97,6 +97,8 @@ export function useShellData() {
         invalidate(initial);
       },
     );
+    const noticed = () => invalidate(true);
+    window.addEventListener(NOTICES_CHANGED, noticed);
     retry.current = () => {
       epoch++;
       schedule(true);
@@ -105,6 +107,7 @@ export function useShellData() {
     return () => {
       live = false;
       retry.current = () => {};
+      window.removeEventListener(NOTICES_CHANGED, noticed);
       stop();
       if (timer) clearTimeout(timer);
     };
