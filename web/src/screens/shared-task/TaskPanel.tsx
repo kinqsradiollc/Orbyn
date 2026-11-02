@@ -6,6 +6,7 @@ import {
   dateLabel,
   dueLine,
   isClosed,
+  localDateKey,
   sameDay,
   seriesNoteFor,
   STATUSES,
@@ -14,6 +15,7 @@ import {
   type EventNoteRef,
   type Item,
   type ItemDetail,
+  type ItemInput,
   type ItemLink,
   type Status,
 } from "@orbyn/core";
@@ -62,6 +64,7 @@ import {
 } from "../../ui/kit";
 import { buildInput, draftFrom, type Draft, type OccurrenceRef } from "./draft";
 import { minutesLabel } from "./format";
+import { selectedOccurrence, type SelectedView } from "./selected-occurrence";
 import { useTasks } from "./host-store";
 import { ItemFields } from "./ItemFields";
 import type { Pending } from "./pickers";
@@ -100,6 +103,25 @@ function timeRange(start: string | null, end: string | null) {
       })
     : dateLabel(end);
   return `${dateLabel(start)} → ${close}`;
+}
+
+/** All-day labels name the stored local dates, including an exclusive end's last day. */
+function selectedAllDayLabel(item: Item | ItemInput) {
+  if (!item.due_at) return "No date";
+  const zone = item.timezone || "UTC";
+  const first = new Date(item.due_at);
+  const last = item.end_at ? new Date(Date.parse(item.end_at) - 1) : first;
+  const label = (at: Date) =>
+    at.toLocaleDateString([], {
+      timeZone: zone,
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  if (item.kind === "task") return `Due ${label(last)}`;
+  return localDateKey(first, zone) === localDateKey(last, zone)
+    ? label(first)
+    : `${label(first)} → ${label(last)}`;
 }
 
 const refresh = () => void refreshPlanner().catch(() => undefined);
@@ -152,6 +174,7 @@ export function TaskPanel({
     version: number;
     options: EditOptions;
     draft: Draft;
+    view: SelectedView | null;
   } | null>(null);
   const [unknownCheck, setUnknownCheck] = useState<
     "idle" | "checking" | "unchanged" | "changed" | "failed" | null
@@ -160,6 +183,7 @@ export function TaskPanel({
     item: Item;
     retry: number;
     draft: Draft;
+    view: SelectedView | null;
   } | null>(null);
   useLayoutEffect(() => {
     mounted.current = true;
@@ -267,24 +291,60 @@ export function TaskPanel({
     };
   }, []);
 
-  const current: Item | undefined = detail
-    ? {
-        ...detail,
-        ...(fromList &&
-        fromList.id === detail.id &&
-        fromList.version >= detail.version
-          ? pick(fromList)
-          : {}),
-      }
-    : fromList;
+  const accountVersion = getSessionVersion();
+  const current = useMemo<Item | undefined>(
+    () =>
+      detail
+        ? {
+            ...detail,
+            ...(fromList &&
+            fromList.id === detail.id &&
+            fromList.version >= detail.version
+              ? pick(fromList)
+              : {}),
+          }
+        : fromList,
+    [detail, fromList, accountVersion],
+  );
 
-  const draftState = useDraft(current, detail, occurrence ?? null);
+  // Membership can enumerate a long-lived series. Draft-only renders reuse its projection.
+  const resolvedView = useMemo(
+    () =>
+      current
+        ? selectedOccurrence(
+            {
+              ...current,
+              overrides:
+                detail && detail.version >= current.version
+                  ? detail.overrides
+                  : undefined,
+            },
+            occurrence ?? null,
+          )
+        : null,
+    [current, detail, occurrence, accountVersion],
+  );
+  const failedRead = savedReadFailure.current;
+  const waitingForSavedDetail =
+    failedRead &&
+    (!detail ||
+      detail.version < failedRead.item.version ||
+      (!!occurrence && resolvedView?.state !== "ready"));
+  const view =
+    unknownSave.current?.view ??
+    (waitingForSavedDetail ? failedRead.view : null) ??
+    resolvedView;
+  const selectedReady =
+    !occurrence ||
+    (unknownSave.current ? view : resolvedView)?.state === "ready";
+  const shown = view?.item ?? current;
+  const draftState = useDraft(current, detail, occurrence ?? null, view);
   const { draft, update, dirty, reset, pendingRows, known } = draftState;
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
 
   const canWrite = current ? planning.canWrite(current) : false;
-  identity.current.ready = !!detail && !readError;
+  identity.current.ready = !!detail && !readError && selectedReady;
   identity.current.canWrite = canWrite;
   useEffect(() => {
     const failed = savedReadFailure.current;
@@ -292,13 +352,14 @@ export function TaskPanel({
       !mounted.current ||
       generation !== getSessionVersion() ||
       !failed ||
+      !selectedReady ||
       detail?.id !== failed.item.id ||
       detail.version < failed.item.version
     )
       return;
     savedReadFailure.current = null;
     if (latestDraft.current === failed.draft) reset();
-  }, [detail, reset]);
+  }, [detail, selectedReady, reset]);
   const panelOwned = () =>
     mounted.current &&
     generation === getSessionVersion() &&
@@ -485,7 +546,12 @@ export function TaskPanel({
       if (!owned.current()) return;
       if (saved) {
         // The write is known. Adopt its identity and require a read, never refork it.
-        savedReadFailure.current = { item: saved, retry: readTry, draft };
+        savedReadFailure.current = {
+          item: saved,
+          retry: readTry,
+          draft,
+          view: saved.id === current.id ? view : null,
+        };
         if (!onSaved(saved, generation)) return;
         setDetail(null);
         setReadError(
@@ -509,6 +575,7 @@ export function TaskPanel({
             version: current.version,
             options: { ...options },
             draft: structuredClone(draft),
+            view,
           };
           setUnknownCheck("idle");
           setError("");
@@ -591,7 +658,7 @@ export function TaskPanel({
     ? steps.filter((step) => step.done).length
     : (current?.steps_done ?? 0);
   const stepsTotal = detail ? steps.length : (current?.steps_total ?? 0);
-  const mayWrite = canWrite && !unknownSave.current;
+  const mayWrite = canWrite && !unknownSave.current && selectedReady;
   const locked = !mayWrite || pending || saving || !detail || !!readError;
   const team = current?.team_id
     ? (planning.teams.find((t) => t.id === current.team_id)?.name ??
@@ -789,12 +856,26 @@ export function TaskPanel({
                 onRetry={() => setReadTry((n) => n + 1)}
               />
             )}
+            {occurrence && !selectedReady && !readError && (
+              <ErrorNotice
+                message={
+                  view?.state === "unavailable"
+                    ? "This occurrence is no longer available. Reopen it from Calendar."
+                    : "The selected occurrence details aren't available yet. Retry loading before making changes."
+                }
+                onRetry={() => setReadTry((n) => n + 1)}
+              />
+            )}
             <div className="st-facts">
               <span>
                 <CalendarClock aria-hidden="true" />
-                {current.kind === "task" && current.due_at
-                  ? dueLine(current)
-                  : timeRange(current.due_at, current.end_at)}
+                {view?.state === "unavailable"
+                  ? "Occurrence unavailable"
+                  : occurrence && shown?.all_day
+                    ? selectedAllDayLabel(shown)
+                    : shown?.kind === "task" && shown.due_at
+                      ? dueLine(shown)
+                      : timeRange(shown?.due_at ?? null, shown?.end_at ?? null)}
               </span>
               {current.kind === "task" &&
                 open &&
@@ -804,27 +885,32 @@ export function TaskPanel({
                     {minutesLabel(current.remaining_minutes)} left
                   </span>
                 )}
-              {current.location && (
+              {shown?.location && (
                 <span>
                   <MapPin aria-hidden="true" />
-                  <span dir="auto">{current.location}</span>
+                  <span dir="auto">{shown.location}</span>
                 </span>
               )}
-              {current.meeting_url && (
-                <a href={current.meeting_url} target="_blank" rel="noreferrer">
+              {shown?.meeting_url && (
+                <a href={shown.meeting_url} target="_blank" rel="noreferrer">
                   <Video aria-hidden="true" /> Meeting link
                 </a>
               )}
-              {current.kind === "event" && !unknownSave.current && (
-                <MeetingNotes
-                  item={current}
-                  occurrence={occurrence ?? null}
-                  onError={setError}
-                  mayAct={() =>
-                    panelOwned() && !writing.current && !unknownSave.current
-                  }
-                />
-              )}
+              {current.kind === "event" &&
+                !unknownSave.current &&
+                selectedReady && (
+                  <MeetingNotes
+                    item={current}
+                    occurrence={occurrence ?? null}
+                    onError={setError}
+                    mayAct={() =>
+                      panelOwned() &&
+                      identity.current.ready &&
+                      !writing.current &&
+                      !unknownSave.current
+                    }
+                  />
+                )}
             </div>
             {canWrite ? (
               <div className="st-status" role="radiogroup" aria-label="Status">
@@ -1014,7 +1100,11 @@ export function TaskPanel({
               variant="primary"
               busy={saving}
               disabled={
-                !detail || !!readError || pending || !!unknownSave.current
+                !detail ||
+                !!readError ||
+                !selectedReady ||
+                pending ||
+                !!unknownSave.current
               }
               onClick={save}
             >
@@ -1068,6 +1158,7 @@ function useDraft(
   item: Item | undefined,
   detail: ItemDetail | null,
   occurrence: OccurrenceRef | null,
+  view: SelectedView | null,
 ) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [baseline, setBaseline] = useState("");
@@ -1075,17 +1166,18 @@ function useDraft(
   const pendingRows = useRef<Pending>({}).current;
   const seed = useRef("");
   const source = detail ?? item;
+  // A loading snapshot can seed the readonly form; only ready admits writes.
   const key = source
-    ? `${source.id}:${source.version}:${detail ? "full" : "list"}`
+    ? `${source.id}:${source.version}:${detail ? "full" : "list"}:${view?.state}:${JSON.stringify(view?.occurrence)}`
     : "";
   const dirty = !!draft && JSON.stringify(draft) !== baseline;
   const adopt = useCallback(() => {
     if (!source) return;
-    const next = draftFrom(source as never, true, occurrence);
+    const next = draftFrom(source as never, true, occurrence, view);
     setDraft(next);
     setBaseline(JSON.stringify(next));
     setStart(JSON.stringify(next.repeat));
-  }, [source, occurrence]);
+  }, [source, occurrence, view]);
   useEffect(() => {
     if (!key || key === seed.current) return;
     // A newer copy replaces the form unless someone is typing in it.

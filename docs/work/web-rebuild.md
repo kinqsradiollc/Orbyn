@@ -2210,10 +2210,87 @@ server and host costs were not isolated. No aggregate speedup or production heal
 is claimed. Cold Home critical-path, repeated navigation/rate behavior, other
 Project mutations/recovery and whole-client visual acceptance remain open.
 
-The recurrence audit also found a separate pending projection gap: the task panel
-header reads the first series date while the form uses the selected opening
-snapshot, which can itself go stale after a same-ID This reschedule or reset.
-The opening-date-only patch was not applied. A coherent shared timing projection
-for Calendar, the header and draft is being prepared with stored-override,
-all-day/DST, reset, known/unknown receipt and current-owner behavior; it is not yet
-implemented or qualified.
+The recurrence audit found a separate projection gap: the task panel header read
+the first series date while its form used an opening snapshot that could go stale
+after a same-ID This reschedule or reset. The coherent projection correction and
+its scoped qualification are recorded below. Immediate Calendar background
+refresh after a local save remains a separate investigation.
+
+#### Stage 7 current selected-occurrence projection
+
+A pure core timing owner now serves both backend Calendar expansion and the new
+web selected-occurrence adapter. It retains the original recurrence key, elapsed
+timed spans and local-day all-day spans across daylight-saving changes. Backend
+range enumeration, authorization, persistence and API schemas are unchanged. The
+adapter uses current full overrides, distinguishes missing data from a known
+empty array, overlays only occurrence-local fields and refuses removed or invalid
+selections. Header, clean draft and canonical recurrence metadata have explicit
+owners. Known read failures stay locked until complete detail arrives; unknown
+saves retain their last confirmed projection and cannot replay or adopt a guess.
+Newer typing survives readbacks and saves. Component-local memoization avoids
+repeating recurrence enumeration on draft-only renders; this adds no TTL or
+network cache. An isolated existing-primitive benchmark identified that risk,
+not an application speedup or typing latency guarantee.
+
+Twelve focused pure/backend cases pass, including nullable ends, both reset
+shapes and single/multiple local days across spring/fall DST. Twenty-nine existing
+Calendar events, wiring and deadline/timezone cases also pass under the guarded
+local test database with root environment masking and external/demo-service TCP
+refusal. Both batches report unchanged source and no network refusals. Shared
+packages build and web/backend types pass. These are scoped rechecks after the
+previous completed full-suite run and its documented failure-owner corrections,
+not a new uninterrupted full-suite pass.
+
+The actual-component controlled-transport fixture passes 39 projection and retained
+owner/unknown cases. They include stored This moves, both override-removal shapes,
+equivalent original-key encodings, clean and dirty refreshes, Following adoption,
+missing-override recovery, held saves, unknown This/Following and multi-day DST.
+Four styled recovery captures in desktop/375 light/dark were inspected. Scripted
+DOM stimuli and controlled transport remain distinct from native/API evidence.
+Private receipt: `stage7-selected-occurrence-component-after-1`.
+
+A separate native actual-app run passes seven checks on one fresh personal timed
+series. Four trusted This edits move start/end and title, reset to a title-only
+override, move with the canonical title, then reset and remove the override row.
+Each real PUT returns the same original ID and the next version. Complete primary
+rows, exact override shapes, unchanged unrelated canonical fields, original keys
+and five-entry Calendar API projections are checked after each edit. The panel
+header/form reconcile to the saved selected span and become clean. Sixteen saved
+header/date captures in 1440/375 light/dark were inspected. The exact final
+version-5 series is deleted with 204 and confirmed absent by primary 404; no
+unknown effects or fixtures remain. Activity writes are suppressed; theme,
+viewport and scrolling are controlled presentation. No provider, team, invitation,
+planner or status action is exercised. Private receipt:
+`stage7-selected-occurrence-native-3`.
+
+Two earlier native attempts stopped before any PUT: an inherited selector expected
+a deadline rather than the new timed tile, then a locale assertion assumed a
+month-first editor. Both untouched version-1 fixtures were matched to their full
+creation fingerprints and separately deleted/confirmed absent. A standalone real
+Chrome date-control probe established day/month/year and a 24-hour editor with
+trusted up/down inputs before the successful run; full-value/trust guards remained
+in place. All failed receipts and explicit cleanup receipts are retained.
+
+The screenshots also show a Calendar background refresh limitation: its tile can
+briefly retain the previous span while the selected panel and authoritative API
+already show the saved value. Calendar's existing account-news owner coalesces
+changes at a five-second gap. Immediate local-save feedback versus that coalescing
+is being traced separately; this checkpoint does not claim immediate grid refresh,
+production performance, native Following/unknown recertification or all recurrence
+adverse variants. Whole-client route and remaining parity acceptance stay open.
+
+#### Stage 7 scoped final-route audit progress
+
+Work, Admin overview, Account Settings, login and status have primary-content
+assertions and inspected captures in all four light/dark × 1440/375 cells. An
+existing personal task with a distinctive title also passes all four cells, with
+its actual route ID bound to a primary API fingerprint and the visible panel's
+label/Title value. The task driver accounts for the intentionally inert phone
+background without accepting hidden or secondary content. Every run remains
+explicitly partial and reports omitted route/section requirements. These 24 cells
+are not the full route matrix or new mutation-flow qualification; their exact
+source manifests distinguish the earlier Project checkpoint from the current
+projection candidate. No unexpected domain effects, route errors or document
+horizontal overflow were reported in this subset. Admin Storage is held pending
+proof of its configured Files-service origin; other dynamic/capability and valid
+effect-flow branches remain separate requirements.

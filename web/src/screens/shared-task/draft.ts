@@ -12,6 +12,7 @@ import {
   type QuickAddDraft,
   type Status,
 } from "@orbyn/core";
+import { selectedOccurrence, type SelectedView } from "./selected-occurrence";
 import {
   deviceTimeZone,
   ESTIMATES,
@@ -67,10 +68,18 @@ export function draftFrom(
   base: Item | ItemInput,
   saved: boolean,
   occurrence?: OccurrenceRef | null,
+  selected?: SelectedView | null,
 ): Draft {
+  // Recurrence editing stays anchored to the canonical series, not a moved occurrence.
+  const canonical = selected?.source ?? base;
+  const repeat = repeatDraft(canonical.rrule, canonical.due_at);
+  const projected =
+    selected ??
+    (saved && occurrence ? selectedOccurrence(base, occurrence) : null);
+  base = projected?.item ?? base;
   const zone = base.timezone ?? deviceTimeZone();
-  const start = occurrence?.start_at ?? base.due_at;
-  const end = occurrence ? occurrence.end_at : base.end_at;
+  const start = base.due_at;
+  const end = base.end_at;
   const allDay = !!base.all_day;
   const estimate = base.estimate_minutes ?? null;
   return {
@@ -100,7 +109,7 @@ export function draftFrom(
       : (base.alerts ?? null),
     location: base.location ?? "",
     meetingUrl: base.meeting_url ?? "",
-    repeat: repeatDraft(base.rrule, base.due_at),
+    repeat,
     measure: {
       target: base.target_value == null ? "" : String(base.target_value),
       current: base.current_value == null ? "" : String(base.current_value),

@@ -3,7 +3,9 @@ import {
   dayTime,
   isClosed,
   localDateKey,
-  localDaysBetween,
+  occurrenceDayLength,
+  occurrenceEndAt,
+  resolveOccurrenceTimes,
   occurrencesBetween,
   weekdayOf,
   type BufferScope,
@@ -206,22 +208,10 @@ export async function loadOverrides(
 }
 
 /** Whole days an all-day item lasts (0 for an all-day task with no end). */
-export const allDayLength = (r: SeriesRow) =>
-  r.end_at ? Math.max(1, localDaysBetween(r.due_at, r.end_at, r.timezone)) : 0;
+export const allDayLength = (r: SeriesRow) => occurrenceDayLength(r);
 
-/**
- * Where an occurrence starting at `at` ends: the same length as the series,
- * counted in days for all-day items so daylight-saving changes don't move
- * them off midnight. Null when the item has no end.
- */
-export function occurrenceEnd(r: SeriesRow, at: Date): Date | null {
-  if (!r.end_at) return null;
-  if (r.all_day) {
-    const days = allDayLength(r);
-    return dayTime(addDays(localDateKey(at, r.timezone), days), 0, r.timezone);
-  }
-  return new Date(at.getTime() + (r.end_at.getTime() - r.due_at.getTime()));
-}
+/** Shared with selected-occurrence clients; range enumeration stays here. */
+export const occurrenceEnd = (r: SeriesRow, at: Date) => occurrenceEndAt(r, at);
 
 /** Whether `at` is an occurrence of the series (and not one skipped). */
 export function isOccurrence(r: SeriesRow, at: Date) {
@@ -282,12 +272,7 @@ export function expandSeries(
   }
   for (const at of starts) {
     const c = changes.get(at.getTime());
-    const start = c?.due_at ? new Date(c.due_at) : at;
-    const end = c?.due_at
-      ? c.end_at
-        ? new Date(c.end_at)
-        : null
-      : occurrenceEnd(r, at);
+    const { start, end } = resolveOccurrenceTimes(r, at, c);
     if (start >= to || (end ?? start) < from) continue;
     out.push({ occurrence: at, start, end, changes: c });
   }
