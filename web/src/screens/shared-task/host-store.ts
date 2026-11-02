@@ -27,6 +27,12 @@ export type OpenOptions = {
   /** The time of a repeating item it was opened on. */
   occurrence?: OccurrenceRef | null;
   onClose?: () => void;
+  /**
+   * A schedule-affecting change was confirmed while the panel stays open: a
+   * saved field edit, including one whose follow-up read failed, or a status
+   * change. Never an unknown save or a plain read.
+   */
+  onChanged?: () => void;
 };
 
 export type PeekTarget = { kind: "doc" | "project"; id: string };
@@ -227,6 +233,20 @@ export const tasks = {
         },
       },
     });
+    expected.options.onChanged?.();
+    return true;
+  },
+  /**
+   * A confirmed change that does not replace the item, such as a status. Only
+   * the presentation that started it, in the same sign-in, may report it.
+   */
+  changed(presentation: number, generation: number) {
+    if (
+      layer.open?.presentation !== presentation ||
+      generation !== getSessionVersion()
+    )
+      return false;
+    layer.open.options.onChanged?.();
     return true;
   },
   /** Closes the panel; pass an id to close only that task. */

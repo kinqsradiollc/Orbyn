@@ -2368,7 +2368,6 @@ current. Its separate resource/refresh ownership is being investigated. Immediat
 Calendar background refresh and the remaining whole-client parity and route
 acceptance also remain open; this checkpoint does not close them.
 
-
 Add, Projects, Lists and Calendar also pass all four light/dark × 1440/375
 render cells, with zero reported notBuilt/problems/errors/violations/source drift.
 All 16 actual captures were opened. The phone layout shows the list picker and

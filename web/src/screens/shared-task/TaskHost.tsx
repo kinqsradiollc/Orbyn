@@ -78,6 +78,9 @@ export function TaskHost() {
             onSaved={(item, generation) =>
               tasks.adoptSaved(open, item, generation)
             }
+            onChanged={(generation) =>
+              tasks.changed(open.presentation, generation)
+            }
           />
         )}
         {create && (

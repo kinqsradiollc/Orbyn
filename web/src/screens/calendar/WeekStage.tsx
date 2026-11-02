@@ -21,6 +21,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type Ref,
 } from "react";
+import { fitBox, fitWidth, LABEL_REACH, SIGN_RISE } from "./stage-fit";
 import { clock, dayMedium, dayShort, spanLabel } from "./format";
 import { TASK_MIME } from "./model";
 
@@ -69,6 +70,16 @@ const WORK_HOUR = 54;
 const OFF_HOUR = 16;
 const CAMERA = { tilt: 44, yaw: -9, zoom: 1 };
 const LIMIT = { yaw: 24, tiltMin: 24, tiltMax: 66, zoomMin: 0.7, zoomMax: 1.6 };
+
+/** The close-up's floor corners, label corners and sign top, from the camera. */
+function soloPoints(depth: number): [number, number, number][] {
+  const half = LANE / 2;
+  const points: [number, number, number][] = [];
+  for (const x of [-half - LABEL_REACH, half])
+    for (const y of [-depth / 2 - 11, depth / 2 + 11]) points.push([x, y, 0]);
+  for (const x of [-half, half]) points.push([x, -depth / 2, SIGN_RISE]);
+  return points;
+}
 
 const clamp = (value: number, low: number, high: number) =>
   Math.max(low, Math.min(high, value));
@@ -354,21 +365,46 @@ export function WeekStage({
     if (!stage || !element) return;
     const { tilt, yaw, zoom } = pose.current;
     if (!solo) {
+      // The width comes from where the floor and its hour labels really
+      // project; the height keeps its estimate, which the model never exceeds.
+      const sideways = -6;
       const fit = Math.max(
         0.3,
         Math.min(
-          (stage.width - 20) / (world + 170),
+          fitWidth({
+            stageWidth: stage.width,
+            world,
+            depth,
+            tilt: CAMERA.tilt,
+            yaw: CAMERA.yaw,
+            shift: sideways,
+            margin: 10,
+            low: 0.3,
+            high: 3,
+          }),
           (stage.height - 16) / (depth * 0.72 + 230),
         ),
       );
-      element.style.transform = `translate(-6px, ${-stage.height * 0.04}px) scale(${fit * zoom}) rotateX(${tilt}deg) rotateZ(${yaw}deg)`;
+      element.style.transform = `translate(${sideways}px, ${-stage.height * 0.04}px) scale(${fit * zoom}) rotateX(${tilt}deg) rotateZ(${yaw}deg)`;
       return;
     }
-    const fit = Math.min(
-      (stage.width - 16) / (narrow ? 178 : 300),
-      (stage.height - 20) /
-        (depth * (narrow ? 0.72 : 0.86) + (narrow ? 90 : 220)),
-    );
+    const fit = narrow
+      ? // The day's floor, its hour labels and its sign, as they project.
+        fitBox({
+          stageWidth: stage.width,
+          stageHeight: stage.height,
+          points: soloPoints(depth),
+          tilt: 30,
+          yaw: 0,
+          lift: 12,
+          margin: 8,
+          low: 0.3,
+          high: 3,
+        })
+      : Math.min(
+          (stage.width - 16) / 300,
+          (stage.height - 20) / (depth * 0.86 + 220),
+        );
     const shift = -(focusDay * LANE + LANE / 2 - world / 2);
     const lean = narrow ? 30 : tilt - 6;
     const turn = narrow ? 0 : yaw + 1;

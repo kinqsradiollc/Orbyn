@@ -139,6 +139,7 @@ export function TaskPanel({
   occurrence,
   onClose,
   onSaved,
+  onChanged,
 }: {
   id: string;
   /** The item as a screen had it, to show at once. */
@@ -146,6 +147,8 @@ export function TaskPanel({
   occurrence?: OccurrenceRef | null;
   onClose: () => void;
   onSaved: (item: Item, generation: number) => boolean;
+  /** A status change was confirmed; the item itself is unchanged in identity. */
+  onChanged: (generation: number) => boolean;
 }) {
   const tasks = useTasks();
   const scope = useRouteScope();
@@ -517,6 +520,8 @@ export function TaskPanel({
       await saveStatus(current, status);
       if (!owned?.current())
         throw Error("This task change belongs to an earlier presentation.");
+      // The write is confirmed even if the read below fails.
+      onChanged(generation);
       return client.getItem(id);
     });
   };

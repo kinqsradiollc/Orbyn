@@ -41,12 +41,7 @@ function Document({ doc }: { doc: "terms" | "privacy" }) {
       <ErrorNotice message={text.error} onRetry={() => void text.reload()} />
     );
   if (!text.data) return <Loading />;
-  return (
-    <>
-      <p className="small muted">Version {text.data.version}</p>
-      <PlainText body={text.data.body} />
-    </>
-  );
+  return <PlainText body={text.data.body} />;
 }
 
 export default function Legal() {

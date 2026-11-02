@@ -462,6 +462,20 @@ function Calendar({
     [workspace],
   );
 
+  // A confirmed schedule change in the open task panel reads this range again.
+  // It belongs to this mounted Calendar and its sign-in; a retired one reads
+  // nothing. `reloadIdle` leaves a drag still saving to its own final read.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const taskChanged = useCallback(() => {
+    if (!alive.current || openingGeneration !== getSessionVersion()) return;
+    refreshView();
+  }, [openingGeneration, refreshView]);
   const openItem = useCallback(
     (itemId: string, entry?: CalendarEntry) =>
       tasks.open(itemId, {
@@ -473,8 +487,9 @@ function Calendar({
             }
           : undefined,
         onClose: refreshAll,
+        onChanged: taskChanged,
       }),
-    [refreshAll],
+    [refreshAll, taskChanged],
   );
 
   const details: DetailActions = {
