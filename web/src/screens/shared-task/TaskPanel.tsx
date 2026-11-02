@@ -147,6 +147,15 @@ export function TaskPanel({
   identity.current.scope = scope;
   type Operation = { current: () => boolean };
   const operation = useRef<Operation | null>(null);
+  const unknownSave = useRef<{
+    id: string;
+    version: number;
+    options: EditOptions;
+    draft: Draft;
+  } | null>(null);
+  const [unknownCheck, setUnknownCheck] = useState<
+    "idle" | "checking" | "unchanged" | "changed" | "failed" | null
+  >(null);
   const savedReadFailure = useRef<{
     item: Item;
     retry: number;
@@ -295,13 +304,15 @@ export function TaskPanel({
     generation === getSessionVersion() &&
     identity.current.id === id &&
     identity.current.scope === scope;
-  const begin = (): Operation | null => {
+  const begin = (readOnly = false): Operation | null => {
     const opening = scope?.getSnapshot();
     if (
       writing.current ||
       !panelOwned() ||
-      !identity.current.ready ||
-      !identity.current.canWrite ||
+      (!readOnly &&
+        (!identity.current.ready ||
+          !identity.current.canWrite ||
+          !!unknownSave.current)) ||
       (scope && (!opening?.visible || !opening.focused))
     )
       return null;
@@ -326,6 +337,32 @@ export function TaskPanel({
     writing.current = true;
     ++read.current;
     return owned;
+  };
+
+  const checkUnknownSave = async () => {
+    const unresolved = unknownSave.current;
+    if (!unresolved) return;
+    const owned = begin(true);
+    if (!owned) return;
+    setUnknownCheck("checking");
+    try {
+      const next = await client.getItem(unresolved.id);
+      if (!owned.current() || unknownSave.current !== unresolved) return;
+      // An original-series read cannot identify or disprove a successful fork.
+      setUnknownCheck(
+        next.id === unresolved.id && next.version === unresolved.version
+          ? "unchanged"
+          : "changed",
+      );
+    } catch {
+      if (owned.current() && unknownSave.current === unresolved)
+        setUnknownCheck("failed");
+    } finally {
+      if (owned.current()) {
+        operation.current = null;
+        writing.current = false;
+      }
+    }
   };
 
   const requestClose = useCallback(async () => {
@@ -456,8 +493,29 @@ export function TaskPanel({
         );
         setError("");
       } else {
+        const status =
+          typeof error === "object" && error !== null && "status" in error
+            ? error.status
+            : undefined;
+        const rejected =
+          typeof status === "number" &&
+          status >= 400 &&
+          status < 500 &&
+          status !== 408;
+        if (!rejected) {
+          // Latch before releasing the operation: a missing receipt is not permission to replay.
+          unknownSave.current = {
+            id: current.id,
+            version: current.version,
+            options: { ...options },
+            draft: structuredClone(draft),
+          };
+          setUnknownCheck("idle");
+          setError("");
+          return;
+        }
         setError(
-          (error as { status?: number }).status === 409
+          status === 409
             ? "This task changed elsewhere. Review it, then save again."
             : messageOf(error, "Couldn't save your changes."),
         );
@@ -480,6 +538,7 @@ export function TaskPanel({
   };
 
   const save = () => {
+    if (unknownSave.current) return;
     const unfinished = Object.entries(pendingRows).find(([, on]) => on)?.[0];
     if (unfinished)
       return setError(
@@ -532,7 +591,8 @@ export function TaskPanel({
     ? steps.filter((step) => step.done).length
     : (current?.steps_done ?? 0);
   const stepsTotal = detail ? steps.length : (current?.steps_total ?? 0);
-  const locked = !canWrite || pending || saving || !detail || !!readError;
+  const mayWrite = canWrite && !unknownSave.current;
+  const locked = !mayWrite || pending || saving || !detail || !!readError;
   const team = current?.team_id
     ? (planning.teams.find((t) => t.id === current.team_id)?.name ??
       current.team_name)
@@ -570,7 +630,15 @@ export function TaskPanel({
           <IconButton label="Copy link" onClick={copyLink}>
             <Link2 />
           </IconButton>
-          {current && <StarButton item={current} />}
+          {current && (
+            <StarButton
+              item={current}
+              disabled={pending || saving || !!unknownSave.current}
+              mayAct={() =>
+                panelOwned() && !writing.current && !unknownSave.current
+              }
+            />
+          )}
           {current && (
             <Menu
               label="Task options"
@@ -629,7 +697,7 @@ export function TaskPanel({
                   >
                     <Copy aria-hidden="true" /> Copy title
                   </button>
-                  {canWrite && open && current.kind === "task" && (
+                  {mayWrite && open && current.kind === "task" && (
                     <button
                       onClick={() => {
                         close();
@@ -644,7 +712,7 @@ export function TaskPanel({
                       <Ban aria-hidden="true" /> Cancel task
                     </button>
                   )}
-                  {canWrite && (
+                  {mayWrite && (
                     <button
                       className="is-danger"
                       onClick={() => {
@@ -700,7 +768,7 @@ export function TaskPanel({
               dir="auto"
               rows={1}
               maxLength={200}
-              readOnly={!canWrite || !detail}
+              readOnly={!mayWrite || !detail}
               value={draft.title}
               ref={(node) => {
                 if (node) {
@@ -747,11 +815,14 @@ export function TaskPanel({
                   <Video aria-hidden="true" /> Meeting link
                 </a>
               )}
-              {current.kind === "event" && (
+              {current.kind === "event" && !unknownSave.current && (
                 <MeetingNotes
                   item={current}
                   occurrence={occurrence ?? null}
                   onError={setError}
+                  mayAct={() =>
+                    panelOwned() && !writing.current && !unknownSave.current
+                  }
                 />
               )}
             </div>
@@ -778,8 +849,51 @@ export function TaskPanel({
                 <Eye aria-hidden="true" /> View only{team ? ` in ${team}` : ""}
               </p>
             )}
+            {unknownCheck && (
+              <div className="notice" role="alert">
+                <div>
+                  <p>
+                    Save outcome unknown. Your draft is kept. Review the
+                    calendar before making another change.
+                  </p>
+                  {unknownCheck === "unchanged" && (
+                    <p className="small">
+                      The original version is unchanged. The save outcome is
+                      still unknown.
+                    </p>
+                  )}
+                  {unknownCheck === "changed" && (
+                    <p className="small">
+                      The original version changed. The saved result is still
+                      unconfirmed.
+                    </p>
+                  )}
+                  {unknownCheck === "failed" && (
+                    <p className="small">
+                      State couldn't be checked. The save outcome is still
+                      unknown.
+                    </p>
+                  )}
+                  <Button
+                    variant="ghost"
+                    busy={unknownCheck === "checking"}
+                    onClick={() => void checkUnknownSave()}
+                  >
+                    Check state
+                  </Button>
+                  <a
+                    className="btn btn-ghost"
+                    href="/app/calendar"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Review calendar
+                  </a>
+                </div>
+              </div>
+            )}
             {error && <ErrorNotice message={error} />}
-            {current.kind === "task" && current.team_id && (
+            {mayWrite && current.kind === "task" && current.team_id && (
               <AskCard itemId={id} onChanged={refresh} />
             )}
             <ItemFields
@@ -789,7 +903,7 @@ export function TaskPanel({
               baseTeam={current.team_id ?? null}
               timezone={current.timezone ?? undefined}
               projectId={current.project_id ?? null}
-              readOnly={!canWrite || !detail}
+              readOnly={!mayWrite || !detail}
               linksState={
                 known.links ? "ready" : readError ? "failed" : "loading"
               }
@@ -809,7 +923,7 @@ export function TaskPanel({
                 item={current}
                 steps={steps}
                 loaded={!!detail}
-                canWrite={canWrite}
+                canWrite={mayWrite}
                 locked={locked}
                 run={run}
               />
@@ -818,7 +932,7 @@ export function TaskPanel({
               <Subtasks
                 item={current}
                 items={items}
-                canWrite={canWrite}
+                canWrite={mayWrite}
                 locked={locked}
                 onError={setError}
               />
@@ -826,7 +940,7 @@ export function TaskPanel({
             {current.kind === "task" && (
               <Sessions
                 item={current}
-                canWrite={canWrite}
+                canWrite={mayWrite}
                 reloadKey={reloadKey}
                 onChanged={refresh}
               />
@@ -836,7 +950,7 @@ export function TaskPanel({
               item={current}
               stepsTotal={stepsTotal}
               stepsDone={stepsDone}
-              canWrite={canWrite}
+              canWrite={mayWrite}
               locked={locked}
               run={run}
             />
@@ -866,7 +980,7 @@ export function TaskPanel({
               <Connections
                 item={current}
                 version={detail?.version ?? current.version}
-                canWrite={canWrite}
+                canWrite={mayWrite}
                 locked={locked}
                 onSaved={() => {
                   setReadTry((n) => n + 1);
@@ -876,16 +990,16 @@ export function TaskPanel({
             )}
             <LinkedHere item={current} />
             {current.kind === "task" && (
-              <Proof itemId={id} canWrite={canWrite} />
+              <Proof itemId={id} canWrite={mayWrite} />
             )}
             {current.kind === "event" &&
               (!!current.team_id || !!detail?.attendees?.length) && (
-                <MeetingOutcome item={detail ?? current} canWrite={canWrite} />
+                <MeetingOutcome item={detail ?? current} canWrite={mayWrite} />
               )}
             <Updates
               item={current}
               detail={detail}
-              canWrite={canWrite}
+              canWrite={mayWrite}
               locked={locked}
               run={run}
             />
@@ -899,7 +1013,9 @@ export function TaskPanel({
             <Button
               variant="primary"
               busy={saving}
-              disabled={!detail || !!readError || pending}
+              disabled={
+                !detail || !!readError || pending || !!unknownSave.current
+              }
               onClick={save}
             >
               Save changes
@@ -1002,7 +1118,15 @@ function useDraft(
   };
 }
 
-function StarButton({ item }: { item: Item }) {
+function StarButton({
+  item,
+  disabled = false,
+  mayAct,
+}: {
+  item: Item;
+  disabled?: boolean;
+  mayAct: () => boolean;
+}) {
   const [on, setOn] = useState(false);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -1022,8 +1146,9 @@ function StarButton({ item }: { item: Item }) {
     <IconButton
       label={on ? "Remove star" : "Star"}
       aria-pressed={on}
-      disabled={busy}
+      disabled={disabled || busy}
       onClick={() => {
+        if (disabled || busy || !mayAct()) return;
         setBusy(true);
         client
           .setFavourite("task", item.id, !on)
@@ -1047,10 +1172,12 @@ function MeetingNotes({
   item,
   occurrence,
   onError,
+  mayAct,
 }: {
   item: Item;
   occurrence: OccurrenceRef | null;
   onError: (text: string) => void;
+  mayAct: () => boolean;
 }) {
   const tasks = useTasks();
   const navigate = useNavigate();
@@ -1074,8 +1201,9 @@ function MeetingNotes({
       alive = false;
     };
   }, [item.id, item.rrule, item.team_id, occurrence]);
-  const open = (whole: boolean) =>
-    client
+  const open = (whole: boolean) => {
+    if (!mayAct()) return;
+    return client
       .itemNote(
         item.id,
         !whole && item.rrule && occurrence ? occurrence.occurrence : null,
@@ -1087,6 +1215,7 @@ function MeetingNotes({
         },
         (e) => onError(messageOf(e, "Couldn't open the note.")),
       );
+  };
   return (
     <>
       <button type="button" onClick={() => void open(false)}>

@@ -67,8 +67,9 @@ From Work and Lists:
   account changes and complete real-API retry coverage still need reconciliation.
 - Native Board status/priority changes and bulk Done/Undo pass bounded real-API
   checks. Repeating-task scope Cancel, This and later Following title edits also
-  pass. Other bulk mutations, team-only flows and scoped recurrence deletions
-  remain to qualify. Focus, Peek and Save as view have bounded
+  pass, as do native This/Following deletions and deletion Cancel. Other bulk
+  mutations, team-only flows and adverse recurrence recovery remain to qualify.
+  Focus, Peek and Save as view have bounded
   evidence below; their unexercised variants remain open.
 
 Cross-screen wiring:
@@ -89,23 +90,39 @@ From Calendar, built but not exercised:
 - Teammates overlay with people selected. Focus handover between devices. Find time with a task that needs time.
 - Week starts Monday in every mode. The user confirmed this rule on 1 November 2026.
 
-Shell parity (lead), from desktop/src/app and desktop/src/app/chrome:
+Shell parity:
 
-- Command bar: page commands, pins and filters. Search, add and go-to work.
-- Tabs and the tab strip, split panes (workspace duo), the side dock.
-- Sidebar arrange, rail mode, resizer. Starred and pinned groups work.
-- Update-available banner. Announcement, maintenance and email gates work.
-- Shortcut sheet and custom shortcuts. Live events reconnect. What's new sheet. Activity dialog.
+- Tabs, splits, dock hide/show, independent scrolling, sidebar resizing and grouped
+  phone navigation have scoped Stage 6 runtime evidence below. Retained drafts,
+  cancelled departures and account gates are included. Final route and viewport
+  compatibility remain part of whole-client acceptance.
+- Page commands, pins/filters, sidebar slots, update feedback, shortcut sheet and
+  custom shortcuts are implemented. Command search and workspace keyboard actions
+  have native checks; preference uncertainty and shortcut collision/Reset have
+  controlled checks. Remaining combinations need final receipt reconciliation.
+- Sidebar arrangement/rail mode, live reconnect, Activity, the update banner and
+  announcement/maintenance/email gate combinations retain their final parity
+  reconciliation requirement.
+- Global FirstRun, What's new and pinned notifications are mounted. Presence of
+  those owners does not establish fresh-account onboarding or every overlay flow.
 
 From Today, Projects, Views, Notifications:
 
-- Character art (Character, CharacterEditor) not in web; Browse shows names only.
-- Assistant proposals on projects: simplified, needs full ProposalReview diff. AssistantAgents dialog replaced by links.
-- Unsaved link draft warning only on the back button, not sidebar navigation.
+- Character and CharacterEditor are implemented. Identity save/restoration and
+  still previews have scoped Stage 2 evidence; final Today/Browse entry paths
+  remain to reconcile.
+- Shared ProposalReview is implemented and has controlled stale, partial and
+  unknown-result checks. Project entry and real proposal application remain
+  separately unqualified; provider execution is outside the configured local stack.
+  The former AssistantAgents dialog-to-links replacement still needs its final
+  capability comparison.
+- Project link drafts register the shared departure guard. Cross-route and
+  unknown-write project recovery still need their final acceptance receipts.
 - Shared view refinements now reach authoritative definitions, bounded filtering and CSV. Remaining dimensions, consumers, permissions and recovery need their final qualification; private pins must not be silently promoted.
 - First run: final step unverified on a fresh account; preset application unverified.
 - Mock-only: Notifications actions, 409 move retry, session check-ins. Not exercised: project assistant drafting, file import, cover upload, claiming, promises, asks, agent questions, welcome back, 3D relation map node open.
-- Shell: bell unread badge, pinned-views group, mount FirstRun, WhatsNew and pinned panel globally, Today search dialog pattern into command bar.
+- Global shell owners are implemented as recorded above; final unread-badge,
+  pinned-view and overlay combinations still need receipt reconciliation.
 - Assistant must read ?chat= ?project= ?ask= ?panel=upcoming ?conversation=&entry= ; Booking ?open= ; Teams ?team=.
 - Project page makes 29 requests on load; rate limiter trips under rapid navigation.
 
@@ -2056,3 +2073,69 @@ violations, unresolved outcomes or source drift occurred. Both dark desktop
 captures were inspected. This qualifies successful title scopes and Cancel;
 scoped deletions, lost-response recovery, other recurrence variants and the final
 whole-client route/theme/phone acceptance remain open.
+
+#### Stage 7 follow-up checkpoint and native scoped recurrence deletion
+
+The task-panel ownership and MCP metadata group is committed locally as
+`e48d38e8bf1e7e118cce2a4e509c71877bf5be96`. All seven required checkpoint gates
+passed on its exact 14-file change set, with no source drift. The index was clean
+before staging; the staged path set and every blob hash were verified against
+the gate receipt before commit. Committed blob hashes and the clean worktree were
+then verified. Nothing was pushed, merged or deployed.
+
+A further real local native run passes eight checks, including its successful
+Cancel/This/Following edit setup. It reopens the returned series at its third
+original occurrence, cancels Delete with zero effects, then chooses Delete This.
+The server returns 204; the series remains at version 2 with exactly that
+occurrence excluded, unchanged status/progress and no other field changes.
+Calendar readback excludes only that occurrence. Reopening the next occurrence
+and choosing Delete This and following returns 204 and version 3 with the exact
+cutoff and the earlier exclusion preserved. The final Calendar contains only the
+original series' first occurrence and the fork's first occurrence.
+
+Both full records are verified before either scoped deletion and before cleanup;
+each final version-3 whole-series deletion returns 204 followed by 404. All input
+is native, and the run reports zero errors, violations, unresolved outcomes or
+source drift. Both Calendar captures were inspected. The private driver pauses
+for a complete existing rate-limit window between setup and extra deletion reads;
+no server limit is changed and no failed effect is replayed. This is successful
+scoped deletion and Cancel evidence, not lost-response, cross-account or whole-
+series Delete UI qualification. Lost field-write recovery, other parity cases and
+the final all-route/theme/phone audit remain open.
+
+#### Stage 7 uncertain field-save admission and recovery
+
+The task editor now preserves the original ID/version and submitted draft when a
+field save has no known receipt: network failures, timeouts and server errors do
+not permit a second save. A synchronous ref latches that uncertainty before the
+operation unlocks. Read-only Check state reads the captured original ID and
+reports its version comparison; neither a changed nor an unchanged version
+identifies a successful recurring fork, so neither unlocks Save or invents a
+Saved result. Review calendar opens separately and preserves the current draft.
+Known rejected writes and known saved receipts retain their existing recovery.
+
+Newly initiated Star and Meeting note actions also check the current presentation
+and operation ref. The first candidate's event probe exposed that rendered
+unknown-state disabling alone left the earlier pending-save window open: both
+actions ran and the note action retired the editor. The corrected live admission
+checks block that same queued attempt while preserving idle favourites on readable
+view-only items. Already-running action lifecycles are a separate contract.
+
+The original source reproduces both blind Following-save attempts. The final
+controlled actual-component run passes 20/20 checks, including the fourteen prior
+fork/ownership cases, lost-response cases before and after modeled commits,
+newer typing, account ABA, retirement, and queued event actions. Read-only checks
+never replay the write. There are no script errors, forbidden requests or source
+drift. These are actual React/DOM components with controlled transport and
+planning adapters; no API write is forwarded and no backend execution result is
+inferred from the model.
+
+Root inspected the notice with the actual token, kit and task-panel styles at
+1500px and 375px in both themes. The initial private capture omitted shared CSS
+and was rejected as visual evidence; the corrected styled capture exposed a
+16px calendar-link target. Reusing shared action styling now gives both recovery
+actions 36px desktop and 44px phone targets. All four final captures are
+contained and their programmatic focus checks pass. This is component layout
+qualification, not native-input or full accessibility qualification. The final
+private receipt is `stage7-taskpanel-unknown-after-5`; real local lost-response
+recurrence, other parity flows and whole-client route acceptance remain open.
