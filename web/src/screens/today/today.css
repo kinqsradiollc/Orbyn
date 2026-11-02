@@ -870,9 +870,18 @@
 .today-characters {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   color: var(--text-soft);
   font-size: 13px;
+}
+.today-characters li {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 72px;
 }
 .today-switch {
   display: inline-flex;

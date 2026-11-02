@@ -7,6 +7,7 @@ import {
 import { ChevronRight, Clock, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "../../lib/router";
+import { Character } from "../agents-shared/Character";
 import { client, getToken } from "../../lib/session";
 import { Button } from "../../ui/kit";
 
@@ -92,8 +93,11 @@ export function Companions() {
           </Button>
           {characters && (
             <ul className="today-characters" aria-label="Character presets">
-              {CHARACTER_PRESETS.map(({ name }) => (
-                <li key={name}>{name}</li>
+              {CHARACTER_PRESETS.map(({ name, appearance }) => (
+                <li key={name}>
+                  <Character appearance={appearance} name={name} size={64} />
+                  <span>{name}</span>
+                </li>
               ))}
             </ul>
           )}

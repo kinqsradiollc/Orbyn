@@ -1,4 +1,15 @@
-import { hasTeamPermission, type Team, type Project } from "@orbyn/core";
+import {
+  HttpError,
+  hasTeamPermission,
+  type Team,
+  type Project,
+} from "@orbyn/core";
+
+/** A write whose answer never arrived (or was a server fault) may still have been applied. */
+export const unknownWrite = (failure: unknown) =>
+  !(failure instanceof HttpError) ||
+  failure.statusCode >= 500 ||
+  [408, 429].includes(failure.statusCode);
 
 export const canWriteProject = (
   project: Pick<Project, "team_id">,

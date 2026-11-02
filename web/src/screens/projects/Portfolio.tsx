@@ -10,7 +10,7 @@ import {
   type Project,
 } from "@orbyn/core";
 import { LayoutTemplate, Plus, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "../../app/account";
 import { useResource } from "../../lib/resource";
 import { useNavigate, useSearch, useTitle } from "../../lib/router";
@@ -182,23 +182,46 @@ export function Portfolio() {
   }, [search, navigate, inputAllowed]);
   const reload = useRef(projects.reload);
   reload.current = projects.reload;
+  // The first change of a burst sets the deadline, so steady news cannot
+  // keep pushing the read back. Task changes alter the aggregate rows too.
+  const soon = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const refreshSoon = useCallback((delay: number) => {
+    if (soon.current) return;
+    soon.current = setTimeout(() => {
+      soon.current = undefined;
+      void reload.current();
+    }, delay);
+  }, []);
   useEffect(() => {
-    let soon: ReturnType<typeof setTimeout> | undefined;
     const stop = onNews((news) => {
       if (news.kind !== "changed") return;
       if (
         news.area &&
-        !["projects", "templates", "records"].includes(news.area)
+        !["projects", "templates", "records", "items"].includes(news.area)
       )
         return;
-      clearTimeout(soon);
-      soon = setTimeout(() => void reload.current(), 400);
+      refreshSoon(400);
     });
     return () => {
-      clearTimeout(soon);
+      clearTimeout(soon.current);
+      soon.current = undefined;
       stop();
     };
-  }, []);
+  }, [refreshSoon]);
+  const rowsSignature = useMemo(
+    () =>
+      items
+        .filter((i) => i.project_id)
+        .map((i) => `${i.id}:${i.version}:${i.status}:${i.project_id}`)
+        .join("|"),
+    [items],
+  );
+  const seenRows = useRef(rowsSignature);
+  useEffect(() => {
+    if (seenRows.current === rowsSignature) return;
+    seenRows.current = rowsSignature;
+    refreshSoon(0);
+  }, [rowsSignature, refreshSoon]);
   const list = useMemo(() => projects.data ?? [], [projects.data]);
   const visible = searchProjects(list, query);
   useRouteCommands(

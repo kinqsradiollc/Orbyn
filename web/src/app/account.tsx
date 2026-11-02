@@ -54,6 +54,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(!!token);
   const [error, setError] = useState("");
   const request = useRef(0);
+  const reported = useRef("");
   const user =
     snapshot.token === token && snapshot.version === version
       ? snapshot.user
@@ -87,9 +88,15 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       setSnapshot({ token: account, version: openingVersion, user: next });
       setError("");
       // Agendas, digests and working hours follow the device until a zone is picked.
-      void client
-        .reportTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone)
-        .catch(() => undefined);
+      // Once per account and zone; a failed report tries again on the next refresh.
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+        report = `${account}:${zone}`;
+      if (reported.current !== report) {
+        reported.current = report;
+        void client.reportTimeZone(zone).catch(() => {
+          if (reported.current === report) reported.current = "";
+        });
+      }
     } catch (failure) {
       if (id !== request.current || account !== getToken()) return;
       if (failure instanceof HttpError && failure.statusCode === 401)

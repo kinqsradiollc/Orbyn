@@ -67,9 +67,16 @@ import { useImports } from "./imports";
 import { Cover, LookDialog, LookIcon } from "./look";
 import { Pages } from "./Pages";
 import { Records } from "./Records";
-import { ask, canManageAi, canWriteProject, dayLabel } from "./shared";
+import {
+  ask,
+  canManageAi,
+  canWriteProject,
+  dayLabel,
+  unknownWrite,
+} from "./shared";
 import { groupStages, StageBoard, StageList } from "./Stages";
 import { Timeline } from "./Timeline";
+import { useProjectRead } from "./useProjectRead";
 
 const MODES = [
   ["home", "Home"],
@@ -246,25 +253,36 @@ export function Detail({ id }: { id: string }) {
   const userId = user?.id ?? "";
   const search = useSearch();
   const query = useMemo(() => new URLSearchParams(search), [search]);
-  const read = useResource(() => client.getProject(id), [id, userId]);
+  const rows = useItems();
+  // Only this project's task rows decide when its aggregate is read again.
+  const rowsSignature = useMemo(
+    () =>
+      rows
+        .filter((i) => i.project_id === id)
+        .map((i) => `${i.id}:${i.version}:${i.status}:${i.kind}`)
+        .join("|"),
+    [rows, id],
+  );
+  const read = useProjectRead(id, userId, rowsSignature);
   useTitle(read.data?.name ?? "Project");
+  if (read.unavailable)
+    return (
+      <div className="pj">
+        <Button variant="ghost" onClick={() => navigate("/app/projects")}>
+          <ArrowLeft aria-hidden="true" /> All projects
+        </Button>
+        <Empty title="This project isn't available">
+          <span>It may have been deleted, or it isn't shared with you.</span>
+        </Empty>
+      </div>
+    );
   if (read.error && !read.data)
     return (
       <div className="pj">
         <Button variant="ghost" onClick={() => navigate("/app/projects")}>
           <ArrowLeft aria-hidden="true" /> All projects
         </Button>
-        {read.error.includes("not found") ||
-        read.error.includes("Not found") ? (
-          <Empty title="This project isn't available">
-            <span>It may have been deleted, or it isn't shared with you.</span>
-          </Empty>
-        ) : (
-          <ErrorNotice
-            message={read.error}
-            onRetry={() => void read.reload()}
-          />
-        )}
+        <ErrorNotice message={read.error} onRetry={() => void read.reload()} />
       </div>
     );
   if (!read.data)
@@ -280,7 +298,11 @@ export function Detail({ id }: { id: string }) {
       userId={userId}
       initialMode={(query.get("section") as Mode) ?? "home"}
       sourceId={query.get("source")}
-      onChanged={(next) => read.set(() => next)}
+      refreshError={read.error}
+      onRetryRefresh={() => void read.reload()}
+      onChanged={read.adoptReceipt}
+      onItemsChanged={() => void read.reload()}
+      onVerify={() => read.reload()}
     />
   );
 }
@@ -290,13 +312,22 @@ function Body({
   userId,
   initialMode,
   sourceId,
+  refreshError,
+  onRetryRefresh,
   onChanged: receiveProject,
+  onItemsChanged,
+  onVerify,
 }: {
   project: Project;
   userId: string;
   initialMode: Mode;
   sourceId: string | null;
+  refreshError: string;
+  onRetryRefresh: () => void;
   onChanged: (project: Project) => void;
+  onItemsChanged: () => void;
+  /** A fresh read of the project, to learn whether a write with no answer landed. */
+  onVerify: () => Promise<Project | undefined>;
 }) {
   const [openingGeneration] = useState(getSessionVersion),
     mounted = useRef(true);
@@ -493,7 +524,7 @@ function Body({
   const itemsChanged = () => {
     if (!owned()) return;
     void refreshPlanner(true).catch(() => undefined);
-    void client.getProject(project.id).then(onChanged, () => undefined);
+    onItemsChanged();
   };
 
   const guarded = async (fn: () => Promise<void>, fallback: string) => {
@@ -504,7 +535,13 @@ function Body({
       await fn();
       return true;
     } catch (failure) {
-      report(failure, fallback);
+      if (unknownWrite(failure)) {
+        toast({
+          text: "Couldn't confirm that saved. Checking the project now.",
+          error: true,
+        });
+        onItemsChanged();
+      } else report(failure, fallback);
       return false;
     } finally {
       lock.current = false;
@@ -626,6 +663,13 @@ function Body({
 
   const saveStage = async () => {
     if (!owned() || !stageDraft?.name.trim() || lock.current) return;
+    if (stageDraft.id && !project.stages.some((s) => s.id === stageDraft.id)) {
+      // Another change removed this stage; keep the draft and make them choose.
+      setStageError(
+        "This stage was removed elsewhere. Close this and choose a stage again.",
+      );
+      return;
+    }
     lock.current = true;
     setBusy(true);
     setStageError("");
@@ -665,8 +709,9 @@ function Body({
   };
   const saveEdit = async () => {
     if (!owned() || !editing || lock.current) return;
-    const text = editing.text.trim();
-    if (editing.kind === "rename" && !text) return;
+    const submitted = editing;
+    const text = submitted.text.trim();
+    if (submitted.kind === "rename" && !text) return;
     lock.current = true;
     setBusy(true);
     setEditError("");
@@ -674,14 +719,39 @@ function Body({
       onChanged(
         await client.updateProject(
           project.id,
-          editing.kind === "rename" ? { name: text } : { summary: text },
+          submitted.kind === "rename" ? { name: text } : { summary: text },
         ),
       );
-      setEditing(null);
-    } catch (failure) {
-      setEditError(
-        messageOf(failure, "Couldn't save. Your text is still here."),
+      // Typing during the save is newer than what was saved: keep it.
+      setEditing((now) =>
+        now && now.kind === submitted.kind && now.text === submitted.text
+          ? null
+          : now,
       );
+    } catch (failure) {
+      if (unknownWrite(failure)) {
+        // The answer was lost; read the project to see whether it landed.
+        const now = await onVerify();
+        const landed =
+          now &&
+          (submitted.kind === "rename"
+            ? now.name === text
+            : now.summary === text);
+        if (landed && owned()) {
+          setEditing((cur) =>
+            cur && cur.kind === submitted.kind && cur.text === submitted.text
+              ? null
+              : cur,
+          );
+          return;
+        }
+        setEditError(
+          "Couldn't confirm whether this saved. Your text is still here.",
+        );
+      } else
+        setEditError(
+          messageOf(failure, "Couldn't save. Your text is still here."),
+        );
     } finally {
       lock.current = false;
       setBusy(false);
@@ -798,6 +868,12 @@ function Body({
   );
   return (
     <div className="pj pj-detail">
+      {refreshError && (
+        <ErrorNotice
+          message={`Couldn't refresh this project. ${refreshError}`}
+          onRetry={onRetryRefresh}
+        />
+      )}
       <div className="pj-bar">
         <Button variant="ghost" onClick={() => void back()}>
           <ArrowLeft aria-hidden="true" /> All projects

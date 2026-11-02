@@ -19,7 +19,7 @@ import { useTasks } from "../shared-task";
 import { FieldsPanel } from "../views/Fields";
 import { Milestones } from "./Milestones";
 import { LinkedHere_, Related } from "./Related";
-import { shortDate } from "./shared";
+import { shortDate, unknownWrite } from "./shared";
 
 function Aliases({
   aliases,
@@ -191,9 +191,29 @@ export function Home({
       setTitle("");
       setAddingLink(false);
     } catch (failure) {
-      setLinkError(
-        messageOf(failure, "Couldn't save the link. It's still here."),
-      );
+      if (unknownWrite(failure)) {
+        // The answer was lost; list the links to see whether it landed.
+        try {
+          const now = await client.listProjectLinks(project.id);
+          if (
+            now.some((l) => l.url === url.trim() && l.title === title.trim())
+          ) {
+            onLinks(now);
+            setUrl("");
+            setTitle("");
+            setAddingLink(false);
+            return;
+          }
+        } catch {
+          // Still unknown; keep the draft and say so.
+        }
+        setLinkError(
+          "Couldn't confirm whether the link saved. It's still here; check the list before saving again.",
+        );
+      } else
+        setLinkError(
+          messageOf(failure, "Couldn't save the link. It's still here."),
+        );
     } finally {
       setSaving(false);
     }
