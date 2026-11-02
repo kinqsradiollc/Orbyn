@@ -21,7 +21,14 @@ import {
   type PointerEvent as ReactPointerEvent,
   type Ref,
 } from "react";
-import { fitBox, fitWidth, LABEL_REACH, SIGN_RISE } from "./stage-fit";
+import {
+  fitBox,
+  fitRows,
+  fitWidth,
+  LABEL_REACH,
+  LABEL_SPREAD,
+  SIGN_RISE,
+} from "./stage-fit";
 import { clock, dayMedium, dayShort, spanLabel } from "./format";
 import { TASK_MIME } from "./model";
 
@@ -66,17 +73,31 @@ const STEP = 15;
 const LIFT = 22;
 const HEIGHT = { low: 7, medium: 12, high: 20 };
 const HOVER = 84;
+/** The least floor distance between two hour labels, so neither covers the other. */
+const LABEL_GAP = 38;
 const WORK_HOUR = 54;
 const OFF_HOUR = 16;
 const CAMERA = { tilt: 44, yaw: -9, zoom: 1 };
 const LIMIT = { yaw: 24, tiltMin: 24, tiltMax: 66, zoomMin: 0.7, zoomMax: 1.6 };
 
 /** The close-up's floor corners, label corners and sign top, from the camera. */
+/** The week floor's corners, label corners and sign tops, from the camera. */
+function weekPoints(world: number, depth: number): [number, number, number][] {
+  const points: [number, number, number][] = [];
+  for (const x of [-world / 2 - LABEL_REACH, world / 2])
+    for (const y of [-depth / 2 - LABEL_SPREAD, depth / 2 + LABEL_SPREAD])
+      points.push([x, y, 0]);
+  for (const x of [-world / 2, world / 2])
+    points.push([x, -depth / 2, SIGN_RISE]);
+  return points;
+}
+
 function soloPoints(depth: number): [number, number, number][] {
   const half = LANE / 2;
   const points: [number, number, number][] = [];
   for (const x of [-half - LABEL_REACH, half])
-    for (const y of [-depth / 2 - 11, depth / 2 + 11]) points.push([x, y, 0]);
+    for (const y of [-depth / 2 - LABEL_SPREAD, depth / 2 + LABEL_SPREAD])
+      points.push([x, y, 0]);
   for (const x of [-half, half]) points.push([x, -depth / 2, SIGN_RISE]);
   return points;
 }
@@ -365,27 +386,33 @@ export function WeekStage({
     if (!stage || !element) return;
     const { tilt, yaw, zoom } = pose.current;
     if (!solo) {
-      // The width comes from where the floor and its hour labels really
-      // project; the height keeps its estimate, which the model never exceeds.
+      // Width and height both come from where the floor, its hour labels and
+      // the day signs really project. The model is centred in the rows clear
+      // of the controls above and the legend below, at the default pose; an
+      // orbit then turns it about that same centre.
       const sideways = -6;
-      const fit = Math.max(
-        0.3,
-        Math.min(
-          fitWidth({
-            stageWidth: stage.width,
-            world,
-            depth,
-            tilt: CAMERA.tilt,
-            yaw: CAMERA.yaw,
-            shift: sideways,
-            margin: 10,
-            low: 0.3,
-            high: 3,
-          }),
-          (stage.height - 16) / (depth * 0.72 + 230),
-        ),
-      );
-      element.style.transform = `translate(${sideways}px, ${-stage.height * 0.04}px) scale(${fit * zoom}) rotateX(${tilt}deg) rotateZ(${yaw}deg)`;
+      const across = fitWidth({
+        stageWidth: stage.width,
+        world,
+        depth,
+        tilt: CAMERA.tilt,
+        yaw: CAMERA.yaw,
+        shift: sideways,
+        margin: 10,
+        low: 0.3,
+        high: 3,
+      });
+      const { scale, lift } = fitRows({
+        stageHeight: stage.height,
+        points: weekPoints(world, depth),
+        tilt: CAMERA.tilt,
+        yaw: CAMERA.yaw,
+        top: 20,
+        bottom: stage.height - 48,
+        limit: across,
+      });
+      const fit = Math.max(0.3, scale);
+      element.style.transform = `translate(${sideways}px, ${lift}px) scale(${fit * zoom}) rotateX(${tilt}deg) rotateZ(${yaw}deg)`;
       return;
     }
     const fit = narrow
@@ -652,6 +679,22 @@ export function WeekStage({
     floorStart,
   ]);
 
+  // The hours around the working day fold into a thin strip, so the labels at
+  // the floor's two ends can sit closer than a label is tall. They move out,
+  // away from their neighbour, until they clear it; the line stays put.
+  const labelNudge = useMemo(() => {
+    const nudge = new Map<number, number>();
+    const first = labels[0],
+      last = labels[labels.length - 1];
+    if (labels.length > 1) {
+      const head = y(labels[1]) - y(first);
+      if (head < LABEL_GAP) nudge.set(first, head - LABEL_GAP);
+      const tail = y(last) - y(labels[labels.length - 2]);
+      if (tail < LABEL_GAP) nudge.set(last, LABEL_GAP - tail);
+    }
+    return nudge;
+  }, [labels, y]);
+
   const [dropCell, setDropCell] = useState<Cell | null>(null);
   const [dropSign, setDropSign] = useState<number | null>(null);
   const over = (event: DragEvent) => {
@@ -819,7 +862,7 @@ export function WeekStage({
               <div
                 className="calendar-hourlabel"
                 style={{
-                  top: y(minutes),
+                  top: y(minutes) + (labelNudge.get(minutes) ?? 0),
                   left: (solo ? focusDay * LANE : 0) - 64,
                 }}
               >

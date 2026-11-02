@@ -10,8 +10,11 @@ const PERSPECTIVE = 1500;
 /** How far left of the floor an hour label reaches: its box starts here. */
 export const LABEL_REACH = 64;
 
-/** How far an hour label's box reaches past its line, along the depth. */
-const LABEL_SPREAD = 11;
+/**
+ * How far an hour label's box reaches past its line, along the depth: half
+ * its height, plus the most an end label moves out to clear its neighbour.
+ */
+export const LABEL_SPREAD = 38;
 
 /**
  * The largest camera scale at which the floor and the hour labels left of it
@@ -105,4 +108,73 @@ export function fitBox(input: {
     if (sideways !== 0) fit = Math.min(fit, half / Math.abs(sideways));
   }
   return Math.max(input.low, fit);
+}
+
+type Point = readonly [number, number, number];
+
+/** Screen rows, from the stage top, that the points cover at scale `s`. */
+function rowsAt(
+  points: readonly Point[],
+  s: number,
+  tilt: number,
+  yaw: number,
+  lift: number,
+  stageHeight: number,
+): [number, number] {
+  const yawRad = (yaw * Math.PI) / 180;
+  const tiltRad = (tilt * Math.PI) / 180;
+  const origin = stageHeight * VANISH;
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const [x, y, z] of points) {
+    const along = x * Math.sin(yawRad) + y * Math.cos(yawRad);
+    const down = along * Math.cos(tiltRad) - z * Math.sin(tiltRad);
+    const gap =
+      PERSPECTIVE - (along * Math.sin(tiltRad) + z * Math.cos(tiltRad));
+    const row =
+      origin +
+      ((stageHeight / 2 - origin + lift + s * down) * PERSPECTIVE) /
+        Math.max(1, gap);
+    top = Math.min(top, row);
+    bottom = Math.max(bottom, row);
+  }
+  return [top, bottom];
+}
+
+/**
+ * Fits the model into the band `[top, bottom]` of the stage, rows clear of the
+ * controls above and the legend below, and centres it there. Returns the
+ * largest scale up to `limit` that fits the band, and the lift that centres it.
+ */
+export function fitRows(input: {
+  stageHeight: number;
+  points: readonly Point[];
+  tilt: number;
+  yaw: number;
+  top: number;
+  bottom: number;
+  limit: number;
+}): { scale: number; lift: number } {
+  const { stageHeight, points, tilt, yaw, top, bottom, limit } = input;
+  const height = (s: number) => {
+    const [a, b] = rowsAt(points, s, tilt, yaw, 0, stageHeight);
+    return b - a;
+  };
+  let scale = limit;
+  if (height(limit) > bottom - top) {
+    let low = 0.1;
+    let high = limit;
+    for (let i = 0; i < 24; i++) {
+      const mid = (low + high) / 2;
+      if (height(mid) <= bottom - top) low = mid;
+      else high = mid;
+    }
+    scale = low;
+  }
+  let lift = 0;
+  for (let i = 0; i < 4; i++) {
+    const [a, b] = rowsAt(points, scale, tilt, yaw, lift, stageHeight);
+    lift += (top + bottom) / 2 - (a + b) / 2;
+  }
+  return { scale, lift };
 }
