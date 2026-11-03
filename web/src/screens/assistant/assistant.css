@@ -811,3 +811,29 @@ button.assistant-trace-toggle:hover {
     min-height: 44px;
   }
 }
+.upcoming-permissions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.upcoming-permissions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
+}
+.upcoming-permissions li + li {
+  border-top: 1px solid var(--line-soft);
+}
+.upcoming-permissions label {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}
+.upcoming-permissions select {
+  flex: 0 1 220px;
+  min-width: 0;
+}

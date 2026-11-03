@@ -27,6 +27,7 @@ import {
   IconButton,
   Loading,
   Menu,
+  SelectBox,
   useConfirm,
 } from "../../ui/kit";
 import { useOwned } from "../agents-shared/hooks";
@@ -497,38 +498,65 @@ export function Upcoming({
                 />
               )}
               <p className="muted small">
-                Revoking permission affects future work. Pause admission and
-                stop running work separately.
+                Choose, for each kind of change, whether the assistant asks
+                first. This affects future work only. Pause admission and stop
+                running work separately.
               </p>
-              {scopes.data &&
-                ASSISTANT_CHANGE_KINDS.map((kind) => (
-                  <div className="agents-row" key={kind}>
-                    <span>
-                      {CHANGE_KINDS[kind]} · {ruleLabel(scopes.data?.[kind])}
-                    </span>
-                    {scopes.data?.[kind] && (
-                      <Button
-                        disabled={busy}
-                        onClick={() =>
-                          void mutate(
-                            () => {
-                              const next = { ...scopes.data };
-                              delete next[kind];
-                              return client.setAssistantApprovalScopes(next);
-                            },
-                            scopes.reload,
-                            {
-                              title: `Revoke ${CHANGE_KINDS[kind].toLowerCase()} permission?`,
-                              body: "Future changes in this category will ask again.",
-                            },
-                          )
-                        }
-                      >
-                        Revoke
-                      </Button>
-                    )}
-                  </div>
-                ))}
+              {scopes.data && (
+                <ul className="upcoming-permissions">
+                  {ASSISTANT_CHANGE_KINDS.map((kind) => {
+                    const rule = scopes.data?.[kind];
+                    const value = !rule
+                      ? "ask"
+                      : rule === "always"
+                        ? "always"
+                        : "scoped";
+                    const name = CHANGE_KINDS[kind].toLowerCase();
+                    return (
+                      <li key={kind}>
+                        <label htmlFor={`permission-${kind}`}>
+                          {CHANGE_KINDS[kind]}
+                        </label>
+                        <SelectBox
+                          id={`permission-${kind}`}
+                          value={value}
+                          disabled={busy || scopes.loading}
+                          onChange={(e) => {
+                            const choice = e.target.value;
+                            if (choice === value) return;
+                            void mutate(
+                              () => {
+                                const next = { ...scopes.data };
+                                if (choice === "always") next[kind] = "always";
+                                else delete next[kind];
+                                return client.setAssistantApprovalScopes(next);
+                              },
+                              scopes.reload,
+                              choice === "always"
+                                ? {
+                                    title: `Allow ${name} changes without asking?`,
+                                    body: `Future ${name} changes from the assistant may be applied without asking. You can switch back to Ask each time here.`,
+                                  }
+                                : {
+                                    title: `Ask before ${name} changes?`,
+                                    body: "Future changes in this category will ask again.",
+                                  },
+                            );
+                          }}
+                        >
+                          <option value="ask">Ask each time</option>
+                          <option value="always">Always allow</option>
+                          {value === "scoped" && (
+                            <option value="scoped">
+                              {`Allowed for ${ruleLabel(rule)}`}
+                            </option>
+                          )}
+                        </SelectBox>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </section>
             <section className="upcoming-settings">
               <h3>Admission controls</h3>
