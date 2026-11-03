@@ -581,7 +581,8 @@ export function Shell({
       trigger={(open, expanded) => (
         <button
           className={`account account-${where}`}
-          aria-label={where === "topbar" ? "Account" : undefined}
+          aria-label={where === "topbar" || size.rail ? "Account" : undefined}
+          aria-haspopup="menu"
           aria-expanded={expanded}
           onClick={open}
         >
