@@ -40,9 +40,11 @@ headings stay neutral on hover; expansion, selection and focus remain distinct.
   raised cards; preserve unsaved guards, deep links and return paths. At 320×740,
   the chrome must leave useful space for the setting being changed.
 - Center the empty Chat/Work composer in its remaining pane, then dock it at the
-  bottom once conversation begins. Both start compact and grow to roughly four
-  text lines before internal scrolling. Keep attachments, model and send controls
-  outside that scroll region; respect enlarged text and short windows.
+  bottom once conversation begins. The Assistant keeps its scope picker centered
+  while the composer stays docked, so choosing a scope never moves the input. Both
+  composers start compact and grow to roughly four text lines before internal
+  scrolling. Keep attachments, model and send controls outside that scroll
+  region; respect enlarged text and short windows.
 - Work chooses a project in its conversation workspace. Preserve saved history,
   project visibility, pinning and existing sweep/pinned exemptions. Paired panes
   retain independent drafts and scroll state. Switch panes at narrow widths.
@@ -114,7 +116,7 @@ identify personal/team scope. Compact Study metrics stay paired.
 New desktop sessions start with labelled navigation at 224px, preserving remembered
 widths (including an explicitly selected icon rail). Navigation fits the available
 window without overwriting the remembered width. Phone task checkboxes and create controls retain 44px targets. Assistant
-starter prompts wrap in two columns and multiline composers stay bounded.
+starter prompts wrap as compact pills above the composer and scroll horizontally on phones; multiline composers stay bounded.
 
 Browser inspection, source/component tests, native exports and installed-device
 evidence remain separate. The [redesign work record](work/ui-ux-polish.md) records
