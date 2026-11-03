@@ -261,7 +261,10 @@ export function Menu({
   children,
 }: {
   label: string;
-  trigger: (open: () => void, expanded: boolean) => ReactNode;
+  trigger: (
+    open: (event?: { currentTarget: EventTarget }) => void,
+    expanded: boolean,
+  ) => ReactNode;
   children: ReactNode | ((close: () => void) => ReactNode);
 }) {
   const scope = useRouteScope();
@@ -286,20 +289,40 @@ export function Menu({
     if (allowed() && !opener?.closest("[inert]")) opener?.focus();
     setOpener(null);
   }, [opener, activity.visible, activity.focused]);
-  const open = useCallback(() => {
-    if (allowed()) setOpener(document.activeElement as HTMLElement);
-  }, [scope]);
+  // Anchor to the clicked trigger: WebKit does not focus buttons on click, so
+  // activeElement can be <body>. Focus is only the fallback for bare open().
+  const open = useCallback(
+    (event?: { currentTarget: EventTarget }) => {
+      if (!allowed()) return;
+      const target = event?.currentTarget;
+      setOpener(
+        target instanceof HTMLElement
+          ? target
+          : (document.activeElement as HTMLElement),
+      );
+    },
+    [scope],
+  );
 
   useLayoutEffect(() => {
     const menu = box.current;
     if (!menu || !opener || !allowed()) return;
-    const at = opener.getBoundingClientRect();
-    const size = menu.getBoundingClientRect();
-    const left = Math.max(8, Math.min(at.left, innerWidth - size.width - 8));
-    const below = at.bottom + 4 + size.height <= innerHeight - 8;
-    menu.style.left = `${left}px`;
-    menu.style.top = `${below ? at.bottom + 4 : Math.max(8, at.top - size.height - 4)}px`;
+    const place = () => {
+      const at = opener.getBoundingClientRect();
+      const size = menu.getBoundingClientRect();
+      const left = Math.max(8, Math.min(at.left, innerWidth - size.width - 8));
+      const below = at.bottom + 4 + size.height <= innerHeight - 8;
+      menu.style.left = `${left}px`;
+      menu.style.top = `${below ? at.bottom + 4 : Math.max(8, at.top - size.height - 4)}px`;
+    };
+    place();
     menu.querySelector("button")?.focus();
+    addEventListener("resize", place);
+    addEventListener("scroll", place, true);
+    return () => {
+      removeEventListener("resize", place);
+      removeEventListener("scroll", place, true);
+    };
   }, [opener]);
 
   useEffect(() => {
