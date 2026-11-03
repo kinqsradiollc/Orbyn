@@ -258,8 +258,14 @@ function MarkdownSource({
     }
     ignoreSource.current = null;
     const line = source.scrollTop / lineHeight() + 1;
-    const range =
-      blocks.findLast((entry) => entry.startLine <= line) ?? blocks[0];
+    let range = blocks[0];
+    for (let index = blocks.length - 1; index >= 0; index--) {
+      const entry = blocks[index];
+      if (entry.startLine <= line) {
+        range = entry;
+        break;
+      }
+    }
     const element = leafAt(range.path);
     if (!element) return;
     const box = element.getBoundingClientRect();
