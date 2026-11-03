@@ -4,16 +4,24 @@ import {
   assistantExcerptMatches,
   type AssistantConversationEntry,
 } from "@orbyn/core";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Button, ErrorNotice } from "../../ui/kit";
+import { Bot, Check, Copy, Info, Reply } from "lucide-react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { Button, ErrorNotice, IconButton } from "../../ui/kit";
 import { useOwned } from "../agents-shared/hooks";
-import { Evidence, More } from "../agents-shared/parts";
+import { Evidence } from "../agents-shared/parts";
 import {
   ProposalReview,
   useProposalLinks,
 } from "../agents-shared/ProposalReview";
 import { ReplyText } from "../agents-shared/ReplyText";
-import { replyWords, traceWords, updateWords } from "../agents-shared/words";
+import { replyWords, updateWords } from "../agents-shared/words";
+import { LiveWork, TurnTrace, useReveal } from "./Activity";
 import { MessageDetails } from "./History";
 import { Reminder } from "./Reminder";
 import { TurnChanges } from "./TurnChanges";
@@ -25,11 +33,13 @@ export function Transcript({
   timezone,
   onOpenChat,
   covered,
+  emptyState,
 }: {
   assistant: Assistant;
   timezone: string;
   onOpenChat: (id: string) => void;
   covered: boolean;
+  emptyState: ReactNode;
 }) {
   const inputAllowed = useRouteInput(),
     activity = useRouteActivity();
@@ -47,12 +57,45 @@ export function Transcript({
   const [copyDone, setCopyDone] = useState<string | null>(null);
   const entries = assistant.conversation.entries;
   const currentDetails = entries.find((entry) => entry.id === details);
+  const [work, setWork] = useState<{ started: number; steps: string[] }>({
+      started: 0,
+      steps: [],
+    }),
+    [fresh, setFresh] = useState<string | null>(null),
+    wasSending = useRef(false);
+  const reveal = useReveal(fresh);
   useEffect(() => {
     setDetails(null);
     setSelection(null);
     setReading(false);
+    setFresh(null);
     follow.current = true;
   }, [assistant.chat?.id]);
+  useEffect(() => {
+    if (assistant.sending && !wasSending.current)
+      setWork({ started: Date.now(), steps: [] });
+    if (!assistant.sending && wasSending.current) {
+      // Only the answer that arrived while this page watched is revealed.
+      const last = assistant.display[assistant.display.length - 1];
+      if (
+        last?.kind === "turn" &&
+        last.turn.role === "assistant" &&
+        !last.turn.proposal &&
+        last.turn.text
+      )
+        setFresh(last.turn.text);
+    }
+    wasSending.current = assistant.sending;
+  }, [assistant.sending, assistant.display]);
+  useEffect(() => {
+    const label = assistant.progress?.label?.trim();
+    if (!label) return;
+    setWork((old) =>
+      old.steps[old.steps.length - 1] === label
+        ? old
+        : { ...old, steps: [...old.steps, label] },
+    );
+  }, [assistant.progress?.label]);
   useLayoutEffect(() => {
     const el = node.current;
     if (!activity.visible || !el) return;
@@ -61,7 +104,13 @@ export function Transcript({
         prepend.current.top + el.scrollHeight - prepend.current.height;
       prepend.current = null;
     } else if (follow.current) el.scrollTop = el.scrollHeight;
-  }, [assistant.display, assistant.progress, activity.visible]);
+  }, [
+    assistant.display,
+    assistant.progress,
+    activity.visible,
+    reveal.text,
+    work.steps.length,
+  ]);
   useEffect(() => {
     const el = node.current;
     if (
@@ -247,27 +296,7 @@ export function Transcript({
             Earlier messages
           </Button>
         )}
-        {!assistant.display.length && !assistant.loading && (
-          <section className="assistant-empty">
-            <h2>What would you like to work on?</h2>
-            <p className="muted">Ask a question or draft work to review.</p>
-            <div className="agents-buttons">
-              {[
-                "What needs my attention today?",
-                "Help me plan this week",
-                "What should I study next?",
-              ].map((text) => (
-                <Button
-                  key={text}
-                  disabled={assistant.sending}
-                  onClick={() => assistant.setMessage(text)}
-                >
-                  {text}
-                </Button>
-              ))}
-            </div>
-          </section>
-        )}
+        {!assistant.display.length && !assistant.loading && emptyState}
         {assistant.display.map((item, index) => {
           const entry = entries.find((one) => one.id === item.id),
             date = entry?.created_at,
@@ -276,135 +305,179 @@ export function Transcript({
           const turn = item.kind === "turn" ? item.turn : null,
             text =
               item.kind === "update" ? item.entry.text : (turn?.text ?? "");
+          if (turn?.role === "user")
+            return (
+              <div key={item.id} className="assistant-turn">
+                {label && <p className="assistant-date">{label}</p>}
+                <article
+                  className="assistant-message assistant-message-user"
+                  data-entry={item.id}
+                  data-sequence={item.sequence ?? undefined}
+                  tabIndex={-1}
+                  aria-label="You"
+                >
+                  <ReplyText text={text} />
+                </article>
+              </div>
+            );
+          const status = turn
+            ? replyWords({
+                state: turn.state ?? "info",
+                trace: turn.trace ?? [],
+                executionOutcome:
+                  turn.executionOutcome ?? turn.saved?.execution_outcome,
+                execution: turn.execution,
+              })
+            : undefined;
+          const revealing =
+            !!turn && !turn.proposal && !reveal.done && text === fresh;
           return (
-            <div key={item.id}>
+            <div key={item.id} className="assistant-turn">
               {label && <p className="assistant-date">{label}</p>}
               <article
-                className={`assistant-message ${turn?.role === "user" ? "assistant-message-user" : ""}`}
+                className="assistant-message"
                 data-entry={item.id}
                 data-sequence={item.sequence ?? undefined}
                 tabIndex={-1}
+                aria-label={
+                  item.kind === "update" ? updateWords(item.entry) : "Assistant"
+                }
+                aria-busy={revealing || undefined}
               >
-                <div className="agents-row">
-                  <strong>
-                    {item.kind === "update"
-                      ? updateWords(item.entry)
-                      : turn?.role === "user"
-                        ? "You"
-                        : "Assistant"}
-                  </strong>
-                  {turn?.role === "assistant" && (
-                    <span className="muted small">
-                      {replyWords({
-                        state: turn.state ?? "info",
-                        trace: turn.trace ?? [],
-                        executionOutcome:
-                          turn.executionOutcome ??
-                          turn.saved?.execution_outcome,
-                        execution: turn.execution,
-                      })}
-                    </span>
+                <span className="assistant-avatar" aria-hidden="true">
+                  <Bot />
+                </span>
+                <div className="assistant-message-body">
+                  {item.kind === "update" && (
+                    <p className="assistant-update-label">
+                      {updateWords(item.entry)}
+                    </p>
                   )}
-                </div>
-                {turn?.proposal ? (
-                  <ProposalReview
-                    proposal={turn.proposal}
-                    before={turn.before}
-                    state={turn.state}
-                    busy={assistant.sending}
-                    onApply={(deadlines) =>
-                      assistant.decide(turn, true, deadlines)
-                    }
-                    onDismiss={() => assistant.decide(turn, false)}
-                    onFollowUp={
-                      index === assistant.display.length - 1
-                        ? (text) => assistant.send(text)
-                        : undefined
-                    }
-                    {...links}
-                  />
-                ) : (
-                  <ReplyText text={text} />
-                )}
-                {(turn?.executionOutcome ?? turn?.saved?.execution_outcome) && (
-                  <Evidence
-                    receipt={
-                      (turn.executionOutcome ?? turn.saved?.execution_outcome)!
-                    }
-                  />
-                )}
-                {turn?.saved?.nudge && assistant.chat && turn.turnId && (
-                  <Reminder
-                    key={turn.saved.nudge.id}
-                    card={turn.saved.nudge}
-                    chat={assistant.chat.id}
-                    turn={turn.turnId}
-                    skipped={turn.state === "discarded"}
-                  />
-                )}
-                {(turn?.changesJob ?? turn?.saved?.changes_job) && (
-                  <TurnChanges
-                    key={turn.changesJob ?? turn.saved?.changes_job}
-                    job={(turn.changesJob ?? turn.saved?.changes_job)!}
-                  />
-                )}
-                {!!turn?.trace?.length && (
-                  <More summary="Execution trace">
-                    <ol>
-                      {turn.trace.map((trace, i) => (
-                        <li key={`${trace.step}:${i}`}>
-                          {traceWords([trace]).join(" · ")} ·{" "}
-                          {new Date(trace.at).toLocaleTimeString()}
-                        </li>
-                      ))}
-                    </ol>
-                  </More>
-                )}
-                {item.kind === "update" && item.entry.execution_chat_id && (
-                  <Button
-                    onClick={() =>
-                      owned() && onOpenChat(item.entry.execution_chat_id!)
-                    }
-                  >
-                    View work
-                  </Button>
-                )}
-                <div className="agents-buttons">
-                  <Button
-                    variant="ghost"
-                    onClick={() => void copy(item.id, text)}
-                  >
-                    {copyDone === item.id ? "Copied" : "Copy"}
-                  </Button>
-                  {entry && (
-                    <>
-                      <Button
-                        variant="ghost"
-                        disabled={
-                          assistant.sending || assistant.conversation.error
-                        }
-                        onClick={() => assistant.setReply({ id: entry.id })}
+                  {turn && (
+                    <TurnTrace
+                      trace={turn.trace ?? []}
+                      status={status === "Response ready" ? undefined : status}
+                    />
+                  )}
+                  {turn?.proposal ? (
+                    <ProposalReview
+                      proposal={turn.proposal}
+                      before={turn.before}
+                      state={turn.state}
+                      busy={assistant.sending}
+                      onApply={(deadlines) =>
+                        assistant.decide(turn, true, deadlines)
+                      }
+                      onDismiss={() => assistant.decide(turn, false)}
+                      onFollowUp={
+                        index === assistant.display.length - 1
+                          ? (text) => assistant.send(text)
+                          : undefined
+                      }
+                      {...links}
+                    />
+                  ) : revealing ? (
+                    <div className="assistant-revealing">
+                      <ReplyText text={reveal.text ?? ""} />
+                      <span className="assistant-caret" aria-hidden="true" />
+                    </div>
+                  ) : (
+                    <ReplyText text={text} />
+                  )}
+                  {(turn?.executionOutcome ??
+                    turn?.saved?.execution_outcome) && (
+                    <Evidence
+                      receipt={
+                        (turn.executionOutcome ??
+                          turn.saved?.execution_outcome)!
+                      }
+                    />
+                  )}
+                  {turn?.saved?.nudge && assistant.chat && turn.turnId && (
+                    <Reminder
+                      key={turn.saved.nudge.id}
+                      card={turn.saved.nudge}
+                      chat={assistant.chat.id}
+                      turn={turn.turnId}
+                      skipped={turn.state === "discarded"}
+                    />
+                  )}
+                  {(turn?.changesJob ?? turn?.saved?.changes_job) && (
+                    <TurnChanges
+                      key={turn.changesJob ?? turn.saved?.changes_job}
+                      job={(turn.changesJob ?? turn.saved?.changes_job)!}
+                    />
+                  )}
+                  {item.kind === "update" && item.entry.execution_chat_id && (
+                    <Button
+                      onClick={() =>
+                        owned() && onOpenChat(item.entry.execution_chat_id!)
+                      }
+                    >
+                      View work
+                    </Button>
+                  )}
+                  {!revealing && (
+                    <div className="assistant-actions">
+                      <IconButton
+                        label={copyDone === item.id ? "Copied" : "Copy"}
+                        onClick={() => void copy(item.id, text)}
                       >
-                        {entry.kind === "update" &&
-                        entry.event === "question" &&
-                        entry.waiting_kind === "person" &&
-                        entry.actionable !== false
-                          ? "Answer"
-                          : "Reply"}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => setDetails(entry.id)}
-                      >
-                        Details
-                      </Button>
-                    </>
+                        {copyDone === item.id ? (
+                          <Check aria-hidden="true" />
+                        ) : (
+                          <Copy aria-hidden="true" />
+                        )}
+                      </IconButton>
+                      {entry && (
+                        <>
+                          <IconButton
+                            label={
+                              entry.kind === "update" &&
+                              entry.event === "question" &&
+                              entry.waiting_kind === "person" &&
+                              entry.actionable !== false
+                                ? "Answer"
+                                : "Reply"
+                            }
+                            disabled={
+                              assistant.sending || assistant.conversation.error
+                            }
+                            onClick={() => assistant.setReply({ id: entry.id })}
+                          >
+                            <Reply aria-hidden="true" />
+                          </IconButton>
+                          <IconButton
+                            label="Details"
+                            onClick={() => setDetails(entry.id)}
+                          >
+                            <Info aria-hidden="true" />
+                          </IconButton>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
               </article>
             </div>
           );
         })}
+        {assistant.sending && work.started > 0 && (
+          <div className="assistant-turn">
+            <div className="assistant-message">
+              <span className="assistant-avatar" aria-hidden="true">
+                <Bot />
+              </span>
+              <div className="assistant-message-body">
+                <LiveWork
+                  started={work.started}
+                  steps={work.steps}
+                  waiting={assistant.progress?.state === "waiting"}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       {selection && (
         <div className="assistant-selection">
