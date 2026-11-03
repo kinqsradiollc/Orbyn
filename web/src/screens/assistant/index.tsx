@@ -319,11 +319,7 @@ function AssistantWorkspace() {
               Open task
             </Button>
           )}
-          <Button
-            aria-pressed={upcoming}
-            className={upcoming ? "is-on" : ""}
-            onClick={upcoming ? closeUpcoming : openUpcoming}
-          >
+          <Button onClick={openUpcoming}>
             <CalendarDays aria-hidden="true" />
             Upcoming
           </Button>

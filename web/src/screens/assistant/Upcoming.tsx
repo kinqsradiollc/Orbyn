@@ -15,7 +15,6 @@ import {
   Repeat,
   Settings2,
   Target,
-  X,
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../lib/session";
@@ -74,7 +73,7 @@ export function Upcoming({
   const owned = useOwned(),
     confirm = useConfirm(),
     lock = useRef(false),
-    panel = useRef<HTMLElement>(null);
+    panel = useRef<HTMLDivElement>(null);
   const goals = useRead(() => client.listGoals()),
     routines = useRead(() => client.listAgentRoutines()),
     chats = useRead(() =>
@@ -412,35 +411,26 @@ export function Upcoming({
   };
 
   return (
-    <aside
-      ref={panel}
-      className="upcoming"
-      aria-label="Upcoming"
-      onKeyDown={(e) => {
-        if (
-          e.key === "Escape" &&
-          !goalForm &&
-          !routineForm &&
-          !work &&
-          !goalDetail &&
-          !routineDetail
-        ) {
-          e.stopPropagation();
-          void close();
-        }
-      }}
+    <Dialog
+      title={settings ? "Permissions and admission" : "Upcoming"}
+      wide
+      onClose={() => void close()}
+      actions={
+        <Button
+          disabled={busy || Object.values(childDirty.current).some(Boolean)}
+          onClick={() => void close()}
+        >
+          Close
+        </Button>
+      }
     >
-      <header className="upcoming-head">
+      <div className="upcoming-head">
         {settings ? (
-          <IconButton
-            label="Back to Upcoming"
-            onClick={() => setSettings(false)}
-          >
+          <Button onClick={() => setSettings(false)}>
             <ArrowLeft aria-hidden="true" />
-          </IconButton>
-        ) : null}
-        <h2>{settings ? "Permissions and admission" : "Upcoming"}</h2>
-        {!settings && (
+            Back to Upcoming
+          </Button>
+        ) : (
           <>
             <Menu
               label="Create"
@@ -476,23 +466,14 @@ export function Upcoming({
                 </>
               )}
             </Menu>
-            <IconButton
-              label="Permissions and admission"
-              onClick={() => setSettings(true)}
-            >
+            <Button onClick={() => setSettings(true)}>
               <Settings2 aria-hidden="true" />
-            </IconButton>
+              Permissions and admission
+            </Button>
           </>
         )}
-        <IconButton
-          label="Close Upcoming"
-          disabled={busy}
-          onClick={() => void close()}
-        >
-          <X aria-hidden="true" />
-        </IconButton>
-      </header>
-      <div className="upcoming-body">
+      </div>
+      <div className="upcoming-body" ref={panel}>
         {error && <ErrorNotice message={error} onRetry={reload} />}
         {[goals, routines, chats, prefs, projects, docs].map(
           (read, index) =>
@@ -667,7 +648,7 @@ export function Upcoming({
           onOpenChat={onOpenChat}
         />
       )}
-    </aside>
+    </Dialog>
   );
 }
 function GoalDetail({ goal, onClose }: { goal: Goal; onClose: () => void }) {
