@@ -367,12 +367,13 @@ button.assistant-trace-toggle:hover {
   margin-top: 12px;
   max-width: 640px;
 }
-.assistant-scopes button {
+.assistant-scopes button,
+.assistant-scope-current {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   max-width: 240px;
-  min-height: 36px;
+  min-height: var(--control);
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -380,14 +381,18 @@ button.assistant-trace-toggle:hover {
   color: var(--text-soft);
   font: inherit;
   font-size: 13px;
+}
+.assistant-scopes button {
   cursor: pointer;
 }
-.assistant-scopes button span {
+.assistant-scopes button span,
+.assistant-scope-current span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.assistant-scopes button svg {
+.assistant-scopes button svg,
+.assistant-scope-current svg {
   flex: 0 0 auto;
   width: 15px;
   height: 15px;
@@ -395,7 +400,8 @@ button.assistant-trace-toggle:hover {
 .assistant-scopes button:hover:not(:disabled) {
   background: var(--hover);
 }
-.assistant-scopes button[aria-checked="true"] {
+.assistant-scopes button[aria-pressed="true"],
+.assistant-scope-current {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent-text);
@@ -403,6 +409,9 @@ button.assistant-trace-toggle:hover {
 .assistant-scopes button:disabled {
   cursor: default;
   opacity: 0.55;
+}
+.assistant-scope-current {
+  cursor: default;
 }
 
 /* Composer and what sits on it. */
@@ -419,7 +428,7 @@ button.assistant-trace-toggle:hover {
 }
 .assistant-suggestions button {
   max-width: 100%;
-  min-height: 32px;
+  min-height: var(--control);
   padding: 4px 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -602,7 +611,8 @@ button.assistant-trace-toggle:hover {
   .assistant-header .btn,
   .assistant-actions .btn-icon,
   .assistant-suggestions button,
-  .assistant-scopes button {
+  .assistant-scopes button,
+  .assistant-scope-current {
     min-height: 44px;
   }
   .assistant-actions .btn-icon {
@@ -680,7 +690,7 @@ button.assistant-trace-toggle:hover {
   gap: 6px;
 }
 .upcoming-filters button {
-  min-height: 30px;
+  min-height: var(--control);
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -789,7 +799,7 @@ button.assistant-trace-toggle:hover {
   gap: 4px;
 }
 .upcoming-actions .btn:not(.btn-icon) {
-  min-height: 30px;
+  min-height: var(--control);
   font-size: 12px;
 }
 .upcoming-clear {

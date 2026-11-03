@@ -28,6 +28,21 @@ import { TurnChanges } from "./TurnChanges";
 import type { useAssistant } from "./useAssistant";
 
 type Assistant = ReturnType<typeof useAssistant>;
+
+function latestAnswer(display: Assistant["display"]) {
+  for (let index = display.length - 1; index >= 0; index--) {
+    const item = display[index];
+    if (
+      item.kind === "turn" &&
+      item.turn.role === "assistant" &&
+      !item.turn.proposal &&
+      item.turn.text
+    )
+      return item;
+  }
+  return null;
+}
+
 export function Transcript({
   assistant,
   timezone,
@@ -61,29 +76,29 @@ export function Transcript({
       started: 0,
       steps: [],
     }),
-    [fresh, setFresh] = useState<string | null>(null),
-    wasSending = useRef(false);
-  const reveal = useReveal(fresh);
+    [fresh, setFresh] = useState<{ id: string; text: string } | null>(null),
+    wasSending = useRef(false),
+    previousAnswer = useRef<string | null>(null);
+  const reveal = useReveal(fresh?.text ?? null);
   useEffect(() => {
     setDetails(null);
     setSelection(null);
     setReading(false);
     setFresh(null);
+    previousAnswer.current = null;
     follow.current = true;
   }, [assistant.chat?.id]);
   useEffect(() => {
-    if (assistant.sending && !wasSending.current)
+    if (assistant.sending && !wasSending.current) {
+      // Remember the answer that was already on screen, so a failed send
+      // cannot replay it when `sending` falls back to false.
+      previousAnswer.current = latestAnswer(assistant.display)?.id ?? null;
       setWork({ started: Date.now(), steps: [] });
+    }
     if (!assistant.sending && wasSending.current) {
-      // Only the answer that arrived while this page watched is revealed.
-      const last = assistant.display[assistant.display.length - 1];
-      if (
-        last?.kind === "turn" &&
-        last.turn.role === "assistant" &&
-        !last.turn.proposal &&
-        last.turn.text
-      )
-        setFresh(last.turn.text);
+      const last = latestAnswer(assistant.display);
+      if (last && last.id !== previousAnswer.current)
+        setFresh({ id: last.id, text: last.turn.text });
     }
     wasSending.current = assistant.sending;
   }, [assistant.sending, assistant.display]);
@@ -330,7 +345,7 @@ export function Transcript({
               })
             : undefined;
           const revealing =
-            !!turn && !turn.proposal && !reveal.done && text === fresh;
+            !!turn && !turn.proposal && !reveal.done && item.id === fresh?.id;
           return (
             <div key={item.id} className="assistant-turn">
               {label && <p className="assistant-date">{label}</p>}

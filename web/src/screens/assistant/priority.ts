@@ -91,7 +91,14 @@ function routineItem(routine: AgentRoutine, now: Date): UpcomingItem {
       minute: "2-digit",
       timeZone: zone,
     });
-  if (gap <= 0)
+  if (next.getTime() <= now.getTime())
+    return {
+      ...base,
+      bucket: "now",
+      at: next.getTime(),
+      when: "Overdue",
+    };
+  if (gap === 0)
     return {
       ...base,
       bucket: "today",

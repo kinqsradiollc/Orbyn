@@ -198,15 +198,10 @@ function AssistantWorkspace() {
       <p className="muted">
         Choose what this chat can see. It stays fixed once you send.
       </p>
-      <div
-        className="assistant-scopes"
-        role="radiogroup"
-        aria-label="Chat scope"
-      >
+      <div className="assistant-scopes" role="group" aria-label="Chat scope">
         <button
           type="button"
-          role="radio"
-          aria-checked={!assistant.scope}
+          aria-pressed={!assistant.scope}
           disabled={assistant.sending}
           onClick={() => assistant.scope && chooseScope("")}
         >
@@ -214,17 +209,16 @@ function AssistantWorkspace() {
           Personal
         </button>
         {assistant.scope?.kind === "task" && (
-          <button type="button" role="radio" aria-checked>
+          <span className="assistant-scope-current">
             <ListChecks aria-hidden="true" />
             <span dir="auto">{assistant.scope.name}</span>
-          </button>
+          </span>
         )}
         {projects.data?.map((project) => (
           <button
             key={project.id}
             type="button"
-            role="radio"
-            aria-checked={
+            aria-pressed={
               assistant.scope?.kind === "project" &&
               assistant.scope.id === project.id
             }
@@ -333,7 +327,12 @@ function AssistantWorkspace() {
           <Menu
             label="Assistant options"
             trigger={(show, expanded) => (
-              <IconButton label="More" aria-expanded={expanded} onClick={show}>
+              <IconButton
+                label="More"
+                aria-expanded={expanded}
+                aria-haspopup="menu"
+                onClick={show}
+              >
                 <Ellipsis aria-hidden="true" />
               </IconButton>
             )}
@@ -424,6 +423,11 @@ function AssistantWorkspace() {
               message={deliveryError}
               onRetry={() => void refreshDelivery()}
             />
+          )}
+          {deliveryAvailable === false && (
+            <p role="status" className="small muted">
+              Conversation notifications are unavailable on this server.
+            </p>
           )}
           {projects.error && (
             <ErrorNotice

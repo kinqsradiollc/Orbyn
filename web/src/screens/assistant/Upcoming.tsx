@@ -205,6 +205,9 @@ export function Upcoming({
     prefs.data?.timezone ?? timezone(),
   );
   const items = all.filter((item) => filter === "all" || item.kind === filter);
+  const filterName =
+    FILTERS.find(([value]) => value === filter)?.[1].toLowerCase() ?? "items";
+  const needsAttention = items.some((item) => item.bucket !== "quiet");
   const count = (bucket: Bucket) =>
     items.filter((item) => item.bucket === bucket).length;
   const jump = (bucket: Bucket) =>
@@ -256,6 +259,7 @@ export function Upcoming({
           <IconButton
             label={`More for ${title}`}
             aria-expanded={expanded}
+            aria-haspopup="menu"
             onClick={show}
           >
             <Ellipsis aria-hidden="true" />
@@ -453,7 +457,11 @@ export function Upcoming({
             <Menu
               label="Create"
               trigger={(show, expanded) => (
-                <Button aria-expanded={expanded} onClick={show}>
+                <Button
+                  aria-expanded={expanded}
+                  aria-haspopup="menu"
+                  onClick={show}
+                >
                   <Plus aria-hidden="true" />
                   New
                 </Button>
@@ -622,10 +630,13 @@ export function Upcoming({
               ))}
             </div>
             {loading && !items.length && <Loading label="Loading upcoming" />}
-            {!loading && items.every((item) => item.bucket === "quiet") && (
+            {!loading && !needsAttention && filter === "all" && (
               <p className="upcoming-clear">
                 Nothing is coming up. You're caught up.
               </p>
+            )}
+            {!loading && !items.length && filter !== "all" && (
+              <p className="upcoming-clear">No {filterName} right now.</p>
             )}
             {SECTIONS.map(({ bucket, title, hint }) => {
               const rows = items.filter((item) => item.bucket === bucket);

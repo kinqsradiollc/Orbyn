@@ -1,6 +1,6 @@
 import type { ChatTraceEntry } from "@orbyn/core";
 import { ChevronDown, ChevronRight, LoaderCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { traceWords } from "../agents-shared/words";
 
 export function duration(ms: number) {
@@ -75,12 +75,16 @@ export function LiveWork({
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+  const latest = steps[steps.length - 1];
   return (
-    <div className="assistant-trace" role="status">
+    <div className="assistant-trace">
       <span className="assistant-trace-toggle">
         <LoaderCircle className="assistant-spin" aria-hidden="true" />
         {waiting ? "Waiting for you" : "Working"} ·{" "}
         {duration(Math.max(1000, now - started))}
+      </span>
+      <span className="sr-only" role="status" aria-live="polite">
+        {waiting ? "Waiting for you" : (latest ?? "Working")}
       </span>
       {steps.length > 0 && (
         <ol className="assistant-trace-steps" aria-live="off">
@@ -104,7 +108,7 @@ export function useReveal(text: string | null) {
   const [shown, setShown] = useState(0);
   const words = text?.match(/\S+\s*/g) ?? [];
   const total = words.length;
-  useEffect(() => {
+  useLayoutEffect(() => {
     setShown(0);
     if (!text || still()) {
       setShown(Number.MAX_SAFE_INTEGER);

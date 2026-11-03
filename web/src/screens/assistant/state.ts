@@ -3,11 +3,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { messageOf } from "../../lib/resource";
 import { useOwned } from "../agents-shared/hooks";
 
-/** A view-owned read. Failed permission checks remove the old authorized payload. */
+/**
+ * A view-owned read. Failed permission checks remove the old authorized payload.
+ * `retain` keeps the last payload while an explicit refresh is loading.
+ */
 export function useRead<T>(
   read: () => Promise<T>,
   deps: readonly unknown[] = [],
+  options: { retain?: boolean } = {},
 ) {
+  const retain = options.retain === true;
   const owned = useOwned();
   const loader = useRef(read);
   loader.current = read;
@@ -35,7 +40,7 @@ export function useRead<T>(
     }
   }, [owned]);
   useEffect(() => {
-    setData(undefined);
+    if (!retain) setData(undefined);
     void reload();
     return () => {
       sequence.current++;

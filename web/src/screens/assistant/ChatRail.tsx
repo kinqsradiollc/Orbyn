@@ -26,6 +26,7 @@ export function ChatRail({
   const read = useRead(
     () => client.aiChats({ search: "", kind: "all", limit: 50 }),
     [active],
+    { retain: true },
   );
   useEffect(
     () =>
