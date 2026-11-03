@@ -7,6 +7,16 @@ import {
   type AssistantChangeKind,
   type Goal,
 } from "@orbyn/core";
+import {
+  ArrowLeft,
+  Ellipsis,
+  MessageCircleQuestion,
+  Plus,
+  Repeat,
+  Settings2,
+  Target,
+  X,
+} from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../lib/session";
 import { messageOf } from "../../lib/resource";
@@ -15,8 +25,9 @@ import {
   Button,
   Dialog,
   ErrorNotice,
+  IconButton,
   Loading,
-  Pill,
+  Menu,
   useConfirm,
 } from "../../ui/kit";
 import { useOwned } from "../agents-shared/hooks";
@@ -31,8 +42,27 @@ import { useTasks } from "../shared-task";
 import { GoalForm } from "./GoalForm";
 import { GoalWork } from "./GoalWork";
 import { RoutineForm } from "./RoutineForm";
+import { upcomingItems, type Bucket, type UpcomingItem } from "./priority";
 import { timezone, useRead } from "./state";
 
+const SECTIONS: { bucket: Bucket; title: string; hint?: string }[] = [
+  {
+    bucket: "now",
+    title: "Need you now",
+    hint: "Overdue, failed or waiting on your answer",
+  },
+  { bucket: "today", title: "Today" },
+  { bucket: "week", title: "This week" },
+  { bucket: "later", title: "Later" },
+];
+const FILTERS = [
+  ["all", "All"],
+  ["goal", "Goals"],
+  ["routine", "Routines"],
+  ["chat", "Waiting chats"],
+] as const;
+
+/** What needs attention across goals, routines and waiting chats, most urgent first. */
 export function Upcoming({
   onClose,
   onOpenChat,
@@ -43,9 +73,13 @@ export function Upcoming({
   const navigate = useNavigate();
   const owned = useOwned(),
     confirm = useConfirm(),
-    lock = useRef(false);
+    lock = useRef(false),
+    panel = useRef<HTMLElement>(null);
   const goals = useRead(() => client.listGoals()),
     routines = useRead(() => client.listAgentRoutines()),
+    chats = useRead(() =>
+      client.aiChats({ search: "", kind: "all", limit: 100 }),
+    ),
     projects = useRead(() => client.listProjects()),
     docs = useRead(() => client.listDocs({ kind: "agent" })),
     prefs = useRead(() => client.getPlannerPrefs()),
@@ -55,6 +89,8 @@ export function Upcoming({
     [work, setWork] = useState<Goal | null>(null),
     [goalDetail, setGoalDetail] = useState<Goal | null>(null),
     [routineDetail, setRoutineDetail] = useState<AgentRoutine | null>(null),
+    [filter, setFilter] = useState<(typeof FILTERS)[number][0]>("all"),
+    [settings, setSettings] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const childDirty = useRef({ quiet: false, retry: false });
@@ -138,243 +174,458 @@ export function Upcoming({
       });
     }, routines.reload);
   const editable = !busy && !!projects.data && !!docs.data;
-  return (
-    <Dialog
-      title="Upcoming"
-      wide
-      onClose={() => void close()}
-      actions={
-        <Button
-          disabled={busy || Object.values(childDirty.current).some(Boolean)}
-          onClick={() => void close()}
-        >
-          Close
+  const reload = () => {
+    void goals.reload();
+    void routines.reload();
+    void chats.reload();
+  };
+  const all = upcomingItems(
+    {
+      goals: goals.data ?? [],
+      routines: routines.data ?? [],
+      chats: chats.data ?? [],
+    },
+    prefs.data?.timezone ?? timezone(),
+  );
+  const items = all.filter((item) => filter === "all" || item.kind === filter);
+  const count = (bucket: Bucket) =>
+    items.filter((item) => item.bucket === bucket).length;
+  const jump = (bucket: Bucket) =>
+    panel.current
+      ?.querySelector(`[data-bucket="${bucket}"]`)
+      ?.scrollIntoView({ block: "start", behavior: "smooth" });
+  const loading = goals.loading || routines.loading || chats.loading;
+  const quiet = items.filter((item) => item.bucket === "quiet");
+
+  const primary = (item: UpcomingItem) => {
+    if (item.kind === "chat")
+      return (
+        <Button onClick={() => owned() && onOpenChat(item.chat.id)}>
+          Answer
         </Button>
-      }
-    >
-      {error && (
-        <ErrorNotice
-          message={error}
-          onRetry={() => {
-            void goals.reload();
-            void routines.reload();
-            void scopes.reload();
+      );
+    if (item.kind === "goal")
+      return item.goal.status === "active" ? (
+        <Button disabled={busy} onClick={() => setWork(item.goal)}>
+          Plan next step
+        </Button>
+      ) : null;
+    if (item.failure)
+      return (
+        <Button
+          disabled={busy}
+          onClick={() => {
+            childDirty.current = { quiet: false, retry: false };
+            setRoutineDetail(item.routine);
           }}
-        />
-      )}
-      <section className="agents-band">
-        <header>
-          <h2>Goals</h2>
-          <Button
-            disabled={busy || goals.loading}
-            onClick={() => void goals.reload()}
+        >
+          Check history
+        </Button>
+      );
+    return (
+      <Button disabled={busy} onClick={() => toggle(item.routine)}>
+        {item.routine.paused ? "Resume" : "Pause"}
+      </Button>
+    );
+  };
+  const more = (item: UpcomingItem) => {
+    if (item.kind === "chat") return null;
+    const title =
+      item.kind === "goal" ? item.goal.title : item.routine.instruction;
+    return (
+      <Menu
+        label={`Options for ${title}`}
+        trigger={(show, expanded) => (
+          <IconButton
+            label={`More for ${title}`}
+            aria-expanded={expanded}
+            onClick={show}
           >
-            Refresh goals
-          </Button>
-          <Button
-            disabled={!editable || goals.loading}
-            onClick={() => owned() && setGoalForm("new")}
-          >
-            New goal
-          </Button>
-        </header>
-        {goals.loading && <Loading label="Loading goals" />}
-        {goals.error && (
-          <ErrorNotice
-            message={goals.error}
-            onRetry={() => void goals.reload()}
-          />
+            <Ellipsis aria-hidden="true" />
+          </IconButton>
         )}
-        {!goals.loading && goals.data?.length === 0 && <p>No goals yet.</p>}
-        <ul className="assistant-records">
-          {goals.data?.map((goal) => (
-            <li key={goal.id}>
-              <div className="agents-row">
-                <strong dir="auto">{goal.title}</strong>
-                <Pill>{goal.status}</Pill>
-              </div>
-              <p dir="auto">{goal.target}</p>
-              <p className="muted small">
-                {goal.project_name ?? "Personal"}
-                {goal.target_date ? ` · Target ${goal.target_date}` : ""}
-              </p>
-              {goal.plan_doc_id && (
-                <Button
-                  onClick={() =>
-                    owned() &&
-                    navigate(
-                      `/app/doc/${encodeURIComponent(goal.plan_doc_id!)}`,
-                    )
-                  }
-                >
-                  Open plan page
-                </Button>
-              )}
-              <div className="agents-buttons">
-                <Button disabled={!editable} onClick={() => setGoalForm(goal)}>
-                  Edit
-                </Button>
-                <Button disabled={busy} onClick={() => setGoalDetail(goal)}>
-                  Check-ins and tasks
-                </Button>
-                <Button disabled={busy} onClick={() => setWork(goal)}>
-                  Goal work
-                </Button>
-                <Button
-                  variant="danger"
-                  disabled={busy}
-                  onClick={() =>
-                    void mutate(
-                      () => client.deleteGoal(goal.id),
-                      goals.reload,
-                      {
-                        title: "Delete this goal?",
-                        body: "This removes the goal and its check-in history.",
-                      },
-                    )
-                  }
-                >
-                  Delete goal
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section className="agents-band">
-        <header>
-          <h2>Routines</h2>
-          <Button
-            disabled={busy || routines.loading}
-            onClick={() => void routines.reload()}
-          >
-            Refresh routines
-          </Button>
-          <Button
-            disabled={busy || !prefs.data}
-            onClick={() => owned() && setRoutineForm("new")}
-          >
-            New routine
-          </Button>
-        </header>
-        {prefs.error && (
-          <ErrorNotice
-            message={prefs.error}
-            onRetry={() => void prefs.reload()}
-          />
-        )}
-        {routines.loading && <Loading label="Loading routines" />}
-        {routines.error && (
-          <ErrorNotice
-            message={routines.error}
-            onRetry={() => void routines.reload()}
-          />
-        )}
-        {routines.data?.length === 0 && <p>No routines yet.</p>}
-        <ul className="assistant-records">
-          {routines.data?.map((routine) => (
-            <li key={routine.id}>
-              <strong className="agents-prewrap" dir="auto">
-                {routine.instruction}
-              </strong>
-              <p className="muted small">
-                {describeRrule(routine.rrule)} · {routine.timezone} ·{" "}
-                {routine.paused
-                  ? "Paused"
-                  : `Next ${new Date(routine.next_run_at).toLocaleString(undefined, { timeZone: routine.timezone })}`}
-              </p>
-              <div className="agents-buttons">
-                <Button disabled={busy} onClick={() => toggle(routine)}>
-                  {routine.paused ? "Resume" : "Pause"}
-                </Button>
-                <Button disabled={busy} onClick={() => setRoutineForm(routine)}>
-                  Edit schedule
-                </Button>
-                <Button
-                  disabled={busy}
+      >
+        {(closeMenu) =>
+          item.kind === "goal" ? (
+            <>
+              <button
+                role="menuitem"
+                disabled={!editable}
+                onClick={() => {
+                  closeMenu();
+                  setGoalForm(item.goal);
+                }}
+              >
+                Edit goal
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  setGoalDetail(item.goal);
+                }}
+              >
+                Check-ins and tasks
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  setWork(item.goal);
+                }}
+              >
+                Goal work
+              </button>
+              {item.goal.plan_doc_id && (
+                <button
+                  role="menuitem"
                   onClick={() => {
-                    childDirty.current = { quiet: false, retry: false };
-                    setRoutineDetail(routine);
+                    closeMenu();
+                    if (owned())
+                      navigate(
+                        `/app/doc/${encodeURIComponent(item.goal.plan_doc_id!)}`,
+                      );
                   }}
                 >
-                  History and policies
-                </Button>
-                <Button
-                  variant="danger"
-                  disabled={busy}
-                  onClick={() =>
-                    void mutate(
-                      () => client.deleteAgentRoutine(routine.id),
-                      routines.reload,
-                      {
-                        title: "Delete this routine?",
-                        body: "This removes its schedule, history and upcoming work. Already applied changes remain.",
-                      },
-                    )
-                  }
+                  Open plan page
+                </button>
+              )}
+              <button
+                role="menuitem"
+                className="is-danger"
+                onClick={() => {
+                  closeMenu();
+                  void mutate(
+                    () => client.deleteGoal(item.goal.id),
+                    goals.reload,
+                    {
+                      title: "Delete this goal?",
+                      body: "This removes the goal and its check-in history.",
+                    },
+                  );
+                }}
+              >
+                Delete goal
+              </button>
+            </>
+          ) : (
+            <>
+              {item.failure && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    closeMenu();
+                    toggle(item.routine);
+                  }}
                 >
-                  Delete routine
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <More summary="Saved automatic-change permissions">
-        {scopes.loading && <Loading label="Loading permissions" />}
-        {scopes.error && (
-          <ErrorNotice
-            message={scopes.error}
-            onRetry={() => void scopes.reload()}
-          />
-        )}
-        <p className="muted">
-          Revoking permission affects future work. Pause admission and stop
-          running work separately.
-        </p>
-        {scopes.data &&
-          ASSISTANT_CHANGE_KINDS.map((kind) => (
-            <div className="agents-row" key={kind}>
-              <span>
-                {CHANGE_KINDS[kind]} · {ruleLabel(scopes.data?.[kind])}
-              </span>
-              {scopes.data?.[kind] && (
-                <Button
-                  disabled={busy}
-                  onClick={() =>
-                    void mutate(
-                      () => {
-                        const next = { ...scopes.data };
-                        delete next[kind];
-                        return client.setAssistantApprovalScopes(next);
-                      },
-                      scopes.reload,
-                      {
-                        title: `Revoke ${CHANGE_KINDS[kind].toLowerCase()} permission?`,
-                        body: "Future changes in this category will ask again.",
-                      },
-                    )
-                  }
-                >
-                  Revoke
+                  {item.routine.paused ? "Resume" : "Pause"}
+                </button>
+              )}
+              <button
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  setRoutineForm(item.routine);
+                }}
+              >
+                Edit schedule
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  childDirty.current = { quiet: false, retry: false };
+                  setRoutineDetail(item.routine);
+                }}
+              >
+                History and policies
+              </button>
+              <button
+                role="menuitem"
+                className="is-danger"
+                onClick={() => {
+                  closeMenu();
+                  void mutate(
+                    () => client.deleteAgentRoutine(item.routine.id),
+                    routines.reload,
+                    {
+                      title: "Delete this routine?",
+                      body: "This removes its schedule, history and upcoming work. Already applied changes remain.",
+                    },
+                  );
+                }}
+              >
+                Delete routine
+              </button>
+            </>
+          )
+        }
+      </Menu>
+    );
+  };
+  const row = (item: UpcomingItem) => {
+    const Icon =
+      item.kind === "goal"
+        ? Target
+        : item.kind === "routine"
+          ? Repeat
+          : MessageCircleQuestion;
+    const title =
+      item.kind === "goal"
+        ? item.goal.title
+        : item.kind === "routine"
+          ? item.routine.instruction
+          : item.chat.title || "Untitled chat";
+    const detail =
+      item.kind === "goal"
+        ? [item.goal.project_name ?? "Personal", item.goal.target]
+        : item.kind === "routine"
+          ? [item.failure ?? describeRrule(item.routine.rrule)]
+          : ["The assistant is waiting for your answer"];
+    return (
+      <li key={`${item.kind}:${item.id}`} className="upcoming-row">
+        <span className="upcoming-kind" aria-hidden="true">
+          <Icon />
+        </span>
+        <div className="upcoming-text">
+          <span className="upcoming-title" dir="auto">
+            <span className="sr-only">
+              {item.kind === "goal"
+                ? "Goal: "
+                : item.kind === "routine"
+                  ? "Routine: "
+                  : "Chat: "}
+            </span>
+            {title}
+          </span>
+          <span className="upcoming-detail" dir="auto">
+            {detail.filter(Boolean).join(" · ")}
+          </span>
+        </div>
+        <span className={`upcoming-when is-${item.bucket}`}>{item.when}</span>
+        <div className="upcoming-actions">
+          {primary(item)}
+          {more(item)}
+        </div>
+      </li>
+    );
+  };
+
+  return (
+    <aside
+      ref={panel}
+      className="upcoming"
+      aria-label="Upcoming"
+      onKeyDown={(e) => {
+        if (
+          e.key === "Escape" &&
+          !goalForm &&
+          !routineForm &&
+          !work &&
+          !goalDetail &&
+          !routineDetail
+        ) {
+          e.stopPropagation();
+          void close();
+        }
+      }}
+    >
+      <header className="upcoming-head">
+        {settings ? (
+          <IconButton
+            label="Back to Upcoming"
+            onClick={() => setSettings(false)}
+          >
+            <ArrowLeft aria-hidden="true" />
+          </IconButton>
+        ) : null}
+        <h2>{settings ? "Permissions and admission" : "Upcoming"}</h2>
+        {!settings && (
+          <>
+            <Menu
+              label="Create"
+              trigger={(show, expanded) => (
+                <Button aria-expanded={expanded} onClick={show}>
+                  <Plus aria-hidden="true" />
+                  New
                 </Button>
               )}
+            >
+              {(closeMenu) => (
+                <>
+                  <button
+                    role="menuitem"
+                    disabled={!editable || goals.loading}
+                    onClick={() => {
+                      closeMenu();
+                      if (owned()) setGoalForm("new");
+                    }}
+                  >
+                    New goal
+                  </button>
+                  <button
+                    role="menuitem"
+                    disabled={busy || !prefs.data}
+                    onClick={() => {
+                      closeMenu();
+                      if (owned()) setRoutineForm("new");
+                    }}
+                  >
+                    New routine
+                  </button>
+                </>
+              )}
+            </Menu>
+            <IconButton
+              label="Permissions and admission"
+              onClick={() => setSettings(true)}
+            >
+              <Settings2 aria-hidden="true" />
+            </IconButton>
+          </>
+        )}
+        <IconButton
+          label="Close Upcoming"
+          disabled={busy}
+          onClick={() => void close()}
+        >
+          <X aria-hidden="true" />
+        </IconButton>
+      </header>
+      <div className="upcoming-body">
+        {error && <ErrorNotice message={error} onRetry={reload} />}
+        {[goals, routines, chats, prefs, projects, docs].map(
+          (read, index) =>
+            read.error && (
+              <ErrorNotice
+                key={index}
+                message={read.error}
+                onRetry={() => void read.reload()}
+              />
+            ),
+        )}
+        {settings ? (
+          <>
+            <section className="upcoming-settings">
+              <h3>Saved automatic-change permissions</h3>
+              {scopes.loading && <Loading label="Loading permissions" />}
+              {scopes.error && (
+                <ErrorNotice
+                  message={scopes.error}
+                  onRetry={() => void scopes.reload()}
+                />
+              )}
+              <p className="muted small">
+                Revoking permission affects future work. Pause admission and
+                stop running work separately.
+              </p>
+              {scopes.data &&
+                ASSISTANT_CHANGE_KINDS.map((kind) => (
+                  <div className="agents-row" key={kind}>
+                    <span>
+                      {CHANGE_KINDS[kind]} · {ruleLabel(scopes.data?.[kind])}
+                    </span>
+                    {scopes.data?.[kind] && (
+                      <Button
+                        disabled={busy}
+                        onClick={() =>
+                          void mutate(
+                            () => {
+                              const next = { ...scopes.data };
+                              delete next[kind];
+                              return client.setAssistantApprovalScopes(next);
+                            },
+                            scopes.reload,
+                            {
+                              title: `Revoke ${CHANGE_KINDS[kind].toLowerCase()} permission?`,
+                              body: "Future changes in this category will ask again.",
+                            },
+                          )
+                        }
+                      >
+                        Revoke
+                      </Button>
+                    )}
+                  </div>
+                ))}
+            </section>
+            <section className="upcoming-settings">
+              <h3>Admission controls</h3>
+              <PauseLane lane="background" />
+              <PauseLane lane="overnight" />
+            </section>
+          </>
+        ) : (
+          <>
+            <div className="upcoming-counts">
+              <button
+                type="button"
+                className="is-now"
+                onClick={() => jump("now")}
+              >
+                <strong>{count("now")}</strong>
+                Need you now
+              </button>
+              <button
+                type="button"
+                className="is-today"
+                onClick={() => jump("today")}
+              >
+                <strong>{count("today")}</strong>
+                Today
+              </button>
+              <button type="button" onClick={() => jump("week")}>
+                <strong>{count("week")}</strong>
+                This week
+              </button>
             </div>
-          ))}
-      </More>
-      <More summary="Admission controls">
-        <PauseLane lane="background" />
-        <PauseLane lane="overnight" />
-      </More>
-      {projects.error && (
-        <ErrorNotice
-          message={projects.error}
-          onRetry={() => void projects.reload()}
-        />
-      )}
-      {docs.error && (
-        <ErrorNotice message={docs.error} onRetry={() => void docs.reload()} />
-      )}
+            <div className="upcoming-filters" role="group" aria-label="Show">
+              {FILTERS.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={filter === value}
+                  onClick={() => setFilter(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {loading && !items.length && <Loading label="Loading upcoming" />}
+            {!loading && items.every((item) => item.bucket === "quiet") && (
+              <p className="upcoming-clear">
+                Nothing is coming up. You're caught up.
+              </p>
+            )}
+            {SECTIONS.map(({ bucket, title, hint }) => {
+              const rows = items.filter((item) => item.bucket === bucket);
+              return (
+                rows.length > 0 && (
+                  <section
+                    key={bucket}
+                    className="upcoming-section"
+                    data-bucket={bucket}
+                  >
+                    <h3>
+                      {title}
+                      <span>
+                        {rows.length}
+                        {hint ? ` · ${hint}` : ""}
+                      </span>
+                    </h3>
+                    <ul>{rows.map(row)}</ul>
+                  </section>
+                )
+              );
+            })}
+            {quiet.length > 0 && (
+              <More summary={`Paused and done · ${quiet.length}`}>
+                <ul className="upcoming-quiet">{quiet.map(row)}</ul>
+              </More>
+            )}
+          </>
+        )}
+      </div>
       {goalForm && (
         <GoalForm
           key={goalForm === "new" ? "new" : goalForm.id}
@@ -416,7 +667,7 @@ export function Upcoming({
           onOpenChat={onOpenChat}
         />
       )}
-    </Dialog>
+    </aside>
   );
 }
 function GoalDetail({ goal, onClose }: { goal: Goal; onClose: () => void }) {
