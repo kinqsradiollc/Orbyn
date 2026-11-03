@@ -823,7 +823,10 @@ button.assistant-trace-toggle:hover {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 8px 8px 14px;
+  padding: 8px 8px 8px 12px;
+}
+.upcoming-permissions .upcoming-kind {
+  align-self: center;
 }
 .upcoming-permissions li + li {
   border-top: 1px solid var(--line-soft);

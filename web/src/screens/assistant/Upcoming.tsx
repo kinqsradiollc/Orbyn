@@ -9,12 +9,20 @@ import {
 } from "@orbyn/core";
 import {
   ArrowLeft,
+  Brain,
+  CalendarClock,
   Ellipsis,
+  FileText,
+  FolderOpen,
+  GraduationCap,
+  ListChecks,
   MessageCircleQuestion,
   Plus,
   Repeat,
   Settings2,
+  Shapes,
   Target,
+  type LucideIcon,
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../lib/session";
@@ -55,6 +63,15 @@ const SECTIONS: { bucket: Bucket; title: string; hint?: string }[] = [
   { bucket: "week", title: "This week" },
   { bucket: "later", title: "Later" },
 ];
+const KIND_ICONS: Record<AssistantChangeKind, LucideIcon> = {
+  tasks: ListChecks,
+  sessions: CalendarClock,
+  pages: FileText,
+  projects: FolderOpen,
+  memory: Brain,
+  study: GraduationCap,
+  other: Shapes,
+};
 const FILTERS = [
   ["all", "All"],
   ["goal", "Goals"],
@@ -512,8 +529,12 @@ export function Upcoming({
                         ? "always"
                         : "scoped";
                     const name = CHANGE_KINDS[kind].toLowerCase();
+                    const Icon = KIND_ICONS[kind];
                     return (
                       <li key={kind}>
+                        <span className="upcoming-kind" aria-hidden="true">
+                          <Icon />
+                        </span>
                         <label htmlFor={`permission-${kind}`}>
                           {CHANGE_KINDS[kind]}
                         </label>
