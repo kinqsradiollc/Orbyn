@@ -254,11 +254,19 @@ export function Dialog({
   );
 }
 
-/** A menu anchored to its trigger, kept inside the window. */
+/**
+ * A menu anchored to its trigger, kept inside the window. `side` is where it
+ * prefers to open, `align` which trigger edge it lines up with, and
+ * `fitTrigger` makes it as wide as the trigger (a sidebar menu stays in its
+ * column).
+ */
 export function Menu({
   label,
   trigger,
   children,
+  side = "below",
+  align = "start",
+  fitTrigger = false,
 }: {
   label: string;
   trigger: (
@@ -266,6 +274,9 @@ export function Menu({
     expanded: boolean,
   ) => ReactNode;
   children: ReactNode | ((close: () => void) => ReactNode);
+  side?: "below" | "above";
+  align?: "start" | "end";
+  fitTrigger?: boolean;
 }) {
   const scope = useRouteScope();
   const activity = useRouteActivity();
@@ -309,21 +320,28 @@ export function Menu({
     if (!menu || !opener || !allowed()) return;
     const place = () => {
       const at = opener.getBoundingClientRect();
+      if (fitTrigger) {
+        menu.style.width = `${at.width}px`;
+        menu.style.minWidth = "0";
+      }
       const size = menu.getBoundingClientRect();
-      const left = Math.max(8, Math.min(at.left, innerWidth - size.width - 8));
-      const below = at.bottom + 4 + size.height <= innerHeight - 8;
+      const wanted = align === "end" ? at.right - size.width : at.left;
+      const left = Math.max(8, Math.min(wanted, innerWidth - size.width - 8));
+      const fitsBelow = at.bottom + 4 + size.height <= innerHeight - 8;
+      const fitsAbove = at.top - size.height - 4 >= 8;
+      const below = side === "above" ? !fitsAbove && fitsBelow : fitsBelow;
       menu.style.left = `${left}px`;
       menu.style.top = `${below ? at.bottom + 4 : Math.max(8, at.top - size.height - 4)}px`;
     };
     place();
-    menu.querySelector("button")?.focus();
+    menu.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
     addEventListener("resize", place);
     addEventListener("scroll", place, true);
     return () => {
       removeEventListener("resize", place);
       removeEventListener("scroll", place, true);
     };
-  }, [opener]);
+  }, [opener, side, align, fitTrigger]);
 
   useEffect(() => {
     if (!opener || !allowed()) return;
@@ -343,7 +361,12 @@ export function Menu({
         return;
       if (event.key === "Escape") close();
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-      const items = [...(box.current?.querySelectorAll("button") ?? [])];
+      const items = [
+        ...(box.current?.querySelectorAll<HTMLButtonElement>(
+          "button:not(:disabled)",
+        ) ?? []),
+      ];
+      if (!items.length) return;
       const at = items.indexOf(document.activeElement as HTMLButtonElement);
       const step = event.key === "ArrowDown" ? 1 : -1;
       items[(at + step + items.length) % items.length]?.focus();

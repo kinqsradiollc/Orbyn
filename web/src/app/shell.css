@@ -35,6 +35,33 @@
   font: 800 19px var(--head);
   letter-spacing: -0.03em;
 }
+/* Logo with the sidebar collapse toggle beside it; stacked when collapsed. */
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 4px;
+}
+.sidebar-head .brand {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 4px;
+}
+.sidebar-collapse {
+  flex: none;
+  color: var(--text-muted);
+}
+.shell-rail .sidebar-head {
+  flex-direction: column;
+}
+.shell-rail .sidebar-head .brand {
+  flex: none;
+}
+@media (max-width: 800px) {
+  .sidebar-collapse {
+    display: none;
+  }
+}
 .brand svg {
   width: 22px;
   height: 22px;
@@ -95,6 +122,26 @@
 }
 .account:hover {
   background: var(--hover);
+}
+/* The top-bar avatar replaces the sidebar account row once the sidebar becomes a drawer. */
+.account.account-topbar {
+  display: none;
+  width: 44px;
+  min-width: 44px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+}
+.account-topbar .row-title {
+  display: none;
+}
+@media (max-width: 800px) {
+  .account.account-sidebar {
+    display: none;
+  }
+  .account.account-topbar {
+    display: flex;
+  }
 }
 .avatar {
   display: grid;
@@ -392,6 +439,17 @@ main {
   flex: 1;
   min-width: 140px;
   overflow-wrap: anywhere;
+}
+.shell-preference-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.shell-preference-name svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--text-muted);
 }
 .shell-preference-row small,
 .shell-activity-row small {

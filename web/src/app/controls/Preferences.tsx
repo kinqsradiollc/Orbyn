@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import {
   assignShortcut,
   shortcutConflicts,
@@ -242,7 +243,7 @@ export function ArrangeNavigation({
   entries,
   onClose,
 }: {
-  entries: { label: string; key: string }[];
+  entries: { label: string; key: string; icon?: LucideIcon }[];
   onClose(): void;
 }) {
   const read = usePrefs();
@@ -278,7 +279,10 @@ export function ArrangeNavigation({
             <div className="shell-preference-list">
               {all.map((entry, index) => (
                 <div className="shell-preference-row" key={entry.key}>
-                  <span>{entry.label}</span>
+                  <span className="shell-preference-name">
+                    {entry.icon && <entry.icon aria-hidden="true" />}
+                    {entry.label}
+                  </span>
                   <label>
                     <input
                       type="checkbox"
