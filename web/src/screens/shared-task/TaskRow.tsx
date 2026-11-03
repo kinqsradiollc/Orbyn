@@ -81,7 +81,7 @@ export function ItemMenu({ item, label }: { item: Item; label?: string }) {
             aria-expanded={expanded}
             onClick={(event) => {
               event.stopPropagation();
-              open();
+              open(event);
             }}
           >
             <MoreHorizontal />
