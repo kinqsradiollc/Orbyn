@@ -13,15 +13,20 @@ import {
   type StarredItem,
 } from "@orbyn/core";
 import {
+  ArrowUpDown,
   Bell,
   ChevronDown,
+  Keyboard,
   MoreHorizontal,
   LogOut,
   Menu as MenuIcon,
   Moon,
   Orbit,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Settings,
+  Sparkles,
   Star,
   Sun,
   Table2,
@@ -566,6 +571,78 @@ export function Shell({
         ))}
       </div>
     );
+  // One account menu: in the sidebar on wide screens, the top bar when narrow.
+  const accountMenu = (where: "sidebar" | "topbar") => (
+    <Menu
+      label="Account"
+      side={where === "sidebar" ? "above" : "below"}
+      align={where === "sidebar" ? "start" : "end"}
+      fitTrigger={where === "sidebar" && !size.rail}
+      trigger={(open, expanded) => (
+        <button
+          className={`account account-${where}`}
+          aria-label={where === "topbar" ? "Account" : undefined}
+          aria-expanded={expanded}
+          onClick={open}
+        >
+          <span className="avatar" aria-hidden="true">
+            {(user?.name || user?.email || "?").slice(0, 1).toUpperCase()}
+          </span>
+          <span className="row-title shell-nav-text">
+            {user?.name || user?.email}
+          </span>
+        </button>
+      )}
+    >
+      {(done) => (
+        <>
+          <button
+            onClick={() => {
+              done();
+              navigate("/app/settings");
+              close();
+            }}
+          >
+            <Settings aria-hidden="true" /> Settings
+          </button>
+          <button
+            onClick={() => {
+              done();
+              setShortcuts(true);
+            }}
+          >
+            <Keyboard aria-hidden="true" /> Keyboard shortcuts
+          </button>
+          <button
+            onClick={() => {
+              done();
+              setArranging(true);
+            }}
+          >
+            <ArrowUpDown aria-hidden="true" /> Arrange navigation
+          </button>
+          <button
+            onClick={() => {
+              done();
+              requestWhatsNew();
+            }}
+          >
+            <Sparkles aria-hidden="true" /> What's new
+          </button>
+          <div role="separator" />
+          <button
+            disabled={leaving}
+            onClick={() => {
+              done();
+              void logout();
+            }}
+          >
+            <LogOut aria-hidden="true" /> Sign out
+          </button>
+        </>
+      )}
+    </Menu>
+  );
   return (
     <div
       className={`app${size.rail ? " shell-rail" : ""}`}
@@ -585,19 +662,32 @@ export function Shell({
         />
       )}
       <aside className={`sidebar${navOpen ? " is-open" : ""}`} id="navigation">
-        <a
-          className="brand"
-          href="/app"
-          aria-label="Orbyn, Today"
-          onClick={(event) => {
-            event.preventDefault();
-            navigate("/app");
-            close();
-          }}
-        >
-          <Orbit aria-hidden="true" />
-          <span className="shell-nav-text">orbyn</span>
-        </a>
+        <div className="sidebar-head">
+          <a
+            className="brand"
+            href="/app"
+            aria-label="Orbyn, Today"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate("/app");
+              close();
+            }}
+          >
+            <Orbit aria-hidden="true" />
+            <span className="shell-nav-text">orbyn</span>
+          </a>
+          <IconButton
+            className="sidebar-collapse"
+            label={size.rail ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={() => size.choose(size.rail ? 224 : 72)}
+          >
+            {size.rail ? (
+              <PanelLeftOpen aria-hidden="true" />
+            ) : (
+              <PanelLeftClose aria-hidden="true" />
+            )}
+          </IconButton>
+        </div>
         <nav aria-label="Main">
           {composition.kind === "default" ? (
             <>
@@ -637,78 +727,7 @@ export function Shell({
             )
           )}
         </nav>
-        <div className="sidebar-foot">
-          <Button
-            aria-label={size.rail ? "Expand navigation" : "Use icon navigation"}
-            onClick={() => size.choose(size.rail ? 224 : 72)}
-          >
-            {size.rail ? "›" : "‹"}
-            <span className="shell-nav-text">Icon rail</span>
-          </Button>
-          <Button
-            onClick={() => setArranging(true)}
-            title="Arrange navigation"
-            aria-label="Arrange navigation"
-          >
-            ⋮<span className="shell-nav-text">Arrange</span>
-          </Button>
-          <Menu
-            label="Account"
-            trigger={(open, expanded) => (
-              <button
-                className="account"
-                aria-expanded={expanded}
-                onClick={open}
-              >
-                <span className="avatar" aria-hidden="true">
-                  {(user?.name || user?.email || "?").slice(0, 1).toUpperCase()}
-                </span>
-                <span className="row-title shell-nav-text">
-                  {user?.name || user?.email}
-                </span>
-              </button>
-            )}
-          >
-            {(done) => (
-              <>
-                <button
-                  onClick={() => {
-                    done();
-                    navigate("/app/settings");
-                    close();
-                  }}
-                >
-                  <Settings aria-hidden="true" /> Settings
-                </button>
-                <button
-                  onClick={() => {
-                    done();
-                    setShortcuts(true);
-                  }}
-                >
-                  Keyboard shortcuts
-                </button>
-                <button
-                  onClick={() => {
-                    done();
-                    requestWhatsNew();
-                  }}
-                >
-                  What's new
-                </button>
-                <button
-                  disabled={leaving}
-                  onClick={() => {
-                    done();
-                    void logout();
-                  }}
-                >
-                  <LogOut aria-hidden="true" /> Sign out
-                </button>
-              </>
-            )}
-          </Menu>
-        </div>
+        <div className="sidebar-foot">{accountMenu("sidebar")}</div>
       </aside>
       <SidebarSize
         width={size.width}
@@ -750,6 +769,7 @@ export function Shell({
             </IconButton>
             {unread > 0 && <i aria-hidden="true" />}
           </span>
+          {accountMenu("topbar")}
         </header>
         <Banners isAdmin={isAdmin} />
         <UpdateBanner
@@ -819,8 +839,8 @@ export function Shell({
         <ArrangeNavigation
           entries={[
             ...entries,
-            { key: "Starred", label: "Starred" },
-            { key: "Pinned views", label: "Pinned views" },
+            { key: "Starred", label: "Starred", icon: Star },
+            { key: "Pinned views", label: "Pinned views", icon: Table2 },
           ]}
           onClose={() => setArranging(false)}
         />

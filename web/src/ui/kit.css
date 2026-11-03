@@ -219,6 +219,28 @@ textarea.input {
 .menu button.is-danger {
   color: var(--danger);
 }
+.menu button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  background: none;
+}
+.menu button[aria-checked="true"] {
+  color: var(--accent);
+}
+.menu-icon-space {
+  width: 16px;
+  flex: none;
+}
+.menu-label {
+  padding: 8px 10px 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.menu [role="separator"] {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line-soft);
+}
 .menu svg {
   width: 16px;
   height: 16px;
