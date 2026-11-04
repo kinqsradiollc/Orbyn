@@ -1,4 +1,4 @@
-import type { AiChatSummary } from "@orbyn/core";
+import type { AiChatSummary, ChatScope } from "@orbyn/core";
 import { Pin } from "lucide-react";
 import { useRef, useState } from "react";
 import { useResource } from "../../lib/resource";
@@ -11,7 +11,7 @@ export function Chats({
   onClose,
 }: {
   projectId: string;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, scope: ChatScope | null) => void;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
@@ -68,7 +68,7 @@ export function Chats({
             <button
               className="row-main"
               disabled={!!pending}
-              onClick={() => onOpen(chat.id)}
+              onClick={() => onOpen(chat.id, chat.scope)}
               style={{ textAlign: "left" }}
             >
               <span className="row-title" dir="auto">
@@ -82,6 +82,9 @@ export function Chats({
                     : chat.active === "working"
                       ? "Working"
                       : new Date(chat.last_used_at).toLocaleDateString()}
+                {(chat.scope?.kind !== "project" ||
+                  chat.scope.id !== projectId) &&
+                  " · Opens in Assistant"}
               </span>
             </button>
             <IconButton

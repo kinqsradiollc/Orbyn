@@ -28,3 +28,6 @@ backups/
 
 # Downloaded source and research references remain local-only.
 /orbyn-references/
+
+# Local collaboration handoffs.
+.collab/tasks/

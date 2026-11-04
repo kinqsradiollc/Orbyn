@@ -12,7 +12,7 @@ import {
   Square,
   User,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { client } from "../../lib/session";
 import { useNavigate, useSearch, useTitle } from "../../lib/router";
 import {
@@ -77,13 +77,37 @@ export default function AssistantScreen() {
   useTitle("Assistant");
   return <AssistantWorkspace key={owner} />;
 }
-function AssistantWorkspace() {
+type EmbeddedAssistant = {
+  projectId: string;
+  query: string;
+  collapsed: boolean;
+  disabled: boolean;
+  onChat: (id: string) => void;
+  onBusy: (busy: boolean) => void;
+};
+
+export function AssistantWorkspace({
+  embedded,
+}: { embedded?: EmbeddedAssistant } = {}) {
+  const instanceId = useId();
+  const messageId = embedded
+    ? `project-message-${instanceId}`
+    : "assistant-message";
+  const limitId = embedded ? `project-limit-${instanceId}` : "assistant-limit";
   const tasks = useTasks();
   const navigate = useNavigate();
   const confirm = useConfirm();
   const owned = useOwned(),
-    query = useSearch(),
-    assistant = useAssistant(query),
+    routeQuery = useSearch(),
+    query = embedded?.query ?? routeQuery,
+    assistant = useAssistant(
+      query,
+      embedded && {
+        onChat: embedded.onChat,
+        retainPath: `/app/project/${embedded.projectId}`,
+        disabled: embedded.disabled,
+      },
+    ),
     projects = useRead(() => client.listProjects()),
     prefs = useRead(() => client.getPlannerPrefs()),
     capabilities = useRead(() => client.aiCapabilities()),
@@ -103,6 +127,9 @@ function AssistantWorkspace() {
     [upcoming, setUpcoming] = useState(
       () => new URLSearchParams(query).get("panel") === "upcoming",
     );
+  useEffect(() => {
+    embedded?.onBusy(assistant.sending);
+  }, [embedded?.onBusy, assistant.sending]);
   useEffect(() => {
     setUpcoming(new URLSearchParams(query).get("panel") === "upcoming");
   }, [query]);
@@ -126,6 +153,10 @@ function AssistantWorkspace() {
     }
     setPanel(null);
     setUpcoming(false);
+    if (embedded) {
+      embedded.onChat(id);
+      return;
+    }
     if (narrow()) setRail(false);
     navigate(`/app/assistant?chat=${encodeURIComponent(id)}`);
   };
@@ -175,12 +206,15 @@ function AssistantWorkspace() {
     }
   };
   const overLimit = assistant.message.trim().length > 4000;
+  const scopeDisabled = embedded
+    ? embedded.disabled
+    : !!assistant.scope?.disabled;
   const disabled =
     overLimit ||
     assistant.loading ||
     !assistant.ready ||
     assistant.sending ||
-    !!assistant.scope?.disabled ||
+    scopeDisabled ||
     !!assistant.replyError ||
     (!!assistant.reply && !assistant.replyEntry);
   const zone = prefs.data?.timezone ?? timezone();
@@ -247,9 +281,13 @@ function AssistantWorkspace() {
       </p>
     </section>
   );
+  const Container = embedded ? "div" : "main";
   return (
-    <main className="assistant-workspace" data-rail={rail ? "open" : "closed"}>
-      {rail && (
+    <Container
+      className="assistant-workspace"
+      data-rail={!embedded && rail ? "open" : "closed"}
+    >
+      {!embedded && rail && (
         <ChatRail
           personal={personal}
           active={assistant.chat?.id ?? null}
@@ -260,7 +298,7 @@ function AssistantWorkspace() {
         />
       )}
       <div className="assistant-main">
-        <header className="assistant-header">
+        <header className="assistant-header" hidden={!!embedded}>
           <IconButton
             label={rail ? "Hide saved chats" : "Show saved chats"}
             aria-expanded={rail}
@@ -418,13 +456,13 @@ function AssistantWorkspace() {
               onRetry={() => void refreshControls()}
             />
           )}
-          {deliveryError && (
+          {!embedded && deliveryError && (
             <ErrorNotice
               message={deliveryError}
               onRetry={() => void refreshDelivery()}
             />
           )}
-          {deliveryAvailable === false && (
+          {!embedded && deliveryAvailable === false && (
             <p role="status" className="small muted">
               Conversation notifications are unavailable on this server.
             </p>
@@ -463,7 +501,7 @@ function AssistantWorkspace() {
               </Button>
             </p>
           )}
-          {assistant.scope?.disabled && (
+          {scopeDisabled && (
             <p role="status">
               Assistant access is off for this project. Choose another scope or
               change its project settings.
@@ -474,8 +512,20 @@ function AssistantWorkspace() {
           assistant={assistant}
           timezone={zone}
           onOpenChat={openChat}
-          covered={!!panel || upcoming}
-          emptyState={scopePicker}
+          covered={!!panel || upcoming || !!embedded?.collapsed}
+          emptyState={
+            embedded ? (
+              <section className="assistant-empty">
+                <h2>Ask about this project</h2>
+                <p className="muted">
+                  Tasks, pages and linked work in{" "}
+                  {assistant.scope?.name ?? "this project"}.
+                </p>
+              </section>
+            ) : (
+              scopePicker
+            )
+          }
         />
         <div className="assistant-dock">
           {assistant.progress?.state === "waiting" && (
@@ -550,28 +600,24 @@ function AssistantWorkspace() {
                 </Button>
               </section>
             )}
-            <label className="sr-only" htmlFor="assistant-message">
+            <label className="sr-only" htmlFor={messageId}>
               {assistant.scope
                 ? `Message about ${assistant.scope.name}`
                 : "Message your assistant"}
             </label>
             <TextArea
-              id="assistant-message"
+              id={messageId}
               rows={1}
               maxLength={4000}
               value={assistant.message}
-              disabled={
-                assistant.loading ||
-                !assistant.ready ||
-                !!assistant.scope?.disabled
-              }
+              disabled={assistant.loading || !assistant.ready || scopeDisabled}
               placeholder={
                 assistant.scope
                   ? `Message about ${assistant.scope.name}`
                   : "Message your assistant"
               }
               aria-invalid={overLimit || undefined}
-              aria-describedby={overLimit ? "assistant-limit" : undefined}
+              aria-describedby={overLimit ? limitId : undefined}
               onChange={(e) => assistant.setMessage(e.target.value)}
               onKeyDown={(e) => {
                 if (
@@ -601,7 +647,7 @@ function AssistantWorkspace() {
               )}
               {assistant.message.length > 3500 && (
                 <span
-                  id="assistant-limit"
+                  id={limitId}
                   className={`small ${overLimit ? "assistant-over" : "muted"}`}
                 >
                   {overLimit
@@ -667,6 +713,6 @@ function AssistantWorkspace() {
         />
       )}
       {upcoming && <Upcoming onClose={closeUpcoming} onOpenChat={openChat} />}
-    </main>
+    </Container>
   );
 }
