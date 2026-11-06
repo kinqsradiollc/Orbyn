@@ -908,6 +908,23 @@ export const chatScope = z.discriminatedUnion("kind", [
 ]);
 export type ChatScope = z.output<typeof chatScope>;
 
+/**
+ * The workspace pane and route the person was looking at when they sent a
+ * turn. Only an app pathname and its query are accepted; the server derives
+ * any selected task, page or project from the path and checks it again.
+ */
+export const chatView = z
+  .object({
+    pane: z.enum(["primary", "secondary", "dock"]),
+    path: z
+      .string()
+      .max(200)
+      .regex(/^\/app(?:\/[A-Za-z0-9_-]{1,64}){0,3}$/),
+    query: z.string().max(300).optional(),
+  })
+  .strict();
+export type ChatView = z.output<typeof chatView>;
+
 export const chatRequest = z.object({
   /** Durable conversation id; absent for older clients, created by the server. */
   chat_id: z.uuid().optional(),
@@ -922,6 +939,8 @@ export const chatRequest = z.object({
   /** Most recent turns first-to-last; the server keeps only what it needs. */
   history: z.array(chatTurn).max(12).default([]),
   scope: chatScope.nullable().default(null),
+  /** What the person is looking at in the workspace; an untrusted hint the server re-checks. */
+  view: chatView.optional(),
 });
 
 export const preferences = z.object({ email_reminders: z.boolean() });

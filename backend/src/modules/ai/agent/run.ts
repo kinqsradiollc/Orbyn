@@ -53,6 +53,7 @@ import {
   fail,
   HttpError,
   type ChatScope,
+  type ChatView,
   type ChatTurn,
   type SystemRole,
 } from "@orbyn/core";
@@ -93,6 +94,11 @@ import {
 import { deferUnassignedChatgptJob } from "../../auth/chatgpt-inference.js";
 import { mayChange } from "../guards.js";
 import { overview, type AgentContext } from "./tools.js";
+import {
+  resolveChatView,
+  scopeOverview,
+  type SelectedScope,
+} from "./chat-context.js";
 import type { AgentTrace, AgentTraceEvent } from "./loop.js";
 import {
   runLead,
@@ -271,6 +277,8 @@ export type PersistedChatRequest = {
   chat_id: string;
   turn_id: string;
   scope: ChatScope | null;
+  /** The workspace view at send time; re-checked on every attempt. */
+  view?: ChatView;
   automation?: AssistantAutomation;
   conversation_context?: ConversationContextIdentity;
 };
@@ -802,6 +810,16 @@ async function contextFor(
       )
     : { name: "Orbyn", persona: "" };
   const keptOut = await keptOutFor(pool, user.id);
+  // Fresh on every attempt and resume: a scope that lost access or was kept
+  // out of the assistant fails here, before any provider call.
+  const scopeFacts = await scopeOverview(
+    pool,
+    { id: user.id, role: user.role },
+    request.timezone,
+    request.scope,
+    keptOut,
+  );
+  const view = await resolveChatView(pool, user.id, request.view, keptOut);
   const context: AgentContext = {
     user: { id: user.id, role: user.role },
     identity,
@@ -842,6 +860,11 @@ async function contextFor(
       memory: "",
       snapshot: result.result.structuredContent,
       restricted: true,
+      // Read rules apply: name the scope, and let rule-checked tools read it.
+      scope: request.scope
+        ? ({ kind: request.scope.kind, id: request.scope.id } as SelectedScope)
+        : null,
+      view,
     };
   }
   const [memory, snapshot] = await Promise.all([
@@ -859,7 +882,15 @@ async function contextFor(
     ),
     overview(context),
   ]);
-  return { identity, context, memory, snapshot, restricted: false };
+  return {
+    identity,
+    context,
+    memory,
+    snapshot,
+    restricted: false,
+    scope: scopeFacts,
+    view,
+  };
 }
 
 const saveChains = new Map<string, Promise<void>>();
@@ -1959,7 +1990,6 @@ export async function runAssistantJob(
   jobId: string,
   user: UserRow,
   request: PersistedChatRequest,
-  scoped?: unknown,
   loaded?: RunEnvelope,
   logger?: FastifyBaseLogger,
 ) {
@@ -2149,9 +2179,12 @@ export async function runAssistantJob(
             ...entry,
           })),
         }
-      : prepared.restricted
-        ? prepared.snapshot
-        : (scoped ?? prepared.snapshot);
+      : {
+          // Scope first, so it survives the prompt's context size limit.
+          ...(prepared.scope ? { scope: prepared.scope } : {}),
+          ...(prepared.view ? { viewing: prepared.view } : {}),
+          ...(prepared.snapshot as Record<string, unknown>),
+        };
     await recordSources([snapshot, request.automation, request.scope]);
     if (request.conversation_context)
       await assertConversationContext(

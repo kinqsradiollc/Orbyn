@@ -429,7 +429,7 @@ test("the actual Background runner parks a lost device with its captured operati
       .rows[0].run_state,
   )!;
   await withAssistantLease(f.job, "actual-owner", () =>
-    runAssistantJob(f.job, user, saved.request, undefined, saved),
+    runAssistantJob(f.job, user, saved.request, saved),
   );
   const row = (
     await pool.query(

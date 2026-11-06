@@ -210,7 +210,6 @@ export function startAssistantRunner(
               job.id,
               user,
               checkpoint.request,
-              undefined,
               checkpoint,
               log,
             ),

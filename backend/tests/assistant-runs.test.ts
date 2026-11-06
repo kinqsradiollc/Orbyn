@@ -3740,3 +3740,194 @@ test("selected excerpt submission retries stay exact after the runtime checkpoin
     env.ASSISTANT_CONVERSATION_ENABLED = previous;
   }
 });
+
+// --------------------------------------------- project chat context (#258) ---
+
+async function startScoped(token: string, payload: Record<string, unknown>) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/ai/chat/start",
+    remoteAddress: nextAddress(),
+    headers: auth(token),
+    payload: { timezone: "UTC", ...payload },
+  });
+  assert.equal(response.statusCode, 202, response.body);
+  return response.json() as { id: string; chat_id: string; turn_id: string };
+}
+
+async function ownProject(token: string, name: string) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/projects",
+    remoteAddress: nextAddress(),
+    headers: auth(token),
+    payload: { name },
+  });
+  assert.equal(response.statusCode, 201, response.body);
+  return response.json().id as string;
+}
+
+const allText = () =>
+  requests.flatMap((request) =>
+    request.messages.map((message) => message.content ?? ""),
+  );
+
+test("a project chat names its selected project and the re-checked view to the model", async () => {
+  requests.length = 0;
+  respond = () => ({ content: "It is the orchard project." });
+  const user = await register();
+  const projectId = await ownProject(user.token, "ORCHARD_SCOPE_PROJECT");
+  const taskId = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO items (user_id, kind, title, project_id)
+       VALUES ($1, 'task', 'ORCHARD_VIEW_TASK', $2) RETURNING id`,
+      [user.id, projectId],
+    )
+  ).rows[0].id;
+  const job = await startScoped(user.token, {
+    message: "Which project is selected?",
+    scope: { kind: "project", id: projectId },
+    view: {
+      pane: "secondary",
+      path: `/app/task/${taskId}`,
+      query: "tab=notes",
+    },
+  });
+  const result = await poll(user.token, job.id, ["done", "failed", "waiting"]);
+  assert.equal(result.state, "done", JSON.stringify(result));
+  const system = requests[0]?.messages.find((m) => m.role === "system");
+  assert.ok(system?.content, "the lead had a system prompt");
+  assert.match(
+    system.content,
+    new RegExp(
+      `selected project is "ORCHARD_SCOPE_PROJECT" \\(id ${projectId}\\)`,
+    ),
+  );
+  assert.match(
+    system.content,
+    /secondary pane, with the task "ORCHARD_VIEW_TASK"/,
+  );
+  const saved = (
+    await pool.query(
+      "SELECT run_state->'request'->'view' AS view FROM ai_jobs WHERE id=$1",
+      [job.id],
+    )
+  ).rows[0].view;
+  assert.deepEqual(saved, {
+    pane: "secondary",
+    path: `/app/task/${taskId}`,
+    query: "tab=notes",
+  });
+});
+
+test("a view naming someone else's project or a kept-out page reaches the model without it", async () => {
+  requests.length = 0;
+  respond = () => ({ content: "Done." });
+  const owner = await register();
+  const other = await register();
+  const foreign = await ownProject(other.token, "FOREIGN_VIEW_PROJECT");
+  const mine = await ownProject(owner.token, "VISIBLE_SCOPE_PROJECT");
+  const hidden = await ownProject(owner.token, "KEPT_OUT_VIEW_PROJECT");
+  await pool.query("UPDATE projects SET assistant_off = true WHERE id = $1", [
+    hidden,
+  ]);
+  for (const path of [`/app/project/${foreign}`, `/app/project/${hidden}`]) {
+    const job = await startScoped(owner.token, {
+      message: "What am I looking at?",
+      scope: { kind: "project", id: mine },
+      view: { pane: "primary", path },
+    });
+    const result = await poll(owner.token, job.id, [
+      "done",
+      "failed",
+      "waiting",
+    ]);
+    assert.equal(result.state, "done", JSON.stringify(result));
+  }
+  const text = allText().join("\n");
+  assert.ok(!text.includes("FOREIGN_VIEW_PROJECT"), "no foreign project name");
+  assert.ok(!text.includes(foreign), "no foreign project id");
+  assert.ok(
+    !text.includes("KEPT_OUT_VIEW_PROJECT"),
+    "no kept-out project name",
+  );
+  assert.ok(
+    text.includes("VISIBLE_SCOPE_PROJECT"),
+    "the chat's own scope stays",
+  );
+  const bad = await app.inject({
+    method: "POST",
+    url: "/ai/chat/start",
+    remoteAddress: nextAddress(),
+    headers: auth(owner.token),
+    payload: {
+      message: "Open this",
+      timezone: "UTC",
+      view: { pane: "primary", path: "https://example.com/app" },
+    },
+  });
+  assert.equal(bad.statusCode, 400, bad.body);
+});
+
+test("a waiting project chat does not resume after the project is kept out of the assistant", async () => {
+  requests.length = 0;
+  respond = (request) =>
+    toolNames(request).includes("ask_person")
+      ? {
+          name: "ask_person",
+          arguments: { question: "Which stage?", choices: ["One", "Two"] },
+        }
+      : { content: "Done." };
+  const user = await register();
+  const projectId = await ownProject(user.token, "RESUME_SCOPE_PROJECT");
+  const job = await startScoped(user.token, {
+    message: "Plan the next stage.",
+    scope: { kind: "project", id: projectId },
+  });
+  const waiting = await poll(user.token, job.id, ["waiting", "done", "failed"]);
+  assert.equal(waiting.state, "waiting", JSON.stringify(waiting));
+  await pool.query("UPDATE projects SET assistant_off = true WHERE id = $1", [
+    projectId,
+  ]);
+  const calls = requests.length;
+  respond = () => ({ content: "RESUMED_AFTER_KEPT_OUT" });
+  const answer = await app.inject({
+    method: "POST",
+    url: `/ai/chat/${job.id}/answer`,
+    remoteAddress: nextAddress(),
+    headers: auth(user.token),
+    payload: {
+      waiting_id:
+        (
+          await pool.query(
+            "SELECT run_state->'state'->'waiting'->>'id' AS id FROM ai_jobs WHERE id=$1",
+            [job.id],
+          )
+        ).rows[0]?.id ?? randomUUID(),
+      answer: "One",
+    },
+  });
+  if (answer.statusCode === 202) {
+    const final = (
+      await pool.query<{ state: string }>(
+        "SELECT state FROM ai_jobs WHERE id=$1",
+        [job.id],
+      )
+    ).rows[0];
+    for (let i = 0; i < 100 && !["failed", "done"].includes(final.state); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      final.state = (
+        await pool.query<{ state: string }>(
+          "SELECT state FROM ai_jobs WHERE id=$1",
+          [job.id],
+        )
+      ).rows[0].state;
+    }
+    assert.equal(final.state, "failed");
+  } else assert.ok(answer.statusCode >= 400, answer.body);
+  assert.equal(
+    requests.length,
+    calls,
+    "no provider call after it was kept out",
+  );
+});

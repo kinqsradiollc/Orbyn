@@ -33,6 +33,7 @@ import { checkMergedPlan } from "./checker.js";
 import type { PlanStep } from "../../../capabilities/plan-run.js";
 import type { AssistantChangeKind } from "./change-kind.js";
 import type { ToolSpec, ToolCall } from "./protocol.js";
+import { scopeInstructionFromContext } from "./chat-context.js";
 
 export const LEAD_MAX_STEPS = 8;
 export const SPECIALIST_MAX_RUNS = 12;
@@ -186,6 +187,7 @@ function briefFor(state: LeadState, task: SpecialistTask): string {
   }));
   return [
     `Original request: ${state.original_request}`,
+    scopeInstructionFromContext(state.context),
     `Your task: ${task.brief}`,
     task.want_options
       ? "Return distinct reasonable options when there is a choice."
@@ -245,6 +247,7 @@ export async function runLead(input: {
   const systemPrompt = [
     `You are ${input.identity.name}, the lead assistant in Orbyn. ${input.identity.persona}`,
     `The person is in ${input.timezone}. Their original request is: ${state.original_request}`,
+    scopeInstructionFromContext(state.context),
     state.memory
       ? `Relevant private Memory:\n${state.memory}`
       : "No matching private Memory was found.",

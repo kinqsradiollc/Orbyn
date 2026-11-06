@@ -12,14 +12,10 @@ import {
   type AgendaBriefOutcome,
   localDateKey,
   projectRequest,
-  type ChatScope,
   type Proposal,
-  type DocBlock,
-  quoteOf,
   type ChatTraceEntry,
 } from "@orbyn/core";
 import { pool, transaction, type Db } from "../../db/pool.js";
-import { readableLinks } from "../links/privacy.js";
 import {
   authenticate,
   isSessionPrincipal,
@@ -27,7 +23,6 @@ import {
   type UserRow,
 } from "../../lib/auth.js";
 import { z } from "zod";
-import { assistantMayRead, docVisibleTo } from "../../lib/doc-visibility.js";
 
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
@@ -42,16 +37,11 @@ import {
   prepareConversationContext,
   conversationExecutionChatVisible,
 } from "../assistant-workspace/conversation-context.js";
-import { type AgentContext, getItem } from "./agent/tools.js";
-import { getProject } from "./agent/workspace.js";
 import { rewriteAgenda } from "../documents/agenda.js";
 import { briefFor } from "./agenda-brief.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
-import { visibleProjectActivity } from "../projects/activity-visibility.js";
-import { KeptOutError, keptOutFor } from "../../lib/assistant-off.js";
-import { visibleItems, visibleProjects } from "../../lib/visibility.js";
-import { projectVisible } from "../projects/service.js";
+import { keptOutFor } from "../../lib/assistant-off.js";
 import {
   answerAssistantApproval,
   answerAssistantQuestion,
@@ -61,126 +51,15 @@ import {
 } from "./agent/run.js";
 
 import { startAssistantRunner } from "./agent/runner.js";
-
-/** Permission-check the chosen project or task before its facts reach a provider. */
-async function scopeOverview(
-  u: UserRow,
-  timezone: string,
-  scope: ChatScope | null,
-) {
-  if (!scope) return null;
-  // A project kept out of the assistant (or a task in one) can't be a scope.
-  const out = await keptOutFor(pool, u.id);
-  if (out.projects.has(scope.id) || out.ids.has(scope.id))
-    fail(422, new KeptOutError().message);
-  const ctx: AgentContext = {
-    user: { id: u.id, role: u.role },
-    timezone,
-    intentText: "",
-    actions: [],
-    clarification: null,
-  };
-  if (scope.kind === "project") {
-    if (!(await projectVisible(pool, u.id, scope.id)))
-      fail(404, "Project not found");
-    const [project, changes] = await Promise.all([
-      getProject(ctx, { project_id: scope.id }),
-      pool.query<{ id: string; summary: string; created_at: Date }>(
-        `SELECT a.id, a.summary, a.created_at FROM project_activity a
-           JOIN project_visits v ON v.project_id = a.project_id AND v.user_id = $1
-          WHERE a.project_id = $2 AND v.previous_seen_at IS NOT NULL
-            AND a.created_at > v.previous_seen_at
-            AND ${visibleProjectActivity("$1")}
-          ORDER BY a.event_order DESC LIMIT 8`,
-        [u.id, scope.id],
-      ),
-    ]);
-    return {
-      kind: "project" as const,
-      id: scope.id,
-      name: project.name,
-      summary: project.summary,
-      deadline: project.deadline,
-      your_plan: project.your_plan,
-      brief: project.brief,
-      stages: project.stages.map((stage) => ({
-        id: stage.id,
-        name: stage.name,
-      })),
-      tasks: project.stages.flatMap((stage) => stage.open_tasks).slice(0, 12),
-      open_decisions: project.open_records
-        .filter((record) => record.kind === "decision")
-        .slice(0, 8),
-      pages: project.notes.slice(0, 6),
-      your_sessions: project.your_sessions.slice(0, 8),
-      since_last_visit: changes.rows.map((change) => ({
-        id: change.id,
-        summary: change.summary,
-        at: change.created_at.toISOString(),
-      })),
-    };
-  }
-  const visible = await pool.query(
-    `SELECT 1 FROM items i WHERE i.id = $2 AND i.kind = 'task' AND ${visibleItems()}`,
-    [u.id, scope.id],
-  );
-  if (!visible.rows.length) fail(404, "Task not found");
-  const task = await getItem(ctx, { id: scope.id });
-  const [children, source] = await Promise.all([
-    pool.query<{ id: string; title: string; status: string }>(
-      `SELECT i.id, i.title, i.status FROM items i
-        WHERE i.parent_id = $2 AND ${visibleItems()}
-        ORDER BY i.created_at LIMIT 12`,
-      [u.id, scope.id],
-    ),
-    pool.query<{
-      doc_id: string;
-      title: string;
-      block_id: string;
-      content: DocBlock[];
-    }>(
-      `SELECT d.id AS doc_id, d.title, l.block_id, d.content
-         FROM doc_task_links l JOIN docs d ON d.id = l.doc_id
-        WHERE l.item_id = $2 AND ${docVisibleTo("$1")}
-          AND ${assistantMayRead("d")}
-        ORDER BY l.created_at LIMIT 1`,
-      [u.id, scope.id],
-    ),
-  ]);
-  const cameFrom = source.rows[0];
-  return {
-    kind: "task" as const,
-    id: scope.id,
-    name: task.title,
-    due_at: task.due_at,
-    notes: task.notes.slice(0, 600),
-    planning: task.planning,
-    checklist: task.checklist.slice(0, 12),
-    subtasks: children.rows,
-    source_page: cameFrom
-      ? {
-          doc_id: cameFrom.doc_id,
-          title: cameFrom.title,
-          block_id: cameFrom.block_id,
-          // Links to what the person can't open keep no title (D3aF).
-          quote: quoteOf(
-            await readableLinks(
-              pool,
-              u.id,
-              cameFrom.content.find((block) => block.id === cameFrom.block_id),
-            ),
-          ),
-        }
-      : null,
-  };
-}
+import { scopeOverview } from "./agent/chat-context.js";
 
 /** Resolve the persisted conversation before accepting a new assistant turn. */
 async function prepareChatTurn(u: UserRow, d: ChatRequest, db: Db) {
   const chatId = d.chat_id ?? randomUUID();
   const turnId = d.turn_id ?? randomUUID();
   const scope = await resolveChatScope(db, u.id, chatId, d.scope);
-  const scoped = await scopeOverview(u, d.timezone, scope);
+  // Admission check only: the run re-reads the scope's facts on every attempt.
+  await scopeOverview(db, u, d.timezone, scope, await keptOutFor(db, u.id));
   const conversation = await prepareConversationContext(
     db,
     u.id,
@@ -216,7 +95,6 @@ async function prepareChatTurn(u: UserRow, d: ChatRequest, db: Db) {
   return {
     chatId,
     turnId,
-    scoped,
     request: {
       ...d,
       chat_id: chatId,
