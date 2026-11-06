@@ -3814,17 +3814,6 @@ test("a project chat names its selected project and the re-checked view to the m
     system.content,
     /secondary pane, with the task "ORCHARD_VIEW_TASK"/,
   );
-  const saved = (
-    await pool.query(
-      "SELECT run_state->'request'->'view' AS view FROM ai_jobs WHERE id=$1",
-      [job.id],
-    )
-  ).rows[0].view;
-  assert.deepEqual(saved, {
-    pane: "secondary",
-    path: `/app/task/${taskId}`,
-    query: "tab=notes",
-  });
 });
 
 test("a view naming someone else's project or a kept-out page reaches the model without it", async () => {
@@ -3873,7 +3862,8 @@ test("a view naming someone else's project or a kept-out page reaches the model 
       view: { pane: "primary", path: "https://example.com/app" },
     },
   });
-  assert.equal(bad.statusCode, 400, bad.body);
+  // Request validation answers 422 in this API.
+  assert.equal(bad.statusCode, 422, bad.body);
 });
 
 test("a waiting project chat does not resume after the project is kept out of the assistant", async () => {
@@ -3890,9 +3880,22 @@ test("a waiting project chat does not resume after the project is kept out of th
   const job = await startScoped(user.token, {
     message: "Plan the next stage.",
     scope: { kind: "project", id: projectId },
+    view: { pane: "primary", path: "/app/projects", query: "sort=due" },
   });
   const waiting = await poll(user.token, job.id, ["waiting", "done", "failed"]);
   assert.equal(waiting.state, "waiting", JSON.stringify(waiting));
+  // A waiting run keeps its checkpoint, so a resume rechecks the same view.
+  const savedView = (
+    await pool.query(
+      "SELECT run_state->'request'->'view' AS view FROM ai_jobs WHERE id=$1",
+      [job.id],
+    )
+  ).rows[0].view;
+  assert.deepEqual(savedView, {
+    pane: "primary",
+    path: "/app/projects",
+    query: "sort=due",
+  });
   await pool.query("UPDATE projects SET assistant_off = true WHERE id = $1", [
     projectId,
   ]);
