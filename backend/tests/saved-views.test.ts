@@ -944,9 +944,56 @@ test("SQL date narrowing agrees with core across DST, source zones, spans and ti
   ];
   try {
     await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    // Postgres and Node each ship their own tz database, and a rule change
+    // (such as Cuba keeping UTC-4 in November 2026) reaches them at different
+    // times. Where the two disagree on a zone's offset near an anchor, the
+    // comparison would test the tz databases rather than our SQL, so skip it.
+    const wallClock = (zone: string) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: zone,
+        hourCycle: "h23",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    const drifted = new Set<string>();
+    for (const zone of sourceZones) {
+      const format = wallClock(zone);
+      for (const day of anchors) {
+        const instants = Array.from(
+          { length: 14 * 4 },
+          (_, step) =>
+            new Date(
+              Date.parse(`${addDays(day, -3)}T00:00:00Z`) +
+                step * 6 * 3_600_000,
+            ),
+        );
+        const { rows } = await db.query<{ local: string }>(
+          `SELECT to_char(t AT TIME ZONE $2, 'YYYY-MM-DD HH24:MI') AS local
+           FROM unnest($1::timestamptz[]) WITH ORDINALITY AS u(t, n) ORDER BY n`,
+          [instants.map((instant) => instant.toISOString()), zone],
+        );
+        const node = instants.map((instant) => {
+          const part = Object.fromEntries(
+            format.formatToParts(instant).map((p) => [p.type, p.value]),
+          );
+          return `${part.year}-${part.month}-${part.day} ${part.hour}:${part.minute}`;
+        });
+        if (rows.some((row, index) => row.local !== node[index]))
+          drifted.add(`${zone} ${day}`);
+      }
+    }
+    if (drifted.size)
+      console.warn(
+        `date parity: skipped where tz databases disagree: ${[...drifted].join(", ")}`,
+      );
+    assert.ok(drifted.size <= 2, [...drifted].join(", "));
     let serial = 0;
     for (const zone of sourceZones)
       for (const day of anchors) {
+        if (drifted.has(`${zone} ${day}`)) continue;
         for (const offset of [-1, 0, 1]) {
           const date = addDays(day, offset),
             start = dayTime(date, 0, zone).toISOString();
@@ -968,6 +1015,7 @@ test("SQL date narrowing agrees with core across DST, source zones, spans and ti
       }
     for (const timeZone of sourceZones)
       for (const anchor of anchors) {
+        if (drifted.has(`${timeZone} ${anchor}`)) continue;
         const now = new Date(`${anchor}T12:00:00.000Z`),
           today = localDateKey(now, timeZone);
         const common = { text: marker, status: "any" as const };
