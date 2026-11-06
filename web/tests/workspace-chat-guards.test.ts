@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WorkspaceController } from "../src/app/workspace/controller";
 import {
-  isObscuredByPanel,
   sessionsToUnmount,
+  shouldCollapseForFocus,
 } from "../src/app/workspace/project-chat-policy";
 
 function workspace() {
@@ -128,14 +128,24 @@ const box = (left: number, top: number, right: number, bottom: number) => ({
   bottom,
 });
 
-test("focus collapses the dock only for controls hidden under the panel", () => {
+test("focus collapses the dock only for tabbed controls under the panel", () => {
   const panel = box(400, 500, 960, 840);
-  assert.equal(isObscuredByPanel(panel, box(500, 600, 600, 640)), true);
-  assert.equal(isObscuredByPanel(panel, box(300, 450, 500, 560)), true);
-  assert.equal(isObscuredByPanel(panel, box(0, 0, 300, 200)), false);
-  // A frame body that spans the panel is a container, not an obscured control.
-  assert.equal(isObscuredByPanel(panel, box(0, 0, 1280, 860)), false);
-  assert.equal(isObscuredByPanel(panel, panel), false);
+  const check = (
+    target: ReturnType<typeof box>,
+    options: { viaTab?: boolean; container?: boolean } = {},
+  ) =>
+    shouldCollapseForFocus({
+      panel,
+      target,
+      viaTab: options.viaTab ?? true,
+      container: options.container ?? false,
+    });
+  assert.equal(check(box(500, 600, 600, 640)), true);
+  assert.equal(check(box(300, 450, 500, 560)), true);
+  assert.equal(check(box(0, 0, 300, 200)), false);
+  assert.equal(check(box(500, 600, 600, 640), { viaTab: false }), false);
+  // A narrowed frame body that no longer spans the panel is still a container.
+  assert.equal(check(box(0, 0, 700, 860), { container: true }), false);
 });
 
 test("session pruning keeps selected, busy and unsent sessions", () => {

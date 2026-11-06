@@ -7,23 +7,29 @@ export type Box = {
 };
 
 /**
- * True when a focused control is actually hidden under the open panel.
- * A target that fully contains the panel is a container (such as a frame
- * body focused on activation), not a control the panel obscures.
+ * True when focus moved onto a control hidden under the open panel.
+ * Only focus that follows a user Tab counts: frame activation and focus
+ * restoration move focus programmatically and must never collapse the dock.
+ * Frame containers (focusable only by script) are never "obscured controls".
  */
-export function isObscuredByPanel(panel: Box, target: Box): boolean {
-  const overlaps =
+export function shouldCollapseForFocus({
+  panel,
+  target,
+  viaTab,
+  container,
+}: {
+  panel: Box;
+  target: Box;
+  viaTab: boolean;
+  container: boolean;
+}): boolean {
+  if (!viaTab || container) return false;
+  return (
     panel.left < target.right &&
     panel.right > target.left &&
     panel.top < target.bottom &&
-    panel.bottom > target.top;
-  if (!overlaps) return false;
-  const contains =
-    target.left <= panel.left &&
-    target.right >= panel.right &&
-    target.top <= panel.top &&
-    target.bottom >= panel.bottom;
-  return !contains;
+    panel.bottom > target.top
+  );
 }
 
 /** Mounted project conversations kept at once. */

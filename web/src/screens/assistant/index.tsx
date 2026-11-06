@@ -97,6 +97,8 @@ export type SharedAssistantReads = {
   prefs: Shared<Awaited<ReturnType<typeof client.getPlannerPrefs>>>;
   capabilities: Shared<Awaited<ReturnType<typeof client.aiCapabilities>>>;
   identity: Shared<Awaited<ReturnType<typeof client.agentSettings>>>;
+  /** Null until the dock has read them; the idle own instance covers that. */
+  controls: ReturnType<typeof useControls> | null;
 };
 
 export function AssistantWorkspace({
@@ -147,6 +149,7 @@ export function AssistantWorkspace({
     prefs = embedded ? embedded.shared.prefs : ownPrefs,
     capabilities = embedded ? embedded.shared.capabilities : ownCapabilities,
     identity = embedded ? embedded.shared.identity : ownIdentity;
+  const ownControls = useControls(true, !embedded);
   const {
     state: controls,
     set: control,
@@ -154,7 +157,7 @@ export function AssistantWorkspace({
     deliveryAvailable,
     deliveryError,
     refreshDelivery,
-  } = useControls(true);
+  } = embedded?.shared.controls ?? ownControls;
   const [panel, setPanel] = useState<"chats" | "history" | "identity" | null>(
       null,
     ),

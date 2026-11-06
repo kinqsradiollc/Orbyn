@@ -969,6 +969,7 @@ export function useAssistant(
     !!message.trim() ||
     !!reply ||
     failedAnswers.length > 0 ||
+    projectUncertain ||
     [...drafts.current.values()].some(
       (draft) => draft.message.trim() || draft.replyId,
     );

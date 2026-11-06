@@ -54,7 +54,7 @@
   display: none;
 }
 /* While the dock is open the page scrolls clear of it. */
-@media (min-width: 761px) {
+@media (min-width: 761px) and (min-height: 521px) {
   html[data-project-chat] .workspace-frame-content {
     padding-bottom: calc(var(--pj-chat-height) + 32px);
     scroll-padding-bottom: calc(var(--pj-chat-height) + 32px);

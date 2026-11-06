@@ -32,8 +32,13 @@ import {
   type ProjectChatRequest,
 } from "../../screens/projects/ProjectChatDock";
 import { ask } from "../../screens/projects/shared";
+import type { SharedAssistantReads } from "../../screens/assistant";
 import type { WorkspaceController } from "./controller";
-import { isObscuredByPanel, sessionsToUnmount } from "./project-chat-policy";
+import {
+  sessionsToUnmount,
+  shouldCollapseForFocus,
+} from "./project-chat-policy";
+import { useControls } from "../../screens/agents-shared/hooks";
 
 type ChatRequest = Omit<ProjectChatRequest, "id">;
 const Context = createContext<
@@ -110,6 +115,29 @@ function SessionScope({
   return <RouteScopeProvider value={value}>{children}</RouteScopeProvider>;
 }
 
+/** One account-level controls instance (and its listeners) for every chat. */
+function SharedControls({
+  onValue,
+}: {
+  onValue: (value: SharedAssistantReads["controls"]) => void;
+}) {
+  const value = useControls(true);
+  const {
+    state,
+    deliveryAvailable,
+    deliveryError,
+    refresh,
+    set,
+    refreshDelivery,
+  } = value;
+  useEffect(() => {
+    onValue(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, deliveryAvailable, deliveryError, refresh, set, refreshDelivery]);
+  useEffect(() => () => onValue(null), [onValue]);
+  return null;
+}
+
 /** The authenticated shell owns sessions, independently of retained working tabs. */
 export function WorkspaceProjectChat({
   controller,
@@ -144,9 +172,25 @@ export function WorkspaceProjectChat({
     async () => (wanted ? client.agentSettings({ fresh: true }) : undefined),
     [wanted],
   );
-  const shared = useMemo(
-    () => ({ prefs, capabilities, identity }),
-    [prefs, capabilities, identity],
+  const [controls, setControls] =
+    useState<SharedAssistantReads["controls"]>(null);
+  const shared = useMemo<SharedAssistantReads>(
+    () => ({ prefs, capabilities, identity, controls }),
+    // useResource returns a new object every render; its value and reload
+    // function are what change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      prefs.data,
+      prefs.error,
+      prefs.reload,
+      capabilities.data,
+      capabilities.error,
+      capabilities.reload,
+      identity.data,
+      identity.error,
+      identity.reload,
+      controls,
+    ],
   );
   const [selected, setSelected] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -200,6 +244,7 @@ export function WorkspaceProjectChat({
 
   const requestChat = useCallback(
     (project: Project, request: ChatRequest = {}) => {
+      if (wantedRef.current) void identity.reload();
       setWanted(true);
       setOpen(true);
       if (hasBlockingRun()) {
@@ -301,6 +346,16 @@ export function WorkspaceProjectChat({
   }, [open, selected, projects.loading]);
   useEffect(() => {
     if (!open) return;
+    // Only focus that follows a user Tab can mean "a control is under the
+    // panel". Frame activation and focus restoration are programmatic.
+    let viaTab = false;
+    const phone = () => window.matchMedia("(max-width: 760px)").matches;
+    const keydown = (event: KeyboardEvent) => {
+      viaTab = event.key === "Tab";
+    };
+    const pointer = () => {
+      viaTab = false;
+    };
     const revealFocus = (event: FocusEvent) => {
       const target = event.target;
       if (
@@ -313,16 +368,31 @@ export function WorkspaceProjectChat({
         ".pj-chat-panel:not([hidden])",
       );
       if (!panel) return;
+      // The phone sheet is modal: keep keyboard focus inside it.
+      if (phone()) {
+        if (viaTab) panel.focus();
+        return;
+      }
       if (
-        isObscuredByPanel(
-          panel.getBoundingClientRect(),
-          target.getBoundingClientRect(),
-        )
+        shouldCollapseForFocus({
+          panel: panel.getBoundingClientRect(),
+          target: target.getBoundingClientRect(),
+          viaTab,
+          container:
+            target.matches(".workspace-frame-content") ||
+            target.getAttribute("tabindex") === "-1",
+        })
       )
         setOpen(false);
     };
+    document.addEventListener("keydown", keydown, true);
+    document.addEventListener("pointerdown", pointer, true);
     document.addEventListener("focusin", revealFocus);
-    return () => document.removeEventListener("focusin", revealFocus);
+    return () => {
+      document.removeEventListener("keydown", keydown, true);
+      document.removeEventListener("pointerdown", pointer, true);
+      document.removeEventListener("focusin", revealFocus);
+    };
   }, [open]);
 
   // Let the page scroll clear of the open panel (see project-chat-dock.css).
@@ -392,6 +462,7 @@ export function WorkspaceProjectChat({
   return (
     <Context.Provider value={requestChat}>
       {children}
+      {wanted && <SharedControls onValue={setControls} />}
       <div
         ref={anchor}
         className="workspace-project-chat pj-chat-anchor"
@@ -419,8 +490,10 @@ export function WorkspaceProjectChat({
             if (open) collapse();
             else {
               setOpen(true);
-              if (wantedRef.current) void projects.reload();
-              else setWanted(true);
+              if (wantedRef.current) {
+                void projects.reload();
+                void identity.reload();
+              } else setWanted(true);
             }
           }}
         >
