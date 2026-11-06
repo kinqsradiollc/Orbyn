@@ -793,6 +793,8 @@ async function contextFor(
   request: PersistedChatRequest,
   principal: Principal,
   recordSources: (value: unknown, targets?: string[]) => Promise<void>,
+  /** A reviewed answer only finalizes: no model call needs the scope's facts. */
+  finalizing = false,
 ) {
   if (request.conversation_context)
     await assertConversationContext(
@@ -812,14 +814,18 @@ async function contextFor(
   const keptOut = await keptOutFor(pool, user.id);
   // Fresh on every attempt and resume: a scope that lost access or was kept
   // out of the assistant fails here, before any provider call.
-  const scopeFacts = await scopeOverview(
-    pool,
-    { id: user.id, role: user.role },
-    request.timezone,
-    request.scope,
-    keptOut,
-  );
-  const view = await resolveChatView(pool, user.id, request.view, keptOut);
+  const scopeFacts = finalizing
+    ? null
+    : await scopeOverview(
+        pool,
+        { id: user.id, role: user.role },
+        request.timezone,
+        request.scope,
+        keptOut,
+      );
+  const view = finalizing
+    ? null
+    : await resolveChatView(pool, user.id, request.view, keptOut);
   const context: AgentContext = {
     user: { id: user.id, role: user.role },
     identity,
@@ -860,11 +866,16 @@ async function contextFor(
       memory: "",
       snapshot: result.result.structuredContent,
       restricted: true,
-      // Read rules apply: name the scope, and let rule-checked tools read it.
+      // Read rules apply: name the scope and the open item by id only, and
+      // let rule-checked tools read them.
       scope: request.scope
         ? ({ kind: request.scope.kind, id: request.scope.id } as SelectedScope)
         : null,
-      view,
+      view: view && {
+        pane: view.pane,
+        screen: view.screen,
+        ...(view.filters ? { filters: view.filters } : {}),
+      },
     };
   }
   const [memory, snapshot] = await Promise.all([
@@ -2161,7 +2172,13 @@ export async function runAssistantJob(
         "The evidence for this reflection changed or is no longer available.",
       );
     if (reflecting) await recordSources(evidence);
-    const prepared = await contextFor(user, request, principal, recordSources);
+    const prepared = await contextFor(
+      user,
+      request,
+      principal,
+      recordSources,
+      !!envelope.state.answer,
+    );
     // Do not send an initial snapshot to a provider after the owner changed
     // its rule revision while that snapshot was being assembled.
     await currentAssistantPrincipal(pool, principal);

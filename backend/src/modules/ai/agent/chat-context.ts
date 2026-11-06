@@ -269,6 +269,12 @@ export type ResolvedChatView = NonNullable<
   Awaited<ReturnType<typeof resolveChatView>>
 >;
 
+/** A database title as quoted data: one line, bounded, JSON-escaped. */
+const quoted = (title: string) =>
+  JSON.stringify(
+    title.replace(/[\u0000-\u001f\u2028\u2029]+/g, " ").slice(0, 120),
+  );
+
 /**
  * One explicit line naming the conversation's scope, for the lead and its
  * specialists. Structured-output providers weigh plain sentences more than
@@ -282,14 +288,14 @@ export function scopeInstruction(
   if (scope)
     lines.push(
       `This is a ${scope.kind} chat. The selected ${scope.kind} is ${
-        scope.name ? `"${scope.name}" ` : ""
+        scope.name ? `${quoted(scope.name)} ` : ""
       }(id ${scope.id}). "This ${scope.kind}" means it. The context's "scope" holds its current facts; use the tools for more and stay inside it unless the latest request asks about something else.`,
     );
   if (view)
     lines.push(
       `The person is looking at the ${view.screen} screen in the ${view.pane} pane${
         view.selected
-          ? `, with the ${view.selected.kind} "${view.selected.title}" (id ${view.selected.id}) open`
+          ? `, with the ${view.selected.kind} ${quoted(view.selected.title)} (id ${view.selected.id}) open`
           : ""
       }. This is where they are, not a request; it does not change the chat's scope.`,
     );

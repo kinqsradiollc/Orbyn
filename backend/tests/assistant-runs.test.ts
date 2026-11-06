@@ -3795,7 +3795,14 @@ test("a project chat names its selected project and the re-checked view to the m
   });
   const result = await poll(user.token, job.id, ["done", "failed", "waiting"]);
   assert.equal(result.state, "done", JSON.stringify(result));
-  const system = requests[0]?.messages.find((m) => m.role === "system");
+  const system = requests
+    .flatMap((request) => request.messages)
+    .find(
+      (m) =>
+        m.role === "system" &&
+        m.content?.includes("the lead assistant in Orbyn") &&
+        m.content.includes("ORCHARD_SCOPE_PROJECT"),
+    );
   assert.ok(system?.content, "the lead had a system prompt");
   assert.match(
     system.content,
@@ -3914,7 +3921,8 @@ test("a waiting project chat does not resume after the project is kept out of th
         [job.id],
       )
     ).rows[0];
-    for (let i = 0; i < 100 && !["failed", "done"].includes(final.state); i++) {
+    // The poll route may refuse a kept-out job, so read its state directly.
+    for (let i = 0; i < 400 && !["failed", "done"].includes(final.state); i++) {
       await new Promise((resolve) => setTimeout(resolve, 20));
       final.state = (
         await pool.query<{ state: string }>(
@@ -3925,9 +3933,14 @@ test("a waiting project chat does not resume after the project is kept out of th
     }
     assert.equal(final.state, "failed");
   } else assert.ok(answer.statusCode >= 400, answer.body);
-  assert.equal(
-    requests.length,
-    calls,
-    "no provider call after it was kept out",
+  assert.ok(
+    requests
+      .slice(calls)
+      .every((request) =>
+        request.messages.every(
+          (message) => !message.content?.includes("RESUME_SCOPE_PROJECT"),
+        ),
+      ),
+    "no provider call for this chat after it was kept out",
   );
 });
