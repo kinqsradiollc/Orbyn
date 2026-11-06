@@ -206,13 +206,7 @@ export function startAssistantRunner(
             return;
           }
           await withAssistantLease(job.id, owner, () =>
-            runAssistantJob(
-              job.id,
-              user,
-              checkpoint.request,
-              checkpoint,
-              log,
-            ),
+            runAssistantJob(job.id, user, checkpoint.request, checkpoint, log),
           );
         })().catch((error) => {
           log.error(

@@ -7,7 +7,14 @@ clients display retained messages and current work state.
 ## Chats and Activity
 
 **Chats** groups the personal Orbyn conversation, project chats, pinned chats
-and recent chats. New project chats require a project before sending. **Activity**
+and recent chats. New project chats require a project before sending. A chat's
+project or task scope is fixed once it starts. Every run attempt, including a
+resume, rereads that scope with the person's current access and names it to the
+assistant; a scope that was kept out or became inaccessible stops the run before
+any provider call. The web workspace dock also sends the working pane and route
+with each turn. The server derives any open task, page or project from the path,
+drops it unless the assistant may read it, and treats it as location, not as a
+request or a change of scope. **Activity**
 opens Background, Overnight and Upcoming work. Execution jobs remain independent
 of the conversation that receives their results.
 
