@@ -2172,13 +2172,29 @@ export async function runAssistantJob(
         "The evidence for this reflection changed or is no longer available.",
       );
     if (reflecting) await recordSources(evidence);
-    const prepared = await contextFor(
-      user,
-      request,
-      principal,
-      recordSources,
-      !!envelope.state.answer,
-    );
+    // A reviewed answer only finalizes and skips the scope reread; if its plan
+    // goes back to the model, the context is rebuilt with a fresh check first.
+    let scopeSkipped = !!envelope.state.answer;
+    const scopedSnapshot = async (finalizing: boolean) => {
+      const fresh = await contextFor(
+        user,
+        request,
+        principal!,
+        recordSources,
+        finalizing,
+      );
+      return {
+        prepared: fresh,
+        snapshot: {
+          // Scope first, so it survives the prompt's context size limit.
+          ...(fresh.scope ? { scope: fresh.scope } : {}),
+          ...(fresh.view ? { viewing: fresh.view } : {}),
+          ...(fresh.snapshot as Record<string, unknown>),
+        },
+      };
+    };
+    const initial = await scopedSnapshot(scopeSkipped);
+    const prepared = initial.prepared;
     // Do not send an initial snapshot to a provider after the owner changed
     // its rule revision while that snapshot was being assembled.
     await currentAssistantPrincipal(pool, principal);
@@ -2196,12 +2212,7 @@ export async function runAssistantJob(
             ...entry,
           })),
         }
-      : {
-          // Scope first, so it survives the prompt's context size limit.
-          ...(prepared.scope ? { scope: prepared.scope } : {}),
-          ...(prepared.view ? { viewing: prepared.view } : {}),
-          ...(prepared.snapshot as Record<string, unknown>),
-        };
+      : initial.snapshot;
     await recordSources([snapshot, request.automation, request.scope]);
     if (request.conversation_context)
       await assertConversationContext(
@@ -2451,6 +2462,15 @@ export async function runAssistantJob(
               : "The checked plan could not be applied.",
             "The code checker blocked the plan",
           );
+          if (scopeSkipped && !reflecting) {
+            // Back to the model: recheck the scope before any provider call.
+            const fresh = await scopedSnapshot(false);
+            await currentAssistantPrincipal(pool, principal);
+            await recordSources([fresh.snapshot]);
+            envelope.state.context = fresh.snapshot;
+            result.state.context = fresh.snapshot;
+            scopeSkipped = false;
+          }
           await saveProgress(jobId, envelope, {
             label: "Revising a blocked plan",
             step: result.state.lead_steps,

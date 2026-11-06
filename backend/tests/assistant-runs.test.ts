@@ -3943,4 +3943,14 @@ test("a waiting project chat does not resume after the project is kept out of th
       ),
     "no provider call for this chat after it was kept out",
   );
+  const turns = (
+    await pool.query<{ turns: unknown }>(
+      "SELECT turns FROM ai_chats WHERE id=$1",
+      [job.chat_id],
+    )
+  ).rows[0]?.turns;
+  assert.ok(
+    !JSON.stringify(turns ?? []).includes("RESUMED_AFTER_KEPT_OUT"),
+    "no model reply was saved after it was kept out",
+  );
 });
