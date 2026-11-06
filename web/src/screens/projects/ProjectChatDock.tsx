@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useNavigate } from "../../lib/router";
 import { Button, ErrorNotice, IconButton, useToast } from "../../ui/kit";
-import { AssistantWorkspace } from "../assistant";
+import { AssistantWorkspace, type SharedAssistantReads } from "../assistant";
 import { Chats } from "./Chats";
 import "./project-chat-dock.css";
 
@@ -23,6 +23,8 @@ export function ProjectChatDock({
   open,
   onClose,
   onBusyChange,
+  onDirtyChange,
+  shared,
   picker,
   unavailable,
   projectError,
@@ -33,6 +35,8 @@ export function ProjectChatDock({
   open: boolean;
   onClose: () => void;
   onBusyChange: (projectId: string, busy: boolean) => void;
+  onDirtyChange: (projectId: string, dirty: boolean) => void;
+  shared: SharedAssistantReads;
   picker: ReactNode;
   unavailable: boolean;
   projectError: string;
@@ -60,6 +64,14 @@ export function ProjectChatDock({
   useEffect(
     () => () => onBusyChange(project.id, false),
     [onBusyChange, project.id],
+  );
+  const onDirty = useCallback(
+    (value: boolean) => onDirtyChange(project.id, value),
+    [onDirtyChange, project.id],
+  );
+  useEffect(
+    () => () => onDirtyChange(project.id, false),
+    [onDirtyChange, project.id],
   );
   const onChat = useCallback(
     (id: string) => {
@@ -177,6 +189,8 @@ export function ProjectChatDock({
               disabled: !!project.assistant_off || unavailable,
               onChat,
               onBusy,
+              onDirty,
+              shared,
             }}
           />
         </div>

@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WorkspaceController } from "../src/app/workspace/controller";
+import {
+  isObscuredByPanel,
+  sessionsToUnmount,
+} from "../src/app/workspace/project-chat-policy";
 
 function workspace() {
   const controller = new WorkspaceController({
@@ -115,4 +119,62 @@ test("new chat input while a frame saves invalidates workspace disposal", async 
   } finally {
     controller.destroy();
   }
+});
+
+const box = (left: number, top: number, right: number, bottom: number) => ({
+  left,
+  top,
+  right,
+  bottom,
+});
+
+test("focus collapses the dock only for controls hidden under the panel", () => {
+  const panel = box(400, 500, 960, 840);
+  assert.equal(isObscuredByPanel(panel, box(500, 600, 600, 640)), true);
+  assert.equal(isObscuredByPanel(panel, box(300, 450, 500, 560)), true);
+  assert.equal(isObscuredByPanel(panel, box(0, 0, 300, 200)), false);
+  // A frame body that spans the panel is a container, not an obscured control.
+  assert.equal(isObscuredByPanel(panel, box(0, 0, 1280, 860)), false);
+  assert.equal(isObscuredByPanel(panel, panel), false);
+});
+
+test("session pruning keeps selected, busy and unsent sessions", () => {
+  const pick = (
+    mounted: string[],
+    options: { busy?: string[]; dirty?: string[]; selected?: string } = {},
+  ) =>
+    sessionsToUnmount({
+      mounted,
+      recent: ["a", "b", "c", "d", "e"],
+      selected: options.selected ?? mounted[mounted.length - 1],
+      busy: new Set(options.busy),
+      dirty: new Set(options.dirty),
+    });
+  assert.deepEqual(pick(["a", "b", "c"]), []);
+  assert.deepEqual(pick(["a", "b", "c", "d"]), ["a"]);
+  assert.deepEqual(pick(["a", "b", "c", "d", "e"]), ["a", "b"]);
+  assert.deepEqual(pick(["a", "b", "c", "d"], { dirty: ["a"] }), ["b"]);
+  assert.deepEqual(pick(["a", "b", "c", "d"], { busy: ["a"], selected: "b" }), [
+    "c",
+  ]);
+  assert.deepEqual(
+    pick(["a", "b", "c", "d"], { dirty: ["a", "b", "c"] }),
+    [],
+    "every candidate dirty keeps all",
+  );
+  assert.deepEqual(pick(["a", "b", "c", "d", "e"], { dirty: ["a"] }), [
+    "b",
+    "c",
+  ]);
+  // Never-selected sessions are the oldest.
+  assert.deepEqual(
+    sessionsToUnmount({
+      mounted: ["x", "a", "b", "c"],
+      recent: ["a", "b", "c"],
+      selected: "c",
+      busy: new Set(),
+      dirty: new Set(),
+    }),
+    ["x"],
+  );
 });

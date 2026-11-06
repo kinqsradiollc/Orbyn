@@ -33,6 +33,7 @@ import {
 } from "../../screens/projects/ProjectChatDock";
 import { ask } from "../../screens/projects/shared";
 import type { WorkspaceController } from "./controller";
+import { isObscuredByPanel, sessionsToUnmount } from "./project-chat-policy";
 
 type ChatRequest = Omit<ProjectChatRequest, "id">;
 const Context = createContext<
@@ -130,11 +131,34 @@ export function WorkspaceProjectChat({
     async () => (wanted ? client.listProjects() : undefined),
     [wanted],
   );
+  // Shared assistant reads happen once for every mounted conversation.
+  const prefs = useResource(
+    async () => (wanted ? client.getPlannerPrefs() : undefined),
+    [wanted],
+  );
+  const capabilities = useResource(
+    async () => (wanted ? client.aiCapabilities() : undefined),
+    [wanted],
+  );
+  const identity = useResource(
+    async () => (wanted ? client.agentSettings({ fresh: true }) : undefined),
+    [wanted],
+  );
+  const shared = useMemo(
+    () => ({ prefs, capabilities, identity }),
+    [prefs, capabilities, identity],
+  );
   const [selected, setSelected] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [open, setOpen] = useState(false);
   const [runningProjects, setRunningProjects] = useState<string[]>([]);
   const busyProjects = useRef(new Set<string>());
+  const dirtyProjects = useRef(new Set<string>());
+  const recent = useRef<string[]>([]);
+  const [dirtyVersion, setDirtyVersion] = useState(0);
+  const touch = useCallback((id: string) => {
+    recent.current = [...recent.current.filter((one) => one !== id), id];
+  }, []);
   const availableProjects = useRef(projects.data);
   availableProjects.current = projects.data;
   const hasBlockingRun = useCallback(
@@ -163,6 +187,7 @@ export function WorkspaceProjectChat({
         });
         return;
       }
+      touch(project.id);
       setSelected(project.id);
       setSessions((current) =>
         current.some((session) => session.project.id === project.id)
@@ -170,7 +195,7 @@ export function WorkspaceProjectChat({
           : [...current, { project, request: null }],
       );
     },
-    [toast, hasBlockingRun],
+    [toast, hasBlockingRun, touch],
   );
 
   const requestChat = useCallback(
@@ -183,6 +208,7 @@ export function WorkspaceProjectChat({
         });
         return;
       }
+      touch(project.id);
       setSelected(project.id);
       setSessions((current) => {
         const next = { project, request: { ...request, id: newId() } };
@@ -193,8 +219,24 @@ export function WorkspaceProjectChat({
           : [...current, next];
       });
     },
-    [toast, hasBlockingRun],
+    [toast, hasBlockingRun, touch],
   );
+
+  // Keep the mounted conversations bounded. Selected, working and unsent
+  // sessions always stay, so a draft is never lost.
+  useEffect(() => {
+    const drop = sessionsToUnmount({
+      mounted: sessions.map((session) => session.project.id),
+      recent: recent.current,
+      selected,
+      busy: busyProjects.current,
+      dirty: dirtyProjects.current,
+    });
+    if (drop.length)
+      setSessions((current) =>
+        current.filter((session) => !drop.includes(session.project.id)),
+      );
+  }, [sessions, selected, runningProjects, dirtyVersion]);
 
   // Select an initial project only. Navigation never retargets an existing chat.
   useEffect(() => {
@@ -238,6 +280,12 @@ export function WorkspaceProjectChat({
     else busyProjects.current.delete(projectId);
     setRunningProjects([...busyProjects.current]);
   }, []);
+  const onDirty = useCallback((projectId: string, value: boolean) => {
+    if (dirtyProjects.current.has(projectId) === value) return;
+    if (value) dirtyProjects.current.add(projectId);
+    else dirtyProjects.current.delete(projectId);
+    setDirtyVersion((n) => n + 1);
+  }, []);
   const collapse = useCallback(() => {
     returnFocus.current = true;
     setOpen(false);
@@ -265,19 +313,27 @@ export function WorkspaceProjectChat({
         ".pj-chat-panel:not([hidden])",
       );
       if (!panel) return;
-      const a = panel.getBoundingClientRect(),
-        b = target.getBoundingClientRect();
       if (
-        a.left < b.right &&
-        a.right > b.left &&
-        a.top < b.bottom &&
-        a.bottom > b.top
+        isObscuredByPanel(
+          panel.getBoundingClientRect(),
+          target.getBoundingClientRect(),
+        )
       )
         setOpen(false);
     };
     document.addEventListener("focusin", revealFocus);
     return () => document.removeEventListener("focusin", revealFocus);
   }, [open]);
+
+  // Let the page scroll clear of the open panel (see project-chat-dock.css).
+  useEffect(() => {
+    if (!open) return;
+    const root = document.documentElement;
+    root.dataset.projectChat = selected ? "chat" : "picker";
+    return () => {
+      delete root.dataset.projectChat;
+    };
+  }, [open, selected]);
 
   const scope = useMemo<RouteScope>(() => {
     const snapshot: RouteSnapshot = {
@@ -371,6 +427,12 @@ export function WorkspaceProjectChat({
           <MessageSquare aria-hidden="true" />
           {busy ? "Project chat · Working…" : "Project chat"}
         </button>
+        <div
+          className="pj-chat-scrim"
+          aria-hidden="true"
+          hidden={!open}
+          onClick={collapse}
+        />
         <div id={panelId} hidden={!open}>
           {!selected && (
             <section
@@ -426,6 +488,8 @@ export function WorkspaceProjectChat({
                   open={open && selected === project.id}
                   onClose={collapse}
                   onBusyChange={onBusy}
+                  onDirtyChange={onDirty}
+                  shared={shared}
                   picker={picker}
                   unavailable={unavailable}
                   projectError={projects.error}

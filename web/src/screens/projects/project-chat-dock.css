@@ -1,3 +1,6 @@
+:root {
+  --pj-chat-height: min(340px, 55dvh);
+}
 .pj-chat-anchor {
   position: fixed;
   bottom: 16px;
@@ -10,7 +13,7 @@
 .workspace-project-chat > [hidden] {
   display: none;
 }
-.pj-chat-picker-panel {
+.pj-chat-panel.pj-chat-picker-panel {
   height: 220px;
   min-height: 180px;
 }
@@ -47,6 +50,20 @@
 .pj-chat-anchor > * {
   pointer-events: auto;
 }
+.pj-chat-scrim {
+  display: none;
+}
+/* While the dock is open the page scrolls clear of it. */
+@media (min-width: 761px) {
+  html[data-project-chat] .workspace-frame-content {
+    padding-bottom: calc(var(--pj-chat-height) + 32px);
+    scroll-padding-bottom: calc(var(--pj-chat-height) + 32px);
+  }
+  html[data-project-chat="picker"] .workspace-frame-content {
+    padding-bottom: 252px;
+    scroll-padding-bottom: 252px;
+  }
+}
 .pj-chat-launcher {
   display: flex;
   margin: 0 auto;
@@ -63,7 +80,8 @@
   inset-inline: 0;
   display: flex;
   flex-direction: column;
-  height: min(340px, 55dvh);
+  z-index: 1;
+  height: var(--pj-chat-height);
   min-height: 230px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -153,11 +171,30 @@
 }
 @media (max-width: 760px) {
   .pj-chat-anchor {
-    bottom: 8px;
-    inset-inline-end: 16px;
+    bottom: 0;
+    inset-inline: 0;
+    width: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pj-chat-launcher {
+    margin-bottom: 8px;
+  }
+  .pj-chat-scrim:not([hidden]) {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background: var(--scrim);
   }
   .pj-chat-panel {
-    height: min(440px, 66dvh);
+    height: min(520px, 80dvh);
+    padding-bottom: env(safe-area-inset-bottom);
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    border-inline: 0;
+    border-bottom: 0;
+  }
+  .pj-chat-panel.pj-chat-picker-panel {
+    height: 220px;
   }
   .pj-chat-head {
     padding-inline: 10px;
@@ -167,8 +204,10 @@
   }
 }
 @media (max-height: 520px) {
+  :root {
+    --pj-chat-height: calc(100dvh - 150px);
+  }
   .pj-chat-panel {
-    height: calc(100dvh - 150px);
     min-height: 180px;
   }
   .pj-chat-panel .assistant-footnote {

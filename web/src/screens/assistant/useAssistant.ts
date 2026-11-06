@@ -964,6 +964,14 @@ export function useAssistant(
     if (!owned() || mine !== generation.current) return;
     if (canonical.current) await store.refresh();
   };
+  // Unsent text, a pending reply target or failed answers must not be lost.
+  const dirty =
+    !!message.trim() ||
+    !!reply ||
+    failedAnswers.length > 0 ||
+    [...drafts.current.values()].some(
+      (draft) => draft.message.trim() || draft.replyId,
+    );
   const exitState = useRef({ sending, projectUncertain, failedAnswers });
   exitState.current = { sending, projectUncertain, failedAnswers };
   const checkingLeave = useRef(false);
@@ -1039,6 +1047,7 @@ export function useAssistant(
     progress,
     focused,
     failedAnswers,
+    dirty,
     waiting,
     send,
     runAction,

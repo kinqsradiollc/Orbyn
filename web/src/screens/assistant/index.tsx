@@ -84,6 +84,19 @@ type EmbeddedAssistant = {
   disabled: boolean;
   onChat: (id: string) => void;
   onBusy: (busy: boolean) => void;
+  onDirty: (dirty: boolean) => void;
+  shared: SharedAssistantReads;
+};
+type Shared<T> = {
+  data: T | undefined;
+  error: string;
+  reload: () => Promise<void>;
+};
+/** Reads the dock makes once and hands to every embedded conversation. */
+export type SharedAssistantReads = {
+  prefs: Shared<Awaited<ReturnType<typeof client.getPlannerPrefs>>>;
+  capabilities: Shared<Awaited<ReturnType<typeof client.aiCapabilities>>>;
+  identity: Shared<Awaited<ReturnType<typeof client.agentSettings>>>;
 };
 
 export function AssistantWorkspace({
@@ -114,9 +127,26 @@ export function AssistantWorkspace({
         embedded ? Promise.resolve([] as Project[]) : client.listProjects(),
       [!!embedded],
     ),
-    prefs = useRead(() => client.getPlannerPrefs()),
-    capabilities = useRead(() => client.aiCapabilities()),
-    identity = useRead(() => client.agentSettings({ fresh: true }));
+    // Embedded conversations use the dock's shared reads, so these resolve
+    // without a request there.
+    ownPrefs = useRead(
+      () => (embedded ? Promise.resolve(undefined) : client.getPlannerPrefs()),
+      [!!embedded],
+    ),
+    ownCapabilities = useRead(
+      () => (embedded ? Promise.resolve(undefined) : client.aiCapabilities()),
+      [!!embedded],
+    ),
+    ownIdentity = useRead(
+      () =>
+        embedded
+          ? Promise.resolve(undefined)
+          : client.agentSettings({ fresh: true }),
+      [!!embedded],
+    ),
+    prefs = embedded ? embedded.shared.prefs : ownPrefs,
+    capabilities = embedded ? embedded.shared.capabilities : ownCapabilities,
+    identity = embedded ? embedded.shared.identity : ownIdentity;
   const {
     state: controls,
     set: control,
@@ -135,6 +165,9 @@ export function AssistantWorkspace({
   useEffect(() => {
     embedded?.onBusy(assistant.sending);
   }, [embedded?.onBusy, assistant.sending]);
+  useEffect(() => {
+    embedded?.onDirty(assistant.dirty);
+  }, [embedded?.onDirty, assistant.dirty]);
   useEffect(() => {
     setUpcoming(new URLSearchParams(query).get("panel") === "upcoming");
   }, [query]);
