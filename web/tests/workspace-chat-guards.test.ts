@@ -4,6 +4,7 @@ import { WorkspaceController } from "../src/app/workspace/controller";
 import {
   sessionsToUnmount,
   shouldCollapseForFocus,
+  workingView,
 } from "../src/app/workspace/project-chat-policy";
 
 function workspace() {
@@ -186,5 +187,97 @@ test("session pruning keeps selected, busy and unsent sessions", () => {
       dirty: new Set(),
     }),
     ["x"],
+  );
+});
+
+type ViewState = Parameters<typeof workingView>[0];
+const frame = (
+  pane: "primary" | "secondary" | "dock",
+  tabKey: string,
+  pathname: string,
+  search = "",
+  origin: { pane: "primary" | "secondary"; tabKey: string } | null = null,
+) =>
+  ({
+    lease: { generation: 1, pane, tabKey, mount: 1 },
+    destination: { pathname, search, hash: "", href: pathname + search },
+    activation: 0,
+    title: "",
+    origin: origin && { generation: 1, mount: 1, ...origin },
+  }) as unknown as ViewState["frames"][number];
+const viewState = (
+  frames: ViewState["frames"],
+  focused: "primary" | "secondary" | "dock",
+  dockActive: string | null = null,
+) =>
+  ({
+    frames,
+    focused,
+    dockActive,
+    primary: { active: "p1" },
+    secondary: { active: "s1" },
+  }) as unknown as ViewState;
+
+test("working view reports the working frame and drops unusable paths", () => {
+  assert.deepEqual(
+    workingView(
+      viewState(
+        [frame("primary", "p1", "/app/projects/abc", "?tab=tasks")],
+        "primary",
+      ),
+    ),
+    { pane: "primary", path: "/app/projects/abc", query: "tab=tasks" },
+  );
+  assert.deepEqual(
+    workingView(
+      viewState([frame("secondary", "s1", "/app/today")], "secondary"),
+    ),
+    { pane: "secondary", path: "/app/today" },
+  );
+  // A focused dock frame reports its captured working origin.
+  assert.deepEqual(
+    workingView(
+      viewState(
+        [
+          frame("primary", "p1", "/app/tasks", "?q=a"),
+          frame("dock", "d1", "/app/assistant", "", {
+            pane: "primary",
+            tabKey: "p1",
+          }),
+        ],
+        "dock",
+        "d1",
+      ),
+    ),
+    { pane: "primary", path: "/app/tasks", query: "q=a" },
+  );
+  // Too deep or outside /app; the settings overlay is no frame.
+  for (const path of ["/app/a/b/c/d", "/login", "/application", "/app/a b"])
+    assert.equal(
+      workingView(viewState([frame("primary", "p1", path)], "primary")),
+      undefined,
+      path,
+    );
+  assert.equal(
+    workingView(viewState([frame("primary", "p1", "/app/settings")], "primary"))
+      ?.path,
+    "/app/settings",
+  );
+  assert.equal(
+    workingView(
+      viewState(
+        [frame("primary", "p1", "/app/x", `?${"a".repeat(400)}`)],
+        "primary",
+      ),
+    )?.query?.length,
+    300,
+  );
+  // No working frame, or a dock frame whose origin closed.
+  assert.equal(workingView(viewState([], "primary")), undefined);
+  assert.equal(
+    workingView(
+      viewState([frame("dock", "d1", "/app/assistant")], "dock", "d1"),
+    ),
+    undefined,
   );
 });

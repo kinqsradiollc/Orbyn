@@ -72,6 +72,7 @@ import {
   type AutomationAgentLane,
   type ChatChannel,
   type ChatScope,
+  type ChatView,
   type ChatTurn,
   HttpError,
   type Item,
@@ -1254,6 +1255,7 @@ export async function callChat(
     turnId?: string;
     replyToEntryId?: string;
     replyExcerpt?: string;
+    view?: ChatView;
   } = {},
   onProgress?: (progress: AssistantRunProgress) => void,
   signal?: AbortSignal,
@@ -1270,6 +1272,7 @@ export async function callChat(
       timezone,
       history: history.slice(-12),
       scope,
+      ...(ids.view ? { view: ids.view } : {}),
       ...(ids.chatId ? { chat_id: ids.chatId } : {}),
       ...(ids.turnId ? { turn_id: ids.turnId } : {}),
       ...(ids.replyExcerpt ? { reply_excerpt: ids.replyExcerpt } : {}),

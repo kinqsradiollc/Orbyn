@@ -1,4 +1,4 @@
-import { newId, type Project } from "@orbyn/core";
+import { newId, type ChatView, type Project } from "@orbyn/core";
 import { ArrowUpRight, MessageSquare, Minus, Plus } from "lucide-react";
 import {
   useCallback,
@@ -29,6 +29,7 @@ export function ProjectChatDock({
   unavailable,
   projectError,
   onRefreshProjects,
+  getView,
 }: {
   project: Project;
   request: ProjectChatRequest | null;
@@ -41,6 +42,7 @@ export function ProjectChatDock({
   unavailable: boolean;
   projectError: string;
   onRefreshProjects: () => void;
+  getView?: () => ChatView | undefined;
 }) {
   const navigate = useNavigate();
   const panelId = useId();
@@ -191,6 +193,7 @@ export function ProjectChatDock({
               onBusy,
               onDirty,
               shared,
+              getView,
             }}
           />
         </div>

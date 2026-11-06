@@ -6,7 +6,8 @@ import { useRouteActivity } from "../../lib/route-scope";
 import { client, getSessionVersion } from "../../lib/session";
 
 /** News areas that can change a project's metadata or its aggregate counts. */
-const AREAS = ["projects", "items", "docs", "organize"];
+// "review": approving a proposal announces only that, yet it can change any of these.
+const AREAS = ["projects", "items", "docs", "organize", "review"];
 /** Wait before reading after account news, so a burst becomes one read. */
 const NEWS_DELAY_MS = 400;
 /** Closest two reads may start, so continuous change cannot loop requests. */

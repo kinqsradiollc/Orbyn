@@ -19,6 +19,7 @@ import {
   type AssistantConversationDestination,
   type AssistantConversationEntry,
   type ChatScope,
+  type ChatView,
   type ChatTraceEntry,
   type Proposal,
   type SavedChatTurn,
@@ -95,6 +96,8 @@ export function useAssistant(
     onChat: (id: string) => void;
     retainPath: string;
     disabled: boolean;
+    /** Read at send time: where the person is working right now. */
+    getView?: () => ChatView | undefined;
   },
 ) {
   const navigate = useNavigate();
@@ -806,6 +809,7 @@ export function useAssistant(
             turnId: ids.turnId,
             replyToEntryId: value.reply?.id,
             replyExcerpt: value.reply?.excerpt,
+            view: embedding.current?.getView?.(),
           },
           (p) => {
             if (owned() && mine === generation.current) {

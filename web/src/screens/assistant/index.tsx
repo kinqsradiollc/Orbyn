@@ -1,4 +1,4 @@
-import { newId, type Project } from "@orbyn/core";
+import { newId, type ChatView, type Project } from "@orbyn/core";
 import {
   ArrowUp,
   CalendarDays,
@@ -86,6 +86,7 @@ type EmbeddedAssistant = {
   onBusy: (busy: boolean) => void;
   onDirty: (dirty: boolean) => void;
   shared: SharedAssistantReads;
+  getView?: () => ChatView | undefined;
 };
 type Shared<T> = {
   data: T | undefined;
@@ -121,6 +122,7 @@ export function AssistantWorkspace({
         onChat: embedded.onChat,
         retainPath: `/app/project/${embedded.projectId}`,
         disabled: embedded.disabled,
+        getView: embedded.getView,
       },
     ),
     // The embedded dock hides the scope picker, so it skips this read.

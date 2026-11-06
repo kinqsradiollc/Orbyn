@@ -1,3 +1,6 @@
+import type { ChatView } from "@orbyn/core";
+import type { WorkspaceSnapshot } from "./controller";
+
 /** Pure decisions for the workspace project chat dock. */
 export type Box = {
   left: number;
@@ -62,4 +65,47 @@ export function sessionsToUnmount({
     .filter((id) => id !== selected && !busy.has(id) && !dirty.has(id))
     .sort((a, b) => recent.indexOf(a) - recent.indexOf(b))
     .slice(0, excess);
+}
+
+const VIEW_PATH = /^\/app(?:\/[A-Za-z0-9_-]{1,64}){0,3}$/;
+
+/**
+ * Where the person is working, for the next chat turn: the pane, pathname and
+ * query of the working frame (a focused dock frame reports its captured
+ * origin). Undefined when no frame is working or its path is not one the
+ * server accepts. The server re-checks it; this only reports.
+ */
+export function workingView(
+  state: Pick<
+    WorkspaceSnapshot,
+    "frames" | "focused" | "dockActive" | "primary" | "secondary"
+  >,
+): ChatView | undefined {
+  const focused = state.frames.find(
+    (frame) =>
+      frame.lease.pane === state.focused &&
+      frame.lease.tabKey ===
+        (state.focused === "dock"
+          ? state.dockActive
+          : state[state.focused]?.active),
+  );
+  const working =
+    focused?.lease.pane === "dock"
+      ? state.frames.find(
+          (frame) =>
+            focused.origin &&
+            frame.lease.pane === focused.origin.pane &&
+            frame.lease.tabKey === focused.origin.tabKey &&
+            frame.lease.mount === focused.origin.mount,
+        )
+      : focused;
+  if (!working) return undefined;
+  const { pathname, search } = working.destination;
+  if (!VIEW_PATH.test(pathname)) return undefined;
+  const query = search.replace(/^\?/, "").slice(0, 300);
+  return {
+    pane: working.lease.pane,
+    path: pathname,
+    ...(query ? { query } : {}),
+  };
 }

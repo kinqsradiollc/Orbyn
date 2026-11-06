@@ -47,6 +47,7 @@ import {
   type ChatgptLeaseRenewal,
   type ChatgptLeaseStart,
   type ChatScope,
+  type ChatView,
   type ChatTurn,
   type ClipInput,
   type Credentials,
@@ -3387,6 +3388,7 @@ export class OrbynClient {
       turnId?: string;
       replyToEntryId?: string;
       replyExcerpt?: string;
+      view?: ChatView;
     } = {},
     onProgress?: (progress: AssistantRunProgress) => void,
     signal?: AbortSignal,

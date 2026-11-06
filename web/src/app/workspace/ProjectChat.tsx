@@ -37,6 +37,7 @@ import type { WorkspaceController } from "./controller";
 import {
   sessionsToUnmount,
   shouldCollapseForFocus,
+  workingView,
 } from "./project-chat-policy";
 import { useControls } from "../../screens/agents-shared/hooks";
 
@@ -405,6 +406,12 @@ export function WorkspaceProjectChat({
     };
   }, [open, selected]);
 
+  // Read at send time, so it follows the pane the person works in now.
+  const getView = useCallback(
+    () => workingView(controller.getSnapshot()),
+    [controller],
+  );
+
   const scope = useMemo<RouteScope>(() => {
     const snapshot: RouteSnapshot = {
       pathname: "/app",
@@ -567,6 +574,7 @@ export function WorkspaceProjectChat({
                   unavailable={unavailable}
                   projectError={projects.error}
                   onRefreshProjects={() => void projects.reload()}
+                  getView={getView}
                 />
               </SessionScope>
             );
