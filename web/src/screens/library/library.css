@@ -1047,7 +1047,7 @@ button.lib-twist:disabled {
 }
 .doc-editing[data-type="heading"] .doc-input {
   font-family: var(--head);
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: -0.012em;
 }
 .doc-editing[data-level="1"] .doc-input {
@@ -1343,7 +1343,7 @@ button.lib-twist:disabled {
 }
 .doc-table th {
   background: var(--sunken);
-  font-weight: 600;
+  font-weight: 500;
 }
 .doc-table span {
   display: block;

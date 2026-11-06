@@ -107,7 +107,7 @@
   cursor: pointer;
   min-height: var(--control);
   align-content: center;
-  font-weight: 600;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 .booking-web-workspace summary + *,
@@ -127,7 +127,7 @@
 .booking-web-metrics dd {
   font-size: 24px;
   margin: 8px 0;
-  font-weight: 600;
+  font-weight: 500;
 }
 .booking-web-rows,
 .booking-web-page-list,

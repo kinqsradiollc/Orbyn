@@ -33,7 +33,7 @@
 }
 .today-when strong {
   color: var(--text-soft);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .today-quote {
@@ -427,7 +427,7 @@
 }
 .today-run-main strong {
   overflow-wrap: anywhere;
-  font-weight: 600;
+  font-weight: 500;
 }
 .today-run-main p,
 .today-run-main li {
@@ -573,7 +573,7 @@
 }
 .today-week button.is-today {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
 }
 .today-week-bar {
   display: flex;
@@ -919,7 +919,7 @@
   overflow-wrap: anywhere;
 }
 .today-change-main strong {
-  font-weight: 600;
+  font-weight: 500;
 }
 .today-change-main small {
   display: block;
@@ -991,7 +991,7 @@
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
 .today-release summary small {

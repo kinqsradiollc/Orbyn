@@ -98,7 +98,7 @@
 .nav-link.is-active {
   background: var(--chip);
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
 }
 .nav-link.is-active svg {
   color: var(--accent);
@@ -151,7 +151,7 @@
   height: 28px;
   border-radius: 50%;
   background: var(--chip);
-  font-weight: 600;
+  font-weight: 500;
 }
 .workspace {
   flex: 1;

@@ -1,5 +1,8 @@
-/* Orbyn's design tokens. Neutrals carry structure, ink is the primary action,
-   blue means live or selected, and edges come from light, not borders. */
+/* Orbyn's design tokens: the Orbyn house style, shared with Orbyn Engineering.
+   Three colours only: ink for everything (including live and selected),
+   warn (amber) when the person must act, danger (red) for failures and
+   removals. Calendar, list, tag and project colours are the person's own.
+   Light, Dark and Dim; edges come from fills, not borders. */
 :root[data-theme-changing] *,
 :root[data-theme-changing] *::before,
 :root[data-theme-changing] *::after {
@@ -8,29 +11,29 @@
 
 :root {
   color-scheme: light;
-  --canvas: #f4f4f3;
+  --canvas: #f6f6f6;
   --surface: #ffffff;
-  --sunken: #f7f7f6;
-  --hover: rgba(20, 20, 24, 0.05);
-  --chip: rgba(20, 20, 24, 0.06);
-  --line: rgba(20, 20, 24, 0.09);
-  --line-soft: rgba(20, 20, 24, 0.06);
-  --ink: #17181b;
+  --sunken: #f3f3f3;
+  --hover: rgba(0, 0, 0, 0.045);
+  --chip: rgba(0, 0, 0, 0.05);
+  --line: rgba(0, 0, 0, 0.08);
+  --line-soft: rgba(0, 0, 0, 0.06);
+  --ink: #111111;
   --on-ink: #ffffff;
-  --ink-hover: #33343a;
-  --text: #17181b;
-  --text-soft: #4a4b52;
-  --text-muted: #66676e;
-  --accent: #2563eb;
-  --accent-text: #1d4ed8;
-  --accent-soft: #eff6ff;
-  --dot: #60a5fa;
-  --danger: #b42318;
-  --danger-soft: #fff1f0;
-  --warn: #92400e;
-  --warn-soft: #fef3e2;
-  --ok: #166534;
-  --ok-soft: #e9f6ee;
+  --ink-hover: #2b2b2b;
+  --text: #171717;
+  --text-soft: #3d3d3d;
+  --text-muted: #6e6e6e;
+  --accent: #171717;
+  --accent-text: #171717;
+  --accent-soft: rgba(0, 0, 0, 0.06);
+  --dot: #171717;
+  --danger: #c62828;
+  --danger-soft: rgba(220, 38, 38, 0.07);
+  --warn: #b45309;
+  --warn-soft: rgba(245, 158, 11, 0.09);
+  --ok: #404040;
+  --ok-soft: rgba(0, 0, 0, 0.05);
   --event: #ffffff;
   --raised: 0 0 0 1px rgba(20, 20, 24, 0.06), 0 1px 2px rgba(20, 20, 24, 0.04);
   --float: 0 0 0 1px rgba(20, 20, 24, 0.07), 0 12px 32px rgba(20, 20, 24, 0.14);
@@ -40,8 +43,9 @@
   --r-md: 10px;
   --r-lg: 16px;
   --r-xl: 24px;
-  --sans: "DM Sans", system-ui, sans-serif;
-  --head: Manrope, "DM Sans", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --head: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
   --control: 36px;
   --action-fs: 13px;
   --action-line: 20px;
@@ -49,31 +53,32 @@
   --base: 200ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+:root[data-theme="dim"] {
   color-scheme: dark;
-  --canvas: #0d0e10;
-  --surface: #16171a;
-  --sunken: #121316;
+  --canvas: #000000;
+  --surface: #0a0a0a;
+  --sunken: #111111;
   --hover: rgba(255, 255, 255, 0.06);
   --chip: rgba(255, 255, 255, 0.08);
-  --line: rgba(255, 255, 255, 0.09);
+  --line: rgba(255, 255, 255, 0.08);
   --line-soft: rgba(255, 255, 255, 0.06);
-  --ink: #f2f2f3;
-  --on-ink: #0d0e10;
-  --ink-hover: #d8d9dc;
-  --text: #f2f2f3;
-  --text-soft: #cdced2;
-  --text-muted: #a2a3aa;
-  --accent: #93c5fd;
-  --accent-text: #bfdbfe;
-  --accent-soft: #1c2a40;
-  --danger: #fda29b;
-  --danger-soft: #402522;
-  --warn: #fdba74;
-  --warn-soft: #3a2710;
-  --ok: #86efac;
-  --ok-soft: #173023;
-  --event: #2c2e33;
+  --ink: #ffffff;
+  --on-ink: #000000;
+  --ink-hover: #e3e3e3;
+  --text: #f2f2f2;
+  --text-soft: #cfcfcf;
+  --text-muted: #9a9a9a;
+  --accent: #f2f2f2;
+  --accent-text: #f2f2f2;
+  --accent-soft: rgba(255, 255, 255, 0.08);
+  --danger: #f05252;
+  --danger-soft: rgba(239, 68, 68, 0.12);
+  --warn: #fbbf24;
+  --warn-soft: rgba(245, 158, 11, 0.1);
+  --ok: #c4c4c4;
+  --ok-soft: rgba(255, 255, 255, 0.06);
+  --event: #161616;
   --raised:
     inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 0 0 1px rgba(255, 255, 255, 0.05);
   --float:
@@ -81,6 +86,25 @@
     0 0 0 1px rgba(255, 255, 255, 0.07), 0 16px 40px rgba(0, 0, 0, 0.55);
   --shade: rgba(0, 0, 0, 0.55);
   --scrim: rgba(0, 0, 0, 0.6);
+}
+
+/* Dim: a neutral #101010 dark theme. Same three colours, softer contrast. */
+:root[data-theme="dim"] {
+  --canvas: #101010;
+  --surface: #161616;
+  --sunken: #1a1a1a;
+  --event: #1f1f1f;
+  --ink: #f2f2f2;
+  --on-ink: #101010;
+  --text: #ebebeb;
+  --text-soft: #cfcfcf;
+  --text-muted: #a3a3a3;
+  --accent: #ebebeb;
+  --accent-text: #ebebeb;
+  --danger: hsl(4 82% 67%);
+  --danger-soft: hsl(4 72% 54% / 0.16);
+  --warn: hsl(40 78% 63%);
+  --warn-soft: hsl(40 72% 50% / 0.14);
 }
 @media (max-width: 800px), (pointer: coarse) {
   :root {
@@ -115,7 +139,7 @@ h1,
 h2,
 h3 {
   font-family: var(--head);
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: -0.015em;
 }
 h1 {

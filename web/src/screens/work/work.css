@@ -88,7 +88,7 @@
 .work-chips button[aria-pressed="true"] {
   background: var(--chip);
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
 }
 .work-chips span {
   color: var(--text-muted);
@@ -238,7 +238,7 @@
 }
 .work-bulk-count {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -286,7 +286,7 @@
   padding: 0 6px 0 2px;
   border-radius: var(--r-sm);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .work-column-head button:first-child:hover {
   background: var(--hover);

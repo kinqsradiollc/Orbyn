@@ -202,7 +202,7 @@
 .st-status button[aria-checked="true"] {
   background: var(--accent-soft);
   color: var(--accent-text);
-  font-weight: 600;
+  font-weight: 500;
 }
 .st-status button.is-done[aria-checked="true"] {
   background: var(--ok-soft);
@@ -264,7 +264,7 @@
 .st-section-head h3 {
   font-size: 13px;
   font-family: var(--sans);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0;
 }
 .st-count {
@@ -424,7 +424,7 @@
   border-radius: 50%;
   background: var(--chip);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .st-timeline-head {
   display: flex;
@@ -676,7 +676,7 @@
 .st-days button[aria-pressed="true"] {
   background: var(--accent-soft);
   color: var(--accent-text);
-  font-weight: 600;
+  font-weight: 500;
 }
 .st-parsed {
   display: flex;
@@ -878,7 +878,7 @@ button.st-fold:hover {
   background: var(--chip);
   color: var(--text-soft);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .st-row-due {
   flex: none;
