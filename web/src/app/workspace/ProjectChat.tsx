@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePath } from "../../lib/router";
+import { useNavigate, usePath } from "../../lib/router";
 import {
   RouteScopeProvider,
   useRouteScope,
@@ -31,16 +31,32 @@ import {
   ProjectChatDock,
   type ProjectChatRequest,
 } from "../../screens/projects/ProjectChatDock";
+import { ask } from "../../screens/projects/shared";
 import type { WorkspaceController } from "./controller";
 
 type ChatRequest = Omit<ProjectChatRequest, "id">;
 const Context = createContext<
   ((project: Project, request?: ChatRequest) => void) | null
 >(null);
-export function useProjectChat() {
+type OpenChat = (project: Project, request?: ChatRequest) => void;
+/** Without the workspace dock, fall back to the full Assistant screen. */
+export function useProjectChat(): OpenChat {
   const open = useContext(Context);
-  if (!open) throw new Error("Project chat needs the authenticated workspace.");
-  return open;
+  const navigate = useNavigate();
+  return useCallback<OpenChat>(
+    (project, request = {}) => {
+      if (open) return open(project, request);
+      const id = encodeURIComponent(project.id);
+      void navigate(
+        request.ask
+          ? ask(project.id, request.ask)
+          : request.chatId
+            ? `/app/assistant?project=${id}&chat=${encodeURIComponent(request.chatId)}`
+            : `/app/assistant?project=${id}`,
+      );
+    },
+    [open, navigate],
+  );
 }
 
 type Session = { project: Project; request: ProjectChatRequest | null };
@@ -106,7 +122,14 @@ export function WorkspaceProjectChat({
   routeRef.current = route;
   const path = usePath();
   const toast = useToast();
-  const projects = useResource(() => client.listProjects(), []);
+  // The projects list is read once the dock is first used, never before.
+  const [wanted, setWanted] = useState(false);
+  const wantedRef = useRef(false);
+  wantedRef.current = wanted;
+  const projects = useResource(
+    async () => (wanted ? client.listProjects() : undefined),
+    [wanted],
+  );
   const [selected, setSelected] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [open, setOpen] = useState(false);
@@ -152,6 +175,7 @@ export function WorkspaceProjectChat({
 
   const requestChat = useCallback(
     (project: Project, request: ChatRequest = {}) => {
+      setWanted(true);
       setOpen(true);
       if (hasBlockingRun()) {
         toast({
@@ -181,7 +205,9 @@ export function WorkspaceProjectChat({
   }, [path, projects.data, selected, selectProject]);
 
   useEffect(() => {
-    const refresh = () => void projects.reload();
+    const refresh = () => {
+      if (wantedRef.current) void projects.reload();
+    };
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
   }, [projects.reload]);
@@ -190,7 +216,9 @@ export function WorkspaceProjectChat({
     let timer: ReturnType<typeof setTimeout>;
     const refresh = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => void projects.reload(), 400);
+      timer = setTimeout(() => {
+        if (wantedRef.current) void projects.reload();
+      }, 400);
     };
     const stop = watchAccount((news) => {
       if (
@@ -335,7 +363,8 @@ export function WorkspaceProjectChat({
             if (open) collapse();
             else {
               setOpen(true);
-              void projects.reload();
+              if (wantedRef.current) void projects.reload();
+              else setWanted(true);
             }
           }}
         >

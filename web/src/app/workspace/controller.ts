@@ -54,12 +54,7 @@ export type WorkspaceSnapshot = Readonly<{
   storageError: string;
 }>;
 export type PrepareReason =
-  | "replace"
-  | "close"
-  | "unpair"
-  | "reload"
-  | "sign-out"
-  | "leave-workspace";
+  "replace" | "close" | "unpair" | "reload" | "sign-out" | "leave-workspace";
 export type FrameOwner = {
   prepare(reason: PrepareReason, destination: string): Promise<boolean>;
   /** A modal must block parking its owner even when its form is clean. */

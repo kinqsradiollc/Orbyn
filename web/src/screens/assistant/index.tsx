@@ -1,4 +1,4 @@
-import { newId } from "@orbyn/core";
+import { newId, type Project } from "@orbyn/core";
 import {
   ArrowUp,
   CalendarDays,
@@ -108,7 +108,12 @@ export function AssistantWorkspace({
         disabled: embedded.disabled,
       },
     ),
-    projects = useRead(() => client.listProjects()),
+    // The embedded dock hides the scope picker, so it skips this read.
+    projects = useRead(
+      () =>
+        embedded ? Promise.resolve([] as Project[]) : client.listProjects(),
+      [!!embedded],
+    ),
     prefs = useRead(() => client.getPlannerPrefs()),
     capabilities = useRead(() => client.aiCapabilities()),
     identity = useRead(() => client.agentSettings({ fresh: true }));
@@ -467,7 +472,7 @@ export function AssistantWorkspace({
               Conversation notifications are unavailable on this server.
             </p>
           )}
-          {projects.error && (
+          {!embedded && projects.error && (
             <ErrorNotice
               message={projects.error}
               onRetry={() => void projects.reload()}
