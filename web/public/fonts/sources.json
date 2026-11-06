@@ -1,85 +1,95 @@
 {
-  "cssSource": "https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,100..1000&family=Manrope:wght@200..800&display=swap",
-  "cssSourceSha256": "82bc38a42b211fe97895a2c66a82a58bb40226dc369c96a138f76e0588d87619",
-  "stylesheet": "fonts-5d9f0bf2e309.css",
+  "cssSource": "https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@100..800&display=swap",
+  "cssSourceSha256": "bcd51f8c9b5bda526750e81f557df5c22836494d901ee56a67f0604e9466de64",
+  "stylesheet": "fonts-3822d62d9e34.css",
   "files": [
     {
-      "family": "DM Sans",
-      "subset": "latin-ext",
-      "url": "https://fonts.gstatic.com/s/dmsans/v17/rP2Hp2ywxg089UriCZ2IHSeH.woff2",
-      "file": "dm-sans-latin-ext-5d18d31d23ad.woff2",
-      "bytes": 31292,
-      "sha256": "5d18d31d23ada61ebee1d589b11d5da30db9e158f589d5e35221ba2b1a45de54"
-    },
-    {
-      "family": "DM Sans",
-      "subset": "latin",
-      "url": "https://fonts.gstatic.com/s/dmsans/v17/rP2Hp2ywxg089UriCZOIHQ.woff2",
-      "file": "dm-sans-latin-ca72d2bcea8f.woff2",
-      "bytes": 62724,
-      "sha256": "ca72d2bcea8f4daa783dbdfa2d9b46068c3ce38168e05918fb867aa453b4f890"
-    },
-    {
-      "family": "Manrope",
+      "family": "Geist",
       "subset": "cyrillic-ext",
-      "url": "https://fonts.gstatic.com/s/manrope/v23/xn7gYHE41ni1AdIRggqxSuXd.woff2",
-      "file": "manrope-cyrillic-ext-3c09135e88bb.woff2",
-      "bytes": 2588,
-      "sha256": "3c09135e88bbfcd848e99be137710afbb615a8d9a73c5c48e6cb0245a162af1d"
+      "url": "https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwRGFWNOITddY4.woff2",
+      "file": "geist-cyrillic-ext-b7a545bbb082.woff2",
+      "bytes": 7252,
+      "sha256": "b7a545bbb08256bd809f11cfe66d88da3e22d169ea4407737b1ef0ec1ed3d791"
     },
     {
-      "family": "Manrope",
+      "family": "Geist",
       "subset": "cyrillic",
-      "url": "https://fonts.gstatic.com/s/manrope/v23/xn7gYHE41ni1AdIRggOxSuXd.woff2",
-      "file": "manrope-cyrillic-447c49583b1b.woff2",
-      "bytes": 14352,
-      "sha256": "447c49583b1b735cc6f566151db1d24354cec41076c55dd98455cfbde9e806c1"
+      "url": "https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwYGFWNOITddY4.woff2",
+      "file": "geist-cyrillic-6129fc8571c3.woff2",
+      "bytes": 14900,
+      "sha256": "6129fc8571c3e0cb0a4c41f5160c974a843b055009dc4ad8858bd808e18a2d86"
     },
     {
-      "family": "Manrope",
-      "subset": "greek",
-      "url": "https://fonts.gstatic.com/s/manrope/v23/xn7gYHE41ni1AdIRggSxSuXd.woff2",
-      "file": "manrope-greek-e507c109c317.woff2",
-      "bytes": 9268,
-      "sha256": "e507c109c31789b33994646b457ee288639324516357250607c9b1398186e069"
-    },
-    {
-      "family": "Manrope",
+      "family": "Geist",
       "subset": "vietnamese",
-      "url": "https://fonts.gstatic.com/s/manrope/v23/xn7gYHE41ni1AdIRggixSuXd.woff2",
-      "file": "manrope-vietnamese-dbf64d973b39.woff2",
-      "bytes": 8388,
-      "sha256": "dbf64d973b3987844df30992c93f47d24ac8935ee8c9b1e320942aeb1b367703"
+      "url": "https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwTGFWNOITddY4.woff2",
+      "file": "geist-vietnamese-f689f638f29f.woff2",
+      "bytes": 7968,
+      "sha256": "f689f638f29fff460a2d5749edb5d5c38d7bef0389f32032d871f23fc6ebb008"
     },
     {
-      "family": "Manrope",
+      "family": "Geist",
       "subset": "latin-ext",
-      "url": "https://fonts.gstatic.com/s/manrope/v23/xn7gYHE41ni1AdIRggmxSuXd.woff2",
-      "file": "manrope-latin-ext-2f7335119075.woff2",
-      "bytes": 15160,
-      "sha256": "2f7335119075b2079f1d882530bbc18728461612bf90743203d73a74a48f4d9b"
+      "url": "https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwSGFWNOITddY4.woff2",
+      "file": "geist-latin-ext-58a6b173d5ca.woff2",
+      "bytes": 16540,
+      "sha256": "58a6b173d5ca1dec92166ea3c6cb1a84a4144556d10928ac14e8e6b40e4787bd"
     },
     {
-      "family": "Manrope",
+      "family": "Geist",
       "subset": "latin",
-      "url": "https://fonts.gstatic.com/s/manrope/v23/xn7gYHE41ni1AdIRggexSg.woff2",
-      "file": "manrope-latin-8c2def024c1b.woff2",
-      "bytes": 24532,
-      "sha256": "8c2def024c1bf31aacf3624ae3c4d701269b4ec3dc765c04830839f0d36b2d9e"
-    }
-  ],
-  "licences": [
-    {
-      "file": "dm-sans-OFL.txt",
-      "gitBlobSha": "4430b85ac62998e2edb914360f9ebdfe43f4deaa",
-      "sha256": "9af36190332437f5ecd09974de43c1f7c77a310a996cdd8ceb25628b458840e1",
-      "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/dmsans/OFL.txt"
+      "url": "https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwcGFWNOITd.woff2",
+      "file": "geist-latin-9b6f5ff45b27.woff2",
+      "bytes": 29288,
+      "sha256": "9b6f5ff45b278c744b5f379a2c4ecbaf858a842b8eaf82ac8d21b699ca16c608"
     },
     {
-      "file": "manrope-OFL.txt",
-      "gitBlobSha": "e271172a9ed0cddc895aabb6509f1c7d880b492d",
-      "sha256": "58172e0c0fac2cda8a37b348164bb55e44b0e69051e557e92b1d3f6910141f7b",
-      "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/manrope/OFL.txt"
+      "family": "JetBrains Mono",
+      "subset": "cyrillic-ext",
+      "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbV2o-flEEny0FZhsfKu5WU4xD2OwGtT0rU3BE.woff2",
+      "file": "jetbrains-mono-cyrillic-ext-992eea2f7021.woff2",
+      "bytes": 2020,
+      "sha256": "992eea2f70210457ddd1196de4df3240919ffe068ad188c79d985fba4565d3bf"
+    },
+    {
+      "family": "JetBrains Mono",
+      "subset": "cyrillic",
+      "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbV2o-flEEny0FZhsfKu5WU4xD_OwGtT0rU3BE.woff2",
+      "file": "jetbrains-mono-cyrillic-af7486955880.woff2",
+      "bytes": 12064,
+      "sha256": "af7486955880be1c2b972e9c766acffb776768d669b6576ed9a0919ce72e7ca6"
+    },
+    {
+      "family": "JetBrains Mono",
+      "subset": "greek",
+      "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbV2o-flEEny0FZhsfKu5WU4xD4OwGtT0rU3BE.woff2",
+      "file": "jetbrains-mono-greek-3edf363dbf9d.woff2",
+      "bytes": 9084,
+      "sha256": "3edf363dbf9d5fa0cdc784ae2b431a8a4152f4055a8a8858028c0bd668808273"
+    },
+    {
+      "family": "JetBrains Mono",
+      "subset": "vietnamese",
+      "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbV2o-flEEny0FZhsfKu5WU4xD0OwGtT0rU3BE.woff2",
+      "file": "jetbrains-mono-vietnamese-1390e86cc282.woff2",
+      "bytes": 7468,
+      "sha256": "1390e86cc2823e759358918c01c4fcc1b6e4f01bca915bdbeb6d68eb5c244405"
+    },
+    {
+      "family": "JetBrains Mono",
+      "subset": "latin-ext",
+      "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbV2o-flEEny0FZhsfKu5WU4xD1OwGtT0rU3BE.woff2",
+      "file": "jetbrains-mono-latin-ext-7db7affbce1f.woff2",
+      "bytes": 15204,
+      "sha256": "7db7affbce1fdee69c1ffc2641bbca289b049867f524c9d861fe35ab6670bf29"
+    },
+    {
+      "family": "JetBrains Mono",
+      "subset": "latin",
+      "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbV2o-flEEny0FZhsfKu5WU4xD7OwGtT0rU.woff2",
+      "file": "jetbrains-mono-latin-1e06740a02a4.woff2",
+      "bytes": 40480,
+      "sha256": "1e06740a02a443fb7f3eeda8fcaa685a0f6c620e3f01e6666e847295469ce3ad"
     }
   ]
 }
