@@ -61,19 +61,14 @@ import {
   usePlanning,
 } from "../shared-task";
 import { Chats } from "./Chats";
+import { useProjectChat } from "../../app/workspace/ProjectChat";
 import { History } from "./History";
 import { Home, type HomeData } from "./Home";
 import { useImports } from "./imports";
 import { Cover, LookDialog, LookIcon } from "./look";
 import { Pages } from "./Pages";
 import { Records } from "./Records";
-import {
-  ask,
-  canManageAi,
-  canWriteProject,
-  dayLabel,
-  unknownWrite,
-} from "./shared";
+import { canManageAi, canWriteProject, dayLabel, unknownWrite } from "./shared";
 import { groupStages, StageBoard, StageList } from "./Stages";
 import { Timeline } from "./Timeline";
 import { useProjectRead } from "./useProjectRead";
@@ -377,6 +372,7 @@ function Body({
   const [pickerError, setPickerError] = useState("");
   const [lookOpen, setLookOpen] = useState(false);
   const [chats, setChats] = useState(false);
+  const openProjectChat = useProjectChat();
   const [claiming, setClaiming] = useState<string[]>([]);
   const handoff = useRef<string | null>(null),
     checkingLeave = useRef(false),
@@ -837,7 +833,7 @@ function Body({
   const failedDetails = home.error || planning.error || sessions.error;
   const reentry = visit.data?.reentry;
   const openAssistant = (question: string) =>
-    navigate(ask(project.id, question));
+    openProjectChat(project, { ask: question });
   const Mode = (
     <>
       <div className="pj-modes" role="group" aria-label="How to show the work">
@@ -890,10 +886,7 @@ function Body({
           </span>
         ) : (
           <>
-            <Button
-              variant="ghost"
-              onClick={() => navigate(`/app/assistant?project=${project.id}`)}
-            >
+            <Button variant="ghost" onClick={() => openProjectChat(project)}>
               <Sparkles aria-hidden="true" /> New chat
             </Button>
             <Button variant="ghost" onClick={() => setChats(true)}>
@@ -1360,11 +1353,15 @@ function Body({
         <Chats
           projectId={project.id}
           onClose={() => setChats(false)}
-          onOpen={(chatId) => {
+          onOpen={(chatId, scope) => {
             setChats(false);
-            navigate(
-              `/app/assistant?project=${project.id}&chat=${encodeURIComponent(chatId)}`,
-            );
+            if (scope?.kind !== "project" || scope.id !== project.id) {
+              void navigate(
+                `/app/assistant?chat=${encodeURIComponent(chatId)}`,
+              );
+              return;
+            }
+            openProjectChat(project, { chatId });
           }}
         />
       )}

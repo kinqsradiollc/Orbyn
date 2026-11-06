@@ -123,6 +123,7 @@ const superseded = (): RouteResult => ({ kind: "superseded" });
 export class WorkspaceController implements BrowserNavigationOwner {
   private state: WorkspaceSnapshot;
   private readonly listeners = new Set<() => void>();
+  private readonly workspaceGuards = new Set<LeaveGuard>();
   private readonly registry = new Map<string, Registration>();
   private readonly scopeCache = new Map<string, RouteScope>();
   private readonly inputEpochs = new Map<string, number>();
@@ -899,6 +900,19 @@ export class WorkspaceController implements BrowserNavigationOwner {
     );
   }
 
+  /** Persistent shell owners outlive working frames and guard explicit disposal. */
+  registerWorkspaceGuard(guard: LeaveGuard) {
+    this.workspaceGuards.add(guard);
+    return () => {
+      this.workspaceGuards.delete(guard);
+    };
+  }
+
+  /** Authored shell input invalidates an in-flight global disposal decision. */
+  noteWorkspaceInput() {
+    this.intent++;
+  }
+
   /** Explicit global Reload/signout admission. Caller must execute before another intent. */
   async prepareAll(
     reason: "reload" | "sign-out" | "leave-workspace",
@@ -906,12 +920,15 @@ export class WorkspaceController implements BrowserNavigationOwner {
     const opening = this.state;
     const ticket = ++this.intent;
     const registrations = new Map<string, object>();
+    const workspaceGuards = [...this.workspaceGuards];
     let global = { allowed: true, current: () => true };
     const current = () =>
       this.current() &&
       global.current() &&
       this.intent === ticket &&
       this.state.revision === opening.revision &&
+      workspaceGuards.length === this.workspaceGuards.size &&
+      workspaceGuards.every((guard) => this.workspaceGuards.has(guard)) &&
       [...registrations].every(
         ([key, token]) => this.registry.get(key)?.token === token,
       );
@@ -921,6 +938,14 @@ export class WorkspaceController implements BrowserNavigationOwner {
       return { allowed: false, current };
     }
     if (!global.allowed || !current()) return { allowed: false, current };
+    for (const guard of workspaceGuards) {
+      try {
+        if (!(await guard("")) || !current())
+          return { allowed: false, current };
+      } catch {
+        return { allowed: false, current };
+      }
+    }
     for (const frame of opening.frames) {
       const registration = this.registry.get(leaseKey(frame.lease));
       if (!registration) return { allowed: false, current };

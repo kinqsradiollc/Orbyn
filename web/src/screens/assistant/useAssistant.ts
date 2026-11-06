@@ -89,11 +89,24 @@ function restoredTurns(value: AiChat, retained: Turn[]): Turn[] {
 }
 
 /** Canonical retained history stays in the shared store; this hook owns only the active view and transient drafts. */
-export function useAssistant(query: string) {
+export function useAssistant(
+  query: string,
+  embedded?: {
+    onChat: (id: string) => void;
+    retainPath: string;
+    disabled: boolean;
+  },
+) {
   const navigate = useNavigate();
+  const embedding = useRef(embedded);
+  embedding.current = embedded;
   const confirm = useConfirm(),
     normalizing = useRef<string | null>(null);
   const normalizeChat = async (id: string) => {
+    if (embedding.current) {
+      embedding.current.onChat(id);
+      return;
+    }
     const href = `/app/assistant?chat=${encodeURIComponent(id)}`;
     if (normalizing.current === href) return;
     normalizing.current = href;
@@ -720,7 +733,7 @@ export function useAssistant(query: string) {
       !current.current.chat ||
       !text.trim() ||
       text.trim().length > 4000 ||
-      scope?.disabled ||
+      (embedding.current ? embedding.current.disabled : scope?.disabled) ||
       replyError ||
       (reply && !replyEntry)
     )
@@ -951,6 +964,15 @@ export function useAssistant(query: string) {
     if (!owned() || mine !== generation.current) return;
     if (canonical.current) await store.refresh();
   };
+  // Unsent text, a pending reply target or failed answers must not be lost.
+  const dirty =
+    !!message.trim() ||
+    !!reply ||
+    failedAnswers.length > 0 ||
+    projectUncertain ||
+    [...drafts.current.values()].some(
+      (draft) => draft.message.trim() || draft.replyId,
+    );
   const exitState = useRef({ sending, projectUncertain, failedAnswers });
   exitState.current = { sending, projectUncertain, failedAnswers };
   const checkingLeave = useRef(false);
@@ -968,7 +990,11 @@ export function useAssistant(query: string) {
       )
         return false;
       // Same mounted Assistant keeps its per-chat draft/failed-answer owners when selecting history.
-      if (to.split(/[?#]/)[0] === "/app/assistant") return true;
+      if (
+        to.split(/[?#]/)[0] ===
+        (embedding.current?.retainPath ?? "/app/assistant")
+      )
+        return true;
       if (state.failedAnswers.length) return false;
       const hasDraft = () =>
         !!current.current.message.trim() ||
@@ -1022,6 +1048,7 @@ export function useAssistant(query: string) {
     progress,
     focused,
     failedAnswers,
+    dirty,
     waiting,
     send,
     runAction,

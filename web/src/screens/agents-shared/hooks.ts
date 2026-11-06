@@ -163,7 +163,7 @@ export function useProfiles() {
 }
 
 /** Unclear saves require a fresh read before another change. */
-export function useControls(delivery: boolean) {
+export function useControls(delivery: boolean, enabled = true) {
   const owner = useOwner();
   const owned = useOwned();
   const [deliveryState, setDeliveryState] = useState<{
@@ -198,14 +198,14 @@ export function useControls(delivery: boolean) {
     return task;
   }, [delivery, owned]);
   useEffect(() => {
-    if (!delivery) return;
+    if (!delivery || !enabled) return;
     void refreshDelivery();
     const stop = onForeground(() => void refreshDelivery());
     return () => {
       capabilityRequest.current++;
       stop();
     };
-  }, [delivery, refreshDelivery]);
+  }, [delivery, enabled, refreshDelivery]);
   const deliveryAvailable = delivery ? deliveryState.enabled : false;
   const store = useMemo(
     () =>
@@ -229,6 +229,8 @@ export function useControls(delivery: boolean) {
     [owned, store, deliveryAvailable],
   );
   useEffect(() => {
+    // A disabled instance (an embedded chat using shared controls) stays idle.
+    if (!enabled) return;
     let active = true;
     let dirty = false;
     let queued = false;
@@ -266,7 +268,7 @@ export function useControls(delivery: boolean) {
       stopSettled();
       store.reset();
     };
-  }, [store, refresh, owned]);
+  }, [store, refresh, owned, enabled]);
   return {
     state,
     set,

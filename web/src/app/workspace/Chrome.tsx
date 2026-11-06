@@ -7,6 +7,7 @@ import {
 } from "../../lib/route-scope";
 import { Shell } from "../Shell";
 import { WorkspaceController } from "./controller";
+import { WorkspaceProjectChat } from "./ProjectChat";
 const inactive = {
   pathname: "/app",
   search: "",
@@ -88,7 +89,9 @@ export function WorkspaceChrome({
       controller={controller}
       origin={working?.lease}
     >
-      {children}
+      <WorkspaceProjectChat controller={controller}>
+        {children}
+      </WorkspaceProjectChat>
     </Shell>
   );
   // A closed/missing dock origin must never silently reroute an action to primary.
