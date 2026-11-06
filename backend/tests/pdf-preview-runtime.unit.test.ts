@@ -179,7 +179,17 @@ test("the bundled PDF.js version decodes and paints an actual PDF page with iden
   const rootRequire = createRequire(
     new URL("../../package.json", import.meta.url),
   );
-  const { createCanvas } = rootRequire("@napi-rs/canvas");
+  // Paint the way imports/pdf.ts reads: PDF.js's bundled standard fonts, not
+  // whatever fonts the runner happens to have. Without a Path2D, PDF.js cannot
+  // draw those font outlines on a Node canvas.
+  const { createCanvas, Path2D } = rootRequire("@napi-rs/canvas");
+  const standardFontDataUrl = new URL(
+    "../../node_modules/pdfjs-dist/standard_fonts/",
+    import.meta.url,
+  ).pathname;
+  const globals = globalThis as { Path2D?: unknown };
+  const previousPath2D = globals.Path2D;
+  globals.Path2D = Path2D;
   const { getDocument } =
     await import("../../node_modules/pdfjs-dist/legacy/build/pdf.mjs");
   const stream = "BT /F1 20 Tf 20 100 Td (Live Note preview) Tj ET";
@@ -204,7 +214,8 @@ test("the bundled PDF.js version decodes and paints an actual PDF page with iden
   const task = getDocument({
     data: new TextEncoder().encode(source),
     isEvalSupported: false,
-    useSystemFonts: true,
+    useSystemFonts: false,
+    standardFontDataUrl,
     useWasm: false,
   });
   try {
@@ -237,5 +248,6 @@ test("the bundled PDF.js version decodes and paints an actual PDF page with iden
     );
   } finally {
     await task.destroy();
+    globals.Path2D = previousPath2D;
   }
 });
