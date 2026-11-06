@@ -6,10 +6,18 @@ guidance in [CONTRIBUTING](../CONTRIBUTING.md).
 
 ## Tokens and appearance
 
-The current owners are `packages/core/src/theme/presentation.ts`,
-`desktop/src/styles/global.css` and `mobile/src/theme/index.ts`. Inspect current
-source before changing them. Keep neutral light/dark surfaces and the restrained
-blue accent; preserve semantic statuses and user-selected calendar/tag colors.
+The current owners are `web/src/ui/tokens.css` for the rebuilt web app,
+`packages/core/src/theme/presentation.ts`, `desktop/src/styles/global.css` and
+`mobile/src/theme/index.ts`. Inspect current source before changing them.
+
+The web app uses the Orbyn house style shared with Orbyn Engineering (owner decision,
+November 2026): Geist for text and JetBrains Mono for code, served from
+`web/public/fonts`; Light, Dark and Dim themes; headings at medium weight, never
+bold. At most three colours appear in the interface: ink for everything, including
+live and selected states; amber (`--warn`) when the person must act; red
+(`--danger`) for failures and removals. Done, working and selected states are ink.
+Calendar, list, tag, project and booking-page colours are content the person chose
+and keep their own colour. There is no 3D calendar view.
 
 | Text role | Base size | Use                                                  |
 | --------- | --------- | ---------------------------------------------------- |
@@ -69,8 +77,8 @@ acceptance. Record checks of changed flows under [verification](verification.md)
 - Keep one clear action per outcome. Remove duplicate controls, competing toolbars
   and explanations of obvious actions. Put rare management actions in the existing
   overflow menu. Icon-only controls need accessible names and keyboard focus.
-- Use the current accent, neutral surfaces, text roles and spacing tokens. Do not
-  introduce a new palette or shrink text to hide layout problems. Filled/bordered
+- Use the house-style tokens, text roles and spacing tokens. Do not add colours
+  beyond ink, amber and red, or shrink text to hide layout problems. Filled/bordered
   controls need padding and consistent heights; mobile touch targets remain usable.
 - Respond to the actual pane width. Preserve user-selected sidebar widths; opening
   another pane must not reset them. Align pane/tab headers and avoid duplicate
