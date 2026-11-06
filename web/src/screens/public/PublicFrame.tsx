@@ -2,7 +2,7 @@ import { ArrowUpRight, Moon, Orbit, Sun } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 import { useAccount } from "../../app/account";
 import { navigate, useSearch } from "../../lib/router";
-import { useTheme } from "../../lib/theme";
+import { isDarkTheme, useTheme } from "../../lib/theme";
 import { IconButton } from "../../ui/kit";
 import "./public.css";
 import {
@@ -54,10 +54,10 @@ export function PublicFrame({
         </a>
         <div className="site-nav">{nav}</div>
         <IconButton
-          label={theme === "dark" ? "Use light theme" : "Use dark theme"}
+          label={isDarkTheme(theme) ? "Use light theme" : "Use dark theme"}
           onClick={toggle}
         >
-          {theme === "dark" ? <Sun /> : <Moon />}
+          {isDarkTheme(theme) ? <Sun /> : <Moon />}
         </IconButton>
         {token ? (
           <a

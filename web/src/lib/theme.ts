@@ -1,6 +1,12 @@
 import { useSyncExternalStore } from "react";
 
-export type Theme = "light" | "dark";
+export type Theme = "light" | "dark" | "dim";
+
+const THEMES: readonly Theme[] = ["light", "dark", "dim"];
+const isTheme = (value: unknown): value is Theme =>
+  THEMES.includes(value as Theme);
+/** Dark and Dim are both dark schemes. */
+export const isDarkTheme = (value: Theme) => value !== "light";
 
 /** The same key the old client uses, so the choice carries over. */
 const KEY = "orbyn-theme";
@@ -8,7 +14,7 @@ const KEY = "orbyn-theme";
 function initial(): Theme {
   try {
     const saved = localStorage.getItem(KEY);
-    if (saved === "light" || saved === "dark") return saved;
+    if (isTheme(saved)) return saved;
   } catch {
     // Fall back to the system preference.
   }
@@ -42,10 +48,7 @@ function apply(next: Theme, persist: boolean) {
 
 apply(theme, true);
 window.addEventListener("storage", (event) => {
-  if (
-    event.key === KEY &&
-    (event.newValue === "light" || event.newValue === "dark")
-  )
+  if (event.key === KEY && isTheme(event.newValue))
     apply(event.newValue, false);
 });
 const subscribe = (listener: () => void) => {
@@ -53,7 +56,7 @@ const subscribe = (listener: () => void) => {
   return () => void listeners.delete(listener);
 };
 export const setTheme = (next: Theme) => apply(next, true);
-const toggle = () => setTheme(theme === "dark" ? "light" : "dark");
+const toggle = () => setTheme(isDarkTheme(theme) ? "light" : "dark");
 
 export function useTheme() {
   const value = useSyncExternalStore(subscribe, () => theme);

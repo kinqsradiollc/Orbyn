@@ -22,7 +22,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 12px 8px 8px 16px;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 13px;
 }
 .assistant-rail-head .btn {
@@ -208,7 +208,8 @@
   background: var(--accent);
   color: var(--on-ink, #fff);
 }
-:root[data-theme="dark"] .assistant-message-user {
+:root[data-theme="dark"] .assistant-message-user,
+:root[data-theme="dim"] .assistant-message-user {
   color: #0d0e10;
 }
 .assistant-message-user .agents-reply > :first-child {
@@ -240,7 +241,7 @@
 }
 .assistant-update-label {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .assistant-actions {
   display: flex;

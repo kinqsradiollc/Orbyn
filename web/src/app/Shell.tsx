@@ -50,7 +50,7 @@ import {
   useNavigate,
   usePath,
 } from "../lib/router";
-import { useTheme } from "../lib/theme";
+import { isDarkTheme, useTheme } from "../lib/theme";
 import { Button, ErrorNotice, IconButton, Menu, useToast } from "../ui/kit";
 import { TaskHost, useTasks, useItems, nextUp } from "../screens/shared-task";
 import { useAccount } from "./account";
@@ -754,10 +754,10 @@ export function Shell({
           </button>
           <span className="topbar-gap" />
           <IconButton
-            label={theme === "dark" ? "Use light theme" : "Use dark theme"}
+            label={isDarkTheme(theme) ? "Use light theme" : "Use dark theme"}
             onClick={toggleTheme}
           >
-            {theme === "dark" ? <Sun /> : <Moon />}
+            {isDarkTheme(theme) ? <Sun /> : <Moon />}
           </IconButton>
           <span className="bell">
             <IconButton

@@ -319,13 +319,15 @@ export function Preferences() {
               if (
                 owner() &&
                 (event.target.value === "light" ||
-                  event.target.value === "dark")
+                  event.target.value === "dark" ||
+                  event.target.value === "dim")
               )
                 setTheme(event.target.value);
             }}
           >
             <option value="light">Light</option>
             <option value="dark">Dark</option>
+            <option value="dim">Dim</option>
           </SelectBox>
         </Field>
         <p className="small muted">Saved on this device.</p>
