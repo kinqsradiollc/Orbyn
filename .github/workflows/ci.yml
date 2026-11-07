@@ -34,3 +34,18 @@ jobs:
           docker compose config --quiet
       - name: Build the image
         run: docker build -f deploy/Dockerfile -t orbyn-dev-site .
+
+  # Branch protection on main requires this check by name.
+  result:
+    name: CI result
+    if: ${{ always() }}
+    needs: [site]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the site checks
+        env:
+          SITE: ${{ needs.site.result }}
+        run: |
+          echo "site: $SITE"
+          test "$SITE" = success
