@@ -59,4 +59,6 @@ To use Cloudflare Workers instead: `npx wrangler deploy`.
 
 ## Licence
 
-See [LICENSE](LICENSE). Fonts keep their own licences in `site/fonts/`.
+orbyn.dev is licensed under the [PolyForm Strict License 1.0.0](LICENSE).
+Code this repository published earlier under the MIT License stays available
+under MIT at those commits. Fonts keep their own licences in `site/fonts/`.

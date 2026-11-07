@@ -2,6 +2,7 @@
   "name": "orbyn.dev",
   "private": true,
   "description": "The orbyn.dev site: the home of the Orbyn product line.",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "scripts": {
     "build": "node scripts/build-site.mjs",
