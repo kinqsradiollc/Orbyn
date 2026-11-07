@@ -1,48 +1,14 @@
 {
-  "name": "orbyn",
+  "name": "orbyn.dev",
   "private": true,
-  "workspaces": [
-    "packages/*",
-    "backend",
-    "desktop",
-    "mobile"
-  ],
+  "description": "The orbyn.dev site: the home of the Orbyn product line.",
+  "type": "module",
   "scripts": {
-    "build:packages": "npm run build -w @orbyn/core && npm run build -w @orbyn/api-client",
-    "dev:packages": "npm run dev -w @orbyn/core & npm run dev -w @orbyn/api-client & wait",
-    "dev": "npm run dev -w desktop",
-    "dev:api": "npm run dev -w backend",
-    "dev:web": "npm run dev -w desktop",
-    "dev:mobile": "npm run start -w mobile",
-    "build": "npm run build:packages && npm run build -w backend && npm run build -w desktop",
-    "typecheck": "npm run build:packages && npm run typecheck -w backend && npm run typecheck -w desktop && npm run typecheck -w mobile",
-    "test": "npm run build:packages && npm run test -w backend",
-    "migrate": "npm run migrate -w backend",
-    "format": "prettier --write \"packages/*/src/**/*.ts\" backend/src backend/tests desktop/src mobile/src docs README.md",
-    "format:check": "prettier --check \"packages/*/src/**/*.ts\" backend/src backend/tests desktop/src mobile/src docs README.md",
-    "build:pdf-renderer": "node scripts/build-mermaid.mjs",
-    "build:pdf-preview": "node scripts/build-pdf-preview.mjs",
-    "build:latex-html": "node scripts/build-latex-html.mjs",
-    "check:latex-html": "node scripts/check-latex-html.mjs",
-    "generate:brand": "node scripts/generate-brand-assets.mjs",
-    "dev:seed": "node backend/scripts/seed-ui-demo.mjs"
-  },
-  "overrides": {
-    "xcode": {
-      "uuid": "11.1.1"
-    }
-  },
-  "devDependencies": {
-    "@resvg/resvg-js": "2.6.2",
-    "esbuild": "^0.28.2",
-    "fontkit": "2.0.4",
-    "latex.js": "0.12.6",
-    "mermaid": "^11.17.2",
-    "pdfjs-dist": "6.4.299",
-    "prettier": "^3.9.6"
+    "build": "node scripts/build-site.mjs",
+    "check": "node scripts/build-site.mjs --check",
+    "serve": "node scripts/serve-site.mjs 4321"
   },
   "engines": {
-    "node": ">=22",
-    "npm": ">=10"
+    "node": ">=22"
   }
 }

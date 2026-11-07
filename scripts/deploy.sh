@@ -1,478 +1,273 @@
 #!/usr/bin/env bash
-# Deploy or update Orbyn on one Docker host. Legacy secret upgrades require a quiet cutover.
+# Deploy orbyn.dev on one Docker host, and remove what is left of the old Orbyn app.
 #
-#   ./scripts/deploy.sh              pull the latest code, back up, build, migrate, roll out
-#   ./scripts/deploy.sh --no-pull    deploy what is checked out (and .env changes)
-#   ./scripts/deploy.sh --no-backup  skip the database dump taken before migrations
-#   ./scripts/deploy.sh --check      report what would happen and check .env; change nothing
-#   ENV_FILE=.env.production ./scripts/deploy.sh --check
-#                                    the same for a file you're about to copy to a server
+#   ./scripts/deploy.sh              pull, build, back up and remove the old app, start the site
+#   ./scripts/deploy.sh --check      list exactly what would be removed and started; change nothing
+#   ./scripts/deploy.sh --no-pull    deploy what is checked out
+#   ./scripts/deploy.sh --keep-old   deploy the site but leave the old app and its data alone
 #
-# The same command does a first install: whatever isn't running is started.
+# On Windows, run it from Git Bash:
+#   "C:\Program Files\Git\bin\bash.exe" ./scripts/deploy.sh
 #
-# In order: pull the code, build images stamped with the commit, make sure the
-# database and pooler run, dump the database to backups/, start the mail
-# server or catcher .env selects, apply migrations, then replace each service
-# by starting new copies beside the old ones, waiting for their health checks,
-# and retiring the old ones. Then replace the gateway only if it changed, start
-# or update the Cloudflare tunnel (when CLOUDFLARE_TUNNEL_TOKEN is set), remove
-# leftover image layers, and confirm the version that is serving.
-#
-# Don't update with `docker compose up -d --build`: every backend service
-# shares one image, so compose replaces all copies of all of them at once and
-# the site is down until they start.
-#
-# Copies per service come from .env: API_REPLICAS (default 2), AI_REPLICAS (2),
-# REALTIME_REPLICAS (2), WEB_REPLICAS (2), STATUS_REPLICAS (1),
-# NOTIFIER_REPLICAS (1), FILES_REPLICAS (1), CONVERTER_REPLICAS (1), PDF_REPLICAS (1). Settings
-# that live in the app (Admin -> System) need no deploy at all.
+# What happens, in order:
+#   1. Read .env: CLOUDFLARE_TUNNEL_TOKEN, APP_URL and optionally WEB_PORT.
+#   2. Pull the latest code (git pull --ff-only) and build the site image.
+#      A failed build stops here, with the old app untouched.
+#   3. Only if something of the old Orbyn app is still here: stop it and save
+#      one final backup to backups/orbyn-final-<time>/: the database dump, the
+#      uploaded and page files, and the keys that decrypt them. Then remove its
+#      containers, volumes and images. If any part of the backup fails, nothing
+#      is removed. Only Docker objects labelled with this Compose project, and
+#      named after the old app's services and volumes, are touched.
+#   4. Start the site, then the Cloudflare tunnel.
+#   5. Check that the site answers locally and print what is running.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Git Bash on Windows rewrites Unix-looking arguments into Windows paths, which
-# would turn a container path like /data/... into C:/Program Files/Git/data/...
-# Harmless everywhere else.
+# Git Bash on Windows rewrites Unix-looking arguments into Windows paths
+# (/var/lib/... becomes C:/Program Files/Git/var/lib/...). Harmless elsewhere.
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 
-PULL=1 BACKUP=1 CHECK=0
+PULL=1 CHECK=0 REMOVE_OLD=1
 for arg in "$@"; do
   case "$arg" in
     --no-pull) PULL=0 ;;
-    --no-backup) BACKUP=0 ;;
     --check) CHECK=1 ;;
+    --keep-old) REMOVE_OLD=0 ;;
     -h | --help) awk 'NR>1 && !/^#/{exit} NR>1{sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "Unknown option: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
 
-# Compose and the containers read .env; another file may only be checked.
-ENV_FILE=${ENV_FILE:-.env}
-if [ "$ENV_FILE" != .env ] && [ "$CHECK" != 1 ]; then
-  echo "ENV_FILE only works with --check: a deploy uses .env, which compose reads itself." >&2
-  exit 2
-fi
-
 log() { printf '\n==> %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
-compose() { docker compose "$@"; }
-# A value from .env without sourcing it (passwords may contain $ or quotes).
-setting() { local v; v=$(grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r' || true); echo "${v:-${2:-}}"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+# A value from .env without sourcing it (values may contain $ or quotes).
+setting() { local v; v=$(grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r' || true); echo "${v:-${2:-}}"; }
+# One variable from a container's environment.
+container_env() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" | tr -d '\r' | sed -n "s/^$2=//p" | head -1; }
 
-[ -f "$ENV_FILE" ] || { echo "No $ENV_FILE next to compose.yaml; copy .env.example (or .env.production) first." >&2; exit 1; }
+command -v docker >/dev/null 2>&1 || die "docker is not installed or not on PATH."
+docker info >/dev/null 2>&1 || die "Docker is not running."
+[ -f .env ] || die "No .env next to compose.yaml. Copy .env.example to .env and fill it in."
 
 # ---------------------------------------------------------------------------
-# What .env asks for, and whether it hangs together.
+# 1. Settings
 tunnel_token=$(setting CLOUDFLARE_TUNNEL_TOKEN)
-smtp_host=$(setting DOCKER_SMTP_HOST mailpit)
-mail_config=$(setting MAIL_CONFIG maddy.conf)
-mail_domain=$(setting MAIL_DOMAIN)
-app_url=$(setting APP_URL)
-mcp_url=$(setting MCP_PUBLIC_URL https://mcp.orbyn.dev/mcp)
-plugin_url=$(setting PLUGIN_PUBLIC_URL)
-mcp_ai_enabled=$(setting MCP_WORKSPACE_AI_ENABLED false)
-oauth_issuer=$(setting OAUTH_ISSUER "$app_url")
-cors=$(setting CORS_ORIGINS)
-profiles=$(setting COMPOSE_PROFILES)
-ocr_on=0
-case ",$profiles," in *,ocr,*) ocr_on=1 ;; esac
-formula_on=0
-case ",$profiles," in *,formula,*) formula_on=1 ;; esac
-semantic_on=0
-case ",$profiles," in *,semantic,*) semantic_on=1 ;; esac
-plugin_on=0
-[ -n "$plugin_url" ] && plugin_on=1
-case ",$profiles," in *,plugin,*) plugin_on=1 ;; esac
-[ "$mcp_ai_enabled" = true ] && plugin_on=1
-problems=0
-secrets_key=$(setting SECRETS_KEY)
-[ -n "$secrets_key" ] || { echo "SECRETS_KEY is required for production credential encryption." >&2; exit 1; }
+app_url=$(setting APP_URL https://orbyn.dev)
+web_port=$(setting WEB_PORT 8080)
+case "$web_port" in '' | *[!0-9]*) die "WEB_PORT must be a port number." ;; esac
+[ -n "$tunnel_token" ] || warn "CLOUDFLARE_TUNNEL_TOKEN is empty: the site will only be reachable on 127.0.0.1:$web_port."
 
-# The optional worker must not keep old queue/retry code across a schema upgrade.
-# Allow 30 seconds for shutdown; any unfinished page stays queued in PostgreSQL.
-pause_measurer() {
-  log "Pausing the measuring service for migrations"
-  compose stop -t 30 measure
-}
+# ---------------------------------------------------------------------------
+# What is left of the old app. The Compose project name comes from .env
+# (COMPOSE_PROJECT_NAME) or the folder name, as it did for the old app.
+project=$(docker compose config 2>/dev/null | sed -n 's/^name: //p' | head -1)
+[ -n "$project" ] || die "docker compose could not read compose.yaml."
+# Every service and volume the old compose.yaml defined. The site's own
+# services (web, cloudflared) are not in these lists.
+OLD_SERVICES="postgres postgres-test pgbouncer postgres-replica migrate api pdf latex ai assistant-background assistant-overnight realtime mcp notifier plugin files converter measure formula ocr status gateway desktop mail mailpit"
+OLD_VOLUMES="postgres_data import_files page_files ocr_models postgres_replica_data mail_data"
+# Volumes whose contents go into the final backup besides the database.
+FILE_VOLUMES="page_files import_files"
+# Keys the old app used to encrypt data in the database and in stored files.
+OLD_KEYS="SECRETS_KEY FILES_MASTER_KEY FILES_SECRET DOC_PDF_KEY"
+# Images the site itself uses; never removed even if the old app used them too.
+KEEP_IMAGES="nginxinc/nginx-unprivileged cloudflare/cloudflared"
 
-# An old notifier does not enforce captured maintenance authority. Keep it
-# stopped across schema upgrade; rollout starts only the updated image.
-pause_notifier() {
-  log "Pausing the notifier for maintenance migrations"
-  compose stop -t 30 notifier
+old_containers=() old_images=() old_volumes=()
+add_image() {
+  local img=$1 keep
+  for keep in $KEEP_IMAGES; do case "$img" in "$keep" | "$keep:"*) return ;; esac; done
+  case " ${old_images[*]+"${old_images[*]}"} " in *" $img "*) ;; *) old_images+=("$img") ;; esac
 }
+for svc in $OLD_SERVICES; do
+  while IFS= read -r line; do
+    [ -n "$line" ] && old_containers+=("$line")
+  done < <(docker ps -a --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.service=$svc" --format '{{.ID}} {{.Names}} {{.Image}} ({{.State}})')
+done
+for c in "${old_containers[@]+"${old_containers[@]}"}"; do add_image "$(printf '%s' "$c" | awk '{print $3}')"; done
+# Images the old compose built: <project>-<service>.
+while IFS= read -r img; do
+  [ -n "$img" ] || continue
+  name=${img%%:*}; svc=${name#"$project"-}
+  case " $OLD_SERVICES " in *" $svc "*) add_image "$img" ;; esac
+done < <(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E "^$project-" || true)
+for v in $OLD_VOLUMES; do
+  if docker volume inspect "${project}_$v" >/dev/null 2>&1; then old_volumes+=("${project}_$v"); fi
+done
+db_container=$(docker ps -a --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.service=postgres" --format '{{.ID}}' | head -1)
+has_volume() { case " ${old_volumes[*]+"${old_volumes[*]}"} " in *" ${project}_$1 "*) return 0 ;; esac; return 1; }
+old_left=$(( ${#old_containers[@]} + ${#old_images[@]} + ${#old_volumes[@]} ))
 
-resume_measurer() {
-  if [ "$semantic_on" = 1 ]; then
-    log "Starting the updated measuring service"
-    compose up -d --no-deps measure
-    local ids
-    ids=$(compose ps -q measure)
-    [ -n "$ids" ] || { echo "The measuring service did not start." >&2; return 1; }
-    # shellcheck disable=SC2086
-    wait_ready $ids
-  fi
-}
+# The old .env settings are no longer used, but some are the keys to the
+# backup. The final backup copies them out of the old containers first.
+stale=$(grep -oE '^#?[[:space:]]*[A-Z][A-Z0-9_]*=' .env | tr -d '#= \t' | grep -vxE 'CLOUDFLARE_TUNNEL_TOKEN|APP_URL|WEB_PORT|CLOUDFLARED_IMAGE|COMPOSE_PROJECT_NAME' || true)
+if [ -n "$stale" ]; then
+  warn ".env has settings the site doesn't use. Remove them once the final backup holds the keys it needs:"
+  printf '%s\n' "$stale" | sed 's/^/  /' >&2
+fi
 
-preflight() {
-  pdf_key=$(setting DOC_PDF_KEY)
-  if [ "${#pdf_key}" -lt 32 ]; then
-    echo "Set DOC_PDF_KEY to an independent random secret of at least 32 characters before enabling document PDF exports." >&2
-    problems=1
+print_old() {
+  if [ "$old_left" -eq 0 ]; then echo "- nothing is left of the old Orbyn app (project '$project')"; return; fi
+  if [ "$REMOVE_OLD" = 0 ]; then echo "- leave the old Orbyn app alone (--keep-old); $old_left object(s) remain"; return; fi
+  echo "- stop the old app's containers"
+  if [ -n "$db_container" ] && has_volume postgres_data; then
+    echo "- save the final backup to backups/orbyn-final-<time>/:"
+    echo "    database.dump    pg_dump -Fc of the old database"
+    for v in $FILE_VOLUMES; do if has_volume "$v"; then echo "    $v.tar.gz    everything in the ${project}_$v volume"; fi; done
+    echo "    keys.env         $OLD_KEYS, if the old containers had them"
+  elif [ ${#old_volumes[@]} -gt 0 ]; then
+    echo "- no old database container or volume to dump, so the volumes below are KEPT, not removed"
   fi
-  if [ "$(setting AI_RUNNER_IN_WORKER false)" = true ]; then
-    echo "Remove AI_RUNNER_IN_WORKER=true: assistant-background and assistant-overnight now run separately from the notifier." >&2
-    problems=1
-  fi
-  if [ -n "$plugin_url" ]; then
-    case "$plugin_url" in
-      https://*/plugin) ;;
-      http://127.0.0.1:*/plugin|http://localhost:*/plugin) ;;
-      *) echo "PLUGIN_PUBLIC_URL must be an HTTPS /plugin recipient (or local loopback for development)." >&2; problems=1 ;;
-    esac
-    if [ -n "$tunnel_token" ]; then
-      mcp_origin=$(printf '%s' "$mcp_url" | sed -E 's#^(https?://[^/]+).*#\1#')
-      if [ "$plugin_url" != "$mcp_origin/plugin" ]; then
-        warn "Route the PLUGIN_PUBLIC_URL host to gateway:8082 before connecting a host; the existing MCP tunnel only covers $mcp_origin."
-      fi
-    fi
-  fi
-  case "$mcp_ai_enabled" in true|false) ;; *) echo "MCP_WORKSPACE_AI_ENABLED must be true or false." >&2; problems=1 ;; esac
-  if grep -qE 'TODO|change-me' "$ENV_FILE"; then
-    warn "$ENV_FILE still has TODO or change-me values."
-  fi
-  if [ -n "$tunnel_token" ]; then
-    case "$app_url" in
-      ""|*localhost*) warn "The tunnel is on but APP_URL is '${app_url:-unset}': emailed links will point at localhost." ;;
-    esac
-    case "$cors" in
-      ""|*localhost*) warn "The tunnel is on but CORS_ORIGINS is '${cors:-unset}': set the public address too." ;;
-    esac
-    case "$mcp_url" in
-      *localhost*|*127.0.0.1*) warn "The tunnel is on but MCP_PUBLIC_URL is '$mcp_url': agents would be told to sign in to localhost." ;;
-    esac
-    case "$oauth_issuer" in
-      ""|*localhost*|*127.0.0.1*) warn "The tunnel is on but the OAuth issuer (OAUTH_ISSUER, else APP_URL) is '${oauth_issuer:-unset}': agents can't sign in there." ;;
-    esac
-    case "$oauth_issuer" in
-      https://*) ;;
-      *) warn "The OAuth issuer '${oauth_issuer:-unset}' isn't https://: Claude and ChatGPT refuse to sign in to it." ;;
-    esac
-    case "$oauth_issuer" in
-      */) warn "The OAuth issuer '$oauth_issuer' ends in '/': clients compare it exactly, so drop the slash." ;;
-    esac
-    mcp_origin=$(printf '%s' "$mcp_url" | sed -E 's#^(https?://[^/]+).*#\1#')
-    if [ -n "$oauth_issuer" ] && [ "${oauth_issuer%/}" = "$mcp_origin" ]; then
-      warn "The OAuth issuer is the MCP host ($mcp_origin): it must be the web app's address, where the consent page is."
-    fi
-  fi
-  if [ -z "$(setting FILES_SECRET)" ]; then
-    warn "FILES_SECRET is unset: importing PDFs and Word files into Docs stays off."
-  elif [ -z "$(setting FILES_MASTER_KEY)" ]; then
-    warn "FILES_MASTER_KEY is unset: set one (openssl rand -base64 32) so stored uploads use their own key."
-  fi
-  if [ "$ocr_on" = 1 ] && [ -z "$(setting OCR_URL)" ]; then
-    warn "The ocr profile is on but OCR_URL is unset: set OCR_URL=http://ocr:8000 or scanned pages are refused."
-  fi
-  if [ "$formula_on" = 1 ] && [ -z "$(setting FORMULA_URL)" ]; then
-    warn "The formula profile is on but FORMULA_URL is unset: set FORMULA_URL=http://formula:8000 or scanned equations keep a placeholder."
-  fi
-  if [ "$formula_on" = 0 ] && [ -n "$(setting FORMULA_URL)" ]; then
-    echo "FORMULA_URL is set but the formula profile is off: add formula to COMPOSE_PROFILES, or clear FORMULA_URL." >&2
-    problems=1
-  fi
-  if [ "$ocr_on" = 0 ] && [ -n "$(setting OCR_URL)" ]; then
-    echo "OCR_URL is set but the ocr profile is off: add ocr to COMPOSE_PROFILES, or clear OCR_URL." >&2
-    problems=1
-  fi
-  if [ "$smtp_host" = mail ]; then
-    for v in MAIL_HOSTNAME MAIL_DOMAIN; do
-      [ -n "$(setting "$v")" ] || { echo "DOCKER_SMTP_HOST=mail needs $v in .env." >&2; problems=1; }
-    done
-    if [ "$mail_config" = maddy-relay.conf ]; then
-      for v in MAIL_RELAY MAIL_RELAY_USER MAIL_RELAY_PASSWORD; do
-        [ -n "$(setting "$v")" ] || { echo "maddy-relay.conf needs $v in .env." >&2; problems=1; }
-      done
-    fi
-  fi
+  echo "- remove these old containers:"
+  for c in "${old_containers[@]+"${old_containers[@]}"}"; do echo "    $c"; done
+  [ ${#old_containers[@]} -gt 0 ] || echo "    (none)"
+  echo "- remove these old volumes, with all their data:"
+  for v in "${old_volumes[@]+"${old_volumes[@]}"}"; do echo "    $v"; done
+  [ ${#old_volumes[@]} -gt 0 ] || echo "    (none)"
+  echo "- remove these old images (kept if anything else still uses one):"
+  for i in "${old_images[@]+"${old_images[@]}"}"; do echo "    $i"; done
+  [ ${#old_images[@]} -gt 0 ] || echo "    (none)"
 }
-preflight
 
 if [ "$CHECK" = 1 ]; then
-  log "Plan for $(git rev-parse --short HEAD 2>/dev/null || echo '(no git)') (nothing changes in --check)"
-  [ "$PULL" = 1 ] && echo "- pull the latest code (git pull --ff-only)" || echo "- deploy what is checked out"
-  echo "- build images"
-  echo "- make sure postgres and pgbouncer run (never recreated here)"
-  [ "$BACKUP" = 1 ] && echo "- dump the database to backups/ (keep $(setting BACKUP_KEEP 7))" || echo "- no database dump"
-  case "$smtp_host" in
-    mail) echo "- start the outbound mail server ($mail_config for $mail_domain)" ;;
-    mailpit) echo "- start the development mail catcher (mailpit)" ;;
-    *) echo "- mail goes to $smtp_host (nothing to start)" ;;
-  esac
-  echo "- pause measuring/notifier; if a legacy database encryption key exists, stop/remove all backend writers before conversion (brief downtime; failure leaves writers stopped)"
-  echo "- apply migrations, then roll out pdf, latex, api, mcp, ai, assistant-background, assistant-overnight, realtime, status, notifier, files, converter and the web app"
-  [ "$plugin_on" = 1 ] && echo "- roll out the isolated MCP integration worker (legacy recipient: ${plugin_url:-disabled})" || echo "- leave integration auxiliaries disabled (enable the plugin profile)"
-  [ "$semantic_on" = 1 ] && echo "- start the updated measuring service (semantic profile enabled)" || echo "- leave the measuring service stopped (semantic profile off)"
-  echo "- scanned pages and photos: read with the built-in Tesseract"
-  [ "$formula_on" = 1 ] && echo "- start or replace the formula model (equations on scans)" || echo "- no formula model (the formula profile is off; scanned equations keep a placeholder)"
-  [ "$ocr_on" = 1 ] && echo "- start or replace the heavy OCR model ($(setting OCR_WORKERS 1) worker(s); the first start downloads the model)" || echo "- no heavy OCR model (the ocr profile is off; this is the default)"
-  echo "- replace the gateway only if it changed"
-  [ -n "$tunnel_token" ] && echo "- start or update the Cloudflare tunnel" || echo "- no tunnel (CLOUDFLARE_TUNNEL_TOKEN unset)"
-  echo "- prune leftover images; check /version"
+  log "Plan for $(git rev-parse --short HEAD 2>/dev/null || echo '(no git)') in Compose project '$project' (--check changes nothing)"
+  if [ "$PULL" = 1 ]; then echo "- pull the latest code (git pull --ff-only)"; else echo "- deploy what is checked out"; fi
+  echo "- build the site image"
+  print_old
+  echo "- start 'web' on 127.0.0.1:$web_port"
+  if [ -n "$tunnel_token" ]; then echo "- start or update the Cloudflare tunnel (it reaches the site at http://web:8080, also named gateway:8080)"; else echo "- no tunnel (CLOUDFLARE_TUNNEL_TOKEN is empty)"; fi
+  echo "- remove dangling image layers; check http://127.0.0.1:$web_port/healthz"
   echo
-  echo "APP_URL=${app_url:-unset}  CORS_ORIGINS=${cors:-unset}  MCP_PUBLIC_URL=$mcp_url  PLUGIN_PUBLIC_URL=${plugin_url:-disabled}"
-  compose --env-file "$ENV_FILE" config --quiet && echo "compose.yaml + $ENV_FILE: valid"
-  [ "$problems" = 0 ] && echo "Preflight: OK" || { echo "Preflight: fix the problems above."; exit 1; }
+  echo "APP_URL=$app_url"
+  docker compose config --quiet && echo "compose.yaml + .env: valid"
   exit 0
 fi
-[ "$problems" = 0 ] || exit 1
 
+# ---------------------------------------------------------------------------
+# 2. Code and image. Built first, so a failed build leaves everything as it was.
 if [ "$PULL" = 1 ]; then
   log "Pulling the latest code"
   git pull --ff-only
 fi
-
 GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
-BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-# The gateway's config lives in mounted files compose can't see; a
-# fingerprint of them in its environment replaces it when they change.
-GATEWAY_CONFIG_SHA=$(cat gateway/nginx.conf.template gateway/entrypoint.sh 2>/dev/null | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-16)
-export GIT_SHA BUILD_TIME GATEWAY_CONFIG_SHA
+export GIT_SHA
+log "Building the site for $GIT_SHA"
+docker compose build web
 
-log "Building images for $GIT_SHA"
-compose build
-if [ "$plugin_on" = 1 ]; then compose build plugin; fi
+# ---------------------------------------------------------------------------
+# 3. The old app
+final_backup() {
+  # $1: the backup folder. Returns non-zero if any part fails.
+  local dir=$1 image user db pgdata mount helper key val ready=0
+  image=$(docker inspect -f '{{.Config.Image}}' "$db_container")
+  user=$(container_env "$db_container" POSTGRES_USER); user=${user:-postgres}
+  db=$(container_env "$db_container" POSTGRES_DB); db=${db:-$user}
+  pgdata=$(container_env "$db_container" PGDATA)
+  mount=$(docker inspect -f "{{range .Mounts}}{{if eq .Name \"${project}_postgres_data\"}}{{.Destination}}{{end}}{{end}}" "$db_container")
+  mount=${mount:-/var/lib/postgresql/data}
 
-# Only started if missing: recreating them would drop every connection the
-# running services hold. Apply database or pooler changes deliberately with
-# `docker compose up -d postgres pgbouncer` in a quiet moment.
-log "Making sure the database and connection pooler are running"
-compose up -d --wait --no-recreate postgres pgbouncer
-
-# A restorable copy of the database from just before this deploy's migrations.
-if [ "$BACKUP" = 1 ]; then
-  log "Backing up the database"
-  # Permissions must be restrictive before opening dump/archive files.
-  umask 077
-  mkdir -p backups
-  chmod 700 backups
-  db=$(setting POSTGRES_DB orbyn)
-  file="backups/$db-$(date -u +%Y%m%d-%H%M%S)-$GIT_SHA.dump"
-  compose exec -T postgres pg_dump -U "$(setting POSTGRES_USER orbyn)" -Fc "$db" > "$file"
-  echo "Saved $file ($(du -h "$file" | cut -f1))"
-  keep=$(setting BACKUP_KEEP 7)
-  ls -1t backups/*.dump 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; done
-  # Pictures and files in pages live beside the database, already encrypted
-  # (keep FILES_MASTER_KEY with your backups: without it they can't be read).
-  if compose ps --status running --services 2>/dev/null | grep -qx files; then
-    pages="backups/page-files-$(date -u +%Y%m%d-%H%M%S)-$GIT_SHA.tar.gz"
-    if compose exec -T files tar -C /data/page-files -czf - . > "$pages" 2>/dev/null; then
-      echo "Saved $pages ($(du -h "$pages" | cut -f1))"
-    else
-      rm -f "$pages"
-      echo "No pictures or files in pages to back up yet."
-    fi
-    ls -1t backups/page-files-*.tar.gz 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; done
+  # The database, from a throwaway container on the stopped database's volume.
+  # The old container is not restarted: its start script lived in the checkout,
+  # which the pull just removed. Socket connections inside need no password.
+  helper="orbyn-final-backup-$$"
+  docker run -d --name "$helper" -e POSTGRES_PASSWORD=unused ${pgdata:+-e "PGDATA=$pgdata"} \
+    -v "${project}_postgres_data:$mount" "$image" >/dev/null || return 1
+  for _ in $(seq 1 90); do
+    if docker exec "$helper" pg_isready -U "$user" -d "$db" >/dev/null 2>&1; then ready=1; break; fi
+    sleep 2
+  done
+  if [ "$ready" = 1 ] && docker exec "$helper" pg_dump -U "$user" -Fc "$db" > "$dir/database.dump" && [ -s "$dir/database.dump" ]; then
+    echo "Saved $dir/database.dump ($(du -h "$dir/database.dump" | cut -f1))"
+  else
+    docker logs --tail 20 "$helper" >&2 || true
+    docker rm -f "$helper" >/dev/null
+    return 1
   fi
-fi
+  docker stop -t 30 "$helper" >/dev/null && docker rm "$helper" >/dev/null
 
-# Bring up the selected mail backend before restarting its clients.
-# Naming a service on the command line activates its optional profile.
-case "$smtp_host" in
-  mail)
-    log "Starting the outbound mail server"
-    compose up -d --wait --wait-timeout 90 mail
-    dns=$(compose exec -T mail sh -c "cat /data/dkim_keys/${mail_domain}_default.dns 2>/dev/null" || true)
-    if [ -n "$dns" ]; then
-      echo "DKIM record, TXT at default._domainkey.$mail_domain:"
-      echo "  $dns"
-      if command -v dig >/dev/null 2>&1; then
-        if dig +short TXT "default._domainkey.$mail_domain" 2>/dev/null | grep -q 'v=DKIM1'; then
-          echo "  Published: yes"
-        else
-          echo "  Published: not yet. Add it, or receivers can't verify this server's signature."
-        fi
-      fi
-    fi
-    ;;
-  mailpit)
-    log "Starting the development mail catcher"
-    compose up -d --wait mailpit
-    ;;
-esac
+  # Uploaded and page files, as stored (encrypted).
+  for v in $FILE_VOLUMES; do
+    has_volume "$v" || continue
+    docker run --rm -v "${project}_$v:/data:ro" "$image" tar -C /data -czf - . > "$dir/$v.tar.gz" || return 1
+    tar -tzf "$dir/$v.tar.gz" >/dev/null || return 1
+    echo "Saved $dir/$v.tar.gz ($(du -h "$dir/$v.tar.gz" | cut -f1))"
+  done
 
-pause_measurer
-pause_notifier
-# A legacy process can retain the database wrapping key in memory. Stop and
-# remove every backend replica before conversion so restart policies and rolling
-# replacement cannot revive an old writer after the key is retired. On failure,
-# these processes remain removed; rerun with the new image/key, never an old image.
-legacy_key=$(compose exec -T postgres psql -U "$(setting POSTGRES_USER orbyn)" -d "$(setting POSTGRES_DB orbyn)" -Atc "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='app_secrets')")
-cutover=0
-if [ "$legacy_key" = t ]; then
-  legacy_key=$(compose exec -T postgres psql -U "$(setting POSTGRES_USER orbyn)" -d "$(setting POSTGRES_DB orbyn)" -Atc "SELECT EXISTS (SELECT 1 FROM app_secrets WHERE name='credentials_key')")
-  [ "$legacy_key" != t ] || cutover=1
-fi
-if [ "$cutover" = 1 ]; then
-  log "Stopping and removing legacy backend writers for encryption-key cutover"
-  writers=(api ai assistant-background assistant-overnight notifier realtime mcp plugin status files converter measure)
-  compose stop -t 30 "${writers[@]}"
-  compose rm -f "${writers[@]}"
-  log "Applying migrations with all legacy writers removed"
-  compose run --rm -e LEGACY_SECRET_CUTOVER=quiesced migrate
-else
-  log "Applying database migrations"
-  compose run --rm migrate
-fi
-
-# Ready = healthy, or running for 5 s when the service has no health check.
-wait_ready() {
-  local deadline=$((SECONDS + ${READY_TIMEOUT:-180})) id state
-  for id in "$@"; do
-    while :; do
-      state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || echo gone)
-      case "$state" in
-        healthy) break ;;
-        running)
-          if ! docker inspect -f '{{json .State.Health}}' "$id" | grep -q Status; then
-            sleep 5
-            [ "$(docker inspect -f '{{.State.Status}}' "$id")" = running ] && break
-          fi ;;
-        exited | dead | gone | unhealthy) return 1 ;;
-      esac
-      [ "$SECONDS" -ge "$deadline" ] && return 1
-      sleep 2
+  # The keys those need, from the old containers' environment, else from .env.
+  : > "$dir/keys.env"
+  for key in $OLD_KEYS; do
+    val=""
+    for c in "${old_containers[@]+"${old_containers[@]}"}"; do
+      val=$(container_env "${c%% *}" "$key")
+      [ -n "$val" ] && break
     done
+    [ -n "$val" ] || val=$(setting "$key")
+    if [ -n "$val" ]; then printf '%s=%s\n' "$key" "$val" >> "$dir/keys.env"; fi
   done
+  echo "Saved $dir/keys.env ($(grep -c . "$dir/keys.env" || true) key(s); values not shown)"
 }
 
-# Start `want` new copies of a service beside the old ones, then retire the old.
-rollout() {
-  local svc=$1 want=$2 old have new id
-  old=$(compose ps -q "$svc" | sort)
-  have=$(printf '%s\n' "$old" | grep -c . || true)
-  if [ "$have" -eq 0 ]; then
-    log "Starting $svc ($want)"
-    compose up -d --no-deps --scale "$svc=$want" "$svc"
-    # shellcheck disable=SC2046
-    wait_ready $(compose ps -q "$svc") || { echo "$svc did not become healthy" >&2; exit 1; }
-    return
+if [ "$REMOVE_OLD" = 1 ] && [ "$old_left" -gt 0 ]; then
+  log "Removing the old Orbyn app"
+  print_old
+  keep_volumes=0
+  if [ ${#old_containers[@]} -gt 0 ]; then
+    log "Stopping the old app"
+    for c in "${old_containers[@]}"; do docker stop -t 30 "${c%% *}" >/dev/null; done
   fi
-  log "Rolling out $svc: $want new beside $have running"
-  compose up -d --no-deps --no-recreate --scale "$svc=$((have + want))" "$svc"
-  new=$(comm -13 <(printf '%s\n' "$old") <(compose ps -q "$svc" | sort))
-  # shellcheck disable=SC2086
-  if ! wait_ready $new; then
-    echo "New $svc copies failed their health check; the old ones keep serving." >&2
-    compose logs --tail 40 "$svc" >&2 || true
-    # shellcheck disable=SC2086
-    docker rm -f $new >/dev/null
-    exit 1
+  if [ -n "$db_container" ] && has_volume postgres_data; then
+    log "Saving the final backup"
+    umask 077
+    backup="backups/orbyn-final-$(date -u +%Y%m%d-%H%M%S)"
+    mkdir -p "$backup"
+    chmod 700 backups "$backup" 2>/dev/null || true
+    final_backup "$backup" || die "The final backup failed, so nothing was removed. The old app is stopped; 'docker start' on its containers brings it back."
+    echo "Keep $backup somewhere safe, keys.env included, and delete it when you no longer need the old data."
+  elif [ ${#old_volumes[@]} -gt 0 ]; then
+    warn "No old database container or volume to dump: keeping the old volumes. Remove them by hand once you have a copy."
+    keep_volumes=1
   fi
-  # The gateway re-resolves service names every 10 s; let it see the new copies
-  # before the old ones go, then stop them gracefully (in-flight requests finish).
-  sleep "${DRAIN_SECONDS:-12}"
-  for id in $old; do
-    docker stop -t 30 "$id" >/dev/null
-    docker rm "$id" >/dev/null
+
+  for c in "${old_containers[@]+"${old_containers[@]}"}"; do
+    docker rm -f "${c%% *}" >/dev/null && echo "Removed container $(printf '%s' "$c" | awk '{print $2}')"
   done
-  compose up -d --no-deps --no-recreate --scale "$svc=$want" "$svc" >/dev/null
-  # Wait out the gateway's DNS cache before the next service starts, so a
-  # new container can't reuse a just-freed address that the gateway still
-  # maps to this service.
-  sleep "${DRAIN_SECONDS:-12}"
-}
+  if [ "$keep_volumes" = 0 ]; then
+    for v in "${old_volumes[@]+"${old_volumes[@]}"}"; do
+      docker volume rm "$v" >/dev/null && echo "Removed volume $v"
+    done
+  fi
+  for i in "${old_images[@]+"${old_images[@]}"}"; do
+    if docker image rm "$i" >/dev/null 2>&1; then echo "Removed image $i"; else echo "Kept image $i (still in use)"; fi
+  done
+fi
 
-# The authorized export API needs a healthy private renderer before it rolls.
-rollout pdf "$(setting PDF_REPLICAS 1)"
-rollout latex 1
-rollout api "$(setting API_REPLICAS 2)"
-# Outside agents (MCP): stateless, so copies roll over like the API's.
-rollout mcp "$(setting MCP_REPLICAS 2)"
-if [ "$plugin_on" = 1 ]; then
-  rollout plugin 1
+# ---------------------------------------------------------------------------
+# 4. The site. --remove-orphans would also delete the old app's containers,
+# so it is used only when the old app is being removed anyway.
+log "Starting the site"
+if [ "$REMOVE_OLD" = 1 ]; then
+  docker compose up -d --wait --remove-orphans web
 else
-  compose stop plugin >/dev/null 2>&1 || true
+  docker compose up -d --wait web
 fi
-rollout ai "$(setting AI_REPLICAS 2)"
-rollout assistant-background "$(setting ASSISTANT_BACKGROUND_REPLICAS 1)"
-rollout assistant-overnight "$(setting ASSISTANT_OVERNIGHT_REPLICAS 1)"
-# Open streams on the old copies close as they stop; clients reconnect to the
-# new ones on their own (EventSource retries), so a rollout loses no updates.
-rollout realtime "$(setting REALTIME_REPLICAS 2)"
-rollout status "$(setting STATUS_REPLICAS 1)"
-rollout notifier "$(setting NOTIFIER_REPLICAS 1)"
-# Importing into Docs: the file store (uploads in flight get 30 s to finish
-# as an old copy stops) and the converter, which picks up where it left off.
-rollout files "$(setting FILES_REPLICAS 1)"
-rollout converter "$(setting CONVERTER_REPLICAS 1)"
-resume_measurer
-# The OCR service loads a large model, so it's replaced in place rather than
-# rolled: scanned pages wait in the queue while it starts, and nothing is lost.
-if [ "$formula_on" = 1 ]; then
-  log "Starting the formula model"
-  compose up -d --no-deps formula
-fi
-if [ "$ocr_on" = 1 ]; then
-  log "Starting the OCR service"
-  compose up -d --no-deps --scale "ocr=$(setting OCR_WORKERS 1)" ocr
-  echo "The model loads in the background; 'docker compose logs -f ocr' shows 'model loaded'."
-fi
-rollout desktop "$(setting WEB_REPLICAS 2)"
-
-# Why the gateway's running container differs from compose.yaml, or nothing
-# when it matches. Its image tag is pinned in compose.yaml, so the
-# configuration fingerprint covers image changes too.
-gateway_change() {
-  local id want_hash have_hash
-  id=$(compose ps -q gateway | head -1)
-  [ -z "$id" ] && { echo "not running"; return; }
-  want_hash=$(compose config --hash gateway | awk '{print $2}')
-  have_hash=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$id")
-  if [ "$want_hash" != "$have_hash" ]; then echo "configuration changed"; fi
-  return 0
-}
-
-# The gateway holds the host ports, so it is replaced in place, and only when
-# its configuration changed (nginx starts in about a second).
-log "Checking the gateway"
-reason=$(gateway_change)
-if [ -n "$reason" ]; then
-  compose up -d --no-deps gateway
-  echo "Gateway replaced: $reason (about a second of reconnects)."
-else
-  echo "Gateway unchanged."
-fi
-
-# Public access: Cloudflare connects to this container, so no port is opened.
-# Its image follows a tag (latest by default), so pull picks up new releases.
-# Started last and with --no-deps: it depends on the gateway, and a plain
-# `up cloudflared` would replace everything behind the gateway (api, ai,
-# realtime, status, files) at once with the new images, a full outage.
 if [ -n "$tunnel_token" ]; then
   log "Starting the Cloudflare tunnel"
-  compose pull -q cloudflared || warn "couldn't pull the cloudflared image; using the one already here"
-  compose up -d --wait --no-deps cloudflared
+  docker compose pull -q cloudflared || warn "couldn't pull the cloudflared image; using the one already here"
+  docker compose --profile tunnel up -d --wait --no-deps cloudflared
 fi
 
-# Each build leaves the previous images' layers behind; only unreferenced
-# layers go, so a rollback to a running image is never affected.
-log "Removing leftover image layers"
+log "Removing dangling image layers"
 docker image prune -f | tail -1
 
-log "Checking what is serving"
-api_port=$(setting API_PORT 8008)
-if health=$(curl -fsS --max-time 10 "http://127.0.0.1:$api_port/health" 2>/dev/null); then
-  echo "Health: $health"
-  version=$(curl -fsS --max-time 10 "http://127.0.0.1:$api_port/version" 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
-  if [ "$version" = "$GIT_SHA" ]; then
-    echo "Version: $version (this deploy)"
-  else
-    warn "the API reports version '${version:-unknown}', not $GIT_SHA; the old copies may still be draining."
-  fi
+# ---------------------------------------------------------------------------
+# 5. Check
+log "Checking the site"
+if curl -fsS --max-time 10 "http://127.0.0.1:$web_port/healthz" >/dev/null 2>&1; then
+  echo "Serving on 127.0.0.1:$web_port"
 else
-  warn "couldn't reach http://127.0.0.1:$api_port/health from here (API_BIND may not be loopback)."
+  warn "http://127.0.0.1:$web_port/healthz did not answer."
 fi
-
-log "Deployed $GIT_SHA"
-compose ps
-if [ -n "$app_url" ]; then echo "Open it at $app_url"; fi
+docker compose --profile tunnel ps
+log "Deployed $GIT_SHA. Open $app_url"

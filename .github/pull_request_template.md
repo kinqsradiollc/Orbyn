@@ -1,16 +1,20 @@
-See [CONTRIBUTING](https://github.com/kinqsradiollc/Orbyn/blob/main/CONTRIBUTING.md) before starting engineering work.
-
 ## Change
 
-Describe the resulting behavior and why it is needed.
+What changes for visitors or for the deploy, and why.
 
-## Checks and limits
+## Checks
 
-List checks actually run and anything still unverified. Do not attach private
-session transcripts or claim that skipped checks passed.
+- [ ] `node scripts/build-site.mjs --check`
+- [ ] Compared with the internal designs (desktop, tablet, phone; light and dark)
+- [ ] Deploy changes: `./scripts/deploy.sh --check` on a test host
 
-## Workspace
+List anything not verified.
 
-- [ ] Used the outer Orbyn Engineering workspace with this target nested under `repo/`, and read the relevant project guides.
+## Risk and undo
 
-This contributor confirmation is not an automated claim that a host loaded policies.
+What could break, and how to roll back.
+
+## AI usage
+
+Tools, exact models and effort, what the person did, and every external source
+with its link, commit and licence. Write "None" if no AI was used.
