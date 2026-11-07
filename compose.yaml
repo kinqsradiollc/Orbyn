@@ -14,7 +14,7 @@ services:
     ports: ["127.0.0.1:${WEB_PORT:-8080}:8080"]
     networks:
       default:
-        # The old app's tunnel pointed at gateway:8080; this keeps that route working.
+        # The old app's tunnel pointed at http://gateway:8081; the alias and port 8081 keep it working.
         aliases: [gateway]
     read_only: true
     tmpfs: [/tmp]

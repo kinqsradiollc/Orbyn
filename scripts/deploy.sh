@@ -137,7 +137,7 @@ if [ "$CHECK" = 1 ]; then
   echo "- build the site image"
   print_old
   echo "- start 'web' on 127.0.0.1:$web_port"
-  if [ -n "$tunnel_token" ]; then echo "- start or update the Cloudflare tunnel (it reaches the site at http://web:8080, also named gateway:8080)"; else echo "- no tunnel (CLOUDFLARE_TUNNEL_TOKEN is empty)"; fi
+  if [ -n "$tunnel_token" ]; then echo "- start or update the Cloudflare tunnel (it reaches the site at http://web:8080, or the old route http://gateway:8081)"; else echo "- no tunnel (CLOUDFLARE_TUNNEL_TOKEN is empty)"; fi
   echo "- remove dangling image layers; check http://127.0.0.1:$web_port/healthz"
   echo
   echo "APP_URL=$app_url"
