@@ -37,6 +37,9 @@ const ICONS = {
   "i-key": '<circle cx="8" cy="14" r="4"/><path d="M11 11l8.5-8.5M16 6l2.5 2.5"/>',
   "i-sun": '<circle cx="12" cy="12" r="3.8"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
   "i-moon": '<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/>',
+  "i-shield": '<path d="M12 3.5l7 2.8v5.4c0 4.3-3 7.5-7 8.8-4-1.3-7-4.5-7-8.8V6.3z"/>',
+  "i-copy": '<rect x="8" y="8" width="11.5" height="11.5" rx="2"/><path d="M5 15.5V6a1.5 1.5 0 0 1 1.5-1.5H16"/>',
+  "i-git": '<circle cx="12" cy="12" r="3"/><path d="M3.5 12H9M15 12h5.5"/>',
   "i-eye": '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
 };
 const ic = (id, cls = "ic sm", extra = "") => `<svg class="${cls}${extra}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[id]}</svg>`;
@@ -50,16 +53,16 @@ const PLATFORMS = {
   engineering: "Mac · Windows · Linux · Web",
 };
 const APPS = [
-  { key: "planner", name: "Orbyn Planner", cls: "ap-pl", icon: "i-calcheck", line: "Tasks, lists, projects and calendar. Offline and encrypted end to end.", shot: "week", group: "Everyday",
+  { key: "planner", name: "Orbyn Planner", cls: "ap-pl", icon: "i-calcheck", line: "Tasks, lists, projects and calendar. Offline and encrypted end to end.", group: "Everyday",
     plan: "Planned plan: Free on one device, Plus to sync",
     features: [["Today", "Events and tasks for the day, in order."], ["Calendar", "Week, day, agenda and month, with your other calendars."], ["Projects", "Boards and lists for anything from a trip to a launch."], ["Booking", "Pages that read only your busy times. Planned."]] },
-  { key: "notes", name: "Orbyn Notes", cls: "ap-no", icon: "i-note", line: "Encrypted notes and pages that link to your tasks and events.", shot: "lines", group: "Everyday",
+  { key: "notes", name: "Orbyn Notes", cls: "ap-no", icon: "i-note", line: "Encrypted notes and pages that link to your tasks and events.", group: "Everyday",
     plan: "Planned plan: Free on one device, Plus to sync",
     features: [["Notes and pages", "A plain, fast editor that works offline."], ["Links to tasks", "A task links to a note, and a note to an event."], ["Study", "Flashcards from your notes, reviewed on a schedule."], ["Clip and Journal", "Save pages to read later; keep a private daily page."]] },
-  { key: "studio", name: "Orbyn Studio", cls: "ap-st", icon: "i-film", line: "Films, lyric videos, demos and social posts, made from code with your own agent.", shot: "film", group: "Makers",
+  { key: "studio", name: "Orbyn Studio", cls: "ap-st", icon: "i-film", line: "Films, lyric videos, demos and social posts, made from code with your own agent.", group: "Makers",
     plan: "Planned plan: Free locally, Pro for storage and sharing",
     features: [["Lyric videos", "From a prompt and an audio file to a finished video."], ["Motion films and demos", "Made from code, rendered on your computer."], ["Social posts", "Written in your voice and previewed in a feed. You publish."], ["Your own agent", "Uses your Claude or Codex. We never resell models."]] },
-  { key: "engineering", name: "Orbyn Engineering", cls: "ap-en", icon: "i-term", line: "A workspace for coding agents, with memory, review and the skills library built in.", shot: "lines", group: "Builders",
+  { key: "engineering", name: "Orbyn Engineering", cls: "ap-en", icon: "i-term", line: "A workspace for coding agents, with memory, review and the skills library built in.", group: "Builders",
     plan: "Planned plan: Free locally, Pro for remote access and sync",
     features: [["Threads and review", "Agents work in worktrees; a review gate checks each change."], ["Memory", "One memory for Claude, Codex and other agents, synced."], ["Skills library", "39 skills and the harness, built in."], ["Diagrams, audit and inspect", "From the code: diagrams, a security review, binaries."]] },
 ];
@@ -81,7 +84,67 @@ const PLANS = [
   { name: "Family", month: "$7", year: "$60", for: "For up to 6 people", sum: "Plus for up to 6 people, with shared family lists and calendar",
     items: ["Plus for everyone", "Shared family lists and calendar", "Each person’s own data stays private"] },
 ];
+// Every contact goes through one address (owner's decision).
+const CONTACT = "hello@orbyn.dev";
 const TEAMS_PRICE = "$5, or $18 with Engineering, per person a month";
+
+// ---------------------------------------------------------------------------
+// Product previews, from orbyn.dev Designs v9: early designs in iframes, each
+// labelled "Early design · may change" inside the preview file itself.
+const TITLES = {
+  "planner-today": "Orbyn Planner, Today", "planner-board": "Orbyn Planner, board", "planner-week": "Orbyn Planner, calendar week",
+  "planner-task-notes": "Orbyn Planner, task panel with linked notes", "planner-booking": "Orbyn Planner, booking",
+  "planner-phone-week": "Orbyn Planner on a phone, week", "planner-phone-task": "Orbyn Planner on a phone, task",
+  "notes-editor": "Orbyn Notes, editor", "notes-linked-task": "Orbyn Notes, note linked to a Planner task", "notes-study": "Orbyn Notes, Study session",
+  "notes-journal": "Orbyn Notes, Journal", "notes-phone": "Orbyn Notes on a phone",
+  "studio-editor": "Orbyn Studio, canvas and timeline", "studio-storyboard": "Orbyn Studio, storyboard", "studio-export-queue": "Orbyn Studio, export queue",
+  "studio-feed-preview": "Orbyn Studio, post composer with a LinkedIn feed preview", "studio-phone-queue": "Orbyn Studio on a phone, export queue",
+  "eng-console": "Orbyn Engineering, console thread", "eng-diff": "Orbyn Engineering, side panel diff", "eng-memory": "Orbyn Engineering, Memory",
+  "eng-gate": "Orbyn Engineering, review gate", "eng-tool-calls": "Orbyn Engineering, tool calls", "eng-phone": "Orbyn Engineering on a phone, thread",
+  "account-protection": "Orbyn Account, protection level", "account-advanced-flow": "Orbyn Account, turning on Advanced protection",
+  "walk-planner-quick-add": "Orbyn Planner, quick add: dentist friday 3pm to the calendar",
+  "walk-notes-link-task": "Orbyn Notes, link a note to a Planner task",
+  "walk-studio-lyric-video": "Orbyn Studio, from a prompt to an exported lyric video",
+  "walk-eng-approve-gate": "Orbyn Engineering, approve a command, then the review gate findings",
+};
+const ratio = (f) => (/phone/.test(f) ? "arp" : f === "notes-study" ? "ars" : "arw");
+const frame = (f, { eager = false, cls = "" } = {}) =>
+  `<div class="pvb ${ratio(f)}${cls ? " " + cls : ""}"><iframe class="pvf" src="/previews/${f}.html" loading="${eager ? "eager" : "lazy"}" title="${esc(TITLES[f])}" tabindex="-1"></iframe></div>`;
+const fig = (f, cap, { cls = "", open = "" } = {}) =>
+  `<figure class="pvfig${cls ? " " + cls : ""}">${open ? `<button class="pvtap" type="button" data-open="${f}" data-title="${esc(open)}" aria-label="Open ${esc(open)} full size">${frame(f).replace("<iframe ", '<iframe aria-hidden="true" ')}</button>` : frame(f)}<figcaption>${cap}</figcaption></figure>`;
+const b = (bold, rest) => `<b>${bold}</b> ${rest}`;
+
+const PREVIEWS = {
+  planner: {
+    hero: "planner-today", card: "planner-today", phone: ["planner-phone-week", "Week on a phone. Early design."],
+    walk: ["walk-planner-quick-add", "Quick add: type “dentist friday 3pm” and it lands on your calendar."],
+    gallery: [["planner-today", "Today", "Events and tasks, in order."], ["planner-board", "Board", "Projects as columns."], ["planner-week", "Calendar week", "Events, overlaps and what is due."], ["planner-task-notes", "Task and notes", "A task panel with linked notes."], ["planner-booking", "Booking", "Pages that read only your busy times."]],
+    phones: [["planner-phone-week", "Week"], ["planner-phone-task", "Task"]],
+    phoneLast: ["planner-phone-task", "A task with its linked notes."],
+    strip: [["planner-task-notes", "A task with its linked notes."], ["planner-week", "Week view with your other calendars."], ["planner-board", "Boards for projects."]],
+  },
+  notes: {
+    hero: "notes-editor", card: "notes-editor", phone: ["notes-phone", "Notes on a phone. Early design."],
+    walk: ["walk-notes-link-task", "Link a note to a task: type [[ and pick it."],
+    gallery: [["notes-editor", "Editor", "Headings, to-dos and links to tasks."], ["notes-linked-task", "Linked task", "The task shows the note it links."], ["notes-study", "Study session", "Flashcards, reviewed on a schedule."], ["notes-journal", "Journal", "A private page for each day."]],
+    phones: [["notes-phone", "Notes"]],
+    strip: [["notes-linked-task", "A note linked to a Planner task."], ["notes-study", "Study sessions from your notes."], ["notes-journal", "A private daily Journal."]],
+  },
+  studio: {
+    hero: "studio-editor", card: "studio-editor", phone: ["studio-phone-queue", "Export queue on a phone. Early design."],
+    walk: ["walk-studio-lyric-video", "From a prompt and a song to an exported lyric video."],
+    gallery: [["studio-storyboard", "Storyboard", "Scenes proposed; nothing renders until you approve."], ["studio-editor", "Canvas and timeline", "Edit lines and timing."], ["studio-export-queue", "Export queue", "Renders while you keep editing."], ["studio-feed-preview", "Feed preview", "See a post in the feed. You publish."]],
+    phones: [["studio-phone-queue", "Export queue"]],
+    strip: [["studio-storyboard", "A storyboard you approve."], ["studio-editor", "Canvas and timeline."], ["studio-export-queue", "Exports run on your Mac."]],
+  },
+  engineering: {
+    hero: "eng-console", card: "eng-console", phone: ["eng-phone", "Thread on a phone. Early design."],
+    walk: ["walk-eng-approve-gate", "Approve a command, then read the review gate’s findings."],
+    gallery: [["eng-console", "Console thread", "An agent at work; it asks before it acts."], ["eng-diff", "Side panel diff", "Changes beside the conversation."], ["eng-memory", "Memory", "Lessons you approve, kept for any agent."], ["eng-gate", "Review gate", "Findings ranked before a commit."], ["eng-tool-calls", "Tool calls", "Every command and edit, in rows."]],
+    phones: [["eng-phone", "Thread"]],
+    strip: [["eng-console", "A thread with a side panel."], ["eng-memory", "One memory for your agents."], ["eng-gate", "A review gate before each commit."]],
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Pieces
@@ -115,17 +178,10 @@ function nav(current) {
     `<div class="mrow foot">${building}Nothing is out yet</div></nav></div></header>`;
 }
 
-function shot(kind) {
-  const rail = '<div class="rail"></div>';
-  if (kind === "week") return `<div class="shot" aria-hidden="true">${rail}<div class="lines"></div><div class="week"><i></i><i></i><i></i><i></i><i></i></div></div>`;
-  if (kind === "film") return `<div class="shot" aria-hidden="true">${rail}<div class="lines"></div><div class="frame"></div><div class="wave"></div></div>`;
-  return `<div class="shot" aria-hidden="true">${rail}<div class="lines"><i class="w70"></i><i class="w52"></i><i class="w64"></i><i class="w40"></i></div></div>`;
-}
-
 const appIcon = (a, sm = true) => `<span class="appi${sm ? " sm" : ""} ${a.cls}" aria-hidden="true">${ic(a.icon)}</span>`;
 
-function appCard(a, { withShot = true } = {}) {
-  return `<a class="acard" href="/${a.key}/" data-group="${a.group}">${withShot ? shot(a.shot) : ""}` +
+function appCard(a, { withPreview = true } = {}) {
+  return `<a class="acard" href="/${a.key}/" data-group="${a.group}">${withPreview ? frame(PREVIEWS[a.key].card, { cls: "cardpv" }) : ""}` +
     `<div class="head"><h2>${appIcon(a)}${a.name}</h2><span class="end">${building}</span></div><p>${a.line}</p>` +
     `<div class="plat">${ic("i-laptop")}${PLATFORMS[a.key]}</div></a>`;
 }
@@ -157,6 +213,10 @@ ${nav(current)}
 <main id="main">
 ${body}
 </main>
+<footer class="sfoot"><div class="fbrandcol"><a class="fbrand" href="/"><span class="logo" aria-hidden="true"></span>Orbyn</a><span class="t3">Private apps that work offline.</span></div>
+<nav class="frow flinks" aria-label="Footer">${NAV.map(([label, href]) => `<a class="flink" href="${href}">${label}</a>`).join("")}<a class="flink" href="https://github.com/orbyn-dev">${ic("i-git")}Source on GitHub</a></nav>
+<div class="frow fend">${building}<span class="t4">© 2026 Anh Dang</span></div></footer>
+${body.includes("pvtap") ? `<div class="pvsheetwrap" id="pvsheet" hidden><div class="pvscrim" data-close></div><div class="pvsheet" role="dialog" aria-modal="true" aria-labelledby="pvsheet-title"><div class="pvsh2"><span class="pvgrab" aria-hidden="true"></span><b id="pvsheet-title"></b><button class="icb" type="button" data-close aria-label="Close">${ic("i-x", "ic")}</button></div><div class="pvscroll" tabindex="0"><div class="pvb arw pvfull"></div></div><span class="pvhint t4">Full size. Scroll sideways to see all of it.</span></div></div>` : ""}
 </div>
 </body>
 </html>
@@ -176,8 +236,19 @@ pages.push({ file: "index.html", path: "/", title: "Orbyn", current: "",
 <div class="acts"><a class="btn lg" href="/apps/">See the apps</a><a class="ghost lg" href="/security/">How we protect your data</a></div>
 <span class="note t4">Nothing is out yet. Every app is still being built.</span>
 </section>
-<div class="cards c4">${APPS.map((a) => appCard(a)).join("")}</div>
-<div class="gap28"></div>
+<div class="pvhero desk-only" role="group" aria-label="Orbyn Planner, Notes, Studio and Engineering on one account">
+<div class="pvh h1">${frame("notes-editor", { eager: true })}</div><div class="pvh h2">${frame("planner-task-notes")}</div><div class="pvh h3">${frame("studio-editor")}</div><div class="pvh h4">${frame("eng-gate")}</div>
+</div>
+<p class="pvnote desk-only top8">A Planner task with the Notes note it links to, beside small Studio and Engineering screens. Early designs; they may change.</p>
+<div class="pvstack phone-only">${fig("planner-phone-task", "A task with its linked notes. Early design.")}</div>
+<div class="gap22 desk-only"></div>
+<div class="cards c4 homecards">${APPS.map((a) => appCard(a)).join("")}</div>
+<div class="desk-only">
+<div class="gap30"></div><div class="pvblk"><div class="pvh2"><b>A look at each app</b><span class="t3">Early designs. Nothing is out yet.</span></div></div><div class="gap12"></div>
+<div class="pvstrips">${APPS.map((a) => `<div class="pvstrip"><div class="pvsh">${appIcon(a)}<b>${a.name}</b>${building}</div><div class="pvgrid g3">${PREVIEWS[a.key].strip.map(([f, c]) => fig(f, c)).join("")}</div></div>`).join("")}</div>
+</div>
+${APPS.map((a) => `<div class="pvstack phone-only"><span class="pvsh">${appIcon(a)}<b>${a.name}</b></span>${fig(PREVIEWS[a.key].phone[0], PREVIEWS[a.key].phone[1])}</div>`).join("")}
+<div class="gap34"></div>
 ${promises()}` });
 
 pages.push({ file: "apps/index.html", path: "/apps/", title: "Apps · Orbyn", current: "Apps",
@@ -238,6 +309,9 @@ pages.push({ file: "security/index.html", path: "/security/", title: "Security �
 <section class="sec-sec"><h2>Standard or Advanced protection</h2><p>Every account has one of two levels. Sync and the apps work the same in both; what changes is who can hold the keys. Advanced will be in every paid plan.</p>
 <div class="sec-table" role="table" aria-label="Standard and Advanced protection compared"><div class="sec-row sec-head" role="row"><span role="columnheader"><span class="sr">Question</span></span><span role="columnheader">Standard <span class="t4">(default)</span></span><span role="columnheader">Advanced</span></div>
 ${SEC_ROWS.map(([k, s, a]) => `<div class="sec-row" role="row"><b role="rowheader">${k}</b><span role="cell">${s}</span><span role="cell">${a}</span></div>`).join("\n")}</div></section>
+<section class="sec-sec"><h2>What it looks like in your account</h2><p><span class="desk-only">Your protection level lives in your Orbyn account, and you can change it there. Early designs; they may change.</span><span class="phone-only">Early design; it may change.</span></p>
+<div class="pvgrid g2 desk-only">${fig("account-protection", b("Protection", "Protection level: Standard or Advanced, and what each app encrypts."))}${fig("account-advanced-flow", b("Advanced, step 2 of 3", "Turning on Advanced: save your recovery key first."))}</div>
+<div class="phone-only">${fig("account-protection", b("Protection", "Protection level: Standard or Advanced."))}</div></section>
 <section class="sec-sec"><h2>Recovery key and recovery contacts</h2><div class="sec-two"><div class="sec-card"><b>${ic("i-key")} Recovery key</b><span class="t2">A long code only you keep. With Advanced, it is one of the only ways back in if you lose every device.</span></div><div class="sec-card"><b>${ic("i-users")} Recovery contact</b><span class="t2">Someone you trust can confirm it’s you. They can’t see your data.</span></div></div>
 <p class="t3">Turning on Advanced needs a recovery key or a recovery contact first. Orbyn then deletes its copy of your keys.</p></section>
 <section class="sec-sec"><h2>What Orbyn can always see</h2><p>Under both levels, the servers need a little information to sync and run your account:</p>
@@ -246,22 +320,39 @@ ${SEC_ROWS.map(([k, s, a]) => `<div class="sec-row" role="row"><b role="rowheade
 <section class="sec-sec"><h2>An engine you can audit</h2><p>The engine under every Orbyn app is being built in the open, so the privacy claims can be checked rather than trusted.</p>
 <div class="sec-two"><div class="sec-card"><b>Device side</b><span class="t3">Encryption, keychain, sync client and planner rules</span><span class="lic">MIT or Apache-2.0</span><span class="t2">Anyone can read and audit the code that encrypts your data.</span></div><div class="sec-card"><b>Server side</b><span class="t3">Record store, key service, accounts and push</span><span class="lic">AGPL-3.0</span><span class="t2">Self-hosting stays free; a company running it as a service must publish its changes.</span></div></div>
 <p class="t3">Licences as planned; the licence files land in the repository before release.</p></section>
+<section class="sec-sec" id="report"><h2>Report a security issue</h2><p>Found something that could put people’s data at risk? Please tell us privately before sharing it anywhere else.</p>
+<div class="sec-card report">${ic("i-shield", "ic")}<div class="rtext"><span class="t2">Email the details. Only the maintainers read this inbox.</span><span class="mono addr">${CONTACT}</span></div><button class="ghost copy" type="button" data-copy="${CONTACT}"><span class="cl a">${ic("i-copy")}Copy address</span><span class="cl b" aria-hidden="true">${ic("i-check2")}Copied</span></button><span class="sr" role="status" aria-live="polite"></span></div>
+<p class="copyerr t2" hidden></p>
+<span class="t3 rgh">For a problem in the code, you can also <a class="link" href="https://github.com/orbyn-dev/orbyn-engine/security/advisories/new">report it privately on GitHub</a>.</span></section>
 </div>` });
 
 for (const a of APPS) {
   const rest = APPS.filter((x) => x !== a);
   pages.push({ file: `${a.key}/index.html`, path: `/${a.key}/`, title: `${a.name} · Orbyn`, current: "Apps",
     description: `${a.line} Being built. There is nothing to install yet.`,
-    body: `<section class="apphero"><div class="txt">
+    body: `<section class="pvhdr"><div class="txt">
 <span class="meta">${appIcon(a, false)}${building}<span class="t3 small">${a.group}</span></span>
 <h1>${a.name}</h1>
 <p class="line t3">${a.line}</p>
 <span class="state t2">Being built. There is nothing to install yet.</span>
 <span class="small t3">${a.plan}</span>
 <span class="small t4">Planned for ${PLATFORMS[a.key]}</span>
-</div><div class="acard mini">${shot(a.shot)}</div></section>
+</div><div class="desk-only">${frame(PREVIEWS[a.key].hero, { cls: "shadow" })}</div></section>
+<div class="pvstack phone-only">
+${fig(PREVIEWS[a.key].phone[0], PREVIEWS[a.key].phone[1])}
+${fig(PREVIEWS[a.key].walk[0], b("Walkthrough", PREVIEWS[a.key].walk[1]), { cls: "pvwalk" }).replace('class="pvb', 'class="pvb pvw')}
+<p class="pvopen">Tap a screen to open it full size</p>
+${PREVIEWS[a.key].gallery.map(([f, t, c]) => fig(f, b(t, c), { open: t })).join("")}
+${PREVIEWS[a.key].phoneLast ? fig(PREVIEWS[a.key].phoneLast[0], b("Phone", PREVIEWS[a.key].phoneLast[1])) : ""}
+</div>
 <div class="cards c4">${a.features.map(([t, d]) => `<div class="acard feat"><h2>${t}</h2><p>${d}</p></div>`).join("")}</div>
-<div class="gap22"></div>
+<div class="desk-only">
+<div class="gap26"></div>
+<div class="pvblk"><div class="pvh2"><b>See it work</b><span class="t3">Real screens from the design, played as a short walkthrough.</span></div>${fig(PREVIEWS[a.key].walk[0], b("Walkthrough", PREVIEWS[a.key].walk[1]), { cls: "pvwalk" }).replace('class="pvb', 'class="pvb pvw')}</div>
+<div class="gap28"></div>
+<div class="pvblk"><div class="pvh2"><b>Key screens</b><span class="t3">Early designs. They may change.</span></div><div class="pvgal"><div class="pvgrid g3">${PREVIEWS[a.key].gallery.map(([f, t, c]) => fig(f, b(t, c))).join("")}</div><div class="pvphones">${PREVIEWS[a.key].phones.map(([f, c]) => fig(f, b("Phone", c), { cls: "ph" })).join("")}</div></div></div>
+</div>
+<div class="gap28"></div>
 ${promises()}
 <h2 class="family t3">The rest of the family</h2>
 <div class="cards c3">${rest.map((r) => `<a class="acard slim" href="/${r.key}/"><div class="head"><h2>${appIcon(r)}${r.name}</h2><span class="end">${building}</span></div></a>`).join("")}</div>` });
@@ -289,6 +380,7 @@ writeFileSync(join(out, ASSETS.js), js);
 writeFileSync(join(out, ASSETS.theme), theme);
 cpSync(join(root, "site/fonts"), join(out, "fonts"), { recursive: true });
 cpSync(join(root, "site/public"), out, { recursive: true });
+cpSync(join(root, "site/previews"), join(out, "previews"), { recursive: true });
 for (const p of pages) {
   mkdirSync(dirname(join(out, p.file)), { recursive: true });
   writeFileSync(join(out, p.file), page(p));
@@ -300,24 +392,26 @@ const files = [];
 const walk = (d) => readdirSync(d).forEach((f) => { const p = join(d, f); statSync(p).isDirectory() ? walk(p) : files.push(p); });
 walk(out);
 const problems = [];
-const exists = (href) => {
+const exists = (href, from) => {
   const p = href.replace(/[#?].*$/, "");
-  const target = p.endsWith("/") ? join(out, p, "index.html") : join(out, p);
+  const base = p.startsWith("/") ? out : dirname(from);
+  const target = p.endsWith("/") ? join(base, p, "index.html") : join(base, p);
   try { return statSync(target).isFile(); } catch { return false; }
 };
 for (const f of files.filter((f) => f.endsWith(".html"))) {
   const html = readFileSync(f, "utf8");
   for (const [, href] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
     if (href.startsWith("#") || href.startsWith("https://")) continue;
-    if (!exists(href)) problems.push(`${relative(out, f)}: broken link ${href}`);
+    if (!exists(href, f)) problems.push(`${relative(out, f)}: broken link ${href}`);
   }
-  if (/style="/.test(html)) problems.push(`${relative(out, f)}: inline style (blocked by the CSP)`);
+  if (relative(out, f).startsWith("previews/") && /(?:href|src)="https?:\/\/(?!www\.w3\.org)/.test(html)) problems.push(`${relative(out, f)}: a preview loads something from another site`);
+  if (!relative(out, f).startsWith("previews/") && /style="/.test(html)) problems.push(`${relative(out, f)}: inline style (blocked by the CSP)`);
   if (/<script>/.test(html)) problems.push(`${relative(out, f)}: inline script (blocked by the CSP)`);
   for (const word of ["Available", "Buy", "Subscribe", "Sign in</a>", "Waitlist", "Install now", "Get started"]) {
     if (html.includes(word)) problems.push(`${relative(out, f)}: says "${word}"`);
   }
   for (const [, href] of html.matchAll(/href="(https:\/\/github\.com\/[^"]+)"/g)) {
-    if (!href.startsWith("https://github.com/orbyn-dev/")) problems.push(`${relative(out, f)}: GitHub link outside orbyn-dev: ${href}`);
+    if (!/^https:\/\/github\.com\/orbyn-dev(\/|$)/.test(href)) problems.push(`${relative(out, f)}: GitHub link outside orbyn-dev: ${href}`);
   }
 }
 if (problems.length) {

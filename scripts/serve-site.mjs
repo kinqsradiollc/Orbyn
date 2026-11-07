@@ -26,6 +26,13 @@ createServer(async (req, res) => {
     status = 404;
     found = /^\/booking(\/|$)/.test(path) ? join(dist, "booking/404.html") : join(dist, "404.html");
   }
-  res.writeHead(status, { "Content-Type": TYPES[extname(found)] || "application/octet-stream" });
-  res.end(await readFile(found));
+  try {
+    const data = await readFile(found);
+    res.writeHead(status, { "Content-Type": TYPES[extname(found)] || "application/octet-stream" });
+    res.end(data);
+  } catch {
+    // dist/ is being rebuilt; answer instead of crashing.
+    res.writeHead(503, { "Content-Type": "text/plain" });
+    res.end("dist/ is being rebuilt; reload in a moment.\n");
+  }
 }).listen(port, () => console.log(`orbyn.dev on http://localhost:${port}`));
