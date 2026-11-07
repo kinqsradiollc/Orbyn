@@ -22,6 +22,22 @@
   };
   sync();
 
+  // Previews start loading once the page itself has loaded, and only when they
+  // come within 400px of the viewport, so they never hold up the page's paint.
+  // A preview in a hidden layout (desktop or phone only) never loads.
+  // The home hero (loading="eager") starts at once if it is in a visible layout.
+  const watch = (frames) => {
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+      if (!e.isIntersecting) return;
+      io.unobserve(e.target);
+      e.target.src = e.target.dataset.src;
+    }), { rootMargin: "400px 0px" });
+    frames.forEach((f) => io.observe(f));
+  };
+  watch(document.querySelectorAll('iframe.pvf[data-src][loading="eager"]'));
+  const startPreviews = () => watch(document.querySelectorAll('iframe.pvf[data-src][loading="lazy"]'));
+  if (document.readyState === "complete") startPreviews(); else addEventListener("load", startPreviews, { once: true });
+
   // Previews (iframes) get the resolved theme: light, dark or dim.
   const darkMq = matchMedia("(prefers-color-scheme: dark)");
   const resolved = () => root.dataset.theme || (darkMq.matches ? "dark" : "light");

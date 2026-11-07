@@ -109,7 +109,7 @@ const TITLES = {
 };
 const ratio = (f) => (/phone/.test(f) ? "arp" : f === "notes-study" ? "ars" : "arw");
 const frame = (f, { eager = false, cls = "" } = {}) =>
-  `<div class="pvb ${ratio(f)}${cls ? " " + cls : ""}"><iframe class="pvf" src="/previews/${f}.html" loading="${eager ? "eager" : "lazy"}" title="${esc(TITLES[f])}" tabindex="-1"></iframe></div>`;
+  `<div class="pvb ${ratio(f)}${cls ? " " + cls : ""}"><iframe class="pvf" data-src="/previews/${f}.html" loading="${eager ? "eager" : "lazy"}" title="${esc(TITLES[f])}" tabindex="-1"></iframe></div>`;
 const fig = (f, cap, { cls = "", open = "" } = {}) =>
   `<figure class="pvfig${cls ? " " + cls : ""}">${open ? `<button class="pvtap" type="button" data-open="${f}" data-title="${esc(open)}" aria-label="Open ${esc(open)} full size">${frame(f).replace("<iframe ", '<iframe aria-hidden="true" ')}</button>` : frame(f)}<figcaption>${cap}</figcaption></figure>`;
 const b = (bold, rest) => `<b>${bold}</b> ${rest}`;
@@ -400,7 +400,7 @@ const exists = (href, from) => {
 };
 for (const f of files.filter((f) => f.endsWith(".html"))) {
   const html = readFileSync(f, "utf8");
-  for (const [, href] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
+  for (const [, href] of html.matchAll(/(?:href|src|data-src)="([^"]+)"/g)) {
     if (href.startsWith("#") || href.startsWith("https://")) continue;
     if (!exists(href, f)) problems.push(`${relative(out, f)}: broken link ${href}`);
   }
