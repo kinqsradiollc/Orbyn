@@ -48,7 +48,7 @@ database to `backups/`. If that dump fails, nothing is removed. `--keep-old`
 deploys the site and leaves the old data alone.
 
 The Cloudflare tunnel's public hostname for orbyn.dev should point at
-`http://web:8080`; `http://gateway:8080`, the old route, keeps working too.
+`http://web:8080`; `http://gateway:8081`, the old app's route, keeps working too.
 
 To use Cloudflare Workers instead: `npx wrangler deploy`.
 
