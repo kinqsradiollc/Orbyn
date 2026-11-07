@@ -9,4 +9,5 @@ RUN node scripts/build-site.mjs && rm dist/_headers && echo "$GIT_SHA" > dist/ve
 
 FROM nginxinc/nginx-unprivileged:1.28-alpine
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /src/dist /usr/share/nginx/html

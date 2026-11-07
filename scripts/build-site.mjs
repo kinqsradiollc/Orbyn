@@ -35,6 +35,8 @@ const ICONS = {
   "i-phone": '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>',
   "i-globe": '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.6 2.6 14.4 0 17M12 3.5c-2.6 2.6-2.6 14.4 0 17"/>',
   "i-key": '<circle cx="8" cy="14" r="4"/><path d="M11 11l8.5-8.5M16 6l2.5 2.5"/>',
+  "i-sun": '<circle cx="12" cy="12" r="3.8"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
+  "i-moon": '<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/>',
   "i-eye": '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
 };
 const ic = (id, cls = "ic sm", extra = "") => `<svg class="${cls}${extra}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[id]}</svg>`;
@@ -88,14 +90,29 @@ const building = '<span class="st info"><i class="sd"></i>Building</span>';
 const planned = '<span class="st planned"><i class="sd"></i>Planned</span>';
 const NAV = [["Apps", "/apps/"], ["Pricing", "/pricing/"], ["Security", "/security/"]];
 
+// Theme: the button and menu from orbyn.dev Designs "Theme switch".
+const THEMES = [["system", "System", "i-laptop", "Follows this device"], ["light", "Light", "i-sun", ""], ["dark", "Dark", "i-moon", ""], ["dim", "Dim", "i-moon", "Softer dark"]];
+function themeControl() {
+  const items = THEMES.map(([v, label, icon, note], i) =>
+    `<button class="mi" type="button" role="menuitemradio" data-theme-choice="${v}" aria-checked="${i === 0}" tabindex="-1">${ic(icon)}<span class="grow">${label}</span>` +
+    `${note ? `<small class="t4">${note}</small>` : ""}<span class="tick">${ic("i-check2")}</span></button>`).join("");
+  return `<button class="icb thbtn" type="button" id="theme-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="theme-menu" aria-label="Theme: System">` +
+    THEMES.map(([v, , icon]) => ic(icon, "ic sm", ` th-${v}`)).join("") + `</button>` +
+    `<div class="menu thmenu" id="theme-menu" role="menu" aria-label="Theme"><div class="mh2" aria-hidden="true">Theme</div>${items}</div>`;
+}
+
 function nav(current) {
   const links = NAV.map(([label, href]) =>
     `<a class="lk" href="${href}"${current === label ? ' aria-current="page"' : ""}>${label}</a>`).join("");
   const rows = NAV.map(([label, href]) =>
     `<a class="mrow" href="${href}"${current === label ? ' aria-current="page"' : ""}><span>${label}</span>${ic("i-right", "ic")}</a>`).join("");
-  return `<header class="snav"><a class="brand" href="/"><span class="logo" aria-hidden="true"></span>Orbyn</a>${links}<div class="end">${building}` +
+  const seg = THEMES.map(([v, label], i) => `<button type="button" role="radio" data-theme-choice="${v}" aria-checked="${i === 0}">${label}</button>`).join("");
+  return `<header class="snav"><a class="brand" href="/"><span class="logo" aria-hidden="true"></span>Orbyn</a><nav class="links" aria-label="Main">${links}</nav><div class="end">${building}` +
+    themeControl() +
     `<button class="icb menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="menu">${ic("i-list", "ic", " ic-list")}${ic("i-x", "ic", " ic-x")}</button></div>` +
-    `<div class="mwrap" id="menu"><div class="mscrim" data-close></div><nav class="msheet" aria-label="Menu">${rows}<div class="mrow foot">${building}Nothing is out yet</div></nav></div></header>`;
+    `<div class="mwrap" id="menu"><div class="mscrim" data-close></div><nav class="msheet" aria-label="Menu">${rows}` +
+    `<div class="mrow theme-row"><span class="lbl">Theme</span><span class="thseg" role="radiogroup" aria-label="Theme">${seg}</span></div>` +
+    `<div class="mrow foot">${building}Nothing is out yet</div></nav></div></header>`;
 }
 
 function shot(kind) {
@@ -109,7 +126,7 @@ const appIcon = (a, sm = true) => `<span class="appi${sm ? " sm" : ""} ${a.cls}"
 
 function appCard(a, { withShot = true } = {}) {
   return `<a class="acard" href="/${a.key}/" data-group="${a.group}">${withShot ? shot(a.shot) : ""}` +
-    `<h2>${appIcon(a)}${a.name}<span class="end">${building}</span></h2><p>${a.line}</p>` +
+    `<div class="head"><h2>${appIcon(a)}${a.name}</h2><span class="end">${building}</span></div><p>${a.line}</p>` +
     `<div class="plat">${ic("i-laptop")}${PLATFORMS[a.key]}</div></a>`;
 }
 
@@ -123,13 +140,13 @@ function page({ path, title, description, current, body }) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description)}">
-<link rel="canonical" href="${SITE}${path}">
-<meta name="color-scheme" content="light dark">
+${path.startsWith("/404") || path === "/booking" ? "" : `<link rel="canonical" href="${SITE}${path}">\n`}<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f6f6f6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preload" href="/fonts/geist-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/geist-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<script src="${ASSETS.theme}"></script>
 <link rel="stylesheet" href="${ASSETS.css}">
 <script src="${ASSETS.js}" defer></script>
 </head>
@@ -219,7 +236,7 @@ pages.push({ file: "security/index.html", path: "/security/", title: "Security �
 <section class="sec-sec"><h2>Encrypted on your device before upload</h2><p>Under both protection levels, records are encrypted before they leave your device.</p>
 <ol class="sec-steps"><li><b>Saved on the device</b><span>A new task is saved in the device’s own database at once, so it works with no signal.</span></li><li><b>Encrypted before it leaves</b><span>The device encrypts the record with its own key before uploading it.</span></li><li><b>Stored as ciphertext</b><span>The server keeps a new encrypted version and tells your other devices something changed, without saying what.</span></li><li><b>Decrypted on your devices</b><span>Each device fetches the change and decrypts it. If two devices edited the same thing, they merge field by field.</span></li></ol></section>
 <section class="sec-sec"><h2>Standard or Advanced protection</h2><p>Every account has one of two levels. Sync and the apps work the same in both; what changes is who can hold the keys. Advanced will be in every paid plan.</p>
-<div class="sec-table" role="table" aria-label="Standard and Advanced protection compared"><div class="sec-row sec-head" role="row"><span role="columnheader"></span><span role="columnheader">Standard <span class="t4">(default)</span></span><span role="columnheader">Advanced</span></div>
+<div class="sec-table" role="table" aria-label="Standard and Advanced protection compared"><div class="sec-row sec-head" role="row"><span role="columnheader"><span class="sr">Question</span></span><span role="columnheader">Standard <span class="t4">(default)</span></span><span role="columnheader">Advanced</span></div>
 ${SEC_ROWS.map(([k, s, a]) => `<div class="sec-row" role="row"><b role="rowheader">${k}</b><span role="cell">${s}</span><span role="cell">${a}</span></div>`).join("\n")}</div></section>
 <section class="sec-sec"><h2>Recovery key and recovery contacts</h2><div class="sec-two"><div class="sec-card"><b>${ic("i-key")} Recovery key</b><span class="t2">A long code only you keep. With Advanced, it is one of the only ways back in if you lose every device.</span></div><div class="sec-card"><b>${ic("i-users")} Recovery contact</b><span class="t2">Someone you trust can confirm it’s you. They can’t see your data.</span></div></div>
 <p class="t3">Turning on Advanced needs a recovery key or a recovery contact first. Orbyn then deletes its copy of your keys.</p></section>
@@ -247,7 +264,7 @@ for (const a of APPS) {
 <div class="gap22"></div>
 ${promises()}
 <h2 class="family t3">The rest of the family</h2>
-<div class="cards c3">${rest.map((r) => `<a class="acard slim" href="/${r.key}/"><h2>${appIcon(r)}${r.name}<span class="end">${building}</span></h2></a>`).join("")}</div>` });
+<div class="cards c3">${rest.map((r) => `<a class="acard slim" href="/${r.key}/"><div class="head"><h2>${appIcon(r)}${r.name}</h2><span class="end">${building}</span></div></a>`).join("")}</div>` });
 }
 
 const notFound = (line, button, path, file) => ({ file, path, title: "Not found · Orbyn", current: "",
@@ -264,10 +281,12 @@ mkdirSync(out, { recursive: true });
 const hash = (s) => createHash("sha256").update(s).digest("hex").slice(0, 10);
 const css = readFileSync(join(root, "site/src/styles.css"), "utf8");
 const js = readFileSync(join(root, "site/src/site.js"), "utf8");
-const ASSETS = { css: `/assets/styles.${hash(css)}.css`, js: `/assets/site.${hash(js)}.js` };
+const theme = readFileSync(join(root, "site/src/theme.js"), "utf8");
+const ASSETS = { css: `/assets/styles.${hash(css)}.css`, js: `/assets/site.${hash(js)}.js`, theme: `/assets/theme.${hash(theme)}.js` };
 mkdirSync(join(out, "assets"));
 writeFileSync(join(out, ASSETS.css), css);
 writeFileSync(join(out, ASSETS.js), js);
+writeFileSync(join(out, ASSETS.theme), theme);
 cpSync(join(root, "site/fonts"), join(out, "fonts"), { recursive: true });
 cpSync(join(root, "site/public"), out, { recursive: true });
 for (const p of pages) {

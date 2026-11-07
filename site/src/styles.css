@@ -15,12 +15,25 @@
   /* Motion tokens */
   --m-fast:150ms;--m-fast-x:105ms;--m-base:200ms;--m-base-x:140ms;--m-page:240ms;--m-page-x:170ms;
   --m-out:cubic-bezier(.2,.8,.2,1);--m-io:cubic-bezier(.4,0,.2,1)}
-@media (prefers-color-scheme:dark){:root{color-scheme:dark;
+/* System follows the device; a stored choice sets data-theme on <html> (theme.js). */
+@media (prefers-color-scheme:dark){:root:not([data-theme]){color-scheme:dark;
   --bg:#000;--main:#0a0a0a;--raise:rgba(255,255,255,.05);--sel:rgba(255,255,255,.085);--line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.14);
   --t1:rgba(255,255,255,.94);--t2:rgba(255,255,255,.74);--t3:rgba(255,255,255,.56);--t4:rgba(255,255,255,.42);--btn:#fff;--btnt:#000;
   --blue:#60a5fa;--blue-bg:rgba(59,130,246,.13);
   --app-pl:#2a2a2a;--app-no:#2a2a2a;--app-st:#2a2a2a;--app-en:#2a2a2a;--app-ring:inset 0 0 0 1px rgba(255,255,255,.12);
   --menu-shadow:0 10px 30px rgba(0,0,0,.6),0 0 0 1px var(--line2)}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --bg:#000;--main:#0a0a0a;--raise:rgba(255,255,255,.05);--sel:rgba(255,255,255,.085);--line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.14);
+  --t1:rgba(255,255,255,.94);--t2:rgba(255,255,255,.74);--t3:rgba(255,255,255,.56);--t4:rgba(255,255,255,.42);--btn:#fff;--btnt:#000;
+  --blue:#60a5fa;--blue-bg:rgba(59,130,246,.13);
+  --app-pl:#2a2a2a;--app-no:#2a2a2a;--app-st:#2a2a2a;--app-en:#2a2a2a;--app-ring:inset 0 0 0 1px rgba(255,255,255,.12);
+  --menu-shadow:0 10px 30px rgba(0,0,0,.6),0 0 0 1px var(--line2)}
+:root[data-theme="dim"]{color-scheme:dark;
+  --bg:#101010;--main:#161616;--raise:rgba(255,255,255,.04);--sel:rgba(255,255,255,.08);--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);
+  --t1:rgba(255,255,255,.92);--t2:rgba(255,255,255,.78);--t3:rgba(255,255,255,.62);--t4:rgba(255,255,255,.48);--btn:#f2f2f2;--btnt:#101010;
+  --blue:#93c5fd;--blue-bg:rgba(59,130,246,.13);
+  --app-pl:#2a2a2a;--app-no:#2a2a2a;--app-st:#2a2a2a;--app-en:#2a2a2a;--app-ring:inset 0 0 0 1px rgba(255,255,255,.12);
+  --menu-shadow:0 10px 30px rgba(0,0,0,.6),0 0 0 1px var(--line2)}
 
 *,*::before,*::after{box-sizing:border-box}
 html{background:var(--bg);-webkit-text-size-adjust:100%}
@@ -42,7 +55,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0}
 .snav .brand{font-weight:500;color:var(--t1);font-size:15px;display:inline-flex;align-items:center;gap:8px}
 .snav .lk{transition:color var(--m-fast) var(--m-io)}
 .snav .lk:hover,.snav .lk[aria-current="page"]{color:var(--t1)}
-.snav .end{margin-left:auto;display:flex;gap:8px;align-items:center}
+.snav .links{display:contents}
+.snav .end{margin-left:auto;display:flex;gap:8px;align-items:center;position:relative}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .logo{width:20px;height:20px;border-radius:6px;background:var(--btn);display:inline-grid;place-items:center}
 .logo::after{content:"";width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 2px var(--btnt)}
 .snav .menu-btn{display:none}
@@ -92,7 +107,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0}
 .acard[hidden]{display:none}
 .acard .shot{height:120px;border-radius:10px;background:var(--raise);position:relative;overflow:hidden}
 .acard h2{margin:0;font-size:15px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:8px}
-.acard h2 .end{margin-left:auto}
+.acard .head{display:flex;align-items:center;gap:8px}
+.acard .head .end{margin-left:auto}
 .acard p{margin:0;color:var(--t3);font-size:12.5px;line-height:1.5}
 .acard .plat{display:flex;gap:6px;color:var(--t4);font-size:11.5px;align-items:center;margin-top:auto}
 .acard .planned-for{font-size:12px}
@@ -180,6 +196,30 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0}
 .menu-btn .ic-x,.menu-btn[aria-expanded="true"] .ic-list{display:none}
 .menu-btn[aria-expanded="true"] .ic-x{display:block}
 
+/* theme switch: orbyn.dev Designs "Theme switch", Motion Designs "Menu open and close" and "Theme switch" */
+.thbtn{width:32px;height:32px;border-radius:9px;color:var(--t2)}
+.thbtn[aria-expanded="true"]{background:var(--sel);color:var(--t1)}
+.thbtn .ic{display:none}
+:root:not([data-theme]) .thbtn .th-system,:root[data-theme="light"] .thbtn .th-light,:root[data-theme="dark"] .thbtn .th-dark,:root[data-theme="dim"] .thbtn .th-dim{display:block}
+.menu{position:absolute;background:var(--main);border-radius:12px;padding:5px;box-shadow:var(--menu-shadow);display:flex;flex-direction:column;gap:1px;z-index:8;font-size:12.5px}
+.thmenu{width:220px;top:38px;right:-12px;transform-origin:top right;opacity:0;transform:translateY(-4px) scale(.98);visibility:hidden;
+  transition:opacity var(--m-base-x) var(--m-io),transform var(--m-base-x) var(--m-io),visibility 0s linear var(--m-base-x)}
+.thmenu.open{opacity:1;transform:none;visibility:visible;transition:opacity var(--m-base) var(--m-out),transform var(--m-base) var(--m-out),visibility 0s}
+.mh2{font-size:11px;color:var(--t4);padding:6px 9px 3px}
+.mi{display:flex;align-items:center;gap:9px;height:30px;padding:0 9px;border-radius:8px;color:var(--t2);white-space:nowrap;width:100%;text-align:left;cursor:pointer;transition:background-color var(--m-fast) var(--m-io),color var(--m-fast) var(--m-io)}
+.mi .grow{flex:1}.mi small{font-size:11px}
+.mi .tick{width:14px;display:inline-grid}.mi .tick .ic{visibility:hidden}
+.mi[aria-checked="true"]{background:var(--sel);color:var(--t1)}
+.mi[aria-checked="true"] .tick .ic{visibility:visible}
+.mi:hover,.mi:focus-visible{background:var(--sel);color:var(--t1);outline:0}
+.theme-row{height:auto;padding:12px 0;flex-direction:column;align-items:stretch;gap:8px}
+.theme-row .lbl{font-size:13px;color:var(--t3)}
+.thseg{display:flex;background:var(--raise);border-radius:9px;padding:2px;gap:2px}
+.thseg button{flex:1;justify-content:center;height:32px;font-size:12.5px;white-space:nowrap;padding:0 10px;border-radius:7px;display:inline-flex;align-items:center;color:var(--t3);cursor:pointer;transition:background-color var(--m-fast) var(--m-io),color var(--m-fast) var(--m-io)}
+.thseg button[aria-checked="true"]{background:var(--main);color:var(--t1);box-shadow:0 0 0 1px var(--line)}
+.thseg button:focus-visible{outline:0;box-shadow:0 0 0 2px var(--main),0 0 0 4px var(--t1)}
+html.th-anim,html.th-anim *,html.th-anim *::before,html.th-anim *::after{transition:background-color var(--m-fast) var(--m-io),color var(--m-fast) var(--m-io),border-color var(--m-fast) var(--m-io),box-shadow var(--m-fast) var(--m-io),fill var(--m-fast) var(--m-io),stroke var(--m-fast) var(--m-io)!important}
+
 /* security */
 .sec-page{padding:8px 40px 36px;display:flex;flex-direction:column;gap:30px;max-width:900px}
 .sec-hero{display:flex;flex-direction:column;gap:10px;align-items:flex-start;padding-top:20px}
@@ -233,6 +273,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0}
   .snav .lk{display:none}
   .snav .end .st{display:none}
   .snav .menu-btn{display:inline-grid}
+  .snav .thbtn,.snav .thmenu{display:none}
   .hero{padding:16px 6px}
   .hero h1{font-size:28px}
   .hero p{font-size:14px}
@@ -275,7 +316,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0}
 @media (prefers-reduced-motion:reduce){
   .btn:active,.ghost:active,.icb:active,.pill:active{transform:none}
   .segx .thumb{transition:none}
-  .msheet,.mwrap.open .msheet{transform:none;transition:opacity 150ms var(--m-io)}
+  .msheet,.mwrap.open .msheet,.thmenu,.thmenu.open{transform:none}
+  .msheet,.mwrap.open .msheet{transition:opacity 150ms var(--m-io)}
+  .thmenu{transition:opacity 150ms var(--m-io),visibility 0s linear 150ms}
+  .thmenu.open{transition:opacity 150ms var(--m-io),visibility 0s}
   ::view-transition-old(root){animation:vt-out var(--m-page-x) var(--m-io) both}
   ::view-transition-new(root){animation:vt-fade var(--m-page) var(--m-io) both}
   @keyframes vt-fade{from{opacity:0}}
