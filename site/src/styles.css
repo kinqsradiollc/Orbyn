@@ -244,7 +244,8 @@ html.th-anim,html.th-anim *,html.th-anim *::before,html.th-anim *::after{transit
 .link{color:var(--t1);text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}
 .link:focus-visible{outline:0;box-shadow:0 0 0 2px var(--main),0 0 0 4px var(--t1);border-radius:4px}
 .sec-sees{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:8px}
-.sec-sees li{display:inline-flex;gap:7px;align-items:center;height:30px;padding:0 12px;border-radius:999px;background:var(--main);color:var(--t1);font-size:12.5px}
+.sec-sees li{display:inline-flex;gap:7px;align-items:flex-start;min-height:30px;padding:6px 12px;border-radius:16px;background:var(--main);color:var(--t1);font-size:12.5px;line-height:1.4;max-width:100%}
+.sec-sees li .ic{margin-top:2px}
 
 /* page change: Motion Designs "Page change" */
 @view-transition{navigation:auto}
@@ -377,6 +378,7 @@ html.th-anim,html.th-anim *,html.th-anim *::before,html.th-anim *::after{transit
   .sec-page{padding:6px 4px 24px;gap:22px}
   .sec-hero h1{font-size:26px}.sec-hero p{font-size:13.5px}
   .sec-devs,.sec-steps,.sec-two{grid-template-columns:minmax(0,1fr)}
+  .sec-sees{flex-direction:column;align-items:stretch}
   .sec-row{grid-template-columns:minmax(0,1fr);gap:2px}
   .sec-row span:nth-child(2)::before{content:"Standard · ";color:var(--t4)}
   .sec-row span:nth-child(3)::before{content:"Advanced · ";color:var(--t4)}
