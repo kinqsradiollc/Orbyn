@@ -1,3 +1,0 @@
-# Add to ~/.codex/config.toml, then sign in: codex mcp login orbyn
-[mcp_servers.orbyn]
-url = "https://mcp.orbyn.dev/mcp"
