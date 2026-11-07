@@ -1,0 +1,5 @@
+/* The site's own fonts, for the previews. */
+@font-face{font-family:"Geist";font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/geist-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"Geist";font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/geist-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/jetbrains-mono-latin-500-normal.woff2) format("woff2")}

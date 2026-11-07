@@ -13,6 +13,7 @@ removed here; its code stays in the Git history.
 | `site/src/` | The stylesheet and the one small script every page loads |
 | `site/fonts/` | Geist and JetBrains Mono, self-hosted (SIL Open Font License) |
 | `site/public/` | Files copied as they are: favicon and Cloudflare `_headers` |
+| `site/previews/` | Product previews from the internal designs, made CSP-safe by `scripts/import-previews.mjs` |
 | `scripts/build-site.mjs` | Builds every page into `dist/` and checks links and wording |
 | `scripts/serve-site.mjs` | Serves `dist/` locally the way production does |
 | `scripts/deploy.sh` | Deploys on one Docker host and removes the old app's data |
@@ -20,6 +21,10 @@ removed here; its code stays in the Git history.
 | `wrangler.jsonc` | The same site on Cloudflare Workers static assets |
 
 The pages follow the internal designs; their copy lives in `scripts/build-site.mjs`.
+The product previews are early designs shown in iframes. To update them, download
+the design's `previews/` folder and run `node scripts/import-previews.mjs <folder>`:
+it moves styles and scripts into files and points fonts at `/fonts`, so the
+previews run under the same Content-Security-Policy as the pages.
 No dependencies: Node 22 builds it.
 
 ## Work on it
