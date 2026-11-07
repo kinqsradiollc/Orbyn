@@ -1,0 +1,13 @@
+// orbyn.dev on Cloudflare Workers static assets, as the Domains and Hosting Plan
+// describes. Not used by the Docker deploy; deploy with `npx wrangler deploy`.
+// Headers come from site/public/_headers (copied into dist/).
+{
+  "name": "orbyn-dev",
+  "compatibility_date": "2026-10-01",
+  "build": { "command": "node scripts/build-site.mjs" },
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  }
+}

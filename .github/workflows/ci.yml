@@ -1,6 +1,4 @@
 name: CI
-env:
-  ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 on:
   push:
     branches: [main]
@@ -12,271 +10,27 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
-  changes:
-    name: Select CI scope
+  site:
+    name: Build and check the site
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      run_app: ${{ steps.scope.outputs.run_app }}
-      scope: ${{ steps.scope.outputs.scope }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.13"
-      - name: Verify scope and safe candidate preflight with disposable Git fixtures
-        run: python3 -m unittest discover -s .github/tests -v
-      - name: Verify vendored source hashes and submodule pins
+          node-version: 22
+      - run: node scripts/build-site.mjs --check
+      - name: Check the deploy script
         run: |
-          python3 scripts/check-tool-sources.py
-          python3 scripts/check-project-docs.py
-          python3 scripts/check-workspace-boundary.py
-          python3 scripts/check-code-organization.py
-      - name: Classify the complete candidate diff
-        id: scope
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          args=()
-          if [ "$EVENT_NAME" = workflow_dispatch ]; then args+=(--force-full); fi
-          python3 scripts/ci_scope.py select \
-            --config .github/ci-scope.json --base "$BASE_SHA" --head "$HEAD_SHA" \
-            --event "$EVENT_NAME" --repository "$GITHUB_REPOSITORY" \
-            --record ci-scope.json --github-output "$GITHUB_OUTPUT" "${args[@]}"
-      - name: Preserve the exact revision's scope decision
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: ci-scope
-          path: ci-scope.json
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 7
-
-  backend-and-web:
-    needs: changes
-    if: needs.changes.outputs.run_app == 'true'
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: orbyn
-          POSTGRES_PASSWORD: orbyn-test
-          POSTGRES_DB: orbyn_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U orbyn -d orbyn_test"
-          --health-interval 5s --health-timeout 5s --health-retries 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run format:check
-      - run: npm run build:packages
-      - run: npm run typecheck -w backend
-      - run: npm run typecheck -w desktop
-      - run: npm run build -w backend
-      - run: npm run build -w desktop
-      - name: Mark the CI database as a test database
-        run: psql "postgres://orbyn:orbyn-test@localhost:5432/orbyn_test" -c "ALTER DATABASE orbyn_test SET orbyn.environment TO 'test'"
-      - run: npm test -w backend
-        env:
-          TEST_DATABASE_URL: postgres://orbyn:orbyn-test@localhost:5432/orbyn_test
-  embedding:
-    needs: changes
-    if: needs.changes.outputs.run_app == 'true'
-    runs-on: ubuntu-latest
-    env:
-      TEST_DATABASE_URL: postgres://orbyn:orbyn-test@localhost:5432/orbyn_embedding_test
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: orbyn
-          POSTGRES_PASSWORD: orbyn-test
-          POSTGRES_DB: orbyn_embedding_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U orbyn -d orbyn_embedding_test"
-          --health-interval 5s --health-timeout 5s --health-retries 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build:packages
-      - run: npm run build -w backend
-      - name: Mark the disposable vector database and install its extension
-        run: |
-          psql "$TEST_DATABASE_URL" -c "ALTER DATABASE orbyn_embedding_test SET orbyn.environment TO 'test'"
-          psql "$TEST_DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector"
-      - name: Verify embedding configuration, storage, retries and access races
-        run: >-
-          npx tsx --test --test-concurrency=1
-          backend/tests/embedding-access-races.integration.ts
-          backend/tests/embedding-schema.integration.ts
-          backend/tests/embedding-setup.integration.ts
-          backend/tests/embedding-retry.integration.ts
-          backend/tests/embedding-pgvector.integration.ts
-          backend/tests/perplexity-embeddings.integration.ts
-          backend/tests/embedding-vectors.unit.test.ts
-          backend/tests/embedding-controls.unit.test.ts
-  mobile:
-    needs: changes
-    if: needs.changes.outputs.run_app == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build:packages
-      - run: npm run typecheck -w mobile
-      - name: Bundle with Metro (no device needed)
-        run: npx expo export --platform ios --platform android --output-dir /tmp/orbyn-export
-        working-directory: mobile
-  docker:
-    needs: changes
-    if: needs.changes.outputs.run_app == 'true'
-    runs-on: ubuntu-latest
-    env:
-      COMPOSE_PROJECT_NAME: orbyn
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build:packages
-      - uses: docker/setup-buildx-action@v3
-      - name: Build backend image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: backend/Dockerfile
-          push: false
-          load: true
-          tags: orbyn-backend:ci
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,scope=backend,mode=max
-      - name: Build private PDF image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: backend/Dockerfile
-          target: pdf
-          push: false
-          load: true
-          tags: orbyn-pdf:ci
-          cache-from: type=gha,scope=pdf
-          cache-to: type=gha,scope=pdf,mode=max
-      - name: Build private LaTeX image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: backend/Dockerfile
-          target: latex
-          push: false
-          load: true
-          tags: orbyn-latex:ci
-          cache-from: type=gha,scope=latex
-          cache-to: type=gha,scope=latex,mode=max
-      - name: Build web image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: desktop/Dockerfile
-          push: false
-          load: true
-          tags: orbyn-desktop:latest
-          cache-from: type=gha,scope=desktop
-          cache-to: type=gha,scope=desktop,mode=max
-      - name: Build connection pooler image
-        uses: docker/build-push-action@v6
-        with:
-          context: pgbouncer
-          push: false
-          load: true
-          tags: orbyn-pgbouncer:latest
-          cache-from: type=gha,scope=pgbouncer
-          cache-to: type=gha,scope=pgbouncer,mode=max
-      - name: Start services and run the live API smoke test
+          bash -n scripts/deploy.sh
+          shellcheck scripts/deploy.sh
+      - name: Check compose.yaml
         run: |
           cp .env.example .env
-          printf '\nDOC_PDF_KEY=%s\nSECRETS_KEY=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -base64 32)" >> .env
-          # Derive each backend service's image from its Dockerfile target so
-          # isolated renderers retain their own dependencies and entry point.
-          docker compose --profile '*' config --format json |
-            jq -r --arg project "$COMPOSE_PROJECT_NAME" '.services | to_entries[] | select(.value.build.dockerfile? == "backend/Dockerfile") | [(.value.build.target // "backend"), (.value.image // ($project + "-" + .key + ":latest"))] | @tsv' |
-            while read -r target image; do docker tag "orbyn-$target:ci" "$image"; done
-          docker compose up -d --no-build --wait --wait-timeout 120
-          curl --fail --retry 5 --retry-all-errors http://localhost:8080/api/health
-          # Public registration cannot grant admin authority. Provision the
-          # smoke operator only inside this disposable Compose database.
-          docker compose exec -T api node --input-type=module <<'NODE'
-          import argon2 from 'argon2';
-          import { pool } from './backend/dist/db/pool.js';
-          await pool.query(
-            'INSERT INTO users(email,name,password_hash,role,email_verified) VALUES($1,$2,$3,$4,true)',
-            ['smoke-admin@orbyn.local', 'Smoke admin', await argon2.hash('smoke-admin-password'), 'admin'],
-          );
-          await pool.end();
-          NODE
-          SMOKE_AI=skip npm run smoke -w backend
-      - name: Docker logs
-        if: failure()
-        run: docker compose logs --tail 100
-      - name: Stop CI services
-        if: always()
-        run: docker compose down --volumes
-
-  mail:
-    needs: changes
-    if: needs.changes.outputs.run_app == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Start local mail stack
-        run: ./scripts/mail-local.sh up
-      - name: Verify signed mail reaches the TLS-only test inbox
-        run: ./scripts/mail-local.sh test
-      - name: Mail logs
-        if: failure()
-        run: ./scripts/mail-local.sh logs
-      - name: Stop test mail stack
-        if: always()
-        run: docker compose -f mail/compose.local.yaml down --volumes
-
-  result:
-    name: CI result
-    if: ${{ always() }}
-    needs: [changes, backend-and-web, embedding, mobile, docker, mail]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.13"
-      - name: Require the selected checks and reject classification failures
-        env:
-          NEEDS_JSON: ${{ toJSON(needs) }}
-        run: >-
-          python3 scripts/ci_scope.py gate
-          --config .github/ci-scope.json --needs-json "$NEEDS_JSON"
+          docker compose config --quiet
+      - name: Build the image
+        run: docker build -f deploy/Dockerfile -t orbyn-dev-site .

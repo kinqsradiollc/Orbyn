@@ -1,0 +1,14 @@
+{
+  "name": "orbyn.dev",
+  "private": true,
+  "description": "The orbyn.dev site: the home of the Orbyn product line.",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-site.mjs",
+    "check": "node scripts/build-site.mjs --check",
+    "serve": "node scripts/serve-site.mjs 4321"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

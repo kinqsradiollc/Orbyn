@@ -1,0 +1,41 @@
+# orbyn.dev on one Docker host: a static site behind a Cloudflare tunnel.
+#
+#   visitors -> Cloudflare -> cloudflared -> web:8080 (nginx, the built site)
+#
+# Deploy with ./scripts/deploy.sh, which also removes what is left of the old
+# Orbyn app. The site is published on 127.0.0.1 only; the tunnel is the way in.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+    ports: ["127.0.0.1:${WEB_PORT:-8080}:8080"]
+    networks:
+      default:
+        # The old app's tunnel pointed at gateway:8080; this keeps that route working.
+        aliases: [gateway]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Public access without opening a port. Needs CLOUDFLARE_TUNNEL_TOKEN in .env.
+  cloudflared:
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:latest}
+    profiles: [tunnel]
+    # The token goes in the environment, not the command line, so it stays out of `docker ps`.
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+      TUNNEL_METRICS: 127.0.0.1:2000
+    depends_on:
+      web: { condition: service_healthy }
+    restart: unless-stopped
